@@ -1,0 +1,45 @@
+﻿name: Build Android APK
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: gradle
+
+    - name: Create Dummy local.properties
+      run: |
+        echo "SUPABASE_URL=https://dummy.supabase.co" > local.properties
+        echo "SUPABASE_ANON_KEY=dummy_key" >> local.properties
+        echo "QANNAS_KEYSTORE=../keystore.jks" >> local.properties
+        echo "QANNAS_KEYSTORE_PASSWORD=qannas123" >> local.properties
+        echo "QANNAS_KEY_ALIAS=qannas" >> local.properties
+        echo "QANNAS_KEY_PASSWORD=qannas123" >> local.properties
+
+    - name: Create Dummy keystore
+      run: |
+        keytool -genkey -v -keystore keystore.jks -alias qannas -keyalg RSA -keysize 2048 -validity 10000 -storepass qannas123 -keypass qannas123 -dname "CN=Qannas, OU=Qannas, O=Qannas, L=Amman, ST=Amman, C=JO"
+
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
+
+    - name: Build with Gradle
+      run: ./gradlew assembleRelease
+
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: app-release
+        path: app/build/outputs/apk/release/app-release.apk

@@ -1,0 +1,34 @@
+{
+  "profiles": [
+    {
+      "id": "bolt",
+      "name": "Bolt Driver",
+      "packages": ["ee.mtakso.driver"],
+      "acceptLabels": ["accept", "accept offer", "accept the offer", "accept ride", "aceptar", "قبول", "قبول الطلب", "قبول العرض", "قبول الرحلة"],
+      "confirmLabels": ["arrived at pickup", "arrived at pickup location", "pickup passenger", "pick up passenger", "navigate", "cancel ride", "end ride", "وصلت إلى نقطة الانطلاق", "وصلت الى نقطة الانطلاق", "التنقل", "إلغاء الرحلة", "إنهاء الرحلة", "عرض الاتجاهات"],
+      "currencyTokens": ["jd", "jod", "د.أ", "د.ا", "دينار", "sar", "s.a.r", "ر.س", "ر س", "ريال", "usd", "$", "€", "eur"],
+      "addressCues": ["street", "st.", "avenue", "road", "gate", "شارع", "طريق", "حي", "منطقة", "بوابة", "مخرج", "دوار"],
+      "version": 1
+    },
+    {
+      "id": "jeeny",
+      "name": "Jeeny Driver",
+      "packages": ["me.com.easytaxista"],
+      "acceptLabels": ["accept", "accept offer", "accept the offer", "قبول", "قبول الطلب", "قبول العرض"],
+      "confirmLabels": ["arrived at pickup", "arrived at pickup location", "pickup location", "drop off passenger", "dropoff passenger", "in progress", "navigate", "cancel ride", "end ride", "وصلت إلى نقطة الإقلاع", "وصلت إلى نقطة الانطلاق", "موقع الإقلال", "نقطة الاقلال", "إلغاء المشوار", "الغاء المشوار", "إنهاء المشوار", "انهاء المشوار", "جارٍ التوصيل", "في التوصيل", "عرض الاتجاهات", "عرض الإتجاهات"],
+      "currencyTokens": ["jd", "jod", "د.أ", "د.ا", "دينار", "sar", "s.a.r", "ر.س", "ر س", "ريال", "usd", "$"],
+      "addressCues": ["street", "st.", "avenue", "road", "gate", "شارع", "طريق", "حي", "منطقة", "بوابة", "مخرج", "دوار"],
+      "version": 1
+    },
+    {
+      "id": "petra",
+      "name": "PetraRide Captain",
+      "packages": ["com.PetraRide_Captain", "com.petraride_captain"],
+      "acceptLabels": ["accept", "accept offer", "accept order", "قبول", "قبول الطلب", "قبول العرض"],
+      "confirmLabels": ["arrived", "arrived at pickup", "start trip", "end trip", "navigate", "cancel", "وصلت", "بدء الرحلة", "إنهاء الرحلة", "التنقل", "إلغاء"],
+      "currencyTokens": ["jd", "jod", "د.أ", "د.ا", "دينار", "usd", "$"],
+      "addressCues": ["street", "st.", "avenue", "road", "gate", "شارع", "طريق", "حي", "منطقة", "بوابة", "مخرج", "دوار"],
+      "version": 1
+    }
+  ]
+}
