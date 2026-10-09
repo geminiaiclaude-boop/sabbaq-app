@@ -128,7 +128,7 @@
         
         async function resetDevice(id) {
             if(confirm("هل أنت متأكد من فك ربط جهاز هذا السائق؟")) {
-                await db.from('drivers').update({ device_id: null }).eq('id', id);
+                await db.rpc('admin_reset_device', { p_driver: id });
                 loadDrivers();
             }
         }
