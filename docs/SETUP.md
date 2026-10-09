@@ -29,4 +29,21 @@ insert into public.admins (user_id) select id from auth.users where email = 'YOU
    - `KEYSTORE_PASSWORD`: كلمة مرور مفتاح التوقيع.
    - `KEY_ALIAS`: اسم المفتاح (مثلاً `upload`).
    - `KEY_PASSWORD`: كلمة مرور الـ Alias.
-   - `KEYSTORE_BASE64`: محتوى مفتاح `upload.jks` الخاص بك بعد تشفيره كـ Base64. (يمكنك استخدام السكربت المرفق `Get-Secrets.ps1` لتوليده).
+   - `KEYSTORE_BASE64`: محتوى مفتاح التوقيع **الجديد** `upload.jks` بترميز Base64 (انظر القسم 5).
+
+## 5. مفتاح التوقيع (إلزامي قبل أي إصدار)
+
+المفتاح القديم `keystore.jks` كان مرفوعاً في تاريخ المستودع، فهو **مكشوف ولا يُستخدم أبداً**. ولّد مفتاحاً جديداً على جهاز فيه JDK 17:
+
+```
+keytool -genkeypair -v -keystore upload.jks -alias upload -keyalg RSA -keysize 4096 -validity 10000
+```
+
+ثم:
+
+1. احفظ `upload.jks` وكلمتي سره في مكانين آمنين **خارج المستودع**. ضياعه بعد النشر على Google Play يعني استحالة تحديث التطبيق.
+2. حوّله إلى Base64 وضعه في السر `KEYSTORE_BASE64`:
+   - Linux/macOS/Git Bash: `base64 -w0 upload.jks`
+   - PowerShell: `[Convert]::ToBase64String([IO.File]::ReadAllBytes("upload.jks"))`
+3. ضع `KEY_ALIAS=upload` وكلمتي السر في `KEYSTORE_PASSWORD` و`KEY_PASSWORD`.
+4. لا تضع `upload.jks` ولا `local.properties` ولا `admin/config.js` داخل المستودع؛ كلها مستبعدة في `.gitignore`.

@@ -75,9 +75,17 @@
     </div>
     <script src="config.js"></script>
     <script>
-        const SUPABASE_URL = 'ضع_رابط_قاعدة_البيانات_هنا';
-        const SUPABASE_KEY = 'ضع_مفتاح_API_هنا';
-        const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        const CONFIG = window.QANNAS_CONFIG || {};
+        const CONFIG_OK = typeof CONFIG.supabaseUrl === 'string' && CONFIG.supabaseUrl.startsWith('https://')
+            && !CONFIG.supabaseUrl.includes('YOUR-PROJECT')
+            && typeof CONFIG.supabaseAnonKey === 'string' && CONFIG.supabaseAnonKey.length > 20
+            && !CONFIG.supabaseAnonKey.includes('YOUR-ANON-KEY');
+        if (!CONFIG_OK) {
+            document.body.innerHTML = '<div class="container"><h1>الإعداد مفقود</h1>'
+                + '<p>انسخ <code>admin/config.example.js</code> إلى <code>admin/config.js</code> واملأ رابط المشروع ومفتاح anon، ثم أعد تحميل الصفحة.</p></div>';
+            throw new Error('QANNAS_CONFIG missing or still has placeholder values');
+        }
+        const db = window.supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey);
 
         function escapeHTML(str) {
             if (!str) return '';
@@ -174,8 +182,7 @@
                 alert('لا توجد أكواد متاحة للتصدير');
                 return;
             }
-            let csv = 'الكود,المدة (أيام),الدفعة
-';
+            let csv = 'الكود,المدة (أيام),الدفعة\n';
             data.forEach(row => { csv += `${row.code},${row.days},${row.batch || ''}
 `; });
             

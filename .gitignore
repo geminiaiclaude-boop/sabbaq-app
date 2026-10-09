@@ -1,2 +1,8 @@
-﻿keystore.jks
-local.propertiesadmin/config.js
+keystore.jks
+*.jks
+*.keystore
+local.properties
+admin/config.js
+.gradle/
+build/
+*/build/
