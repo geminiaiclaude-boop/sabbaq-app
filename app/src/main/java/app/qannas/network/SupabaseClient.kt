@@ -34,7 +34,9 @@ object SupabaseClient {
             if (response.isSuccessful) {
                 val json = Json.parseToJsonElement(body).jsonObject
                 val token = json["session"]?.jsonObject?.get("access_token")?.jsonPrimitive?.content
-                    ?: return@withContext login(email, password) // Fallback to login if no session returned
+                if (token == null) {
+                    return@withContext Result.failure(Exception("تم إنشاء الحساب! يرجى تفعيل الإيميل من صندوق الوارد ثم تسجيل الدخول لاحقاً."))
+                }
 
                 currentToken = token
                 
@@ -62,7 +64,7 @@ object SupabaseClient {
         }
     }
 
-    suspend fun isAdmin(token: String): Boolean = withContext(Dispatchers.IO) {
+    suspend fun isAdmin(token: String): Result<Boolean> = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url("${BuildConfig.SUPABASE_URL}/rest/v1/rpc/is_admin")
             .header("apikey", BuildConfig.SUPABASE_ANON_KEY)
@@ -74,10 +76,13 @@ object SupabaseClient {
             val response = client.newCall(request).execute()
             val body = response.body?.string() ?: ""
             if (response.isSuccessful) {
-                return@withContext body.trim() == "true"
+                Result.success(body.trim() == "true")
+            } else {
+                Result.failure(Exception("isAdmin فشل HTTP ${response.code}: $body"))
             }
-        } catch (e: Exception) { }
-        return@withContext false
+        } catch (e: Exception) { 
+            Result.failure(Exception("isAdmin استثناء: ${e.message}"))
+        }
     }
 
     suspend fun login(email: String, password: String): Result<String> = withContext(Dispatchers.IO) {
