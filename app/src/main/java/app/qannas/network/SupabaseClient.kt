@@ -15,6 +15,71 @@ object SupabaseClient {
     var currentToken: String = ""
     var currentDeviceId: String = ""
 
+    
+    suspend fun signUp(email: String, password: String, name: String, phone: String): Result<String> = withContext(Dispatchers.IO) {
+        val payload = buildJsonObject {
+            put("email", email)
+            put("password", password)
+        }.toString().toRequestBody(jsonMediaType)
+
+        val request = Request.Builder()
+            .url("${BuildConfig.SUPABASE_URL}/auth/v1/signup")
+            .header("apikey", BuildConfig.SUPABASE_ANON_KEY)
+            .post(payload)
+            .build()
+
+        try {
+            val response = client.newCall(request).execute()
+            val body = response.body?.string() ?: ""
+            if (response.isSuccessful) {
+                val json = Json.parseToJsonElement(body).jsonObject
+                val token = json["session"]?.jsonObject?.get("access_token")?.jsonPrimitive?.content
+                    ?: return@withContext login(email, password) // Fallback to login if no session returned
+
+                currentToken = token
+                
+                // Now register driver in public.drivers via RPC
+                val regPayload = buildJsonObject {
+                    put("p_full_name", name)
+                    put("p_phone", phone)
+                }.toString().toRequestBody(jsonMediaType)
+                
+                val regReq = Request.Builder()
+                    .url("${BuildConfig.SUPABASE_URL}/rest/v1/rpc/register_driver")
+                    .header("apikey", BuildConfig.SUPABASE_ANON_KEY)
+                    .header("Authorization", "Bearer $token")
+                    .post(regPayload)
+                    .build()
+                
+                client.newCall(regReq).execute() // Execute and ignore response (it just inserts)
+                
+                Result.success(token)
+            } else {
+                Result.failure(Exception("فشل التسجيل: ${response.message}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun isAdmin(token: String): Boolean = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${BuildConfig.SUPABASE_URL}/rest/v1/rpc/is_admin")
+            .header("apikey", BuildConfig.SUPABASE_ANON_KEY)
+            .header("Authorization", "Bearer $token")
+            .post("{}".toRequestBody(jsonMediaType))
+            .build()
+
+        try {
+            val response = client.newCall(request).execute()
+            val body = response.body?.string() ?: ""
+            if (response.isSuccessful) {
+                return@withContext body.trim() == "true"
+            }
+        } catch (e: Exception) { }
+        return@withContext false
+    }
+
     suspend fun login(email: String, password: String): Result<String> = withContext(Dispatchers.IO) {
         val payload = buildJsonObject {
             put("email", email)

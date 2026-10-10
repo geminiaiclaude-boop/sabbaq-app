@@ -1,4 +1,4 @@
-package app.qannas.ui
+﻿package app.qannas.ui
 
 import android.provider.Settings as AndroidSettings
 import androidx.compose.foundation.layout.*
@@ -12,11 +12,17 @@ import app.qannas.network.SupabaseClient
 import kotlinx.coroutines.launch
 
 @Composable
-fun LoginScreen(onLoginSuccess: () -> Unit) {
+fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) { // Returns true if admin, false if driver
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    
+    var isSignUpMode by remember { mutableStateOf(false) }
+    
+    var name by remember { mutableStateOf("") }
+    var phone by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
 
@@ -25,20 +31,48 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text("تسجيل الدخول", style = MaterialTheme.typography.titleLarge)
-        Spacer(modifier = Modifier.height(32.dp))
+        Text("تطبيق القناص", style = MaterialTheme.typography.titleLarge)
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+            TextButton(onClick = { isSignUpMode = false; errorMessage = "" }) {
+                Text("تسجيل الدخول", color = if (!isSignUpMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary)
+            }
+            Spacer(modifier = Modifier.width(16.dp))
+            TextButton(onClick = { isSignUpMode = true; errorMessage = "" }) {
+                Text("حساب جديد", color = if (isSignUpMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary)
+            }
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+
+        if (isSignUpMode) {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text("الاسم الكامل") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedTextField(
+                value = phone,
+                onValueChange = { phone = it },
+                label = { Text("رقم الهاتف") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+        }
 
         OutlinedTextField(
             value = email,
             onValueChange = { email = it },
-            label = { Text("البريد الإلكتروني أو الهاتف") },
+            label = { Text("البريد الإلكتروني") },
             modifier = Modifier.fillMaxWidth()
         )
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         OutlinedTextField(
             value = password,
             onValueChange = { password = it },
-            label = { Text("رمز التفعيل (كلمة المرور)") },
+            label = { Text("كلمة المرور (6 أحرف على الأقل)") },
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(modifier = Modifier.height(32.dp))
@@ -53,18 +87,30 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                 isLoading = true
                 errorMessage = ""
                 scope.launch {
-                    val loginRes = SupabaseClient.login(email, password)
-                    if (loginRes.isSuccess) {
-                        val deviceId = AndroidSettings.Secure.getString(context.contentResolver, AndroidSettings.Secure.ANDROID_ID)
-                        val bindRes = SupabaseClient.checkLicenseAndBindDevice(loginRes.getOrThrow(), deviceId)
-                        if (bindRes.isSuccess) {
-                            app.qannas.Settings.isActive = false
-                            onLoginSuccess()
+                    val authRes = if (isSignUpMode) {
+                        SupabaseClient.signUp(email, password, name, phone)
+                    } else {
+                        SupabaseClient.login(email, password)
+                    }
+                    
+                    if (authRes.isSuccess) {
+                        val token = authRes.getOrThrow()
+                        val isAdmin = SupabaseClient.isAdmin(token)
+                        
+                        if (isAdmin) {
+                            onLoginSuccess(true)
                         } else {
-                            errorMessage = bindRes.exceptionOrNull()?.message ?: "Unknown Error"
+                            val deviceId = AndroidSettings.Secure.getString(context.contentResolver, AndroidSettings.Secure.ANDROID_ID)
+                            val bindRes = SupabaseClient.checkLicenseAndBindDevice(token, deviceId)
+                            if (bindRes.isSuccess) {
+                                app.qannas.Settings.isActive = false
+                                onLoginSuccess(false)
+                            } else {
+                                errorMessage = bindRes.exceptionOrNull()?.message ?: "Unknown Error"
+                            }
                         }
                     } else {
-                        errorMessage = loginRes.exceptionOrNull()?.message ?: "Login Error"
+                        errorMessage = authRes.exceptionOrNull()?.message ?: "Auth Error"
                     }
                     isLoading = false
                 }
@@ -73,7 +119,7 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
             enabled = !isLoading
         ) {
             if (isLoading) CircularProgressIndicator(modifier = Modifier.size(24.dp))
-            else Text("دخول وربط الجهاز")
+            else Text(if (isSignUpMode) "إنشاء حساب" else "دخول")
         }
     }
 }
