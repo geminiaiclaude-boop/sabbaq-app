@@ -9,6 +9,8 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 
 object SupabaseClient {
+    private val baseUrl: String
+        get() = BuildConfig.SUPABASE_URL.trimEnd('/')
     private val client = OkHttpClient()
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
@@ -23,7 +25,7 @@ object SupabaseClient {
         }.toString().toRequestBody(jsonMediaType)
 
         val request = Request.Builder()
-            .url("${BuildConfig.SUPABASE_URL}/auth/v1/signup")
+            .url("$baseUrl/auth/v1/signup")
             .header("apikey", BuildConfig.SUPABASE_ANON_KEY)
             .post(payload)
             .build()
@@ -47,7 +49,7 @@ object SupabaseClient {
                 }.toString().toRequestBody(jsonMediaType)
                 
                 val regReq = Request.Builder()
-                    .url("${BuildConfig.SUPABASE_URL}/rest/v1/rpc/register_driver")
+                    .url("$baseUrl/rest/v1/rpc/register_driver")
                     .header("apikey", BuildConfig.SUPABASE_ANON_KEY)
                     .header("Authorization", "Bearer $token")
                     .post(regPayload)
@@ -57,7 +59,13 @@ object SupabaseClient {
                 
                 Result.success(token)
             } else {
-                Result.failure(Exception("فشل التسجيل: ${response.message}"))
+                val errorMsg = try {
+                    val errJson = kotlinx.serialization.json.Json.parseToJsonElement(body).jsonObject
+                    errJson["error_description"]?.jsonPrimitive?.content ?: errJson["msg"]?.jsonPrimitive?.content ?: body
+                } catch (e: Exception) {
+                    body
+                }
+                Result.failure(Exception(errorMsg))
             }
         } catch (e: Exception) {
             Result.failure(e)
@@ -66,7 +74,7 @@ object SupabaseClient {
 
     suspend fun isAdmin(token: String): Result<Boolean> = withContext(Dispatchers.IO) {
         val request = Request.Builder()
-            .url("${BuildConfig.SUPABASE_URL}/rest/v1/rpc/is_admin")
+            .url("$baseUrl/rest/v1/rpc/is_admin")
             .header("apikey", BuildConfig.SUPABASE_ANON_KEY)
             .header("Authorization", "Bearer $token")
             .post("{}".toRequestBody(jsonMediaType))
@@ -92,7 +100,7 @@ object SupabaseClient {
         }.toString().toRequestBody(jsonMediaType)
 
         val request = Request.Builder()
-            .url("${BuildConfig.SUPABASE_URL}/auth/v1/token?grant_type=password")
+            .url("$baseUrl/auth/v1/token?grant_type=password")
             .header("apikey", BuildConfig.SUPABASE_ANON_KEY)
             .post(payload)
             .build()
@@ -122,7 +130,7 @@ object SupabaseClient {
         }.toString().toRequestBody(jsonMediaType)
         
         val request = Request.Builder()
-            .url("${BuildConfig.SUPABASE_URL}/rest/v1/rpc/license_status")
+            .url("$baseUrl/rest/v1/rpc/license_status")
             .header("apikey", BuildConfig.SUPABASE_ANON_KEY)
             .header("Authorization", "Bearer $token")
             .post(payload)
@@ -158,7 +166,7 @@ object SupabaseClient {
         }.toString().toRequestBody(jsonMediaType)
         
         val request = Request.Builder()
-            .url("${BuildConfig.SUPABASE_URL}/rest/v1/rpc/redeem_code")
+            .url("$baseUrl/rest/v1/rpc/redeem_code")
             .header("apikey", BuildConfig.SUPABASE_ANON_KEY)
             .header("Authorization", "Bearer $currentToken")
             .post(payload)
