@@ -72,7 +72,7 @@ jobs:
           KEYSTORE_BASE64: "${{ secrets.KEYSTORE_BASE64 }}"
         run: |
           if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 -d > keystore.jks
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
           else
             echo "Warning: KEYSTORE_BASE64 secret is not set. Build will fail if release is requested."
           fi
@@ -81,7 +81,7 @@ jobs:
         run: |
           echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" > local.properties
           echo "SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}" >> local.properties
-          echo "QANNAS_KEYSTORE=keystore.jks" >> local.properties
+          echo "QANNAS_KEYSTORE=$RUNNER_TEMP/upload.jks" >> local.properties
           echo "QANNAS_KEYSTORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }}" >> local.properties
           echo "QANNAS_KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> local.properties
           echo "QANNAS_KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> local.properties
