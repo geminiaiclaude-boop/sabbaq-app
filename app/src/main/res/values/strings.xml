@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">قناص</string>
+    <string name="accessibility_service_description">تقرأ قناص العروض الظاهرة في تطبيقات الرحلات المدعومة فقط وتضغط قبول العرض المطابق لمرشحاتك بعد موافقتك على التشغيل. لا تعمل دون اشتراك صالح، ويمكنك إيقافها من التطبيق أو الإشعار في أي وقت.</string>
+</resources>

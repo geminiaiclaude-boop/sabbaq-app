@@ -1,4 +1,9 @@
+import java.net.URI
+import java.security.KeyStore
+import java.security.PrivateKey
+import java.util.Base64
 import java.util.Properties
+import org.gradle.api.GradleException
 
 plugins {
     alias(libs.plugins.android.application)
@@ -15,16 +20,32 @@ val localProps = Properties().apply {
 fun setting(name: String): String? =
     System.getenv(name)?.takeIf { it.isNotBlank() } ?: localProps.getProperty(name)?.takeIf { it.isNotBlank() }
 
+fun buildConfigString(value: String): String = buildString {
+    append('"')
+    value.forEach { character ->
+        when (character) {
+            '\\' -> append("\\\\")
+            '"' -> append("\\\"")
+            '\n' -> append("\\n")
+            '\r' -> append("\\r")
+            else -> append(character)
+        }
+    }
+    append('"')
+}
+
 val supabaseUrl = setting("SUPABASE_URL").orEmpty()
 val supabaseAnonKey = setting("SUPABASE_ANON_KEY").orEmpty()
 val keystorePath = setting("QANNAS_KEYSTORE")
-
-val releaseRequested = gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) }
-if (releaseRequested) {
-    require(supabaseUrl.startsWith("https://")) { "SUPABASE_URL must be set (https) for a release build" }
-    require(supabaseAnonKey.isNotEmpty()) { "SUPABASE_ANON_KEY must be set for a release build" }
-    require(keystorePath != null) { "QANNAS_KEYSTORE must be set for a release build" }
-}
+val releaseStoreFile = keystorePath
+    ?.takeIf { it.isNotBlank() }
+    ?.let { rootProject.file(it) }
+val versionCodeValue = setting("QANNAS_VERSION_CODE") ?: "1"
+val configuredVersionCode = versionCodeValue.toIntOrNull()
+    ?: throw GradleException("QANNAS_VERSION_CODE يجب أن يكون عدداً صحيحاً موجباً")
+require(configuredVersionCode > 0) { "QANNAS_VERSION_CODE يجب أن يكون عدداً صحيحاً موجباً" }
+val configuredVersionName = setting("QANNAS_VERSION_NAME") ?: "1.0.0"
+require(configuredVersionName.isNotBlank()) { "QANNAS_VERSION_NAME لا يمكن أن يكون فارغاً" }
 
 android {
     namespace = "app.qannas"
@@ -34,21 +55,19 @@ android {
         applicationId = "app.qannas.driver"
         minSdk = 26
         targetSdk = 36
-        versionCode = (setting("QANNAS_VERSION_CODE") ?: "1").toInt()
-        versionName = setting("QANNAS_VERSION_NAME") ?: "1.0.0"
+        versionCode = configuredVersionCode
+        versionName = configuredVersionName
 
-        buildConfigField("String", "SUPABASE_URL", "\"$supabaseUrl\"")
-        buildConfigField("String", "SUPABASE_ANON_KEY", "\"$supabaseAnonKey\"")
+        buildConfigField("String", "SUPABASE_URL", buildConfigString(supabaseUrl))
+        buildConfigField("String", "SUPABASE_ANON_KEY", buildConfigString(supabaseAnonKey))
     }
 
     signingConfigs {
-        if (keystorePath != null) {
-            create("release") {
-                storeFile = file(keystorePath)
-                storePassword = setting("QANNAS_KEYSTORE_PASSWORD")
-                keyAlias = setting("QANNAS_KEY_ALIAS")
-                keyPassword = setting("QANNAS_KEY_PASSWORD")
-            }
+        create("release") {
+            releaseStoreFile?.let { storeFile = it }
+            storePassword = setting("QANNAS_KEYSTORE_PASSWORD")
+            keyAlias = setting("QANNAS_KEY_ALIAS")
+            keyPassword = setting("QANNAS_KEY_PASSWORD")
         }
     }
 
@@ -57,7 +76,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.findByName("release")
+            signingConfig = signingConfigs.getByName("release")
         }
         debug {
             applicationIdSuffix = ".debug"
@@ -88,6 +107,70 @@ android {
 
 kotlin {
     jvmToolchain(17)
+}
+
+val verifyReleaseConfiguration by tasks.registering {
+    group = "verification"
+    description = "يتحقق من إعدادات الخدمة والتوقيع اللازمة قبل إنتاج حزمة release."
+
+    doLast {
+        val errors = buildList {
+            val parsedSupabaseUrl = runCatching { URI(supabaseUrl) }.getOrNull()
+            if (parsedSupabaseUrl?.scheme != "https" || parsedSupabaseUrl.host.isNullOrBlank() ||
+                parsedSupabaseUrl.userInfo != null || parsedSupabaseUrl.query != null || parsedSupabaseUrl.fragment != null) {
+                add("SUPABASE_URL يجب أن يكون رابط HTTPS كاملاً لإصدار release")
+            }
+            if (supabaseAnonKey.isBlank()) add("SUPABASE_ANON_KEY مطلوب لإصدار release")
+            if (supabaseAnonKey.any { it.code < 0x20 || it.code == 0x7f } || supabaseAnonKey != supabaseAnonKey.trim()) {
+                add("SUPABASE_ANON_KEY يحتوي محارف غير صالحة للترويسات")
+            }
+            val jwtPayload = supabaseAnonKey.split('.').getOrNull(1)?.let {
+                runCatching { String(Base64.getUrlDecoder().decode(it), Charsets.UTF_8) }.getOrNull()
+            }.orEmpty()
+            if (supabaseAnonKey.startsWith("sb_secret_") || Regex("\"role\"\\s*:\\s*\"service_role\"").containsMatchIn(jwtPayload)) {
+                add("مفتاح الخدمة الخاص لا يجوز تضمينه في تطبيق Android؛ استخدم anon/publishable فقط")
+            }
+
+            if (releaseStoreFile == null) {
+                add("QANNAS_KEYSTORE مطلوب ويجب أن يشير إلى ملف keystore")
+            } else {
+                if (!releaseStoreFile.isFile) add("QANNAS_KEYSTORE لا يشير إلى ملف موجود")
+                if (!releaseStoreFile.canRead()) add("ملف QANNAS_KEYSTORE غير قابل للقراءة")
+            }
+
+            listOf(
+                "QANNAS_KEYSTORE_PASSWORD" to setting("QANNAS_KEYSTORE_PASSWORD"),
+                "QANNAS_KEY_ALIAS" to setting("QANNAS_KEY_ALIAS"),
+                "QANNAS_KEY_PASSWORD" to setting("QANNAS_KEY_PASSWORD")
+            ).forEach { (name, value) ->
+                if (value.isNullOrBlank()) add("$name مطلوب لإصدار release")
+            }
+        }
+
+        if (errors.isNotEmpty()) {
+            throw GradleException("فشل فحص ما قبل إصدار release:\n${errors.joinToString("\n") { " - $it" }}")
+        }
+        try {
+            val store = KeyStore.getInstance(releaseStoreFile!!, setting("QANNAS_KEYSTORE_PASSWORD")!!.toCharArray())
+            val key = store.getKey(setting("QANNAS_KEY_ALIAS"), setting("QANNAS_KEY_PASSWORD")!!.toCharArray())
+            if (key !is PrivateKey) throw GradleException("Alias التوقيع لا يحتوي مفتاحاً خاصاً")
+        } catch (_: Exception) {
+            throw GradleException("تعذر فتح مفتاح التوقيع؛ راجع نوع الملف وكلمات المرور والـ alias دون نشرها")
+        }
+    }
+}
+
+val releaseArtifactTasks = setOf(
+    "assembleRelease",
+    "bundleRelease",
+    "packageRelease",
+    "signReleaseBundle",
+    "validateSigningRelease"
+)
+tasks.configureEach {
+    if (name in releaseArtifactTasks) {
+        dependsOn(verifyReleaseConfiguration)
+    }
 }
 
 dependencies {

@@ -29,14 +29,15 @@ data class Filters(
     val acceptWhenNoFilters: Boolean = false,
 ) {
     fun anyActive(): Boolean =
-        listOf(minFare, maxFare, minFarePerKm, maxPickupKm, minTripKm, maxTripKm).any { it.toDecimalOrNull() != null } ||
-            maxPickupMinutes != null || maxTripMinutes != null || excludeKeywords.any { it.isNotBlank() }
+        listOf(minFare, maxFare, minFarePerKm, maxPickupKm, minTripKm, maxTripKm).any { !it.isNullOrBlank() } ||
+            maxPickupMinutes != null || maxTripMinutes != null || excludeKeywords.any { it.isNotBlank() } || scheduleEnabled
 }
 
 internal fun String?.toDecimalOrNull(): BigDecimal? = this?.let { Text.parseNumber(Text.normalize(it)) }
 
 enum class ReasonCode {
     NO_FILTERS, OUTSIDE_SCHEDULE,
+    INVALID_FILTER,
     FARE_MISSING, FARE_TOO_LOW, FARE_TOO_HIGH,
     PER_KM_MISSING, PER_KM_TOO_LOW,
     PICKUP_KM_MISSING, PICKUP_TOO_FAR,
@@ -59,51 +60,53 @@ object OfferEvaluator {
 
     fun evaluate(offer: Offer, filters: Filters, minuteOfDay: Int): Verdict {
         val reasons = ArrayList<Reason>()
+        val limits = filters.validated()
         val perKm = farePerKm(offer, filters.perKmBasis)
 
-        if (filters.scheduleEnabled && !inSchedule(minuteOfDay, filters.scheduleStartMinute, filters.scheduleEndMinute)) {
+        limits.invalid.firstOrNull()?.let { reasons += Reason(ReasonCode.INVALID_FILTER, it) }
+        if (filters.scheduleEnabled && limits.scheduleIsValid && !inSchedule(minuteOfDay, filters.scheduleStartMinute, filters.scheduleEndMinute)) {
             reasons += Reason(ReasonCode.OUTSIDE_SCHEDULE)
         }
         if (!filters.anyActive() && !filters.acceptWhenNoFilters) {
             reasons += Reason(ReasonCode.NO_FILTERS)
         }
 
-        filters.minFare.toDecimalOrNull()?.let { min ->
-            val fare = offer.fare
+        limits.minFare?.let { min ->
+            val fare = offer.nonNegativeFare()
             if (fare == null) reasons += Reason(ReasonCode.FARE_MISSING)
             else if (fare < min) reasons += Reason(ReasonCode.FARE_TOO_LOW, fare.toPlainString())
         }
-        filters.maxFare.toDecimalOrNull()?.let { max ->
-            val fare = offer.fare
+        limits.maxFare?.let { max ->
+            val fare = offer.nonNegativeFare()
             if (fare == null) reasons += Reason(ReasonCode.FARE_MISSING)
             else if (fare > max) reasons += Reason(ReasonCode.FARE_TOO_HIGH, fare.toPlainString())
         }
-        filters.minFarePerKm.toDecimalOrNull()?.let { min ->
+        limits.minFarePerKm?.let { min ->
             if (perKm == null) reasons += Reason(ReasonCode.PER_KM_MISSING)
-            else if (perKm < min) reasons += Reason(ReasonCode.PER_KM_TOO_LOW, perKm.toPlainString())
+            else if (!meetsMinimumFarePerKm(offer, filters.perKmBasis, min)) reasons += Reason(ReasonCode.PER_KM_TOO_LOW, perKm.toPlainString())
         }
-        filters.maxPickupKm.toDecimalOrNull()?.let { max ->
-            val v = offer.pickupKm
+        limits.maxPickupKm?.let { max ->
+            val v = offer.nonNegativePickupKm()
             if (v == null) reasons += Reason(ReasonCode.PICKUP_KM_MISSING)
             else if (v > max) reasons += Reason(ReasonCode.PICKUP_TOO_FAR, v.toPlainString())
         }
-        filters.maxPickupMinutes?.let { max ->
-            val v = offer.pickupMinutes
+        limits.maxPickupMinutes?.let { max ->
+            val v = offer.pickupMinutes?.takeIf { it >= 0 }
             if (v == null) reasons += Reason(ReasonCode.PICKUP_MIN_MISSING)
             else if (v > max) reasons += Reason(ReasonCode.PICKUP_TOO_LONG, v.toString())
         }
-        filters.minTripKm.toDecimalOrNull()?.let { min ->
-            val v = offer.tripKm
+        limits.minTripKm?.let { min ->
+            val v = offer.nonNegativeTripKm()
             if (v == null) reasons += Reason(ReasonCode.TRIP_KM_MISSING)
             else if (v < min) reasons += Reason(ReasonCode.TRIP_TOO_SHORT, v.toPlainString())
         }
-        filters.maxTripKm.toDecimalOrNull()?.let { max ->
-            val v = offer.tripKm
+        limits.maxTripKm?.let { max ->
+            val v = offer.nonNegativeTripKm()
             if (v == null) reasons += Reason(ReasonCode.TRIP_KM_MISSING)
             else if (v > max) reasons += Reason(ReasonCode.TRIP_TOO_LONG, v.toPlainString())
         }
-        filters.maxTripMinutes?.let { max ->
-            val v = offer.tripMinutes
+        limits.maxTripMinutes?.let { max ->
+            val v = offer.tripMinutes?.takeIf { it >= 0 }
             if (v == null) reasons += Reason(ReasonCode.TRIP_MIN_MISSING)
             else if (v > max) reasons += Reason(ReasonCode.TRIP_MIN_TOO_LONG, v.toString())
         }
@@ -117,22 +120,100 @@ object OfferEvaluator {
     }
 
     fun farePerKm(offer: Offer, basis: PerKmBasis): BigDecimal? {
-        val fare = offer.fare ?: return null
-        val km = when (basis) {
-            PerKmBasis.TRIP -> offer.tripKm
-            PerKmBasis.TOTAL -> {
-                val trip = offer.tripKm ?: return null
-                trip + (offer.pickupKm ?: return null)
-            }
-        } ?: return null
+        val fare = offer.nonNegativeFare() ?: return null
+        val km = offer.kilometresFor(basis) ?: return null
         if (km.signum() <= 0) return null
         return fare.divide(km, 3, RoundingMode.HALF_UP)
     }
 
     /** Windows may wrap midnight, e.g. 22:00 → 04:00. */
-    fun inSchedule(minuteOfDay: Int, start: Int, end: Int): Boolean = when {
+    fun inSchedule(minuteOfDay: Int, start: Int, end: Int): Boolean {
+        if (minuteOfDay !in 0 until MINUTES_PER_DAY || !scheduleBoundsAreValid(start, end)) return false
+        return when {
         start == end -> true
         start < end -> minuteOfDay in start until end
         else -> minuteOfDay >= start || minuteOfDay < end
+        }
     }
+
+    private fun meetsMinimumFarePerKm(offer: Offer, basis: PerKmBasis, minimum: BigDecimal): Boolean {
+        val fare = offer.nonNegativeFare() ?: return false
+        val km = offer.kilometresFor(basis)?.takeIf { it.signum() > 0 } ?: return false
+        return fare >= minimum.multiply(km)
+    }
+
+    private fun Offer.nonNegativeFare(): BigDecimal? = fare?.takeIf { it.signum() >= 0 }
+
+    private fun Offer.nonNegativePickupKm(): BigDecimal? = pickupKm?.takeIf { it.signum() >= 0 }
+
+    private fun Offer.nonNegativeTripKm(): BigDecimal? = tripKm?.takeIf { it.signum() >= 0 }
+
+    private fun Offer.kilometresFor(basis: PerKmBasis): BigDecimal? {
+        return when (basis) {
+            PerKmBasis.TRIP -> nonNegativeTripKm()
+            PerKmBasis.TOTAL -> {
+                val trip = nonNegativeTripKm() ?: return null
+                trip + (nonNegativePickupKm() ?: return null)
+            }
+        }
+    }
+
+    private fun Filters.validated(): ValidatedFilters {
+        val invalid = ArrayList<String>()
+        fun decimal(name: String, value: String?): BigDecimal? {
+            if (value.isNullOrBlank()) return null
+            val parsed = value.toDecimalOrNull()
+            if (parsed == null || parsed.signum() < 0) {
+                invalid += name
+                return null
+            }
+            return parsed
+        }
+        fun minutes(name: String, value: Int?): Int? {
+            if (value != null && value < 0) invalid += name
+            return value?.takeIf { it >= 0 }
+        }
+
+        val minFare = decimal("minFare", minFare)
+        val maxFare = decimal("maxFare", maxFare)
+        val minFarePerKm = decimal("minFarePerKm", minFarePerKm)
+        val maxPickupKm = decimal("maxPickupKm", maxPickupKm)
+        val minTripKm = decimal("minTripKm", minTripKm)
+        val maxTripKm = decimal("maxTripKm", maxTripKm)
+        if (minFare != null && maxFare != null && minFare > maxFare) invalid += "fareRange"
+        if (minTripKm != null && maxTripKm != null && minTripKm > maxTripKm) invalid += "tripKmRange"
+        val scheduleIsValid = !scheduleEnabled || scheduleBoundsAreValid(scheduleStartMinute, scheduleEndMinute)
+        if (!scheduleIsValid) invalid += "schedule"
+
+        return ValidatedFilters(
+            minFare = minFare,
+            maxFare = maxFare,
+            minFarePerKm = minFarePerKm,
+            maxPickupKm = maxPickupKm,
+            maxPickupMinutes = minutes("maxPickupMinutes", maxPickupMinutes),
+            minTripKm = minTripKm,
+            maxTripKm = maxTripKm,
+            maxTripMinutes = minutes("maxTripMinutes", maxTripMinutes),
+            scheduleIsValid = scheduleIsValid,
+            invalid = invalid,
+        )
+    }
+
+    private data class ValidatedFilters(
+        val minFare: BigDecimal?,
+        val maxFare: BigDecimal?,
+        val minFarePerKm: BigDecimal?,
+        val maxPickupKm: BigDecimal?,
+        val maxPickupMinutes: Int?,
+        val minTripKm: BigDecimal?,
+        val maxTripKm: BigDecimal?,
+        val maxTripMinutes: Int?,
+        val scheduleIsValid: Boolean,
+        val invalid: List<String>,
+    )
+
+    private fun scheduleBoundsAreValid(start: Int, end: Int): Boolean =
+        start in 0 until MINUTES_PER_DAY && end in 0..MINUTES_PER_DAY
+
+    private const val MINUTES_PER_DAY = 24 * 60
 }

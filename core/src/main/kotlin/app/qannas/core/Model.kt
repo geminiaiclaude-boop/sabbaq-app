@@ -5,8 +5,8 @@ import java.math.BigDecimal
 
 @Serializable
 data class Bounds(val left: Int, val top: Int, val right: Int, val bottom: Int) {
-    val centerX: Int get() = (left + right) / 2
-    val centerY: Int get() = (top + bottom) / 2
+    val centerX: Int get() = ((left.toLong() + right.toLong()) / 2L).toInt()
+    val centerY: Int get() = ((top.toLong() + bottom.toLong()) / 2L).toInt()
     val isEmpty: Boolean get() = right <= left || bottom <= top
 
     companion object {
@@ -30,8 +30,15 @@ data class ScreenNode(
     val children: List<ScreenNode> = emptyList(),
 ) {
     fun walk(visit: (ScreenNode) -> Unit) {
-        visit(this)
-        children.forEach { it.walk(visit) }
+        val pending = java.util.ArrayDeque<ScreenNode>()
+        pending.addLast(this)
+        while (pending.isNotEmpty()) {
+            val node = pending.removeLast()
+            visit(node)
+            for (index in node.children.indices.reversed()) {
+                pending.addLast(node.children[index])
+            }
+        }
     }
 }
 
@@ -85,13 +92,22 @@ data class Offer(
      * is clicked once however many frames it is seen in.
      */
     val fingerprint: String
-        get() = listOf(
-            profileId,
-            fare?.stripTrailingZeros()?.toPlainString(),
-            tripKm?.stripTrailingZeros()?.toPlainString(),
-            pickupKm?.stripTrailingZeros()?.toPlainString(),
-            addresses.joinToString("|"),
-        ).joinToString("#")
+        get() = buildString {
+            appendFingerprintPart(profileId)
+            appendFingerprintPart(fare?.stripTrailingZeros()?.toPlainString())
+            appendFingerprintPart(tripKm?.stripTrailingZeros()?.toPlainString())
+            appendFingerprintPart(pickupKm?.stripTrailingZeros()?.toPlainString())
+            append(addresses.size).append(':')
+            addresses.forEach { appendFingerprintPart(it) }
+        }
+
+    private fun StringBuilder.appendFingerprintPart(value: String?) {
+        if (value == null) {
+            append("-1:")
+        } else {
+            append(value.length).append(':').append(value)
+        }
+    }
 }
 
 data class ParsedScreen(

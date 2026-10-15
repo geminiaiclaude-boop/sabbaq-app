@@ -15,7 +15,7 @@ class OfferParser(private val profile: RideProfile) {
     private val acceptIds = profile.acceptViewIds.toSet()
     private val addressCues = profile.addressCues.map(Text::normalize).filter { it.isNotEmpty() }
 
-    private val currencyRegex = Regex("(?<![\\p{L}])(${Text.tokenAlternation(profile.currencyTokens)})(?![\\p{L}])")
+    private val currencyRegex = tokenRegex(profile.currencyTokens)
     private val numberRegex = Regex("(${Text.NUMBER})")
     private val kmRegex = unitRegex(profile.kmUnits)
     private val meterRegex = unitRegex(profile.meterUnits)
@@ -26,6 +26,12 @@ class OfferParser(private val profile: RideProfile) {
         val alternation = Text.tokenAlternation(units)
         if (alternation.isEmpty()) return null
         return Regex("(${Text.NUMBER})\\s*($alternation)(?![\\p{L}])")
+    }
+
+    private fun tokenRegex(tokens: List<String>): Regex? {
+        val alternation = Text.tokenAlternation(tokens)
+        if (alternation.isEmpty()) return null
+        return Regex("(?<![\\p{L}])($alternation)(?![\\p{L}])")
     }
 
     private class Item(val text: String, val node: ScreenNode)
@@ -43,10 +49,13 @@ class OfferParser(private val profile: RideProfile) {
             }
         }
         val acceptNode = accept ?: return ParsedScreen(offer = null, acceptNode = null, confirmed = confirmed)
-        return ParsedScreen(offer = readOffer(items), acceptNode = acceptNode, confirmed = confirmed)
+        // A confirmation state can retain an old accept control for a frame. Never
+        // expose it as an actionable offer: the caller must not tap it again.
+        return ParsedScreen(offer = if (confirmed) null else readOffer(items), acceptNode = acceptNode, confirmed = confirmed)
     }
 
     private fun isAcceptControl(node: ScreenNode, label: String): Boolean {
+        if (!node.clickable) return false
         val id = node.viewId
         if (id != null && id in acceptIds) return true
         if (label.isEmpty() || label.length > 40) return false
@@ -76,7 +85,7 @@ class OfferParser(private val profile: RideProfile) {
             }
             readMinutes(text, unitSpans)?.let { minutes += it }
 
-            val currency = currencyRegex.find(text)
+            val currency = currencyRegex?.find(text)
             if (currency != null) {
                 val own = numberRegex.findAll(text)
                     .filter { m -> unitSpans.none { it.overlaps(m.range) } }
@@ -119,11 +128,38 @@ class OfferParser(private val profile: RideProfile) {
         if (hours.isEmpty() && mins.isEmpty()) return null
         hours.forEach { unitSpans += it.range }
         mins.forEach { unitSpans += it.range }
-        val minuteValues = mins.mapNotNull { Text.parseNumber(it.groupValues[1])?.toInt() }.toMutableList()
-        val hourValue = hours.firstOrNull()?.let { Text.parseNumber(it.groupValues[1]) } ?: return minuteValues
-        val hourMinutes = hourValue.multiply(SIXTY).setScale(0, RoundingMode.HALF_UP).toInt()
-        val first = minuteValues.removeFirstOrNull() ?: 0
-        return listOf(hourMinutes + first) + minuteValues
+
+        val matches = ArrayList<TimeMatch>(hours.size + mins.size)
+        hours.forEach { matches += TimeMatch(it.range, it.groupValues[1], isHour = true) }
+        mins.forEach { matches += TimeMatch(it.range, it.groupValues[1], isHour = false) }
+
+        val values = ArrayList<Int>()
+        var pendingHourMinutes: BigDecimal? = null
+        for (match in matches.sortedBy { it.range.first }) {
+            val value = Text.parseNumber(match.number) ?: return null
+            if (value.signum() < 0) return null
+            if (match.isHour) {
+                pendingHourMinutes?.let {
+                    if (!values.addDuration(it)) return null
+                }
+                pendingHourMinutes = value.multiply(SIXTY)
+            } else {
+                val total = pendingHourMinutes?.add(value) ?: value
+                if (!values.addDuration(total)) return null
+                pendingHourMinutes = null
+            }
+        }
+        pendingHourMinutes?.let {
+            if (!values.addDuration(it)) return null
+        }
+        return values.ifEmpty { null }
+    }
+
+    private fun MutableList<Int>.addDuration(value: BigDecimal): Boolean {
+        val roundedUp = value.setScale(0, RoundingMode.CEILING)
+        if (roundedUp.signum() < 0 || roundedUp > MAX_DURATION_MINUTES) return false
+        add(roundedUp.toInt())
+        return true
     }
 
     private fun neighbourNumber(items: List<Item>, index: Int): BigDecimal? {
@@ -158,8 +194,11 @@ class OfferParser(private val profile: RideProfile) {
 
     private fun IntRange.overlaps(other: IntRange): Boolean = first <= other.last && other.first <= last
 
+    private data class TimeMatch(val range: IntRange, val number: String, val isHour: Boolean)
+
     private companion object {
         val THOUSAND = BigDecimal(1000)
         val SIXTY = BigDecimal(60)
+        val MAX_DURATION_MINUTES = BigDecimal(Int.MAX_VALUE)
     }
 }

@@ -10,17 +10,30 @@ class ClickGate(
     private val minIntervalMs: Long,
     private val capacity: Int = 64,
 ) {
+    init {
+        require(perOfferSuppressMs > 0) { "perOfferSuppressMs must be positive" }
+        require(minIntervalMs >= 0) { "minIntervalMs must not be negative" }
+        require(capacity > 0) { "capacity must be positive" }
+    }
+
     private val clicked = LinkedHashMap<String, Long>()
     private var lastClickAt: Long? = null
 
     @Synchronized
     fun tryAcquire(fingerprint: String, nowMs: Long): Boolean {
-        clicked.entries.removeAll { nowMs - it.value > perOfferSuppressMs }
-        if (clicked.containsKey(fingerprint)) return false
+        if (fingerprint.isBlank() || nowMs < 0) return false
         val last = lastClickAt
-        if (last != null && nowMs - last < minIntervalMs) return false
+        // System.currentTimeMillis can move backwards. Refuse rather than making
+        // the global rate limit and per-offer suppression unexpectedly permissive.
+        if (last != null && nowMs < last) return false
+        clicked.entries.removeAll { hasElapsed(nowMs, it.value, perOfferSuppressMs) }
+        if (clicked.containsKey(fingerprint)) return false
+        if (last != null && !hasElapsed(nowMs, last, minIntervalMs)) return false
+        // Never evict a still-suppressed fingerprint: doing so would permit a
+        // duplicate tap during a burst. Reject the new offer until an entry ages
+        // out instead, which preserves both the memory bound and click safety.
+        if (clicked.size >= capacity) return false
         clicked[fingerprint] = nowMs
-        while (clicked.size > capacity) clicked.remove(clicked.keys.first())
         lastClickAt = nowMs
         return true
     }
@@ -30,4 +43,7 @@ class ClickGate(
         clicked.clear()
         lastClickAt = null
     }
+
+    private fun hasElapsed(nowMs: Long, thenMs: Long, intervalMs: Long): Boolean =
+        nowMs >= thenMs && nowMs - thenMs >= intervalMs
 }
