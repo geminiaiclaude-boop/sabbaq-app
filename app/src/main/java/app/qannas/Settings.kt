@@ -3,6 +3,8 @@ package app.qannas
 import android.content.Context
 import android.content.SharedPreferences
 import app.qannas.core.Filters
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
@@ -44,6 +46,18 @@ object Settings {
             prefs().edit().putBoolean(KEY_IS_ACTIVE, value).apply()
         }
 
+    /** A validated draft is committed as one document, on IO, before the UI reports success. */
+    suspend fun saveFilters(value: Filters): Boolean = withContext(Dispatchers.IO) {
+        runCatching {
+            prefs().edit().putString(KEY_FILTERS, Json.encodeToString(value)).commit()
+        }.getOrDefault(false)
+    }
+
+    var themeMode: ThemeMode
+        get() = runCatching { ThemeMode.valueOf(prefs().getString("theme_mode", "SYSTEM") ?: "SYSTEM") }
+            .getOrDefault(ThemeMode.SYSTEM)
+        set(value) { prefs().edit().putString("theme_mode", value.name).apply() }
+
     private fun prefs(): SharedPreferences = preferences
         ?: throw IllegalStateException("يجب استدعاء Settings.init قبل استخدام الإعدادات")
 
@@ -51,3 +65,5 @@ object Settings {
     private const val KEY_FILTERS = "filters"
     private const val KEY_IS_ACTIVE = "is_active"
 }
+
+enum class ThemeMode { SYSTEM, LIGHT, DARK }
