@@ -14,13 +14,16 @@ class OnboardingModelsTest {
     )
 
     @Test
-    fun `direct copy uses successful server offer rather than a built-in trial`() {
+    fun `direct copy uses the current offer rather than a built-in trial`() {
         val copy = onboardingOfferCopy(isDirectDistribution = true, offer = availableOffer)
 
         assertTrue(copy.hasServerOffer)
+        assertTrue(copy.canShowTrialJourney)
         assertTrue(copy.detail.contains("7 يومًا"))
         assertTrue(copy.detail.contains("30 يومًا"))
         assertTrue(copy.detail.contains("ر.س"))
+        assertTrue(copy.detail.contains("بعد تأكيدك"))
+        assertTrue(onboardingFinalCta(copy.canShowTrialJourney).contains("ابدأ تجربتك"))
     }
 
     @Test
@@ -28,7 +31,8 @@ class OnboardingModelsTest {
         val copy = onboardingOfferCopy(isDirectDistribution = true, offer = null)
 
         assertFalse(copy.hasServerOffer)
-        assertTrue(copy.detail.contains("لا نستطيع عرض تفاصيل التجربة"))
+        assertFalse(copy.canShowTrialJourney)
+        assertTrue(copy.detail.contains("بعد تسجيل الدخول"))
         assertFalse(copy.detail.contains("3 أيام"))
         assertFalse(copy.detail.contains("3 يوم"))
     }
@@ -41,8 +45,10 @@ class OnboardingModelsTest {
         )
 
         assertTrue(copy.hasServerOffer)
-        assertTrue(copy.detail.contains("لا توجد تجربة مفعّلة"))
+        assertFalse(copy.canShowTrialJourney)
+        assertTrue(copy.detail.contains("التجربة غير متاحة"))
         assertFalse(copy.detail.contains("7 يومًا"))
+        assertFalse(onboardingFinalCta(copy.canShowTrialJourney).contains("ابدأ تجربتك"))
     }
 
     @Test
@@ -50,23 +56,52 @@ class OnboardingModelsTest {
         val copy = onboardingOfferCopy(isDirectDistribution = false, offer = availableOffer)
 
         assertFalse(copy.hasServerOffer)
-        assertTrue(copy.detail.contains("خيارات المتجر"))
-        assertTrue(copy.detail.contains("خارج المتجر"))
+        assertFalse(copy.canShowTrialJourney)
+        assertTrue(copy.headline.contains("المتجر"))
+        assertTrue(copy.detail.contains("خيارات الاشتراك"))
         assertFalse(copy.detail.contains("رمز"))
         assertFalse(copy.detail.contains("ر.س"))
     }
 
     @Test
-    fun `local preview never becomes a real decision or persisted rule`() {
+    fun `example preview is labelled and never changes a real setting`() {
         val empty = localDecisionPreview(emptySet())
         val selected = localDecisionPreview(
             setOf(DecisionSignal.PICKUP_DISTANCE, DecisionSignal.DISPLAYED_FARE)
         )
 
-        assertTrue(empty.contains("اختر معلومة"))
+        assertTrue(empty.contains("اختر تفصيلاً"))
         assertTrue(selected.contains("مسافة الوصول"))
         assertTrue(selected.contains("السعر الظاهر"))
-        assertTrue(selected.contains("محلية فقط"))
-        assertTrue(selected.contains("لا تحفظ قاعدة"))
+        assertTrue(selected.contains("هذا المثال"))
+        assertTrue(selected.contains("لا يمثل طلبًا فعليًا"))
+        assertTrue(selected.contains("لا يغيّر إعداداتك"))
+    }
+
+    @Test
+    fun `sample makes the value tangible without treating gross fare as profit`() {
+        val full = localDecisionPreview(DecisionSignal.entries.toSet())
+        assertTrue(full.contains("٤٥ ر.س"))
+        assertTrue(full.contains("٣ كم"))
+        assertTrue(full.contains("٢٫٥ ر.س قبل التكاليف"))
+        assertFalse(localDecisionPreview(setOf(DecisionSignal.TRIP_DURATION)).contains("العائد لكل كم"))
+    }
+
+    @Test
+    fun `customer copy avoids technical jargon`() {
+        val visibleCopy = listOf(
+            onboardingOfferCopy(isDirectDistribution = true, offer = availableOffer).headline,
+            onboardingOfferCopy(isDirectDistribution = true, offer = availableOffer).detail,
+            onboardingOfferCopy(isDirectDistribution = true, offer = null).headline,
+            onboardingOfferCopy(isDirectDistribution = true, offer = null).detail,
+            onboardingOfferCopy(isDirectDistribution = false, offer = availableOffer).headline,
+            onboardingOfferCopy(isDirectDistribution = false, offer = availableOffer).detail,
+            localDecisionPreview(emptySet()),
+            localDecisionPreview(setOf(DecisionSignal.TRIP_DURATION)),
+        )
+
+        listOf("Supabase", "محلية", "قراءة فقط", "خادمي", "الخادم", "API", "قواعد للمطور").forEach { jargon ->
+            assertFalse("ظهر مصطلح تقني في النص المرئي: $jargon", visibleCopy.any { it.contains(jargon, ignoreCase = true) })
+        }
     }
 }

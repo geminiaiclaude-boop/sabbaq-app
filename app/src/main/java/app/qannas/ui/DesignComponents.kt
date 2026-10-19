@@ -29,7 +29,7 @@ internal fun QannasBrand(compact: Boolean = false) {
             modifier = Modifier.size(if (compact) 42.dp else 64.dp).clip(RoundedCornerShape(if (compact) 14.dp else 20.dp)))
         Column {
             Text("قناص", style = if (compact) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineLarge)
-            if (!compact) Text("قرار أدق. تحكم أكبر.", style = MaterialTheme.typography.bodyMedium,
+            if (!compact) Text("طلبات تناسبك. وقتك أولى.", style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }

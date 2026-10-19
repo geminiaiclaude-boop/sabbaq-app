@@ -139,7 +139,7 @@ object SupabaseClient {
      */
     suspend fun signInWithGoogle(context: Context): Result<String> {
         val webClientId = NetworkInputValidator.googleWebClientId(BuildConfig.GOOGLE_WEB_CLIENT_ID)
-            ?: return invalidInput("تسجيل Google غير مهيأ؛ يلزم GOOGLE_WEB_CLIENT_ID صالح")
+            ?: return invalidInput("الدخول باستخدام Google غير متاح في هذا الإصدار. حدّث التطبيق أو جرّب رقم الجوال.")
         val activity = context.findActivity()
             ?: return invalidInput("تسجيل Google يجب أن يبدأ من شاشة التطبيق")
         val attempt = sessions.beginAuthentication()
@@ -156,7 +156,7 @@ object SupabaseClient {
                 .build()
             val credential = CredentialManager.create(activity).getCredential(activity, request).credential
             if (credential.type != GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
-                return Result.failure(ClientRequestException("لم تُرجع Google رمز هوية صالحاً"))
+                return Result.failure(ClientRequestException("لم نتمكن من تأكيد حساب Google. اختر حسابك وحاول مجددًا."))
             }
             GoogleIdTokenCredential.createFrom(credential.data)
         } catch (_: GetCredentialCancellationException) {
@@ -169,7 +169,7 @@ object SupabaseClient {
             return Result.failure(ClientRequestException("تعذر بدء تسجيل الدخول باستخدام Google"))
         }
         val idToken = NetworkInputValidator.token(googleCredential.idToken)
-            ?: return invalidInput("لم تُرجع Google رمز هوية صالحاً")
+            ?: return invalidInput("لم نتمكن من تأكيد حساب Google. اختر حسابك وحاول مجددًا.")
         val displayName = NetworkInputValidator.displayName(googleCredential.displayName)
 
         return networkCall {
@@ -190,7 +190,7 @@ object SupabaseClient {
                 return@networkCall httpFailure("تبادل هوية Google", response)
             }
             val token = accessTokenFrom(response.body)
-                ?: return@networkCall Result.failure(ClientRequestException("لم تُرجع الخدمة جلسة صالحة"))
+                ?: return@networkCall Result.failure(ClientRequestException("لم يكتمل تسجيل الدخول. حاول مجددًا."))
             val profile = ensureDriverProfile(token, displayName)
             if (profile.isFailure) {
                 return@networkCall Result.failure(profile.exceptionOrNull()!!)
@@ -203,7 +203,7 @@ object SupabaseClient {
     /** يرسل تحدي OTP إلى رقم سعودي بعد تحويله فقط إلى +9665XXXXXXXX. */
     suspend fun requestPhoneOtp(phone: String): Result<Unit> {
         val safePhone = NetworkInputValidator.saudiE164(phone)
-            ?: return invalidInput("أدخل رقم جوال سعودي بصيغة +9665XXXXXXXX")
+            ?: return invalidInput("أدخل رقم جوالك السعودي المكوّن من 10 أرقام ويبدأ بـ05.")
         val attempt = sessions.beginAuthentication()
         return networkCall {
             val request = requestBuilder(endpoint("auth/v1/otp"))
@@ -227,7 +227,7 @@ object SupabaseClient {
      */
     suspend fun verifyPhoneOtp(phone: String, code: String): Result<String> {
         val safePhone = NetworkInputValidator.saudiE164(phone)
-            ?: return invalidInput("أدخل رقم جوال سعودي بصيغة +9665XXXXXXXX")
+            ?: return invalidInput("أدخل رقم جوالك السعودي المكوّن من 10 أرقام ويبدأ بـ05.")
         val safeCode = NetworkInputValidator.otpCode(code)
             ?: return invalidInput("رمز التحقق يجب أن يتكون من 6 أرقام")
         val attempt = sessions.phoneOtpAttempt(safePhone)
@@ -246,7 +246,7 @@ object SupabaseClient {
             val response = execute(request)
             if (!response.isSuccessful) return@networkCall httpFailure("التحقق من الرمز", response)
             val token = accessTokenFrom(response.body)
-                ?: return@networkCall Result.failure(ClientRequestException("لم تُرجع الخدمة جلسة صالحة"))
+                ?: return@networkCall Result.failure(ClientRequestException("لم يكتمل تسجيل الدخول. حاول مجددًا."))
             val profile = ensureDriverProfile(token)
             if (profile.isFailure) {
                 return@networkCall Result.failure(profile.exceptionOrNull()!!)
@@ -264,7 +264,7 @@ object SupabaseClient {
         val response = execute(request)
         if (!response.isSuccessful) return@networkCall httpFailure("قراءة عرض الاشتراك", response)
         parsePublicOffer(response.body)?.let { Result.success(it) }
-            ?: Result.failure(ClientRequestException("استجابة عرض الاشتراك غير صالحة"))
+            ?: Result.failure(ClientRequestException("تعذر عرض تفاصيل الاشتراك الآن. حاول مجددًا بعد قليل."))
     }
 
     /** آخر لقطة `license_status` تخص رمز الجلسة الموجود في الذاكرة فقط. */
@@ -278,7 +278,7 @@ object SupabaseClient {
         val session = sessions.snapshot()
             ?: return Result.failure(ClientRequestException("انتهت الجلسة؛ سجّل الدخول من جديد"))
         val deviceId = session.deviceId
-            ?: return Result.failure(ClientRequestException("تحقق من الترخيص والجهاز قبل بدء التجربة"))
+            ?: return Result.failure(ClientRequestException("أعد تسجيل الدخول قبل بدء تجربتك."))
         return networkCall {
             val request = authenticatedRequest(
                 endpoint("rest/v1/rpc/start_trial"),
@@ -417,7 +417,7 @@ object SupabaseClient {
             }
 
             val accessToken = accessTokenFrom(response.body)
-                ?: return@networkCall Result.failure(ClientRequestException("لم تُرجع الخدمة جلسة صالحة"))
+                ?: return@networkCall Result.failure(ClientRequestException("لم يكتمل تسجيل الدخول. حاول مجددًا."))
             if (!sessions.activate(attempt, accessToken)) {
                 return@networkCall staleSessionFailure()
             }
@@ -685,11 +685,11 @@ object SupabaseClient {
 
     private fun licenseResponseFailure(status: LicenseStatus): ClientRequestException = when {
         status.minimumVersionCode == null || status.minimumVersionCode < 1 ->
-            ClientRequestException("استجابة الترخيص لا تتضمن الحد الأدنى للإصدار")
+            ClientRequestException("تعذر التحقق من اشتراكك الآن. حاول مجددًا.")
         BuildConfig.VERSION_CODE < status.minimumVersionCode ->
             ClientRequestException("يلزم تحديث التطبيق قبل استخدام الخدمة")
         status.serverTime == null || status.validUntil == null ->
-            ClientRequestException("استجابة الترخيص لا تتضمن تاريخ صلاحية صالحاً")
+            ClientRequestException("تعذر تأكيد مدة اشتراكك الآن. حاول مجددًا.")
         else -> ClientRequestException("الترخيص غير صالح أو انتهت صلاحيته")
     }
 
@@ -701,17 +701,17 @@ object SupabaseClient {
         LicenseState.DEVICE_MISMATCH -> LicenseStateException(state, "الحساب مرتبط بجهاز آخر")
         LicenseState.BANNED, LicenseState.REJECTED ->
             LicenseStateException(state, "تم حظر أو رفض الحساب")
-        else -> LicenseStateException(state, "حالة الترخيص غير قابلة للاستخدام")
+        else -> LicenseStateException(state, "اشتراكك غير متاح للاستخدام الآن. راجع صفحة حسابك.")
     }
 
     private fun responseObject(body: String): JsonObject {
         val element = try {
             json.parseToJsonElement(body)
         } catch (_: Exception) {
-            throw ClientRequestException("استجابة الخادم غير صالحة")
+            throw ClientRequestException("تعذر إكمال هذه الخطوة. حاول مجددًا بعد قليل.")
         }
         return element.asResponseObject()
-            ?: throw ClientRequestException("استجابة الخادم غير صالحة")
+            ?: throw ClientRequestException("تعذر إكمال هذه الخطوة. حاول مجددًا بعد قليل.")
     }
 
     private fun JsonElement.asResponseObject(): JsonObject? = when (this) {
@@ -745,15 +745,10 @@ object SupabaseClient {
     }
 
     private fun httpFailure(operation: String, response: HttpResponse): Result<Nothing> {
-        val message = when (response.code) {
-            401 -> "انتهت الجلسة أو بيانات الدخول غير صحيحة"
-            403 -> "لا تملك صلاحية تنفيذ هذه العملية"
-            408, 504 -> "انتهت مهلة الاتصال بالخدمة؛ حاول لاحقاً"
-            429 -> "تم تجاوز حد المحاولات؛ يرجى الانتظار"
-            in 500..599 -> "الخدمة غير متاحة مؤقتاً؛ حاول لاحقاً"
-            else -> serverErrorDetail(response.body)?.let { "تعذر $operation: $it" }
-                ?: "تعذر $operation (رمز HTTP ${response.code})"
-        }
+        val providerCode = runCatching {
+            json.parseToJsonElement(response.body).jsonObject["error_code"]?.jsonPrimitive?.contentOrNull
+        }.getOrNull()
+        val message = CustomerErrorMessages.forResponse(response.code, providerCode, serverErrorDetail(response.body), operation)
         return Result.failure(ClientRequestException(message))
     }
 
@@ -779,7 +774,7 @@ object SupabaseClient {
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: ResponseTooLargeException) {
-            Result.failure(ClientRequestException("استجابة الخادم تجاوزت الحد الآمن"))
+            Result.failure(ClientRequestException("تعذر إكمال هذه الخطوة. حاول مجددًا بعد قليل."))
         } catch (_: IOException) {
             Result.failure(ClientRequestException("تعذر الاتصال بالخدمة؛ تحقق من الشبكة وحاول لاحقاً"))
         } catch (error: ClientRequestException) {
@@ -792,7 +787,7 @@ object SupabaseClient {
     private fun <T> invalidInput(message: String): Result<T> = Result.failure(ClientRequestException(message))
 
     private fun <T> staleSessionFailure(): Result<T> =
-        Result.failure(ClientRequestException("تغيّرت الجلسة أثناء العملية؛ سجّل الدخول من جديد"))
+        Result.failure(ClientRequestException("أعد تسجيل الدخول لإكمال هذه الخطوة."))
 
     private data class HttpResponse(val code: Int, val body: String) {
         val isSuccessful: Boolean get() = code in 200..299

@@ -113,10 +113,10 @@ private data class DriverNavItem(
 )
 
 private val driverDestinations = listOf(
-    DriverNavItem(DriverDestination.Dashboard, "لوحة القيادة", Icons.Outlined.Tune),
-    DriverNavItem(DriverDestination.Filters, "المرشحات", Icons.Outlined.FilterAlt),
-    DriverNavItem(DriverDestination.Simulator, "معاينة القرار", Icons.Outlined.Visibility),
-    DriverNavItem(DriverDestination.Account, "الحساب", Icons.Outlined.AccountCircle),
+    DriverNavItem(DriverDestination.Dashboard, "حالة العمل", Icons.Outlined.Tune),
+    DriverNavItem(DriverDestination.Filters, "طلبات تناسبك", Icons.Outlined.FilterAlt),
+    DriverNavItem(DriverDestination.Simulator, "تجربة الطلب", Icons.Outlined.Visibility),
+    DriverNavItem(DriverDestination.Account, "حسابي", Icons.Outlined.AccountCircle),
 )
 
 /**
@@ -170,11 +170,11 @@ fun SettingsScreen(
         isActive = false
         runtimeMessage = when {
             stopResult.isFailure -> DriverStatus(
-                "تم تعطيل التشغيل محلياً، لكن تعذر تأكيد إيقاف خدمة الخلفية. أعد فتح التطبيق إن استمرت المشكلة.",
+                "تم إيقاف متابعة الطلبات، لكن لم نتمكن من تأكيد الإيقاف بالكامل. أعد فتح التطبيق إذا استمرت المتابعة.",
                 isError = true,
             )
             message != null -> DriverStatus(message)
-            else -> DriverStatus("تم إيقاف القناص. يمكنك تعديله أو تشغيله لاحقاً بعد تحقق المتطلبات.")
+            else -> DriverStatus("تم إيقاف متابعة الطلبات. عدّل شروطك أو ابدأ مجدداً عندما تكون جاهزاً.")
         }
     }
 
@@ -190,9 +190,9 @@ fun SettingsScreen(
         if (persistedActive && (!a11y || !notifications || !licensed)) {
             stopKeeper(
                 when {
-                    !a11y -> "تم إيقاف القناص لأن صلاحية إمكانية الوصول لم تعد مفعّلة."
-                    !notifications -> "تم إيقاف القناص لأن إذن الإشعارات لم يعد مفعّلاً."
-                    else -> "تم إيقاف القناص لأن الترخيص الذاكري لم يعد صالحاً."
+                    !a11y -> "توقفت متابعة الطلبات لأن إذن إمكانية الوصول لم يعد مفعّلاً."
+                    !notifications -> "توقفت متابعة الطلبات لأن إذن الإشعارات لم يعد مفعّلاً."
+                    else -> "توقفت متابعة الطلبات لأن حالة اشتراكك تحتاج إلى تحقق."
                 }
             )
         }
@@ -219,7 +219,7 @@ fun SettingsScreen(
         if (isSavingFilters) return
         if (next == draft) return
         if (isActive) {
-            stopKeeper("تم إيقاف القناص قبل تعديل المرشحات؛ احفظ القواعد الجديدة ثم وافق على تشغيل جديد.")
+            stopKeeper("أوقفنا متابعة الطلبات قبل تعديل شروطك. احفظ الشروط ثم ابدأ العمل من جديد.")
         }
         draft = next
         filtersMessage = null
@@ -229,7 +229,7 @@ fun SettingsScreen(
         if (isSavingFilters) return
         val filters = draftValidation.filters
         if (filters == null) {
-            filtersMessage = DriverStatus("صحح الحقول المعلَّمة قبل حفظ المرشحات.", isError = true)
+            filtersMessage = DriverStatus("صحح الحقول المعلَّمة قبل حفظ شروط الطلبات.", isError = true)
             return
         }
         isSavingFilters = true
@@ -241,10 +241,10 @@ fun SettingsScreen(
                 if (saved) {
                     savedFilters = filters
                     if (draft === submittedDraft) draft = FilterDraft.from(filters)
-                    filtersMessage = DriverStatus("حُفظت المرشحات كوثيقة واحدة. ستستخدم الخدمة هذه القواعد عند التشغيل التالي.")
+                    filtersMessage = DriverStatus("حُفظت شروطك. ستُستخدم عند بدء متابعة الطلبات.")
                     onSaved()
                 } else {
-                    filtersMessage = DriverStatus("تعذر حفظ المرشحات على الجهاز. لم تتغير القواعد المستخدمة.", isError = true)
+                    filtersMessage = DriverStatus("لم نستطع حفظ شروطك على جهازك؛ ما زالت الشروط السابقة هي المستخدمة.", isError = true)
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -268,15 +268,15 @@ fun SettingsScreen(
     fun requestActivation() {
         if (checkingActivation || isSavingFilters || isActive) return
         if (filtersDirty) {
-            runtimeMessage = DriverStatus("احفظ مسودة المرشحات أو تجاهلها قبل التشغيل.", isError = true)
+            runtimeMessage = DriverStatus("احفظ تغييرات الشروط أو تراجع عنها قبل بدء العمل.", isError = true)
             return
         }
         if (!draftValidation.isValid || UiFormValidation.filtersError(savedFilters) != null) {
-            runtimeMessage = DriverStatus("صحح المرشحات واحفظها قبل تشغيل القناص.", isError = true)
+            runtimeMessage = DriverStatus("صحح شروط الطلبات واحفظها قبل بدء العمل.", isError = true)
             return
         }
         if (!savedFilters.anyActive()) {
-            runtimeMessage = DriverStatus("أضف معيار قبول واحداً محفوظاً على الأقل قبل التشغيل.", isError = true)
+            runtimeMessage = DriverStatus("أضف شرطاً واحداً محفوظاً على الأقل لاختيار الطلبات قبل بدء العمل.", isError = true)
             return
         }
         refreshRuntimePrerequisites()
@@ -299,14 +299,14 @@ fun SettingsScreen(
                     showActivationConsent = true
                 } else {
                     runtimeMessage = DriverStatus(
-                        "تعذر التحقق من الترخيص. جدّد الاشتراك أو سجّل الدخول مجدداً ثم أعد المحاولة.",
+                        "لم نتمكن من التحقق من اشتراكك. جدّده أو سجّل الدخول مجدداً ثم حاول مرة أخرى.",
                         isError = true,
                     )
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                runtimeMessage = DriverStatus("تعذر التحقق من الترخيص. تحقق من اتصال الإنترنت ثم أعد المحاولة.", isError = true)
+                runtimeMessage = DriverStatus("لم نتمكن من التحقق من اشتراكك. تحقق من اتصال الإنترنت ثم حاول مرة أخرى.", isError = true)
             } finally {
                 checkingActivation = false
             }
@@ -320,17 +320,17 @@ fun SettingsScreen(
             !SupabaseClient.hasValidLicense() || !accessibilityEnabled || !notificationsEnabled) {
             Settings.isActive = false
             isActive = false
-            runtimeMessage = DriverStatus("تغيّرت متطلبات التشغيل؛ تحقق منها ثم ابدأ من جديد.", isError = true)
+            runtimeMessage = DriverStatus("تغيّرت متطلبات بدء العمل؛ راجعها ثم حاول مرة أخرى.", isError = true)
             return
         }
         val result = latestToggleKeeper(true)
         if (result.isFailure) {
             Settings.isActive = false
             isActive = false
-            runtimeMessage = DriverStatus("تعذر تشغيل القناص في الخلفية. تحقق من إعدادات النظام ثم أعد المحاولة.", isError = true)
+            runtimeMessage = DriverStatus("لم نتمكن من بدء متابعة الطلبات. راجع أذونات الجهاز ثم حاول مرة أخرى.", isError = true)
         } else {
             isActive = true
-            runtimeMessage = DriverStatus("القناص يعمل وفق المرشحات المحفوظة. الإيقاف متاح في أي وقت.")
+            runtimeMessage = DriverStatus("متابعة الطلبات تعمل وفق شروطك المحفوظة وأوقات عملك. يمكنك إيقافها في أي وقت.")
         }
     }
 
@@ -341,15 +341,15 @@ fun SettingsScreen(
     if (showAccessibilityRequired) {
         AlertDialog(
             onDismissRequest = { showAccessibilityRequired = false },
-            title = { Text("يلزم تفعيل إمكانية الوصول") },
-            text = { Text("لا يمكن تشغيل القناص قبل تفعيل خدمة قناص الطلبات من إعدادات إمكانية الوصول في النظام.") },
+            title = { Text("فعّل إذن متابعة الطلبات") },
+            text = { Text("يحتاج قناص إلى إذن إمكانية الوصول لمتابعة تفاصيل الطلبات الظاهرة والنقر على الطلب المطابق لشروطك. فعّله من إعدادات الجهاز، ويمكنك إيقاف المتابعة في أي وقت.") },
             confirmButton = {
                 TextButton(onClick = {
                     showAccessibilityRequired = false
                     if (onOpenA11y().isFailure) {
-                        runtimeMessage = DriverStatus("تعذر فتح إعدادات إمكانية الوصول. افتحها يدوياً من إعدادات الجهاز.", true)
+                        runtimeMessage = DriverStatus("لم نتمكن من فتح إعدادات إمكانية الوصول. افتحها يدوياً من إعدادات الجهاز.", true)
                     }
-                }) { Text("فتح الإعدادات") }
+                }) { Text("فتح إعدادات الجهاز") }
             },
             dismissButton = { TextButton(onClick = { showAccessibilityRequired = false }) { Text("إلغاء") } },
         )
@@ -359,7 +359,7 @@ fun SettingsScreen(
         AlertDialog(
             onDismissRequest = { showNotificationRequired = false },
             title = { Text("يلزم إذن الإشعارات") },
-            text = { Text("يتطلب التشغيل إشعاراً دائماً وواضحاً يبيّن أن القناص يعمل.") },
+            text = { Text("يحتاج قناص إلى الإشعارات ليُظهر لك بوضوح أن متابعة الطلبات تعمل.") },
             confirmButton = {
                 TextButton(onClick = {
                     showNotificationRequired = false
@@ -373,14 +373,14 @@ fun SettingsScreen(
     if (showActivationConsent) {
         AlertDialog(
             onDismissRequest = { showActivationConsent = false },
-            title = { Text("تأكيد تشغيل القناص") },
+            title = { Text("بدء متابعة الطلبات") },
             text = {
                 Text(
-                    "عند التشغيل، تستخدم خدمة إمكانية الوصول ما يظهر في التطبيق المستهدف وفق المرشحات المحفوظة، " +
-                        "وقد تنفذ الضغط على العرض المطابق. يمكنك الإيقاف في أي وقت."
+                    "عند البدء، يقرأ قناص تفاصيل الطلبات الظاهرة وفق شروطك المحفوظة، ويمكنه النقر تلقائياً على طلب يطابقها. " +
+                        "يمكنك إيقاف المتابعة في أي وقت."
                 )
             },
-            confirmButton = { TextButton(onClick = ::confirmActivation) { Text("موافق وتشغيل") } },
+            confirmButton = { TextButton(onClick = ::confirmActivation) { Text("موافق، ابدأ المتابعة") } },
             dismissButton = { TextButton(onClick = { showActivationConsent = false }) { Text("إلغاء") } },
         )
     }
@@ -388,8 +388,8 @@ fun SettingsScreen(
     if (showUnsavedChanges) {
         AlertDialog(
             onDismissRequest = { if (!isSavingFilters) { showUnsavedChanges = false; pendingDestination = null } },
-            title = { Text("تغييرات مرشحات غير محفوظة") },
-            text = { Text("احفظ المسودة لتطبيقها، أو تجاهلها للعودة إلى القواعد المحفوظة حالياً.") },
+            title = { Text("تغييرات شروط الطلبات غير محفوظة") },
+            text = { Text("احفظها لتستخدمها في عملك، أو تجاهلها للرجوع إلى شروطك السابقة.") },
             confirmButton = {
                 TextButton(
                     enabled = !isSavingFilters,
@@ -419,8 +419,8 @@ fun SettingsScreen(
     if (showResetFilters) {
         AlertDialog(
             onDismissRequest = { showResetFilters = false },
-            title = { Text("إعادة ضبط المسودة؟") },
-            text = { Text("سيُفرَّغ ما يظهر في محرر المرشحات. لن تتغير القواعد المحفوظة إلا إذا حفظت المسودة بعد ذلك.") },
+            title = { Text("مسح التعديلات؟") },
+            text = { Text("سيتم مسح القيم التي أدخلتها الآن. تبقى شروطك المحفوظة كما هي إلى أن تحفظ تعديلات جديدة.") },
             confirmButton = {
                 TextButton(onClick = {
                     showResetFilters = false
@@ -554,7 +554,7 @@ private fun DashboardPage(
     onOpenFilters: () -> Unit,
     onOpenAccount: () -> Unit,
 ) = DriverPage {
-    QannasSectionTitle("لوحة القيادة", "تحكم واضح بالقناص وشروط تشغيله الفعلية.")
+    QannasSectionTitle("حالة العمل", "تابع الطلبات عندما تكون شروطك وأذوناتك جاهزة.")
     OperationHero(
         isActive = isActive,
         isChecking = isCheckingActivation,
@@ -563,52 +563,52 @@ private fun DashboardPage(
     message?.let { QannasMessage(it.message, isError = it.isError) }
 
     QannasCard(
-        title = "جاهزية التشغيل",
-        subtitle = "لن يبدأ القناص تلقائياً. راجع كل شرط ثم وافق على التشغيل.",
+        title = "قبل بدء العمل",
+        subtitle = "أكمل هذه الخطوات لتتابع الطلبات التي تناسبك.",
         icon = Icons.Outlined.VerifiedUser,
     ) {
         ReadinessRow(
+            icon = Icons.Outlined.FilterAlt,
+            title = "شروط الطلبات",
+            ready = activeFilterCount > 0,
+            readyText = "$activeFilterCount شرط محفوظ",
+            missingText = "اختر ما يناسبك أولاً",
+            actionLabel = "تعديل الشروط",
+            onAction = onOpenFilters,
+        )
+        ReadinessRow(
             icon = Icons.Outlined.AccessibilityNew,
-            title = "إمكانية الوصول",
+            title = "إذن متابعة الطلبات",
             ready = accessibilityEnabled,
             readyText = "مفعّلة",
-            missingText = "غير مفعّلة",
-            actionLabel = if (accessibilityEnabled) "فتح الإعدادات" else "تفعيل الصلاحية",
+            missingText = "يحتاج إلى تفعيل",
+            actionLabel = if (accessibilityEnabled) "مراجعة الإذن" else "تفعيل الإذن",
             onAction = onOpenA11y,
         )
         ReadinessRow(
             icon = Icons.Outlined.Notifications,
-            title = "الإشعارات",
+            title = "تنبيهات حالة العمل",
             ready = notificationsEnabled,
-            readyText = "مسموح بها",
-            missingText = "تحتاج سماحاً",
-            actionLabel = if (notificationsEnabled) "مراجعة الإذن" else "السماح بالإشعارات",
+            readyText = "مفعّلة",
+            missingText = "تحتاج إلى سماح",
+            actionLabel = if (notificationsEnabled) "مراجعة الإذن" else "السماح بالتنبيهات",
             onAction = onRequestNotifications,
         )
         ReadinessRow(
             icon = Icons.Outlined.VerifiedUser,
-            title = "الترخيص في الذاكرة",
+            title = "حالة الاشتراك",
             ready = licenseInMemory,
-            readyText = "صالح الآن",
-            missingText = "غير متحقق",
-            actionLabel = "فتح الحساب",
+            readyText = "جاهز للعمل",
+            missingText = "تحتاج إلى تحقق",
+            actionLabel = "فتح حسابي",
             onAction = onOpenAccount,
-        )
-        ReadinessRow(
-            icon = Icons.Outlined.FilterAlt,
-            title = "المرشحات المحفوظة",
-            ready = activeFilterCount > 0,
-            readyText = "$activeFilterCount مرشح فعّال",
-            missingText = "لا توجد قواعد قبول",
-            actionLabel = "إدارة المرشحات",
-            onAction = onOpenFilters,
         )
     }
 
-    QannasCard(title = "كيف يعمل القناص؟", icon = Icons.Outlined.Info) {
+    QannasCard(title = "أثناء وقت العمل", icon = Icons.Outlined.Info) {
         Text(
-            "بعد موافقتك، تراقب خدمة إمكانية الوصول العروض الظاهرة وتطبّق المرشحات المحفوظة. " +
-                "لا تُقبل العروض من دون قاعدة قبول صالحة، ويمكنك إيقاف التشغيل في أي وقت.",
+            "يتابع قناص الطلبات الظاهرة وفق سعر الطلب والعائد لكل كم ومسافة الوصول وأوقات العمل التي حددتها. " +
+                "عند ظهور طلب مطابق، يمكنه النقر عليه تلقائياً. يمكنك إيقاف المتابعة في أي وقت.",
             style = MaterialTheme.typography.bodyMedium,
         )
     }
@@ -633,13 +633,13 @@ private fun OperationHero(
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Icon(
                     imageVector = if (isActive) Icons.Outlined.CheckCircle else Icons.Outlined.Stop,
-                    contentDescription = if (isActive) "القناص يعمل" else "القناص متوقف",
+                    contentDescription = if (isActive) "متابعة الطلبات تعمل" else "متابعة الطلبات متوقفة",
                     modifier = Modifier.size(28.dp),
                 )
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(if (isActive) "القناص يعمل" else "القناص متوقف", style = MaterialTheme.typography.titleLarge)
+                    Text(if (isActive) "متابعة الطلبات تعمل" else "متابعة الطلبات متوقفة", style = MaterialTheme.typography.titleLarge)
                     Text(
-                        if (isActive) "يطبّق المرشحات المحفوظة فقط." else "لن تبدأ المراقبة قبل مراجعة الشروط وموافقتك.",
+                        if (isActive) "تُطبّق شروطك المحفوظة وأوقات عملك." else "راجع الشروط والأذونات، ثم ابدأ عندما تكون جاهزاً.",
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
@@ -661,11 +661,11 @@ private fun OperationHero(
                 if (isChecking) {
                     CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                     Spacer(Modifier.size(8.dp))
-                    Text("جارٍ التحقق من الترخيص")
+                    Text("جارٍ التحقق من الاشتراك")
                 } else {
                     Icon(if (isActive) Icons.Outlined.Stop else Icons.Outlined.PlayArrow, contentDescription = null)
                     Spacer(Modifier.size(8.dp))
-                    Text(if (isActive) "إيقاف القناص" else "مراجعة الشروط والتشغيل")
+                    Text(if (isActive) "إيقاف متابعة الطلبات" else "ابدأ متابعة الطلبات")
                 }
             }
         }
@@ -710,19 +710,19 @@ private fun FiltersPage(
     onReset: () -> Unit,
 ) = DriverPage {
     QannasSectionTitle(
-        title = "المرشحات",
-        subtitle = if (dirty) "لديك تعديلات غير محفوظة." else "تعرض القواعد المحفوظة حالياً.",
+        title = "طلبات تناسبك",
+        subtitle = if (dirty) "لديك تعديلات لم تحفظ بعد." else "حدّد ما يلائم وقتك ومسافة وصولك والعائد الذي تريده.",
     )
     message?.let { QannasMessage(it.message, isError = it.isError) }
     if (validationErrors.isNotEmpty()) {
-        QannasMessage("راجع الحقول المعلَّمة؛ لن تُحفظ قواعد غير صالحة ولن تُستبدل القواعد المستخدمة.", isError = true)
+        QannasMessage("راجع الحقول المعلَّمة؛ لن نستبدل شروطك المحفوظة حتى تصلحها.", isError = true)
     }
     AdvancedFiltersEditor(
         draft = draft,
         errors = validationErrors,
         onDraftChange = onDraftChange,
     )
-    QannasCard(title = "مراجعة وحفظ", subtitle = "الحفظ يكتب كل المرشحات دفعة واحدة بعد اكتمال التحقق.", icon = Icons.Outlined.Save) {
+    QannasCard(title = "احفظ شروطك", subtitle = "لا تصبح التعديلات جاهزة للعمل إلا بعد الحفظ.", icon = Icons.Outlined.Save) {
         Button(
             onClick = onSave,
             enabled = dirty && !isSaving && validationErrors.isEmpty(),
@@ -731,13 +731,13 @@ private fun FiltersPage(
             if (isSaving) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
             else Icon(Icons.Outlined.Save, contentDescription = null)
             Spacer(Modifier.size(8.dp))
-            Text(if (isSaving) "جارٍ الحفظ" else "حفظ المرشحات")
+            Text(if (isSaving) "جارٍ حفظ الشروط" else "حفظ شروط الطلبات")
         }
         OutlinedButton(
             onClick = onRevert,
             enabled = dirty && !isSaving,
             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-        ) { Text("استعادة القواعد المحفوظة") }
+        ) { Text("التراجع عن التعديلات") }
         TextButton(
             onClick = onReset,
             enabled = !isSaving,
@@ -745,7 +745,7 @@ private fun FiltersPage(
         ) {
             Icon(Icons.Outlined.Refresh, contentDescription = null)
             Spacer(Modifier.size(8.dp))
-            Text("إعادة ضبط المسودة")
+            Text("مسح التعديلات")
         }
     }
 }
@@ -776,7 +776,7 @@ private fun SimulatorPage(savedFilters: Filters) {
         if (invalid) {
             result = PreviewResult(
                 verdict = OfferEvaluator.evaluate(emptyPreviewOffer(), savedFilters, currentMinuteOfDay()),
-                error = "أدخل قيماً غير سالبة بصيغة صحيحة أو اترك الحقل فارغاً لمحاكاة قيمة غير مقروءة.",
+                error = "أدخل رقماً غير سالب، أو اترك الحقل فارغاً إذا لم تتوفر هذه المعلومة.",
             )
             return
         }
@@ -795,19 +795,19 @@ private fun SimulatorPage(savedFilters: Filters) {
     }
 
     DriverPage {
-        QannasSectionTitle("معاينة القرار", "اختبار محلي للمرشحات المحفوظة؛ لا يتصل بالخدمة ولا ينفذ أي ضغط.")
-        QannasMessage("هذا ليس عرضاً حياً. تستخدم المعاينة فقط القيم التي تدخلها هنا والمرشحات المحفوظة.")
-        QannasCard(title = "بيانات عرض محلي", subtitle = "اترك القياس فارغاً لاختبار كيفية تعامل القواعد مع بيانات غير مقروءة.", icon = Icons.Outlined.Visibility) {
-            PreviewField(fare, "السعر", KeyboardType.Decimal) { fare = it; result = null }
-            PreviewField(pickupKm, "مسافة الوصول (كم)", KeyboardType.Decimal) { pickupKm = it; result = null }
+        QannasSectionTitle("جرّب شروطك", "أدخل تفاصيل طلب مشابه لتعرف إن كان يطابق شروطك المحفوظة، من دون التأثير في عملك.")
+        QannasMessage("هذه تجربة فقط: لن تغيّر شروطك ولن تنقر على أي طلب.")
+        QannasCard(title = "تفاصيل الطلب للتجربة", subtitle = "أدخل ما تعرفه من تفاصيل الطلب، واترك أي خانة فارغة إذا لم تظهر لك.", icon = Icons.Outlined.Visibility) {
+            PreviewField(fare, "سعر الطلب", KeyboardType.Decimal) { fare = it; result = null }
+            PreviewField(pickupKm, "مسافة الوصول إليك (كم)", KeyboardType.Decimal) { pickupKm = it; result = null }
             PreviewField(tripKm, "مسافة الرحلة (كم)", KeyboardType.Decimal) { tripKm = it; result = null }
-            PreviewField(pickupMinutes, "زمن الوصول (دقائق)", KeyboardType.Number) { pickupMinutes = it; result = null }
+            PreviewField(pickupMinutes, "وقت الوصول إليك (دقائق)", KeyboardType.Number) { pickupMinutes = it; result = null }
             PreviewField(tripMinutes, "مدة الرحلة (دقائق)", KeyboardType.Number) { tripMinutes = it; result = null }
-            PreviewField(offerText, "نص العرض لاختبار الكلمات (اختياري)", KeyboardType.Text, singleLine = false) { offerText = it; result = null }
+            PreviewField(offerText, "كلمات في وصف الطلب (اختياري)", KeyboardType.Text, singleLine = false) { offerText = it; result = null }
             Button(onClick = ::evaluate, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                 Icon(Icons.Outlined.Visibility, contentDescription = null)
                 Spacer(Modifier.size(8.dp))
-                Text("تقييم المعاينة محلياً")
+                Text("اعرف هل يناسبك")
             }
         }
         result?.let { preview -> PreviewVerdictCard(preview) }
@@ -840,18 +840,18 @@ private fun PreviewVerdictCard(result: PreviewResult) {
     }
     val verdict = result.verdict
     QannasCard(
-        title = if (verdict.accept) "قرار المعاينة: قبول" else "قرار المعاينة: رفض",
-        subtitle = if (verdict.accept) "وفق المرشحات المحفوظة والقيم المحلية المدخلة." else "الأسباب التالية من محرك القرار الفعلي.",
+        title = if (verdict.accept) "نتيجة التجربة: يناسبك" else "نتيجة التجربة: لا يناسبك",
+        subtitle = if (verdict.accept) "بحسب شروطك المحفوظة وتفاصيل التجربة." else "لن يطابق هذا الطلب شروطك للأسباب التالية.",
         icon = if (verdict.accept) Icons.Outlined.CheckCircle else Icons.Outlined.WarningAmber,
     ) {
-        QannasStatusPill(if (verdict.accept) "مقبول محلياً" else "مرفوض محلياً", ready = verdict.accept)
+        QannasStatusPill(if (verdict.accept) "يناسبك" else "لا يناسبك", ready = verdict.accept)
         if (verdict.reasons.isNotEmpty()) {
             verdict.reasons.forEach { reason ->
                 Text("• ${reasonArabic(reason.code)}", style = MaterialTheme.typography.bodyMedium)
             }
         }
         verdict.farePerKm?.let { perKm ->
-            Text("السعر المحتسب لكل كيلومتر: ${perKm.stripTrailingZeros().toPlainString()}", style = MaterialTheme.typography.bodySmall)
+            Text("العائد المحسوب لكل كم: ${perKm.stripTrailingZeros().toPlainString()}", style = MaterialTheme.typography.bodySmall)
         }
     }
 }
@@ -917,24 +917,24 @@ private fun emptyPreviewOffer(): Offer = Offer(
 private fun currentMinuteOfDay(): Int = Calendar.getInstance().let { it.get(Calendar.HOUR_OF_DAY) * 60 + it.get(Calendar.MINUTE) }
 
 private fun reasonArabic(code: ReasonCode): String = when (code) {
-    ReasonCode.NO_FILTERS -> "لا توجد قاعدة قبول مفعّلة."
-    ReasonCode.OUTSIDE_SCHEDULE -> "الوقت الحالي خارج جدول التشغيل المحفوظ."
-    ReasonCode.INVALID_FILTER -> "إحدى القواعد المحفوظة غير صالحة."
-    ReasonCode.FARE_MISSING -> "لا يمكن قراءة سعر العرض."
-    ReasonCode.FARE_TOO_LOW -> "سعر العرض أدنى من الحد المطلوب."
-    ReasonCode.FARE_TOO_HIGH -> "سعر العرض أعلى من الحد الأقصى."
-    ReasonCode.PER_KM_MISSING -> "لا يمكن احتساب سعر الكيلومتر من البيانات المتاحة."
-    ReasonCode.PER_KM_TOO_LOW -> "السعر لكل كيلومتر أقل من الحد المطلوب."
-    ReasonCode.PICKUP_KM_MISSING -> "لا يمكن قراءة مسافة الوصول."
-    ReasonCode.PICKUP_TOO_FAR -> "مسافة الوصول تتجاوز الحد المحفوظ."
-    ReasonCode.PICKUP_MIN_MISSING -> "لا يمكن قراءة زمن الوصول."
-    ReasonCode.PICKUP_TOO_LONG -> "زمن الوصول يتجاوز الحد المحفوظ."
-    ReasonCode.TRIP_KM_MISSING -> "لا يمكن قراءة مسافة الرحلة."
-    ReasonCode.TRIP_TOO_SHORT -> "مسافة الرحلة أدنى من الحد المطلوب."
-    ReasonCode.TRIP_TOO_LONG -> "مسافة الرحلة تتجاوز الحد المحفوظ."
-    ReasonCode.TRIP_MIN_MISSING -> "لا يمكن قراءة مدة الرحلة."
-    ReasonCode.TRIP_MIN_TOO_LONG -> "مدة الرحلة تتجاوز الحد المحفوظ."
-    ReasonCode.EXCLUDED_KEYWORD -> "يحتوي نص العرض على كلمة مستبعدة."
+    ReasonCode.NO_FILTERS -> "لم تحدد شرطاً لاختيار الطلبات."
+    ReasonCode.OUTSIDE_SCHEDULE -> "الوقت خارج أوقات العمل التي حددتها."
+    ReasonCode.INVALID_FILTER -> "أحد شروط الطلبات غير صالح."
+    ReasonCode.FARE_MISSING -> "سعر الطلب غير ظاهر."
+    ReasonCode.FARE_TOO_LOW -> "سعر الطلب أقل من الحد الذي حددته."
+    ReasonCode.FARE_TOO_HIGH -> "سعر الطلب أعلى من الحد الذي حددته."
+    ReasonCode.PER_KM_MISSING -> "لا يمكن حساب العائد لكل كم من التفاصيل المتاحة."
+    ReasonCode.PER_KM_TOO_LOW -> "العائد لكل كم أقل من الحد الذي حددته."
+    ReasonCode.PICKUP_KM_MISSING -> "مسافة الوصول غير ظاهرة."
+    ReasonCode.PICKUP_TOO_FAR -> "مسافة الوصول أبعد مما حددته."
+    ReasonCode.PICKUP_MIN_MISSING -> "وقت الوصول غير ظاهر."
+    ReasonCode.PICKUP_TOO_LONG -> "وقت الوصول أطول مما حددته."
+    ReasonCode.TRIP_KM_MISSING -> "مسافة الرحلة غير ظاهرة."
+    ReasonCode.TRIP_TOO_SHORT -> "مسافة الرحلة أقصر مما حددته."
+    ReasonCode.TRIP_TOO_LONG -> "مسافة الرحلة أطول مما حددته."
+    ReasonCode.TRIP_MIN_MISSING -> "مدة الرحلة غير ظاهرة."
+    ReasonCode.TRIP_MIN_TOO_LONG -> "مدة الرحلة أطول مما حددته."
+    ReasonCode.EXCLUDED_KEYWORD -> "وصف الطلب يحتوي كلمة لا تناسبك."
 }
 
 private fun redeemErrorMessage(error: Throwable?): String = when (error?.message) {

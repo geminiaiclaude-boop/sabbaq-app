@@ -19,8 +19,14 @@ internal data class OnboardingOffer(
 internal data class OnboardingOfferCopy(
     val headline: String,
     val detail: String,
-    val hasServerOffer: Boolean
+    val hasServerOffer: Boolean,
+    /** يفتح CTA مسار التحقق بعد الدخول فقط؛ لا يعني أهلية الحساب النهائية. */
+    val canShowTrialJourney: Boolean = false
 )
+
+/** نص الزر الختامي؛ لا يستدعي هذا النص بدء التجربة ولا يغير حالة الترخيص. */
+internal fun onboardingFinalCta(canShowTrialJourney: Boolean): String =
+    if (canShowTrialJourney) "ابدأ تجربتك" else "متابعة لتسجيل الدخول"
 
 /**
  * يعزل نص البيع عن واجهة Play: لا سعر ولا رمز ولا رابط خارج المتجر في نسخة Play.
@@ -32,8 +38,8 @@ internal fun onboardingOfferCopy(
 ): OnboardingOfferCopy {
     if (!isDirectDistribution) {
         return OnboardingOfferCopy(
-            headline = "المتجر هو قناة الاشتراك",
-            detail = "تلتزم هذه النسخة بخيارات المتجر داخله عند تهيئتها. لا تظهر هنا أسعار أو روابط أو إجراءات خارج المتجر.",
+            headline = "اكتشف قناص من المتجر",
+            detail = "سجّل الدخول لاكتشاف الخدمة. خيارات الاشتراك داخل المتجر تظهر عند توفرها.",
             hasServerOffer = false
         )
     }
@@ -46,8 +52,8 @@ internal fun onboardingOfferCopy(
     }
     if (validOffer == null) {
         return OnboardingOfferCopy(
-            headline = "العرض تحدده الخدمة",
-            detail = "لا نستطيع عرض تفاصيل التجربة أو السعر الحالي الآن. بعد تسجيل الدخول، اعرض العرض المتاح من الخادم قبل اتخاذ أي خطوة. هذه الشاشة لا تمنح ترخيصاً أو تجربة.",
+            headline = "اكتشفه أولًا",
+            detail = "تابع بعد تسجيل الدخول لمعرفة خيارات حسابك. تفاصيل السعر والتجربة غير متاحة الآن.",
             hasServerOffer = false
         )
     }
@@ -57,14 +63,15 @@ internal fun onboardingOfferCopy(
         maximumFractionDigits = 2
     }.format(validOffer.priceMinor / 100.0)
     val trial = if (validOffer.trialEnabled) {
-        "قد تتاح تجربة لمدة ${validOffer.trialDays} يومًا؛ يقرر الخادم أهليتها، وتبدأ فقط بإجراء صريح بعد تسجيل الدخول."
+        "جرّب قناص ${validOffer.trialDays} يومًا دون رسوم للحسابات المؤهلة. تبدأ بعد تأكيدك عقب تسجيل الدخول."
     } else {
-        "لا توجد تجربة مفعّلة حالياً؛ يحدد الخادم الإتاحة عند المتابعة."
+        "التجربة غير متاحة حاليًا."
     }
     return OnboardingOfferCopy(
-        headline = "عرض الاشتراك الحالي",
+        headline = if (validOffer.trialEnabled) "جرّبه قبل ما تشترك" else "اختر ما يناسب شغلك",
         detail = "$trial سعر الاشتراك الحالي $price ر.س لمدة ${validOffer.subscriptionDays} يومًا.",
-        hasServerOffer = true
+        hasServerOffer = true,
+        canShowTrialJourney = validOffer.trialEnabled
     )
 }
 
@@ -76,9 +83,14 @@ internal enum class DecisionSignal(val label: String) {
 }
 
 internal fun localDecisionPreview(selected: Set<DecisionSignal>): String {
-    val signals = selected.map { it.label }
-    return when {
-        signals.isEmpty() -> "اختر معلومة أو أكثر لترى كيف تُعرض قبل أن تقرر."
-        else -> "ستراجع ${signals.joinToString("، ")} كما تظهر في الطلب، ثم تقرر بنفسك. هذه معاينة تعليمية محلية فقط؛ لا تحفظ قاعدة ولا تقبل أي طلب."
+    if (selected.isEmpty()) return "اختر تفصيلاً أو أكثر لتظهره في المثال."
+    return buildString {
+        append("في هذا المثال:\n")
+        if (DecisionSignal.DISPLAYED_FARE in selected) append("السعر الظاهر: ٤٥ ر.س\n")
+        if (DecisionSignal.PICKUP_DISTANCE in selected) append("مسافة الوصول: ٣ كم + مشوار ١٥ كم\n")
+        if (DecisionSignal.TRIP_DURATION in selected) append("مدة المشوار: ٣٠ دقيقة\n")
+        if (DecisionSignal.DISPLAYED_FARE in selected && DecisionSignal.PICKUP_DISTANCE in selected)
+            append("العائد لكل كم مع الوصول: ٢٫٥ ر.س قبل التكاليف\n")
+        append("لا يمثل طلبًا فعليًا ولا يغيّر إعداداتك.")
     }
 }

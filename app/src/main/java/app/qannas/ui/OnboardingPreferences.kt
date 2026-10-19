@@ -6,9 +6,12 @@ import android.content.Context
 object OnboardingPreferences {
     private const val FILE_NAME = "qannas_onboarding"
     private const val KEY_COMPLETE = "complete"
+    private const val KEY_VERSION = "completed_version"
+    private const val CURRENT_VERSION = 2
 
     fun isComplete(context: Context): Boolean = runCatching {
-        preferences(context).getBoolean(KEY_COMPLETE, false)
+        preferences(context).getBoolean(KEY_COMPLETE, false) &&
+            preferences(context).getInt(KEY_VERSION, 0) >= CURRENT_VERSION
     }.getOrDefault(false)
 
     /**
@@ -19,6 +22,7 @@ object OnboardingPreferences {
         preferences(context)
             .edit()
             .putBoolean(KEY_COMPLETE, true)
+            .putInt(KEY_VERSION, CURRENT_VERSION)
             .commit()
     }.getOrDefault(false)
 

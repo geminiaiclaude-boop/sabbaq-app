@@ -84,7 +84,7 @@ internal fun SubscriptionScreen(
             snapshot = SupabaseClient.subscriptionSnapshot()
             onLicenseChanged(SupabaseClient.hasValidLicense())
             if (showResult) {
-                onMessage("لا تتوفر جلسة مرتبطة بهذا الجهاز لإعادة التحقق من الترخيص.", true)
+                onMessage("سجّل الدخول مجدداً ثم حدّث حالة الوصول.", true)
             }
             return
         }
@@ -96,8 +96,8 @@ internal fun SubscriptionScreen(
             onLicenseChanged(SupabaseClient.hasValidLicense())
             if (showResult) {
                 when (result.getOrNull()) {
-                    true -> onMessage("تم تحديث حالة الترخيص من الخادم.", false)
-                    false -> onMessage("حدّث الخادم حالة الترخيص، لكنها لا تمنح تشغيل الخدمة حالياً.", true)
+                    true -> onMessage("تم تحديث حالة الوصول إلى حسابك.", false)
+                    false -> onMessage("تغيّرت حالة الوصول، لكنها لا تتيح استخدام الخدمة الآن.", true)
                     null -> onMessage(subscriptionRequestError(result.exceptionOrNull()), true)
                 }
             }
@@ -106,7 +106,7 @@ internal fun SubscriptionScreen(
         } catch (_: Exception) {
             snapshot = SupabaseClient.subscriptionSnapshot()
             onLicenseChanged(SupabaseClient.hasValidLicense())
-            if (showResult) onMessage("تعذر تحديث حالة الترخيص. تحقق من الاتصال ثم أعد المحاولة.", true)
+            if (showResult) onMessage("تعذر تحديث حالة الوصول. تحقق من الاتصال ثم أعد المحاولة.", true)
         } finally {
             isRefreshingLicense = false
         }
@@ -138,8 +138,8 @@ internal fun SubscriptionScreen(
                 snapshot = SupabaseClient.subscriptionSnapshot()
                 onLicenseChanged(SupabaseClient.hasValidLicense())
                 when (result.getOrNull()) {
-                    true -> onMessage("بدأت التجربة بعد أن أكد الخادم الترخيص لهذا الجهاز.", false)
-                    false -> onMessage("حدّث الخادم الحالة، لكنه لم يمنح ترخيص تجربة صالحاً للتشغيل.", true)
+                    true -> onMessage("بدأت التجربة. يمكنك الآن استكشاف أدوات قناص حتى موعد انتهائها الظاهر في حالة الوصول.", false)
+                    false -> onMessage("تغيّرت حالة التجربة، لكنها غير متاحة للاستخدام الآن.", true)
                     null -> onMessage(subscriptionRequestError(result.exceptionOrNull()), true)
                 }
             } catch (cancelled: CancellationException) {
@@ -147,7 +147,7 @@ internal fun SubscriptionScreen(
             } catch (_: Exception) {
                 snapshot = SupabaseClient.subscriptionSnapshot()
                 onLicenseChanged(SupabaseClient.hasValidLicense())
-                onMessage("تعذر بدء التجربة. تحقق من الاتصال ثم أعد المحاولة.", true)
+                onMessage("تعذر بدء التجربة الآن. تحقق من الاتصال ثم أعد المحاولة.", true)
             } finally {
                 isStartingTrial = false
             }
@@ -163,7 +163,7 @@ internal fun SubscriptionScreen(
                 return
             }
             !SupabaseClient.hasRedeemableSession() -> {
-                onMessage("لا تتوفر جلسة مرتبطة بهذا الجهاز لإرسال الكود.", true)
+                onMessage("سجّل الدخول مجدداً ثم أرسل رمز التفعيل.", true)
                 return
             }
         }
@@ -186,11 +186,11 @@ internal fun SubscriptionScreen(
                 onLicenseChanged(SupabaseClient.hasValidLicense())
                 if (revalidation.getOrNull() == true && SupabaseClient.hasValidLicense()) {
                     activationCode = ""
-                    onMessage("أكد الخادم حالة الترخيص لهذا الجهاز.", false)
+                    onMessage("تم تفعيل الوصول إلى حسابك.", false)
                 } else {
                     onMessage(
                         if (revalidation.isFailure) subscriptionRequestError(revalidation.exceptionOrNull())
-                        else "تمت معالجة الكود، لكن الخادم لم يؤكد ترخيصاً صالحاً للتشغيل.",
+                        else "تمت معالجة الرمز، لكن لا يمكن تأكيد الوصول إلى حسابك الآن.",
                         true,
                     )
                 }
@@ -199,7 +199,7 @@ internal fun SubscriptionScreen(
             } catch (_: Exception) {
                 snapshot = SupabaseClient.subscriptionSnapshot()
                 onLicenseChanged(SupabaseClient.hasValidLicense())
-                onMessage("تعذر التحقق من الكود. تحقق من الاتصال ثم أعد المحاولة.", true)
+                onMessage("تعذر تأكيد رمز التفعيل. تحقق من الاتصال ثم أعد المحاولة.", true)
             } finally {
                 isRedeemingCode = false
             }
@@ -223,8 +223,8 @@ internal fun SubscriptionScreen(
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         QannasSectionTitle(
-            title = "الاشتراك والترخيص",
-            subtitle = "تابع حالة وصولك، واكتشف الميزات، وراجع موعد انتهاء التجربة أو الاشتراك.",
+            title = "اشتراكك في قناص",
+            subtitle = "خلّ شروطك تعمل لصالحك. تابع تجربتك ومدة اشتراكك من هنا.",
         )
 
         LicenseStatusCard(
@@ -261,7 +261,7 @@ internal fun SubscriptionScreen(
                     val opened = isSafeContact && runCatching {
                         context.startActivity(Intent(Intent.ACTION_VIEW, contactUri))
                     }.isSuccess
-                    if (!opened) onMessage("تعذر فتح قناة التواصل التي أعادها الخادم.", true)
+                    if (!opened) onMessage("تعذر فتح قناة التواصل. أعد المحاولة أو تواصل مع الإدارة.", true)
                 },
             )
         } else {
@@ -270,10 +270,13 @@ internal fun SubscriptionScreen(
 
         externalMessage?.let { QannasMessage(it, isError = externalMessageIsError) }
 
-        QannasCard(title = "الخصوصية والمعلومات المحلية", icon = Icons.Outlined.PrivacyTip) {
-            Text("الإصدار ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})", style = MaterialTheme.typography.bodyMedium)
+        QannasCard(title = "معلومات حسابك", icon = Icons.Outlined.PrivacyTip) {
             Text(
-                "لا تُخزَّن رموز الجلسة أو بيانات الترخيص في الإعدادات المحلية. يبقى الترخيص في الذاكرة ويحتاج إلى إعادة تحقق من الخادم.",
+                "نستخدم بيانات حسابك لتأكيد هويتك وحماية الوصول إليه.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
+                "رقم الجوال محفوظ بأمان في حسابك لطلب رمز الدخول وتأكيد الوصول عند الحاجة.",
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
@@ -289,19 +292,19 @@ private fun LicenseStatusCard(
 ) {
     val status = snapshot?.state?.let(::licenseStatePresentation)
     QannasCard(
-        title = "حالة الترخيص",
-        subtitle = "نتحقق من صلاحية حسابك قبل تشغيل الخدمة، ويمكنك تحديث الحالة متى احتجت.",
+        title = "حالة اشتراكك",
+        subtitle = "تجربتك واشتراكك في مكان واحد.",
         icon = Icons.Outlined.VerifiedUser,
     ) {
         QannasStatusPill(
-            text = status?.label ?: "لم تصل حالة خادم مؤكدة",
+            text = status?.label ?: "لا تتوفر حالة مؤكدة الآن",
             ready = status?.isOperational == true,
         )
         Text(
             text = when {
-                snapshot == null -> "اضغط إعادة التحقق لعرض حالة حسابك المؤكدة."
-                leaseInMemory -> "وصولك مؤكد حاليًا. نعيد التحقق دوريًا لحماية حسابك."
-                else -> "صلاحية التشغيل غير مؤكدة حاليًا. أعد التحقق؛ قد تكون المعلومات أدناه من آخر تحديث."
+                snapshot == null -> "حدّث الحالة لمعرفة مدة اشتراكك وخيارات تجربتك."
+                leaseInMemory -> "قناص جاهز للاستخدام مع حسابك. اضبط شروطك وانطلق."
+                else -> "تعذر تأكيد اشتراكك الآن. حدّث الحالة؛ التواريخ أدناه من آخر تحقق."
             },
             style = MaterialTheme.typography.bodyMedium,
         )
@@ -316,11 +319,11 @@ private fun LicenseStatusCard(
             if (isRefreshing) {
                 CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                 Spacer(Modifier.size(8.dp))
-                Text("جارٍ التحقق من الخادم")
+                Text("جارٍ تحديث الحالة")
             } else {
                 Icon(Icons.Outlined.Refresh, contentDescription = null)
                 Spacer(Modifier.size(8.dp))
-                Text("إعادة التحقق من الترخيص")
+                Text("تحديث الاشتراك")
             }
         }
     }
@@ -328,12 +331,14 @@ private fun LicenseStatusCard(
 
 @Composable
 private fun ServerTimestampRows(snapshot: SubscriptionSnapshot) {
-    ServerTimestampRow("وقت الخادم", snapshot.serverTime)
-    ServerTimestampRow("نهاية صلاحية الترخيص", snapshot.validUntil)
-    ServerTimestampRow("نهاية التجربة", snapshot.trialUntil)
-    ServerTimestampRow("نهاية الاشتراك", snapshot.proUntil)
+    ServerTimestampRow("آخر تحديث للحالة", snapshot.serverTime)
+    when (snapshot.state) {
+        LicenseState.TRIAL -> ServerTimestampRow("تنتهي التجربة", snapshot.trialUntil)
+        LicenseState.ACTIVE -> ServerTimestampRow("ينتهي الاشتراك", snapshot.proUntil)
+        else -> Unit
+    }
     Text(
-        "التواريخ بتوقيت المملكة العربية السعودية، من آخر تحقق بالخادم.",
+        "التواريخ بتوقيت المملكة العربية السعودية.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -343,10 +348,15 @@ private fun ServerTimestampRows(snapshot: SubscriptionSnapshot) {
 private fun ServerTimestampRow(label: String, value: Instant?) {
     if (value == null) return
     Text(
-        "$label: ${DateTimeFormatter.ofPattern("dd MMMM yyyy، HH:mm", Locale("ar", "SA")).withZone(ZoneId.of("Asia/Riyadh")).format(value)}",
+        "$label: ${formatSaudiDate(value)}",
         style = MaterialTheme.typography.bodyMedium,
     )
 }
+
+private fun formatSaudiDate(value: Instant): String =
+    DateTimeFormatter.ofPattern("dd MMMM yyyy، HH:mm", Locale("ar", "SA"))
+        .withZone(ZoneId.of("Asia/Riyadh"))
+        .format(value)
 
 @Composable
 private fun TrialCard(
@@ -356,25 +366,14 @@ private fun TrialCard(
     hasBoundSession: Boolean,
     onStart: () -> Unit,
 ) {
-    val canStart = snapshot?.trialEligible == true && snapshot.trialEnabled == true
+    val presentation = CustomerCommerceCopy.trialPresentation(snapshot)
     QannasCard(
         title = "التجربة",
-        subtitle = "اكتشف إعداداتك المناسبة قبل الاشتراك. تبدأ التجربة عند اختيارك، ولا تتجدد تلقائيًا.",
+        subtitle = "اكتشف القبول حسب شروطك، ثم قرر إن كان يناسب يومك.",
         icon = Icons.Outlined.Info,
     ) {
-        when {
-            snapshot == null -> Text("أعد التحقق من الترخيص لمعرفة أهلية التجربة من الخادم.")
-            snapshot.state == LicenseState.TRIAL -> Text("تجربتك فعّالة وفق آخر تحقق. اكتشف المعاينة والمرشحات وراجع موعد نهايتها أعلاه.")
-            snapshot.trialEnabled == false -> Text("التجربة معطّلة حالياً وفق سياسة الخادم.")
-            snapshot.trialEligible == false -> Text("هذا الحساب غير مؤهل لتجربة جديدة وفق الخادم.")
-            snapshot.trialEnabled == null || snapshot.trialEligible == null ->
-                Text("لم يرسل الخادم معلومات كافية عن أهلية التجربة؛ لا يمكن بدء تجربة من هذه الحالة.")
-            else -> Text(
-                snapshot.trialDays?.let { "التجربة متاحة لمدة $it يومًا وفق الخادم." }
-                    ?: "التجربة متاحة وفق الخادم؛ لم يرسل الخادم مدة صالحة لعرضها.",
-            )
-        }
-        if (canStart) {
+        Text(presentation.detail)
+        if (presentation.canStart) {
             Button(
                 onClick = onStart,
                 enabled = !isStarting && !isBusy && hasBoundSession,
@@ -387,9 +386,9 @@ private fun TrialCard(
                         strokeWidth = 2.dp,
                     )
                     Spacer(Modifier.size(8.dp))
-                    Text("جارٍ طلب التجربة من الخادم")
+                    Text("جارٍ بدء التجربة")
                 } else {
-                    Text("بدء التجربة")
+                    Text("ابدأ التجربة")
                 }
             }
         }
@@ -408,33 +407,33 @@ private fun DirectDistributionCard(
     onOpenContact: (String) -> Unit,
 ) {
     QannasCard(
-        title = "عرض APK المباشر",
-        subtitle = "مرشحاتك في مكان واحد، ومعاينة للقرار قبل التشغيل. تفاصيل الاشتراك أدناه من الإدارة.",
+        title = "اشتراك قناص",
+        subtitle = "شروطك للأجرة والعائد لكل كم ومسافة الوصول وأوقات العمل، مع قبول تلقائي للطلب المطابق.",
         icon = Icons.Outlined.Info,
     ) {
         when {
             isLoadingOffer -> {
                 CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-                Text("جارٍ قراءة العرض الحالي من الخادم دون إنشاء اشتراك أو تجربة.")
+                Text("نجهّز لك السعر والمدة…")
             }
             offer == null -> {
-                Text("تعذر قراءة عرض الخادم. لا نعرض سعراً أو مدة بديلة.")
+                Text("تفاصيل الاشتراك غير متاحة الآن. أعد المحاولة.")
                 TextButton(onClick = onRetryOffer, modifier = Modifier.heightIn(min = 48.dp)) {
-                    Text("إعادة محاولة جلب العرض")
+                    Text("إعادة المحاولة")
                 }
             }
             else -> {
                 Text(
-                    "${formatServerPrice(offer.priceMinor)} ${offer.currency} — شهري (${offer.subscriptionDays} يومًا)",
+                    CustomerCommerceCopy.offerSummary(offer),
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Text(
-                    if (offer.trialEnabled) "التجربة العامة: ${offer.trialDays} أيام للحسابات المؤهلة؛ نؤكد أهليتك قبل البدء."
-                    else "التجربة معطّلة حالياً وفق سياسة الخادم.",
+                    if (offer.trialEnabled && offer.trialDays > 0) "قد تتوفر تجربة لمدة ${offer.trialDays} يومًا للحسابات المؤهلة. راجع بطاقة التجربة لتأكيد أهلية حسابك."
+                    else "لا تتوفر تجربة ضمن العرض الحالي.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Text(
-                    "لا يوجد تجديد تلقائي بأكواد التفعيل. راجع السعر النهائي والضرائب، إن انطبقت، مع الإدارة قبل الدفع.",
+                    "راجع السعر والمدة مع الإدارة قبل الدفع. لا يبدأ الاشتراك أو التجربة تلقائياً.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -443,7 +442,7 @@ private fun DirectDistributionCard(
                         onClick = { onOpenContact(contactUrl) },
                         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                     ) {
-                        Text("فتح قناة الإدارة")
+                        Text("التواصل مع الإدارة")
                     }
                 }
             }
@@ -451,8 +450,8 @@ private fun DirectDistributionCard(
     }
 
     QannasCard(
-        title = "إدخال كود الإدارة",
-        subtitle = "يرسل الكود مباشرة إلى الخادم ثم يعيد التحقق من الترخيص؛ لا يُحفظ على الجهاز.",
+        title = "لديك رمز تفعيل؟",
+        subtitle = "أدخل الكود الذي استلمته لتفعيل اشتراكك.",
         icon = Icons.Outlined.VerifiedUser,
     ) {
         OutlinedTextField(
@@ -460,7 +459,7 @@ private fun DirectDistributionCard(
             onValueChange = onCodeChange,
             enabled = !isBusy,
             singleLine = true,
-            label = { Text("كود الإدارة") },
+            label = { Text("رمز التفعيل") },
             placeholder = { Text("XXXX-XXXX-XXXX-XXXX") },
             textStyle = LocalTextStyle.current.copy(textDirection = TextDirection.Ltr),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
@@ -471,7 +470,7 @@ private fun DirectDistributionCard(
             enabled = !isBusy,
             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
         ) {
-            Text("إرسال الكود والتحقق")
+            Text("تفعيل اشتراكي")
         }
     }
 }
@@ -479,21 +478,64 @@ private fun DirectDistributionCard(
 @Composable
 private fun PlayInformationCard() {
     QannasCard(
-        title = "معلومات الترخيص",
-        subtitle = "راجع صلاحية وصولك وتفاصيل حسابك من هنا.",
+        title = "اشتراكك في التطبيق",
+        subtitle = "تابع تجربتك واشتراكك من هنا.",
         icon = Icons.Outlined.Info,
     ) {
         Text(
-            "يمكنك مراجعة حالة الترخيص أعلاه وإعادة التحقق منها من الخادم عند الحاجة.",
+            "تظهر حالة تجربتك أو اشتراكك أعلاه.",
             style = MaterialTheme.typography.bodyMedium,
         )
         Text(
-            "الترخيص الصالح شرط لتشغيل الخدمة، إلى جانب الأذونات والمرشحات المحفوظة.",
+            "لاستخدام قناص، تحتاج تجربة أو اشتراكًا ساريًا مع ضبط شروطك ومنح الأذونات.",
             style = MaterialTheme.typography.bodyMedium,
         )
         Text(
-            "الشراء عبر Google Play غير متاح في هذا الإصدار قيد التطوير.",
+            "شراء الاشتراك داخل التطبيق غير متاح حاليًا.",
             style = MaterialTheme.typography.bodyMedium,
+        )
+    }
+}
+
+internal data class CustomerTrialPresentation(
+    val detail: String,
+    val canStart: Boolean,
+)
+
+/** نصوص تجارية تقرأ قيم العرض وحالة الحساب كما تصل، من دون قيم بديلة في العميل. */
+internal object CustomerCommerceCopy {
+    fun offerSummary(offer: PublicOffer): String {
+        val currencyLabel = if (offer.currency.equals("SAR", ignoreCase = true)) "ر.س" else offer.currency
+        return "${formatServerPrice(offer.priceMinor)} $currencyLabel لمدة ${offer.subscriptionDays} يومًا"
+    }
+
+    fun trialPresentation(snapshot: SubscriptionSnapshot?): CustomerTrialPresentation = when {
+        snapshot == null -> CustomerTrialPresentation(
+            detail = "حدّث حالة الاشتراك لمعرفة ما إذا كانت التجربة متاحة لحسابك.",
+            canStart = false,
+        )
+        snapshot.state == LicenseState.TRIAL -> CustomerTrialPresentation(
+            detail = snapshot.trialUntil?.let {
+                "تجربتك فعّالة حتى ${formatSaudiDate(it)} بتوقيت المملكة العربية السعودية."
+            } ?: "تجربتك فعّالة. حدّث حالة الوصول لعرض تاريخ انتهائها.",
+            canStart = false,
+        )
+        snapshot.trialEnabled == false -> CustomerTrialPresentation(
+            detail = "لا تتوفر تجربة لحسابك حالياً.",
+            canStart = false,
+        )
+        snapshot.trialEligible == false -> CustomerTrialPresentation(
+            detail = "لا يتوفر لهذا الحساب استحقاق تجربة جديدة.",
+            canStart = false,
+        )
+        snapshot.trialEnabled != true || snapshot.trialEligible != true || (snapshot.trialDays ?: 0) <= 0 ->
+            CustomerTrialPresentation(
+                detail = "لا نستطيع تأكيد تفاصيل التجربة لحسابك الآن. حدّث الحالة ثم أعد المحاولة.",
+                canStart = false,
+            )
+        else -> CustomerTrialPresentation(
+            detail = "تجربة لمدة ${snapshot.trialDays} يومًا. تبدأ فقط عند ضغط «ابدأ التجربة»، ولا تبدأ تلقائياً.",
+            canStart = true,
         )
     }
 }
@@ -501,14 +543,14 @@ private fun PlayInformationCard() {
 private data class LicenseStatePresentation(val label: String, val isOperational: Boolean)
 
 private fun licenseStatePresentation(state: LicenseState): LicenseStatePresentation = when (state) {
-    LicenseState.ACTIVE -> LicenseStatePresentation("اشتراك فعّال وفق الخادم", true)
-    LicenseState.TRIAL -> LicenseStatePresentation("تجربة فعّالة وفق الخادم", true)
-    LicenseState.PENDING -> LicenseStatePresentation("الترخيص بانتظار إجراء خادمي", false)
-    LicenseState.EXPIRED -> LicenseStatePresentation("انتهى الترخيص وفق الخادم", false)
+    LicenseState.ACTIVE -> LicenseStatePresentation("اشتراك فعّال", true)
+    LicenseState.TRIAL -> LicenseStatePresentation("تجربة فعّالة", true)
+    LicenseState.PENDING -> LicenseStatePresentation("بانتظار تفعيل الوصول", false)
+    LicenseState.EXPIRED -> LicenseStatePresentation("انتهى الوصول", false)
     LicenseState.DEVICE_MISMATCH -> LicenseStatePresentation("الحساب مرتبط بجهاز آخر", false)
-    LicenseState.BANNED -> LicenseStatePresentation("الحساب محظور", false)
-    LicenseState.REJECTED -> LicenseStatePresentation("الحساب مرفوض", false)
-    LicenseState.UNREGISTERED -> LicenseStatePresentation("ملف السائق غير مكتمل", false)
+    LicenseState.BANNED -> LicenseStatePresentation("لا يمكن استخدام الحساب حالياً", false)
+    LicenseState.REJECTED -> LicenseStatePresentation("لا يمكن استخدام الحساب حالياً", false)
+    LicenseState.UNREGISTERED -> LicenseStatePresentation("أكمل بيانات حسابك", false)
 }
 
 /** يحول هللات الخادم فقط إلى عرض SAR؛ لا توجد قيمة افتراضية في العميل. */
@@ -520,15 +562,15 @@ private fun formatServerPrice(priceMinor: Int): String {
 
 private fun subscriptionRequestError(error: Throwable?): String = when (error?.message) {
     "انتهت الجلسة؛ سجّل الدخول من جديد" -> "انتهت الجلسة؛ سجّل الدخول من جديد ثم أعد التحقق."
-    "تحقق من الترخيص والجهاز قبل المتابعة" -> "لا يوجد جهاز مرتبط يمكن للخادم التحقق منه."
+    "تحقق من الترخيص والجهاز قبل المتابعة" -> "لا يمكن تأكيد الحساب على هذا الجهاز."
     "الحساب مرتبط بجهاز آخر", "تم حظر أو رفض الحساب", "يلزم تحديث التطبيق قبل استخدام الخدمة" -> error.message.orEmpty()
-    else -> "تعذر التحقق من حالة الترخيص من الخادم. تحقق من الاتصال ثم أعد المحاولة."
+    else -> "تعذر تأكيد حالة الوصول. تحقق من الاتصال ثم أعد المحاولة."
 }
 
 private fun directCodeError(error: Throwable?): String = when (error?.message) {
-    "الكود غير صحيح أو استُخدم مسبقاً",
-    "محاولات كثيرة؛ يرجى الانتظار قبل المحاولة مجدداً",
-    "هذا الحساب مرتبط بجهاز آخر" -> error.message.orEmpty()
-    "انتهت الجلسة؛ سجّل الدخول من جديد" -> "انتهت الجلسة؛ سجّل الدخول من جديد ثم أعد إرسال الكود."
-    else -> "تعذر إرسال الكود إلى الخادم. تحقق من الكود والاتصال ثم أعد المحاولة."
+    "الكود غير صحيح أو استُخدم مسبقاً" -> "رمز التفعيل غير صحيح أو استُخدم مسبقاً. راجعه ثم أعد المحاولة."
+    "محاولات كثيرة؛ يرجى الانتظار قبل المحاولة مجدداً" -> "محاولات كثيرة؛ انتظر قليلاً ثم أعد المحاولة."
+    "هذا الحساب مرتبط بجهاز آخر" -> "هذا الحساب مرتبط بجهاز آخر."
+    "انتهت الجلسة؛ سجّل الدخول من جديد" -> "انتهت الجلسة؛ سجّل الدخول من جديد ثم أعد إرسال رمز التفعيل."
+    else -> "تعذر إرسال رمز التفعيل. تحقق من الرمز والاتصال ثم أعد المحاولة."
 }

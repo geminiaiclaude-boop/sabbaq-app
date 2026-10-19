@@ -29,6 +29,8 @@ results = []
 
 cases = [
     ('first-launch', None, False, 1.0),
+    ('welcome-example', 'welcome-example', False, 1.0),
+    ('welcome-ready', 'welcome-ready', False, 1.0),
     ('login', 'login', False, 1.0),
     ('dashboard', 'dashboard', False, 1.0),
     ('filters', 'filters', False, 1.0),
@@ -62,6 +64,11 @@ for name, screen, dark, font_scale in cases:
     (out / f'{name}.xml').write_text(xml)
     nodes = ET.fromstring(xml).findall('.//node')
     assert any(node.get('package') == args.package for node in nodes), f'No app accessibility tree: {name}'
+    visible = ' '.join(node.get('text', '') + ' ' + node.get('content-desc', '') for node in nodes)
+    for jargon in ('GOOGLE_WEB_CLIENT_ID', 'RPC', 'JSON', 'تعرض هذه المعلومات للقراءة فقط', 'تجربة محلية للتعلّم'):
+        assert jargon not in visible, f'Developer-facing copy in customer screen {name}: {jargon}'
+    if screen == 'welcome-example':
+        assert '٢٫٥ ر.س قبل التكاليف' in visible, f'Concrete fare/distance example missing: {name}'
     if args.distribution == 'play' and screen in ('login', 'account'):
         visible = ' '.join(node.get('text', '') + ' ' + node.get('content-desc', '') for node in nodes)
         for forbidden in ('كود التفعيل', 'شراء كود', 'شراء الاشتراك من الإدارة', 'واتساب', '18.75'):

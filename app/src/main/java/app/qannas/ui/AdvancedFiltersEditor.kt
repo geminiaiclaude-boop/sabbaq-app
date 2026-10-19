@@ -50,48 +50,48 @@ internal fun AdvancedFiltersEditor(
 ) {
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         QannasSectionTitle(
-            title = "تفاصيل المرشحات",
-            subtitle = "الحقول الفارغة لا تقيّد القرار. لن تُحفظ التغييرات قبل اختيار «حفظ المرشحات»."
+            title = "حدّد شروط الطلبات",
+            subtitle = "اترك أي خانة فارغة إذا لم تكن مهمة لك، ثم احفظ لتستخدم الشروط في وقت العمل."
         )
 
         FilterGroup(
-            title = "السعر",
-            subtitle = "حدود السعر وسعر الكيلومتر",
+            title = "السعر والعائد",
+            subtitle = "اختر سعر الطلب والعائد الذي يناسبك لكل كيلومتر",
             hasError = errors.keys.any { it in setOf("minFare", "maxFare", "minFarePerKm") },
         ) {
             DraftField(
                 value = draft.minFare,
-                label = "الحد الأدنى للسعر",
+                label = "أقل سعر للطلب",
                 error = errors["minFare"],
                 keyboardType = KeyboardType.Decimal,
                 onValueChange = { onDraftChange(draft.copy(minFare = it)) },
             )
             DraftField(
                 value = draft.maxFare,
-                label = "الحد الأقصى للسعر",
+                label = "أعلى سعر للطلب",
                 error = errors["maxFare"],
                 keyboardType = KeyboardType.Decimal,
                 onValueChange = { onDraftChange(draft.copy(maxFare = it)) },
             )
             DraftField(
                 value = draft.minFarePerKm,
-                label = "الحد الأدنى للسعر لكل كيلومتر",
+                label = "أقل عائد لكل كم",
                 error = errors["minFarePerKm"],
                 keyboardType = KeyboardType.Decimal,
                 onValueChange = { onDraftChange(draft.copy(minFarePerKm = it)) },
             )
-            Text("أساس احتساب سعر الكيلومتر", style = MaterialTheme.typography.labelLarge)
+            Text("احسب العائد لكل كم على", style = MaterialTheme.typography.labelLarge)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(
                     selected = draft.perKmBasis == PerKmBasis.TRIP,
                     onClick = { onDraftChange(draft.copy(perKmBasis = PerKmBasis.TRIP)) },
-                    label = { Text("مسافة الرحلة") },
+                    label = { Text("مسافة الرحلة فقط") },
                     modifier = Modifier.heightIn(min = 48.dp),
                 )
                 FilterChip(
                     selected = draft.perKmBasis == PerKmBasis.TOTAL,
                     onClick = { onDraftChange(draft.copy(perKmBasis = PerKmBasis.TOTAL)) },
-                    label = { Text("الوصول والرحلة") },
+                    label = { Text("الوصول + الرحلة") },
                     modifier = Modifier.heightIn(min = 48.dp),
                 )
             }
@@ -99,19 +99,19 @@ internal fun AdvancedFiltersEditor(
 
         FilterGroup(
             title = "الوصول إلى الراكب",
-            subtitle = "أقصى مسافة أو زمن للوصول قبل بدء الرحلة",
+            subtitle = "استبعد الطلبات التي يكون الوصول إليها أبعد أو أطول مما تفضّل",
             hasError = errors.keys.any { it in setOf("maxPickupKm", "maxPickupMinutes") },
         ) {
             DraftField(
                 value = draft.maxPickupKm,
-                label = "أقصى مسافة للوصول (كم)",
+                label = "أبعد مسافة وصول (كم)",
                 error = errors["maxPickupKm"],
                 keyboardType = KeyboardType.Decimal,
                 onValueChange = { onDraftChange(draft.copy(maxPickupKm = it)) },
             )
             DraftField(
                 value = draft.maxPickupMinutes,
-                label = "أقصى زمن للوصول (دقائق)",
+                label = "أطول وقت للوصول (دقائق)",
                 error = errors["maxPickupMinutes"],
                 keyboardType = KeyboardType.Number,
                 onValueChange = { onDraftChange(draft.copy(maxPickupMinutes = it)) },
@@ -119,27 +119,27 @@ internal fun AdvancedFiltersEditor(
         }
 
         FilterGroup(
-            title = "الرحلة",
-            subtitle = "مسافة الرحلة ومدتها بعد استلام الراكب",
+            title = "الرحلات التي تناسبك",
+            subtitle = "حدّد مسافة الرحلة ومدتها بعد استلام الراكب",
             hasError = errors.keys.any { it in setOf("minTripKm", "maxTripKm", "maxTripMinutes") },
         ) {
             DraftField(
                 value = draft.minTripKm,
-                label = "أدنى مسافة للرحلة (كم)",
+                label = "أقصر مسافة للرحلة (كم)",
                 error = errors["minTripKm"],
                 keyboardType = KeyboardType.Decimal,
                 onValueChange = { onDraftChange(draft.copy(minTripKm = it)) },
             )
             DraftField(
                 value = draft.maxTripKm,
-                label = "أقصى مسافة للرحلة (كم)",
+                label = "أطول مسافة للرحلة (كم)",
                 error = errors["maxTripKm"],
                 keyboardType = KeyboardType.Decimal,
                 onValueChange = { onDraftChange(draft.copy(maxTripKm = it)) },
             )
             DraftField(
                 value = draft.maxTripMinutes,
-                label = "أقصى مدة للرحلة (دقائق)",
+                label = "أطول مدة للرحلة (دقائق)",
                 error = errors["maxTripMinutes"],
                 keyboardType = KeyboardType.Number,
                 onValueChange = { onDraftChange(draft.copy(maxTripMinutes = it)) },
@@ -147,13 +147,13 @@ internal fun AdvancedFiltersEditor(
         }
 
         FilterGroup(
-            title = "الكلمات المستبعدة",
-            subtitle = "افصل الكلمات بفاصلة. أي كلمة مطابقة ترفض العرض بأمان.",
+            title = "طلبات لا تناسبك",
+            subtitle = "اكتب كلمات لا تريدها في وصف الطلب، وافصل بينها بفاصلة",
             hasError = errors.containsKey("excludeKeywords"),
         ) {
             DraftField(
                 value = draft.excludeKeywords,
-                label = "كلمات مستبعدة",
+                label = "كلمات لا تناسبك",
                 error = errors["excludeKeywords"],
                 keyboardType = KeyboardType.Text,
                 singleLine = false,
@@ -162,12 +162,12 @@ internal fun AdvancedFiltersEditor(
         }
 
         FilterGroup(
-            title = "الجدول",
-            subtitle = "التوقيت محلي للجهاز، ويمكن للفترة أن تعبر منتصف الليل.",
+            title = "أوقات العمل",
+            subtitle = "اختر متى تريد متابعة الطلبات؛ يمكن أن يمتد الوقت إلى ما بعد منتصف الليل",
             hasError = errors.keys.any { it in setOf("scheduleStart", "scheduleEnd") },
         ) {
             ToggleRow(
-                text = "تقييد التشغيل بساعات محددة",
+                text = "العمل في أوقات محددة",
                 checked = draft.scheduleEnabled,
                 onCheckedChange = { onDraftChange(draft.copy(scheduleEnabled = it)) },
             )
@@ -175,14 +175,14 @@ internal fun AdvancedFiltersEditor(
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     DraftField(
                         value = draft.scheduleStart,
-                        label = "من (HH:mm)",
+                        label = "بداية العمل (مثال 08:30)",
                         error = errors["scheduleStart"],
                         keyboardType = KeyboardType.Ascii,
                         onValueChange = { onDraftChange(draft.copy(scheduleStart = it)) },
                     )
                     DraftField(
                         value = draft.scheduleEnd,
-                        label = "إلى (HH:mm؛ يسمح 24:00)",
+                        label = "نهاية العمل (مثال 22:00؛ 24:00 مسموح)",
                         error = errors["scheduleEnd"],
                         keyboardType = KeyboardType.Ascii,
                         onValueChange = { onDraftChange(draft.copy(scheduleEnd = it)) },
@@ -200,14 +200,14 @@ private fun FilterGroup(
     hasError: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    var expanded by rememberSaveable(title) { mutableStateOf(title == "السعر") }
+    var expanded by rememberSaveable(title) { mutableStateOf(title == "السعر والعائد") }
     LaunchedEffect(hasError) { if (hasError) expanded = true }
     QannasCard(title = title, subtitle = subtitle) {
         TextButton(
             onClick = { expanded = !expanded },
             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
         ) {
-            Text(if (expanded) "إخفاء الحقول" else "إظهار الحقول", modifier = Modifier.weight(1f))
+            Text(if (expanded) "إخفاء الخيارات" else "عرض الخيارات", modifier = Modifier.weight(1f))
             Icon(
                 imageVector = if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
                 contentDescription = null,

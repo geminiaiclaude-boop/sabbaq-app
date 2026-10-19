@@ -91,7 +91,7 @@ class MainActivity : ComponentActivity() {
                         when (navigation.route) {
                             AppState.WELCOME -> OnboardingScreen(onContinue = {
                                 if (!OnboardingPreferences.markComplete(this@MainActivity)) {
-                                    permissionMessage = "لم يُحفظ اكتمال التعريف على الجهاز. يمكنك تسجيل الدخول، وقد يظهر التعريف مجددًا عند الفتح التالي."
+                                    permissionMessage = "قد تظهر هذه المقدمة مرة أخرى عند فتح التطبيق. يمكنك المتابعة الآن."
                                 }
                                 navigation.welcomeFinished()
                             })
@@ -115,7 +115,7 @@ class MainActivity : ComponentActivity() {
                                     if (start) {
                                         if (!Settings.a11yDisclosureAccepted) {
                                             showA11yDisclosure = true
-                                            error("راجع إفصاح إمكانية الوصول ووافق عليه قبل التشغيل")
+                                            error("راجع طريقة عمل القبول التلقائي ووافق عليها قبل التشغيل")
                                         }
                                         check(SupabaseClient.hasValidLicense()) { "يلزم اشتراك صالح قبل التشغيل" }
                                         Settings.isActive = true
@@ -199,7 +199,7 @@ internal fun QannasShell(
     if (confirmLogout) AlertDialog(
         onDismissRequest = { confirmLogout = false },
         title = { Text("تسجيل الخروج؟") },
-        text = { Text("سيتوقف القناص وتُمسح جلسة الدخول. أي تعديلات غير محفوظة على المرشحات لن تُطبّق.") },
+        text = { Text("سيتوقف القبول التلقائي بقناص. احفظ تعديلات شروطك قبل الخروج حتى لا تفقدها.") },
         confirmButton = { TextButton(onClick = { confirmLogout = false; onLogout() }) { Text("إيقاف القناص والخروج") } },
         dismissButton = { TextButton(onClick = { confirmLogout = false }) { Text("البقاء") } }
     )

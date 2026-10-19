@@ -49,9 +49,9 @@ private const val ONBOARDING_PAGES = 3
  * مالك التنقل وحده يستدعي [OnboardingPreferences.markComplete] بعد [onContinue].
  */
 @Composable
-fun OnboardingScreen(onContinue: () -> Unit) {
-    var page by rememberSaveable { mutableIntStateOf(0) }
-    var selectedSignals by remember { mutableStateOf(setOf<DecisionSignal>()) }
+fun OnboardingScreen(onContinue: () -> Unit, initialPage: Int = 0) {
+    var page by rememberSaveable { mutableIntStateOf(initialPage.coerceIn(0, ONBOARDING_PAGES - 1)) }
+    var selectedSignals by remember { mutableStateOf(DecisionSignal.entries.toSet()) }
     var offer by remember { mutableStateOf<OnboardingOffer?>(null) }
     var loadingOffer by remember { mutableStateOf(BuildConfig.DIRECT_DISTRIBUTION) }
     val scope = rememberCoroutineScope()
@@ -124,8 +124,7 @@ fun OnboardingScreen(onContinue: () -> Unit) {
                             isDirectDistribution = BuildConfig.DIRECT_DISTRIBUTION,
                             onRetryOffer = { scope.launch { loadPublicOffer() } }
                         )
-                        1 -> RulesLessonPage()
-                        else -> DecisionPreviewPage(
+                        1 -> DecisionPreviewPage(
                             selectedSignals = selectedSignals,
                             onSignalChange = { signal ->
                                 selectedSignals = if (signal in selectedSignals) {
@@ -135,10 +134,12 @@ fun OnboardingScreen(onContinue: () -> Unit) {
                                 }
                             }
                         )
+                        else -> ReadyPage(canShowTrialJourney = offerCopy.canShowTrialJourney)
                     }
 
                     OnboardingNavigation(
                         page = page,
+                        canShowTrialJourney = offerCopy.canShowTrialJourney,
                         onBack = { page = (page - 1).coerceAtLeast(0) },
                         onNext = {
                             if (page == ONBOARDING_PAGES - 1) onContinue()
@@ -163,7 +164,7 @@ private fun OnboardingTopBar(page: Int, onSkip: () -> Unit) {
             onClick = onSkip,
             modifier = Modifier.heightIn(min = 48.dp)
         ) {
-            Text("تخطي التعريف")
+            Text("تخطي الجولة")
         }
     }
     Text(
@@ -180,20 +181,29 @@ private fun WelcomePage(
     isDirectDistribution: Boolean,
     onRetryOffer: () -> Unit
 ) {
+    Text("خلّ طلباتك على مقاسك", style = MaterialTheme.typography.headlineLarge)
+    Text("وقت أقل في متابعة الشاشة. شروط أوضح ليوم شغلك.",
+        style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
     QannasCard(
-        title = "أهلاً بك في قناص",
-        subtitle = "اكتشف الواجهة أولاً، ثم اختر ما يناسبك لاحقاً."
+        title = "أنت تحدد، وقناص يتابع",
+        subtitle = "يشغّل القبول التلقائي للطلبات التي تطابق شروطك في التطبيقات المدعومة."
     ) {
-        QannasSectionTitle(
-            title = "اقرأ التفاصيل قبل أن تقرر",
-            subtitle = "يساعدك قناص على تنظيم المعلومات الظاهرة في الطلب. يبقى القرار والقبول بيدك دائماً."
+        DriverValue(
+            title = "لا تقبل بأقل من شروطك",
+            detail = "حدد أقل أجرة وأقل عائد لكل كم يناسبك."
         )
-        QannasMessage("التعريف اختياري ولا ينشئ حساباً ولا يمنح تجربة أو ترخيصاً.")
+        DriverValue(
+            title = "مسافة الوصول تفرق",
+            detail = "اختر حدًا لمسافة الوصول للراكب وطول المشوار."
+        )
+        DriverValue(
+            title = "شغلك، على وقتك",
+            detail = "حدد أوقات العمل، وشغّل القبول أو أوقفه متى أردت."
+        )
     }
 
     QannasCard(
-        title = if (loadingOffer) "جارٍ التحقق من العرض" else offerCopy.headline,
-        subtitle = "تعرض هذه المعلومات للقراءة فقط"
+        title = if (loadingOffer) "نجهّز لك تفاصيل التجربة" else offerCopy.headline
     ) {
         if (loadingOffer) {
             Row(
@@ -202,7 +212,7 @@ private fun WelcomePage(
             ) {
                 CircularProgressIndicator(modifier = Modifier.padding(4.dp), strokeWidth = 2.dp)
                 Text(
-                    "نجلب العرض الحالي من الخدمة دون بدء تجربة أو اشتراك.",
+                    "لحظات ونظهر لك الخيارات المتاحة.",
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
@@ -213,41 +223,17 @@ private fun WelcomePage(
                     onClick = onRetryOffer,
                     modifier = Modifier.align(Alignment.Start).heightIn(min = 48.dp)
                 ) {
-                    Text("إعادة محاولة جلب العرض")
+                    Text("إعادة التحقق")
                 }
             }
         }
     }
+    Text("اكتشفه أولًا، ثم قرر إن كان يناسبك.", style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 @Composable
-private fun RulesLessonPage() {
-    QannasCard(
-        title = "تعلّم القواعد",
-        subtitle = "القواعد وسيلة لمراجعة المعلومات، وليست وعداً بنتيجة."
-    ) {
-        QannasSectionTitle(
-            title = "ثلاث ممارسات واضحة",
-            subtitle = "اضبط ما تريد مراجعته، وتحقق من التفاصيل الظاهرة، ثم اتخذ قرارك بنفسك."
-        )
-        RuleExplanation(
-            title = "حدّد ما يهمك",
-            detail = "يمكنك لاحقاً اختيار المعلومات التي تساعدك في مراجعة كل طلب، مثل المسافة والوقت والسعر الظاهر."
-        )
-        RuleExplanation(
-            title = "راجع المعلومات كما تظهر",
-            detail = "قد تكون البيانات ناقصة أو متغيرة؛ راجعها في التطبيق المعروض قبل أي قبول."
-        )
-        RuleExplanation(
-            title = "احتفظ بالتحكم",
-            detail = "لا تُعد هذه الشاشة قاعدة تشغيل ولا تنفّذ قبولاً أو إجراءً بالنيابة عنك."
-        )
-    }
-    QannasMessage("لا نعرض وعوداً بالأرباح أو نتائج مضمونة؛ الاستكشاف هنا يساعدك على فهم الأدوات فقط.")
-}
-
-@Composable
-private fun RuleExplanation(title: String, detail: String) {
+private fun DriverValue(title: String, detail: String) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(title, style = MaterialTheme.typography.titleSmall)
         Text(
@@ -259,17 +245,54 @@ private fun RuleExplanation(title: String, detail: String) {
 }
 
 @Composable
+private fun ReadyPage(canShowTrialJourney: Boolean) {
+    QannasCard(
+        title = "جاهز ليوم عمل أذكى؟",
+        subtitle = "ثلاث خطوات وتكون مستعدًا."
+    ) {
+        DriverValue(
+            title = "١. ادخل بحسابك",
+            detail = "باستخدام Google أو رقم جوالك السعودي."
+        )
+        DriverValue(
+            title = "٢. اضبط الطلب اللي يناسبك",
+            detail = "حدد الأجرة والمسافة وأوقات العمل."
+        )
+        DriverValue(
+            title = "٣. شغّل قناص وأنت مستعد",
+            detail = "بعد منح الإذن، يمكنه قبول الطلب المطابق تلقائيًا. الإيقاف دائمًا بيدك."
+        )
+        DriverValue(
+            title = if (canShowTrialJourney) "جرّبه قبل ما تشترك" else "اكتشف خيارات حسابك",
+            detail = if (canShowTrialJourney) {
+                "سجّل الدخول لنتحقق من أهليتك. تبدأ التجربة عندما تؤكدها، وليس أثناء هذه الجولة."
+            } else {
+                "سجّل الدخول لعرض مدة الاشتراك والخيارات المتاحة لك."
+            }
+        )
+    }
+    QannasCard(
+        title = "صلاحياتك بقرارك"
+    ) {
+        Text(
+            "سنوضح لك ما يقرأه قناص وكيف يستخدمه قبل طلب الإذن. لا تُشغّل الميزة إلا بموافقتك.",
+            style = MaterialTheme.typography.bodyMedium
+        )
+    }
+}
+
+@Composable
 private fun DecisionPreviewPage(
     selectedSignals: Set<DecisionSignal>,
     onSignalChange: (DecisionSignal) -> Unit
 ) {
     QannasCard(
-        title = "معاينة قرارك",
-        subtitle = "تجربة محلية للتعلّم؛ لا تُحفظ اختياراتك."
+        title = "هل يستاهل هذا المشوار؟",
+        subtitle = "مثال توضيحي: أجرة ٤٥ ر.س لمشوار ١٥ كم."
     ) {
         QannasSectionTitle(
-            title = "ما الذي تريد مراجعته؟",
-            subtitle = "اختر المعلومات التي تود رؤيتها قبل اتخاذ قرارك."
+            title = "شوف الصورة كاملة",
+            subtitle = "اضغط لإظهار أو إخفاء التفاصيل التي تهمك."
         )
         DecisionSignal.entries.forEach { signal ->
             FilterChip(
@@ -282,17 +305,19 @@ private fun DecisionPreviewPage(
     }
 
     QannasCard(
-        title = "نتيجة المعاينة",
-        subtitle = "لا توجد رحلة فعلية في هذه التجربة"
+        title = "تفاصيل المثال",
+        subtitle = "أرقام للتوضيح فقط، وليست طلبًا فعليًا."
     ) {
         Text(localDecisionPreview(selectedSignals), style = MaterialTheme.typography.bodyLarge)
-        QannasStatusPill(text = "القرار النهائي لك", ready = true)
+        Text("أجرة الطلب ليست ربحًا صافيًا؛ التكاليف تختلف حسب مشوارك.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
 @Composable
 private fun OnboardingNavigation(
     page: Int,
+    canShowTrialJourney: Boolean,
     onBack: () -> Unit,
     onNext: () -> Unit
 ) {
@@ -318,7 +343,10 @@ private fun OnboardingNavigation(
                 .heightIn(min = 52.dp),
             contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp)
         ) {
-            Text(if (page == ONBOARDING_PAGES - 1) "متابعة لتسجيل الدخول" else "التالي")
+            Text(
+                if (page == ONBOARDING_PAGES - 1) onboardingFinalCta(canShowTrialJourney)
+                else if (page == 0) "ورّني كيف" else "أضبط طلباتي"
+            )
         }
     }
 }

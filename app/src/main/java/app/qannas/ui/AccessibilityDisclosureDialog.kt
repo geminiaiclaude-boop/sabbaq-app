@@ -13,53 +13,25 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
-/**
- * إفصاح مستقل لخدمة AccessibilityService غير المصنفة كأداة إتاحة.
- *
- * يستدعي المضيف [onAccept] فقط بعد فعل إيجابي صريح، ثم يقرر هو ما إذا كان
- * سيسجل القبول ويفتح إعدادات النظام. لا يطلب هذا المكوّن إذن النظام بنفسه.
- */
+/** Separate, explicit consent. The host opens Android settings only after acceptance. */
 @Composable
-fun AccessibilityDisclosureDialog(
-    onAccept: () -> Unit,
-    onDismiss: () -> Unit,
-) {
+fun AccessibilityDisclosureDialog(onAccept: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("قبل تفعيل مراقبة العروض") },
+        title = { Text("كيف يعمل القبول التلقائي؟") },
         text = {
-            Column(modifier = Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    "يستخدم قناص الطلبات خدمة إمكانية الوصول لمراقبة شاشات تطبيقات العروض المدعومة فقط أثناء تفعيلك لها.",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Text(
-                    "يمكن للخدمة قراءة محتوى النافذة الظاهرة، بما فيه نصوص العرض ووصف العناصر ومعرّفاتها ونوعها وحالة قابليتها للنقر وحدودها على الشاشة. ويشمل ذلك زر قبول العرض الذي تتعرف إليه الخدمة.",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Text(
-                    "تُحوَّل هذه المعلومات داخل التطبيق إلى تفاصيل العرض، ثم تُطبق قواعدك المحفوظة مثل حدود الأجرة والمسافة والمدة والكلمات المستبعدة والجدول الزمني. عند تطابق عرض مع هذه القواعد البشرية المحددة، قد تضغط الخدمة ضغطة واحدة في مركز زر القبول الذي عثر عليه. لا تستخدم هذه الميزة ذكاءً اصطناعيًا أو تخطيطًا أو قرارًا ذاتيًا؛ سلوكها قواعد حتمية فقط.",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Text(
-                    "تُعالج بيانات العرض على الجهاز، ولا ترسل خدمة إمكانية الوصول في مسار الالتقاط الحالي محتوى الشاشة عبر الشبكة. هذا الإفصاح خاص باستخدام إمكانية الوصول؛ بيانات الحساب والترخيص لها مسار مستقل موضح في سياسة الخصوصية، ولا تعني هذه العبارة أن التطبيق كله لا يجمع بيانات.",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Text(
-                    "اختيار «أفهم وأتابع» لا يفعّل الخدمة ولا يمنح الإذن بنفسه. بعده فقط يمكن فتح إعدادات Android لتختار أنت تفعيل خدمة إمكانية الوصول. اختيار «عدم الموافقة» أو إغلاق هذه النافذة لا يعد موافقة.",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("قراءة الطلبات", style = MaterialTheme.typography.titleSmall)
+                Text("عندما تشغّل قناص، يستخدم إذن «إمكانية الوصول» لقراءة شاشة الطلب الظاهرة في التطبيقات المدعومة فقط. يقرأ نصوص الطلب وتفاصيل عناصر الشاشة، مثل وصفها ومعرّفاتها ونوعها وموقع زر القبول وإمكانية الضغط عليه.", style = MaterialTheme.typography.bodyMedium)
+                Text("القبول وفق شروطك", style = MaterialTheme.typography.titleSmall)
+                Text("إذا طابق الطلب شروطك المحفوظة للأجرة والمسافة والوقت والكلمات المستبعدة، يستطيع قناص الضغط مرة واحدة على زر القبول. أنت تحدد الشروط وتقرر متى تشغّل الميزة أو توقفها. لا تتخذ الميزة قرارات مستقلة ولا تستخدم ذكاءً اصطناعيًا للاختيار.", style = MaterialTheme.typography.bodyMedium)
+                Text("خصوصية تفاصيل الطلب", style = MaterialTheme.typography.titleSmall)
+                Text("تُعالج تفاصيل الشاشة على جهازك، ولا ترسلها خدمة إمكانية الوصول عبر الإنترنت. تُحفظ بيانات الحساب والاشتراك عبر خدمة الحساب بشكل منفصل، كما توضح سياسة الخصوصية.", style = MaterialTheme.typography.bodyMedium)
+                Text("الموافقة لا تشغّل الميزة", style = MaterialTheme.typography.titleSmall)
+                Text("بعد موافقتك سنفتح إعدادات Android لتفعّل الإذن بنفسك، ثم يمكنك العودة وتشغيل قناص. اختيار «ليس الآن» أو إغلاق هذه النافذة لا يمنح موافقة، ولا يفعّل القبول التلقائي.", style = MaterialTheme.typography.bodyMedium)
             }
         },
-        confirmButton = {
-            Button(onClick = onAccept) {
-                Text("أفهم وأتابع")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("عدم الموافقة")
-            }
-        },
+        confirmButton = { Button(onClick = onAccept) { Text("أوافق، افتح إعدادات الإذن") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("ليس الآن") } }
     )
 }

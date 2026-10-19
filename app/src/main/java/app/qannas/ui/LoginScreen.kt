@@ -156,7 +156,7 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
         // لا تقبل نتيجة RPC وحدها؛ لا انتقال قبل أن تكون المهلة الذاكرية صالحة الآن.
         if (!SupabaseClient.hasValidLicense()) {
             SupabaseClient.clearSession()
-            errorMessage = "تعذر تأكيد ترخيص صالح للحساب. أعد تسجيل الدخول ثم حاول مجدداً."
+            errorMessage = "تعذر تأكيد صلاحية الوصول لحسابك. سجّل الدخول مجدداً ثم حاول."
             journey = AuthJourney.Idle
             return
         }
@@ -184,7 +184,7 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
             onSuccess = { offer = it },
             onFailure = {
                 offer = null
-                offerErrorMessage = "تعذر قراءة سياسة التجربة من الخادم. تحقق من الاتصال ثم أعد المحاولة."
+                offerErrorMessage = "تعذر عرض تفاصيل التجربة الآن. تحقق من الاتصال ثم أعد المحاولة."
             }
         )
         loadingOffer = false
@@ -197,7 +197,7 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
                 val adminResult = SupabaseClient.isAdmin(token)
                 if (adminResult.isFailure) {
                     SupabaseClient.clearSession()
-                    errorMessage = "تعذر التحقق من صلاحيات الحساب. تحقق من الاتصال ثم أعد المحاولة."
+                    errorMessage = "تعذر تأكيد حسابك الآن. تحقق من الاتصال ثم أعد المحاولة."
                     return@launch
                 }
                 val accountIsAdmin = adminResult.getOrThrow()
@@ -236,7 +236,7 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
                 throw cancelled
             } catch (_: Exception) {
                 SupabaseClient.clearSession()
-                errorMessage = "تعذر التحقق من الدور والترخيص. تحقق من اتصال الإنترنت ثم أعد المحاولة."
+                errorMessage = "تعذر تأكيد الوصول إلى حسابك. تحقق من اتصال الإنترنت ثم أعد المحاولة."
             } finally {
                 if (journey != AuthJourney.AwaitingAccess && journey != AuthJourney.Idle) {
                     journey = AuthJourney.Idle
@@ -263,7 +263,7 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
                 throw cancelled
             } catch (_: Exception) {
                 SupabaseClient.clearSession()
-                errorMessage = "تعذر إتمام تسجيل الدخول باستخدام Google. تحقق من الاتصال ثم أعد المحاولة."
+                errorMessage = "تعذر إتمام الدخول باستخدام Google. تحقق من الاتصال ثم أعد المحاولة."
             } finally {
                 if (journey == AuthJourney.Authenticating) journey = AuthJourney.Idle
             }
@@ -289,11 +289,11 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
                 otpRequested = true
                 otpValidationRequested = false
                 otpCooldownEndsAt = SystemClock.elapsedRealtime() + OTP_COOLDOWN_MILLIS
-                infoMessage = "أُرسل رمز تحقق من 6 أرقام إلى رقم الجوال."
+                infoMessage = "أرسلنا رمزاً من 6 أرقام إلى جوالك."
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                errorMessage = "تعذر طلب رمز التحقق. تحقق من الاتصال ثم أعد المحاولة."
+                errorMessage = "تعذر إرسال رمز التحقق. تحقق من الاتصال ثم أعد المحاولة."
             } finally {
                 if (journey == AuthJourney.Authenticating) journey = AuthJourney.Idle
             }
@@ -323,7 +323,7 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
                 throw cancelled
             } catch (_: Exception) {
                 SupabaseClient.clearSession()
-                errorMessage = "تعذر التحقق من الرمز. اطلب رمزاً جديداً ثم أعد المحاولة."
+                errorMessage = "تعذر تأكيد الرمز. اطلب رمزاً جديداً ثم أعد المحاولة."
             } finally {
                 if (journey == AuthJourney.Authenticating) journey = AuthJourney.Idle
             }
@@ -346,7 +346,7 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                activationError = "تعذر بدء التجربة. تحقق من الاتصال ثم أعد المحاولة."
+                activationError = "تعذر بدء التجربة الآن. تحقق من الاتصال ثم أعد المحاولة."
             } finally {
                 if (journey != AuthJourney.Idle) journey = AuthJourney.AwaitingAccess
             }
@@ -378,7 +378,7 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                activationError = "تعذر التحقق من كود التفعيل. تحقق من الاتصال ثم أعد المحاولة."
+                activationError = "تعذر تأكيد رمز التفعيل. تحقق من الاتصال ثم أعد المحاولة."
             } finally {
                 if (journey != AuthJourney.Idle) journey = AuthJourney.AwaitingAccess
             }
@@ -447,7 +447,7 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
                             onOpenPurchaseContact = { url ->
                                 runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
                                     .onFailure {
-                                        activationError = "تعذر فتح قناة الاشتراك. راجع الإدارة أو أعد المحاولة."
+                                        activationError = "تعذر فتح قناة التواصل. أعد المحاولة أو تواصل مع الإدارة."
                                     }
                             },
                             onCancel = ::abandonAccess
@@ -512,7 +512,7 @@ private fun AuthBrandHero() {
                 Box(Modifier.padding(20.dp)) { QannasBrand() }
             }
             Text(
-                text = "سجّل عبر Google أو رقم جوال سعودي، ثم نتحقق من الدور والترخيص قبل فتح أي لوحة.",
+                text = "تابع عبر Google أو رقم جوالك السعودي، ثم استعد لضبط فرصك والاستفادة من أدوات قناص.",
                 style = MaterialTheme.typography.bodyMedium
             )
         }
@@ -541,12 +541,12 @@ private fun AuthenticationCard(
 ) {
     QannasCard(
         title = "تسجيل الدخول",
-        subtitle = "استخدم طريقة هوية واحدة آمنة. لا نطلب بيانات دخول تقليدية في تطبيق العميل.",
+        subtitle = "اختر الطريقة الأنسب لتأكيد هويتك وحماية الوصول إلى حسابك.",
         icon = Icons.Outlined.Login
     ) {
         QannasSectionTitle(
             title = "المتابعة باستخدام Google",
-            subtitle = "تظهر نافذة Google الرسمية عند اكتمال إعداد المزوّد."
+            subtitle = "تفتح نافذة Google لإتمام الدخول إلى حسابك."
         )
         Button(
             onClick = onGoogle,
@@ -569,7 +569,7 @@ private fun AuthenticationCard(
 
         QannasSectionTitle(
             title = "أو باستخدام رقم الجوال السعودي",
-            subtitle = if (otpRequested) "أدخل الرمز المكوّن من 6 أرقام الذي وصلك." else "نرسل رمز تحقق إلى جوالك عبر خدمة الحساب. لا يُحفظ الرمز في إعدادات الجهاز؛ يحتفظ الخادم برقم الحساب للتحقق والترخيص."
+            subtitle = if (otpRequested) "أدخل الرمز المكوّن من 6 أرقام الذي وصلك." else "نرسل رمزاً لمرة واحدة إلى جوالك. رقم الجوال محفوظ بأمان في حسابك لتأكيد هويتك والوصول إليه عند الحاجة."
         )
         OutlinedTextField(
             value = phone,
@@ -671,13 +671,13 @@ private fun PendingAccessCard(
     onCancel: () -> Unit
 ) {
     QannasCard(
-        title = "تأكيد الوصول",
-        subtitle = "أصبح حسابك جاهزًا. اكتشف قناص بتجربة إن كانت متاحة لحسابك، أو فعّل وصولك وفق خيارات هذه النسخة.",
+        title = "ابدأ مع قناص",
+        subtitle = "رتّب الفرص بما يناسبك عبر المرشحات والشروط، وراجع العائد المعروض ووقت العرض قبل اتخاذ قرارك.",
         icon = Icons.Outlined.Key
     ) {
-        QannasStatusPill(text = "بانتظار ترخيص صالح", ready = false)
+        QannasStatusPill(text = "بانتظار تفعيل الوصول", ready = false)
         if (loadingOffer) {
-            QannasStatusPill(text = "جارٍ قراءة سياسة التجربة…", ready = false)
+            QannasStatusPill(text = "جارٍ تجهيز تفاصيل التجربة…", ready = false)
         }
         offerError?.let {
             QannasMessage(message = it, isError = true)
@@ -685,13 +685,13 @@ private fun PendingAccessCard(
                 onClick = onRetryOffer,
                 enabled = !isBusy && !loadingOffer,
                 modifier = Modifier.align(Alignment.CenterHorizontally).heightIn(min = 48.dp)
-            ) { Text("إعادة قراءة السياسة") }
+            ) { Text("إعادة المحاولة") }
         }
 
         if (showTrial) {
             QannasSectionTitle(
-                title = "تجربة متاحة",
-                subtitle = "التجربة متاحة وفق سياسة الخادم لمدة ${offer?.trialDays} أيام وتبدأ مرة واحدة فقط بعد تأكيدك."
+                title = "تجربة متاحة لحسابك",
+                subtitle = "جرّب أدوات الفرز والشروط، وراجع العائد ووقت العرض. التجربة لمدة ${offer?.trialDays} يومًا وتبدأ فقط بعد ضغطك على الزر."
             )
             Button(
                 onClick = onStartTrial,
@@ -707,7 +707,7 @@ private fun PendingAccessCard(
                     Spacer(Modifier.padding(start = 10.dp))
                     Text("جارٍ تأكيد التجربة…")
                 } else {
-                    Text("بدء التجربة")
+                    Text("ابدأ التجربة")
                 }
             }
         }
@@ -728,7 +728,7 @@ private fun PendingAccessCard(
         } else {
             // لا سعر خادمي ولا كود ولا رابط/CTA خارجي قبل تكامل Play Billing والتحقق الخادمي.
             QannasMessage(
-                message = "الاشتراك عبر Google Play غير مهيأ حالياً. لا يمكن إتمام شراء من هذه الشاشة."
+                message = "لا تتوفر طريقة شراء داخل التطبيق حالياً. لن نطلب رمز تفعيل أو نحيلك إلى دفع خارج التطبيق هنا."
             )
             actionError?.let { QannasMessage(message = it, isError = true) }
         }
@@ -754,24 +754,24 @@ private fun DirectAccessOptions(
     onOpenPurchaseContact: (String) -> Unit
 ) {
     QannasSectionTitle(
-        title = "اشتراك الإدارة",
+        title = "اشتراك قناص",
         subtitle = offer?.let {
-            "سعر الاشتراك ${formatSarMinor(it.priceMinor)} لمدة ${it.subscriptionDays} يومًا. راجع السعر النهائي والضرائب، إن انطبقت، مع الإدارة قبل الدفع."
-        } ?: "اقرأ سياسة الخادم لإظهار تفاصيل الاشتراك المتاحة."
+            "السعر ${formatOfferPrice(it.priceMinor, it.currency)} لمدة ${it.subscriptionDays} يومًا. قبل الدفع، راجع السعر والمدة مع الإدارة."
+        } ?: "لا نستطيع عرض السعر أو المدة الآن. أعد المحاولة قبل اتخاذ قرار الاشتراك."
     )
     offer?.purchaseContactUrl?.let { url ->
         TextButton(
             onClick = { onOpenPurchaseContact(url) },
             enabled = !isBusy,
             modifier = Modifier.heightIn(min = 48.dp)
-        ) { Text("التواصل مع الإدارة للاشتراك") }
+        ) { Text("التواصل مع الإدارة") }
     }
     OutlinedTextField(
         value = activationCode,
         onValueChange = onActivationCodeChange,
         enabled = !isBusy,
         singleLine = true,
-        label = { Text("كود التفعيل") },
+        label = { Text("رمز التفعيل") },
         placeholder = { Text("XXXX-XXXX-XXXX-XXXX") },
         leadingIcon = { Icon(Icons.Outlined.Key, contentDescription = null) },
         isError = activationCodeError != null,
@@ -797,7 +797,7 @@ private fun DirectAccessOptions(
             Spacer(Modifier.padding(start = 10.dp))
             Text("جارٍ التحقق…")
         } else {
-            Text("تفعيل والتحقق")
+            Text("تفعيل الوصول")
         }
     }
 }
@@ -836,19 +836,23 @@ internal object SaudiLoginInput {
 }
 
 private fun canStartTrial(snapshot: app.qannas.network.SubscriptionSnapshot?, offer: PublicOffer?): Boolean =
-    snapshot?.trialEligible == true && snapshot.trialEnabled == true && offer?.trialEnabled == true
+    snapshot?.trialEligible == true &&
+        snapshot.trialEnabled == true &&
+        offer?.trialEnabled == true &&
+        offer.trialDays > 0
 
-private fun formatSarMinor(minor: Int): String {
+private fun formatOfferPrice(minor: Int, currency: String): String {
     val riyals = minor / 100
     val halalas = (minor % 100).toString().padStart(2, '0')
-    return "$riyals.$halalas ر.س"
+    val currencyLabel = if (currency.equals("SAR", ignoreCase = true)) "ر.س" else currency
+    return "$riyals.$halalas $currencyLabel"
 }
 
 private fun googleErrorMessage(error: Throwable?): String = when (error?.message) {
     "تسجيل Google غير مهيأ؛ يلزم GOOGLE_WEB_CLIENT_ID صالح" ->
-        "تسجيل Google غير مهيأ لهذا الإصدار. استخدم رقم الجوال أو تواصل مع الإدارة."
+        "تسجيل Google غير متاح الآن. استخدم رقم الجوال أو أعد المحاولة لاحقاً."
     "تم إلغاء تسجيل الدخول باستخدام Google" -> "أُلغي تسجيل الدخول باستخدام Google. يمكنك المحاولة مجدداً."
-    else -> "تعذر إتمام تسجيل الدخول باستخدام Google. تأكد من الإعداد والاتصال ثم أعد المحاولة."
+    else -> "تعذر إتمام الدخول باستخدام Google. تحقق من الاتصال ثم أعد المحاولة."
 }
 
 private fun otpRequestErrorMessage(error: Throwable?): String = when (error?.message) {
@@ -870,28 +874,28 @@ private fun licenseErrorMessage(error: Throwable?): String = when (error?.messag
     "حساب السائق غير مكتمل؛ أعد تسجيل الدخول أو تواصل مع الإدارة",
     "حساب السائق غير مكتمل؛ تواصل مع الإدارة",
     "يلزم تحديث التطبيق قبل استخدام الخدمة" -> error.message.orEmpty()
-    else -> "تعذر التحقق من حالة الاشتراك. تحقق من الاتصال ومن تحديث التطبيق ثم أعد المحاولة."
+    else -> "تعذر تأكيد حالة الاشتراك. تحقق من الاتصال ثم أعد المحاولة."
 }
 
 private fun trialErrorMessage(error: Throwable?): String = when (error?.message) {
-    "تعذر بدء التجربة" -> "لا يمكن بدء التجربة وفق سياسة الخادم الحالية."
-    "تحقق من الترخيص والجهاز قبل بدء التجربة" -> "تحقق من الترخيص والجهاز قبل بدء التجربة."
+    "تعذر بدء التجربة" -> "لا يمكن بدء التجربة لحسابك الآن."
+    "تحقق من الترخيص والجهاز قبل بدء التجربة" -> "سجّل الدخول مجدداً ثم أعد محاولة بدء التجربة."
     "تم تجاوز حد المحاولات؛ يرجى الانتظار" -> "تم تجاوز حد المحاولات. انتظر قبل إعادة المحاولة."
-    else -> "تعذر بدء التجربة. تحقق من الاتصال ثم أعد المحاولة."
+    else -> "تعذر بدء التجربة الآن. تحقق من الاتصال ثم أعد المحاولة."
 }
 
 private fun activationErrorMessage(error: Throwable?): String = when (error?.message) {
-    "كود التفعيل غير صالح", "الكود غير صحيح أو استُخدم مسبقاً" -> "كود التفعيل غير صالح. راجعه ثم أعد المحاولة."
-    "انتهت الجلسة؛ سجّل الدخول من جديد" -> "انتهت جلسة التفعيل. سجّل الدخول من جديد."
-    else -> "تعذر قبول كود التفعيل. راجع الكود والاتصال ثم أعد المحاولة."
+    "كود التفعيل غير صالح", "الكود غير صحيح أو استُخدم مسبقاً" -> "رمز التفعيل غير صالح. راجعه ثم أعد المحاولة."
+    "انتهت الجلسة؛ سجّل الدخول من جديد" -> "انتهت جلسة الدخول. سجّل الدخول من جديد."
+    else -> "تعذر قبول رمز التفعيل. راجع الرمز والاتصال ثم أعد المحاولة."
 }
 
 private fun authProgressLabel(journey: AuthJourney): String = when (journey) {
     AuthJourney.Authenticating -> "جارٍ التحقق…"
-    AuthJourney.CheckingRole -> "جارٍ التحقق من الدور…"
-    AuthJourney.CheckingLicense -> "جارٍ التحقق من الترخيص…"
+    AuthJourney.CheckingRole -> "جارٍ مراجعة الحساب…"
+    AuthJourney.CheckingLicense -> "جارٍ تأكيد الوصول…"
     AuthJourney.StartingTrial -> "جارٍ تأكيد التجربة…"
     AuthJourney.ActivatingCode -> "جارٍ تفعيل الاشتراك…"
-    AuthJourney.AwaitingAccess -> "بانتظار ترخيص"
+    AuthJourney.AwaitingAccess -> "بانتظار التفعيل"
     AuthJourney.Idle -> "متابعة"
 }
