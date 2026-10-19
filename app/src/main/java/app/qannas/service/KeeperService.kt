@@ -31,7 +31,7 @@ class KeeperService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        if (!SupabaseClient.hasValidLicense() || !ServicesSafetyPolicy.canRunForegroundService(
+        if (!Settings.a11yDisclosureAccepted || !SupabaseClient.hasValidLicense() || !ServicesSafetyPolicy.canRunForegroundService(
                 isExplicitlyEnabled = Settings.isActive,
                 sdkInt = Build.VERSION.SDK_INT,
                 notificationPermissionGranted = hasNotificationPermission(),
@@ -58,7 +58,7 @@ class KeeperService : Service() {
                     while (isActive) {
                         delay(60_000)
                         SupabaseClient.revalidateLicense()
-                        if (!Settings.isActive || !hasNotificationPermission() || !SupabaseClient.hasValidLicense()) {
+                        if (!Settings.a11yDisclosureAccepted || !Settings.isActive || !hasNotificationPermission() || !SupabaseClient.hasValidLicense()) {
                             Settings.isActive = false
                             stopForeground(STOP_FOREGROUND_REMOVE)
                             stopSelf()

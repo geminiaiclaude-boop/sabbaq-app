@@ -6,7 +6,7 @@ import test from 'node:test';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const sourceAdmin = join(repo, 'admin');
-const bundledAdmin = join(repo, 'app', 'src', 'main', 'assets', 'admin');
+const bundledAdmin = join(repo, 'app', 'src', 'direct', 'assets', 'admin');
 const read = (base, name) => readFileSync(join(base, name), 'utf8');
 
 const files = ['index.html', 'app.js', 'styles.css', 'config.example.js'];
@@ -71,6 +71,56 @@ test('التحقق والتصدير محميان من قيم غير صالحة �
     assert.match(app, /toCsvField/);
     assert.match(app, /\[=\+\\-@\]/);
     assert.match(app, /URL\.revokeObjectURL/);
+});
+
+test('سياسة العرض التجارية تستخدم RPC ذريًا وحقولها الفعلية ولا تعود إلى trial_days القديم', () => {
+    const html = read(sourceAdmin, 'index.html');
+    const app = read(sourceAdmin, 'app.js');
+
+    for (const id of [
+        'commercial-policy-tab', 'commercial-policy-form', 'trial-enabled', 'trial-days',
+        'subscription-price-sar', 'subscription-days', 'purchase-contact-url',
+        'save-commercial-policy', 'retry-commercial-policy'
+    ]) {
+        assert.match(html, new RegExp(`id="${id}"`), `الحقل ${id} مفقود من لوحة السياسة`);
+    }
+
+    assert.match(app, /db\.rpc\('admin_commercial_policy'\)/);
+    assert.match(app, /db\.rpc\('admin_set_commercial_policy', \{\s*\n\s*p_trial_enabled: values\.trialEnabled,\s*\n\s*p_trial_days: values\.trialDays,\s*\n\s*p_price_minor: values\.priceMinor,\s*\n\s*p_subscription_days: values\.subscriptionDays,\s*\n\s*p_purchase_contact_url: values\.purchaseContactUrl/s);
+    assert.doesNotMatch(app, /admin_set_config/);
+    assert.match(app, /function parseSarToMinor\(/);
+    assert.match(app, /HALALAS_PER_SAR/);
+    assert.match(app, /Number\.isSafeInteger/);
+    assert.doesNotMatch(app, /parseFloat\(|\.toFixed\(/);
+    assert.match(app, /function isValidHttpsContact\(/);
+});
+
+test('سياسة العرض لا تُعرض أو تُحفظ قبل تحقق المشرف وتتعطل عند فشل التأكيد', () => {
+    const app = read(sourceAdmin, 'app.js');
+
+    assert.match(app, /adminAuthorized: false/);
+    assert.match(app, /state\.adminAuthorized = true/);
+    assert.match(app, /if \(!state\.adminAuthorized\)/);
+    assert.match(app, /await loadCommercialPolicy\(\{ announce: false \}\)/);
+    assert.match(app, /if \(!state\.commercialPolicyLoaded \|\| !state\.commercialPolicy\)/);
+    assert.match(app, /handleCommercialPolicyFailure\(error, 'لم نتأكد من حفظ السياسة/);
+    assert.match(app, /invalidateCommercialPolicy\(fallbackMessage\)/);
+    assert.match(app, /setPolicyFieldError\(/);
+    assert.match(app, /retryCommercialPolicy/);
+});
+
+test('جسر جلسة التطبيق الأصلية أحادي الاستخدام ومرتبط بـ qannas.local فقط', () => {
+    const app = read(sourceAdmin, 'app.js');
+
+    assert.match(app, /window\.QANNAS_ACCEPT_NATIVE_SESSION = acceptNativeSession/);
+    assert.match(app, /window\.location\.origin === 'https:\/\/qannas\.local'/);
+    assert.match(app, /state\.nativeAccessToken = nativeAccessToken/);
+    assert.match(app, /await verifyAdminSession\(\)/);
+    assert.match(app, /delete window\.QANNAS_ACCEPT_NATIVE_SESSION/);
+    assert.match(app, /autoRefreshToken: nativeAccessToken === null/);
+    assert.match(app, /db\.auth\.getUser\(state\.nativeAccessToken\)/);
+    assert.match(app, /clearNativeAccessState\(\)/);
+    assert.doesNotMatch(app, /auth\.setSession\(|refresh_token/);
 });
 
 test('التحقق من إعداد Supabase وتحييد CSV يعملان بالقيم الحدّية', () => {

@@ -1,7 +1,16 @@
 package app.qannas.network
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.os.SystemClock
+import androidx.credentials.CredentialManager
+import androidx.credentials.GetCredentialRequest
+import androidx.credentials.exceptions.GetCredentialCancellationException
+import androidx.credentials.exceptions.GetCredentialException
 import app.qannas.BuildConfig
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -25,9 +34,34 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.ResponseBody
 import java.io.ByteArrayOutputStream
 import java.io.IOException
+import java.security.MessageDigest
+import java.security.SecureRandom
 import java.time.Instant
+import java.util.Base64
 import java.util.Locale
 import java.util.concurrent.TimeUnit
+
+/** العرض العام الوحيد القادم من الخادم؛ السعر بالهللات ولا يُعامل كدفعة محلية. */
+data class PublicOffer(
+    val trialEnabled: Boolean,
+    val trialDays: Int,
+    val priceMinor: Int,
+    val currency: String,
+    val subscriptionDays: Int,
+    val purchaseContactUrl: String? = null
+)
+
+/** لقطة قراءة فقط من آخر `license_status` ناجح للجلسة الذاكرية الحالية. */
+data class SubscriptionSnapshot(
+    val state: LicenseState,
+    val serverTime: Instant?,
+    val validUntil: Instant?,
+    val trialUntil: Instant?,
+    val proUntil: Instant?,
+    val trialEligible: Boolean?,
+    val trialEnabled: Boolean?,
+    val trialDays: Int?
+)
 
 /**
  * عميل API عديم الحالة الدائمة: لا تُخزَّن رموز الوصول أو معرّفات الأجهزة على القرص.
@@ -42,6 +76,11 @@ object SupabaseClient {
     private const val MAX_NAME_LENGTH = 160
     private const val MAX_PHONE_LENGTH = 64
     private const val MAX_CODE_LENGTH = 128
+    private const val MIN_OFFER_DAYS = 1
+    private const val MAX_OFFER_DAYS = 365
+    // حد عرض دفاعي مطابق لسياسة الخادم: لا يقبل العميل قيمة سالبة/صفرية أو غير معقولة.
+    private const val MIN_PRICE_MINOR = 1
+    private const val MAX_PRICE_MINOR = 100_000_000
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
@@ -80,6 +119,193 @@ object SupabaseClient {
     /** يمكّن مسار تسجيل خروج مستقبلي من إبطال الجلسة الذاكرية صراحةً. */
     fun clearSession() {
         sessions.clear()
+    }
+
+    /** Only the trusted, local admin WebView may consume this short-lived token. */
+    suspend fun authorizedAdminWebSession(): Result<String> {
+        val snapshot = sessions.snapshot()
+            ?: return invalidInput("انتهت جلسة الإدارة؛ سجّل الدخول من جديد")
+        val authorization = isAdmin(snapshot.token)
+        if (authorization.isFailure) return Result.failure(authorization.exceptionOrNull()!!)
+        if (authorization.getOrNull() != true) return invalidInput("لا تملك صلاحية الإدارة")
+        val current = sessions.snapshot()
+        if (current?.generation != snapshot.generation || current.token != snapshot.token) return staleSessionFailure()
+        return Result.success(snapshot.token)
+    }
+
+    /**
+     * يبدأ Google Credential Manager من Activity فقط، ثم يستبدل Google ID token بجلسة
+     * Supabase ويفحص إنشاء ملف السائق قبل كشف رمز الجلسة للمستدعي.
+     */
+    suspend fun signInWithGoogle(context: Context): Result<String> {
+        val webClientId = NetworkInputValidator.googleWebClientId(BuildConfig.GOOGLE_WEB_CLIENT_ID)
+            ?: return invalidInput("الدخول باستخدام Google غير متاح في هذا الإصدار. حدّث التطبيق أو جرّب رقم الجوال.")
+        val activity = context.findActivity()
+            ?: return invalidInput("تسجيل Google يجب أن يبدأ من شاشة التطبيق")
+        val attempt = sessions.beginAuthentication()
+        val nonce = GoogleNonce.create()
+        val googleCredential = try {
+            val option = GetGoogleIdOption.Builder()
+                .setFilterByAuthorizedAccounts(false)
+                .setAutoSelectEnabled(false)
+                .setServerClientId(webClientId)
+                .setNonce(nonce.sha256)
+                .build()
+            val request = GetCredentialRequest.Builder()
+                .addCredentialOption(option)
+                .build()
+            val credential = CredentialManager.create(activity).getCredential(activity, request).credential
+            if (credential.type != GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
+                return Result.failure(ClientRequestException("لم نتمكن من تأكيد حساب Google. اختر حسابك وحاول مجددًا."))
+            }
+            GoogleIdTokenCredential.createFrom(credential.data)
+        } catch (_: GetCredentialCancellationException) {
+            return Result.failure(ClientRequestException("تم إلغاء تسجيل الدخول باستخدام Google"))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: GetCredentialException) {
+            return Result.failure(ClientRequestException("تعذر الحصول على هوية Google؛ حاول مجدداً"))
+        } catch (_: Exception) {
+            return Result.failure(ClientRequestException("تعذر بدء تسجيل الدخول باستخدام Google"))
+        }
+        val idToken = NetworkInputValidator.token(googleCredential.idToken)
+            ?: return invalidInput("لم نتمكن من تأكيد حساب Google. اختر حسابك وحاول مجددًا.")
+        val displayName = NetworkInputValidator.displayName(googleCredential.displayName)
+
+        return networkCall {
+            val url = endpoint("auth/v1/token").newBuilder()
+                .addQueryParameter("grant_type", "id_token")
+                .build()
+            val request = requestBuilder(url)
+                .post(
+                    buildJsonObject {
+                        put("provider", "google")
+                        put("id_token", idToken)
+                        put("nonce", nonce.raw)
+                    }.toString().toRequestBody(jsonMediaType)
+                )
+                .build()
+            val response = execute(request)
+            if (!response.isSuccessful) {
+                return@networkCall httpFailure("تبادل هوية Google", response)
+            }
+            val token = accessTokenFrom(response.body)
+                ?: return@networkCall Result.failure(ClientRequestException("لم يكتمل تسجيل الدخول. حاول مجددًا."))
+            val profile = ensureDriverProfile(token, displayName)
+            if (profile.isFailure) {
+                return@networkCall Result.failure(profile.exceptionOrNull()!!)
+            }
+            if (!sessions.activate(attempt, token)) return@networkCall staleSessionFailure()
+            Result.success(token)
+        }
+    }
+
+    /** يرسل تحدي OTP إلى رقم سعودي بعد تحويله فقط إلى +9665XXXXXXXX. */
+    suspend fun requestPhoneOtp(phone: String): Result<Unit> {
+        val safePhone = NetworkInputValidator.saudiE164(phone)
+            ?: return invalidInput("أدخل رقم جوالك السعودي المكوّن من 10 أرقام ويبدأ بـ05.")
+        val attempt = sessions.beginAuthentication()
+        return networkCall {
+            val request = requestBuilder(endpoint("auth/v1/otp"))
+                .post(
+                    buildJsonObject {
+                        put("phone", safePhone)
+                        put("create_user", true)
+                    }.toString().toRequestBody(jsonMediaType)
+                )
+                .build()
+            val response = execute(request)
+            if (!response.isSuccessful) return@networkCall httpFailure("إرسال رمز التحقق", response)
+            if (!sessions.markPhoneOtpRequested(attempt, safePhone)) return@networkCall staleSessionFailure()
+            Result.success(Unit)
+        }
+    }
+
+    /**
+     * يتحقق من ستة أرقام فقط ثم ينشئ ملف السائق قبل تفعيل الجلسة الذاكرية.
+     * لا يُحفظ الرمز أو nonce أو أي token على القرص.
+     */
+    suspend fun verifyPhoneOtp(phone: String, code: String): Result<String> {
+        val safePhone = NetworkInputValidator.saudiE164(phone)
+            ?: return invalidInput("أدخل رقم جوالك السعودي المكوّن من 10 أرقام ويبدأ بـ05.")
+        val safeCode = NetworkInputValidator.otpCode(code)
+            ?: return invalidInput("رمز التحقق يجب أن يتكون من 6 أرقام")
+        val attempt = sessions.phoneOtpAttempt(safePhone)
+            ?: return Result.failure(ClientRequestException("اطلب رمز تحقق جديداً قبل التحقق"))
+
+        return networkCall {
+            val request = requestBuilder(endpoint("auth/v1/verify"))
+                .post(
+                    buildJsonObject {
+                        put("type", "sms")
+                        put("phone", safePhone)
+                        put("token", safeCode)
+                    }.toString().toRequestBody(jsonMediaType)
+                )
+                .build()
+            val response = execute(request)
+            if (!response.isSuccessful) return@networkCall httpFailure("التحقق من الرمز", response)
+            val token = accessTokenFrom(response.body)
+                ?: return@networkCall Result.failure(ClientRequestException("لم يكتمل تسجيل الدخول. حاول مجددًا."))
+            val profile = ensureDriverProfile(token)
+            if (profile.isFailure) {
+                return@networkCall Result.failure(profile.exceptionOrNull()!!)
+            }
+            if (!sessions.activate(attempt, token)) return@networkCall staleSessionFailure()
+            Result.success(token)
+        }
+    }
+
+    /** يقرأ سياسة الاشتراك العامة من RPC بلا جلسة ولا يقدم بديلاً محلياً عند الفشل. */
+    suspend fun fetchPublicOffer(): Result<PublicOffer> = networkCall {
+        val request = requestBuilder(endpoint("rest/v1/rpc/public_offer"))
+            .post("{}".toRequestBody(jsonMediaType))
+            .build()
+        val response = execute(request)
+        if (!response.isSuccessful) return@networkCall httpFailure("قراءة عرض الاشتراك", response)
+        parsePublicOffer(response.body)?.let { Result.success(it) }
+            ?: Result.failure(ClientRequestException("تعذر عرض تفاصيل الاشتراك الآن. حاول مجددًا بعد قليل."))
+    }
+
+    /** آخر لقطة `license_status` تخص رمز الجلسة الموجود في الذاكرة فقط. */
+    fun subscriptionSnapshot(): SubscriptionSnapshot? = sessions.subscriptionSnapshot()
+
+    /**
+     * يبدأ التجربة على الخادم للجهاز المربوط فقط. الرد `ok` لا يكوّن lease محلياً؛
+     * يجب أن يعقبَه `license_status` ناجح، وتكون قيمة النتيجة هي نتيجة إعادة الفحص.
+     */
+    suspend fun startTrial(): Result<Boolean> {
+        val session = sessions.snapshot()
+            ?: return Result.failure(ClientRequestException("انتهت الجلسة؛ سجّل الدخول من جديد"))
+        val deviceId = session.deviceId
+            ?: return Result.failure(ClientRequestException("أعد تسجيل الدخول قبل بدء تجربتك."))
+        return networkCall {
+            val request = authenticatedRequest(
+                endpoint("rest/v1/rpc/start_trial"),
+                session.token,
+                buildJsonObject {
+                    put("p_device_id", deviceId)
+                    put("p_version_code", BuildConfig.VERSION_CODE)
+                }.toString().toRequestBody(jsonMediaType)
+            )
+            val response = execute(request)
+            if (response.code == 401) sessions.clearIfMatches(session.token)
+            if (!response.isSuccessful) return@networkCall httpFailure("بدء التجربة", response)
+            val ok = try {
+                responseObject(response.body)["ok"]?.jsonPrimitive?.booleanOrNull == true
+            } catch (_: Exception) {
+                false
+            }
+            if (!ok) return@networkCall Result.failure(ClientRequestException("تعذر بدء التجربة"))
+            Result.success(Unit)
+        }.fold(
+            onSuccess = {
+                val current = sessions.snapshot()
+                if (current?.token != session.token || current.deviceId != deviceId) staleSessionFailure()
+                else revalidateLicense()
+            },
+            onFailure = { Result.failure(it) }
+        )
     }
 
     suspend fun signUp(email: String, password: String, name: String, phone: String): Result<String> {
@@ -191,7 +417,7 @@ object SupabaseClient {
             }
 
             val accessToken = accessTokenFrom(response.body)
-                ?: return@networkCall Result.failure(ClientRequestException("لم تُرجع الخدمة جلسة صالحة"))
+                ?: return@networkCall Result.failure(ClientRequestException("لم يكتمل تسجيل الدخول. حاول مجددًا."))
             if (!sessions.activate(attempt, accessToken)) {
                 return@networkCall staleSessionFailure()
             }
@@ -310,6 +536,50 @@ object SupabaseClient {
         }
     }
 
+    /** RPC واحد مشترك لكل هويات العملاء الجديدة؛ لا يفعّل الجلسة أو الرخصة بذاته. */
+    private fun ensureDriverProfile(token: String, displayName: String? = null): Result<Unit> {
+        val request = authenticatedRequest(
+            endpoint("rest/v1/rpc/ensure_driver_profile"),
+            token,
+            buildJsonObject {
+                displayName?.let { put("p_display_name", it) }
+            }.toString().toRequestBody(jsonMediaType)
+        )
+        val response = execute(request)
+        if (response.code == 401) sessions.clearIfMatches(token)
+        if (!response.isSuccessful) return httpFailure("إعداد ملف السائق", response)
+        return Result.success(Unit)
+    }
+
+    private fun parsePublicOffer(body: String): PublicOffer? {
+        return try {
+        val response = responseObject(body)
+        val trialEnabled = response["trial_enabled"]?.jsonPrimitive?.booleanOrNull ?: return null
+        val trialDays = response["trial_days"]?.jsonPrimitive?.intOrNull
+            ?.takeIf { it in MIN_OFFER_DAYS..MAX_OFFER_DAYS } ?: return null
+        val priceMinor = response["price_minor"]?.jsonPrimitive?.intOrNull
+            ?.takeIf { it in MIN_PRICE_MINOR..MAX_PRICE_MINOR } ?: return null
+        val currency = response["currency"]?.jsonPrimitive?.contentOrNull
+            ?.trim()?.uppercase(Locale.ROOT)
+            ?.takeIf { it == "SAR" } ?: return null
+        val subscriptionDays = response["subscription_days"]?.jsonPrimitive?.intOrNull
+            ?.takeIf { it in MIN_OFFER_DAYS..MAX_OFFER_DAYS } ?: return null
+        val purchaseContactUrl = response["purchase_contact_url"]?.jsonPrimitive?.contentOrNull
+            ?.trim()?.takeIf { it.isNotEmpty() }
+        if (purchaseContactUrl != null && !NetworkInputValidator.httpsUrl(purchaseContactUrl)) return null
+        PublicOffer(
+            trialEnabled = trialEnabled,
+            trialDays = trialDays,
+            priceMinor = priceMinor,
+            currency = currency,
+            subscriptionDays = subscriptionDays,
+            purchaseContactUrl = purchaseContactUrl
+        )
+    } catch (_: Exception) {
+        null
+    }
+    }
+
     private fun requestBuilder(url: HttpUrl): Request.Builder = Request.Builder()
         .url(url)
         .header("apikey", apiKey())
@@ -354,6 +624,7 @@ object SupabaseClient {
     ): Result<Boolean> {
         val status = parseLicenseStatus(body)
             ?: return Result.failure(ClientRequestException("استجابة حالة الترخيص غير صالحة"))
+        if (!sessions.updateSubscriptionIfMatches(token, status)) return staleSessionFailure()
 
         if (!status.state.canBindCandidateDevice) {
             sessions.invalidateLicenseIfMatches(token)
@@ -390,7 +661,13 @@ object SupabaseClient {
                 state = state,
                 serverTime = response.instantOrNull("server_time"),
                 validUntil = response.instantOrNull("valid_until"),
-                minimumVersionCode = response["min_version_code"]?.jsonPrimitive?.intOrNull
+                minimumVersionCode = response["min_version_code"]?.jsonPrimitive?.intOrNull,
+                trialUntil = response.instantOrNull("trial_until"),
+                proUntil = response.instantOrNull("pro_until"),
+                trialEligible = response["trial_eligible"]?.jsonPrimitive?.booleanOrNull,
+                trialEnabled = response["trial_enabled"]?.jsonPrimitive?.booleanOrNull,
+                trialDays = response["trial_days"]?.jsonPrimitive?.intOrNull
+                    ?.takeIf { it in MIN_OFFER_DAYS..MAX_OFFER_DAYS }
             )
         } catch (_: Exception) {
             null
@@ -408,11 +685,11 @@ object SupabaseClient {
 
     private fun licenseResponseFailure(status: LicenseStatus): ClientRequestException = when {
         status.minimumVersionCode == null || status.minimumVersionCode < 1 ->
-            ClientRequestException("استجابة الترخيص لا تتضمن الحد الأدنى للإصدار")
+            ClientRequestException("تعذر التحقق من اشتراكك الآن. حاول مجددًا.")
         BuildConfig.VERSION_CODE < status.minimumVersionCode ->
             ClientRequestException("يلزم تحديث التطبيق قبل استخدام الخدمة")
         status.serverTime == null || status.validUntil == null ->
-            ClientRequestException("استجابة الترخيص لا تتضمن تاريخ صلاحية صالحاً")
+            ClientRequestException("تعذر تأكيد مدة اشتراكك الآن. حاول مجددًا.")
         else -> ClientRequestException("الترخيص غير صالح أو انتهت صلاحيته")
     }
 
@@ -424,17 +701,17 @@ object SupabaseClient {
         LicenseState.DEVICE_MISMATCH -> LicenseStateException(state, "الحساب مرتبط بجهاز آخر")
         LicenseState.BANNED, LicenseState.REJECTED ->
             LicenseStateException(state, "تم حظر أو رفض الحساب")
-        else -> LicenseStateException(state, "حالة الترخيص غير قابلة للاستخدام")
+        else -> LicenseStateException(state, "اشتراكك غير متاح للاستخدام الآن. راجع صفحة حسابك.")
     }
 
     private fun responseObject(body: String): JsonObject {
         val element = try {
             json.parseToJsonElement(body)
         } catch (_: Exception) {
-            throw ClientRequestException("استجابة الخادم غير صالحة")
+            throw ClientRequestException("تعذر إكمال هذه الخطوة. حاول مجددًا بعد قليل.")
         }
         return element.asResponseObject()
-            ?: throw ClientRequestException("استجابة الخادم غير صالحة")
+            ?: throw ClientRequestException("تعذر إكمال هذه الخطوة. حاول مجددًا بعد قليل.")
     }
 
     private fun JsonElement.asResponseObject(): JsonObject? = when (this) {
@@ -468,15 +745,10 @@ object SupabaseClient {
     }
 
     private fun httpFailure(operation: String, response: HttpResponse): Result<Nothing> {
-        val message = when (response.code) {
-            401 -> "انتهت الجلسة أو بيانات الدخول غير صحيحة"
-            403 -> "لا تملك صلاحية تنفيذ هذه العملية"
-            408, 504 -> "انتهت مهلة الاتصال بالخدمة؛ حاول لاحقاً"
-            429 -> "تم تجاوز حد المحاولات؛ يرجى الانتظار"
-            in 500..599 -> "الخدمة غير متاحة مؤقتاً؛ حاول لاحقاً"
-            else -> serverErrorDetail(response.body)?.let { "تعذر $operation: $it" }
-                ?: "تعذر $operation (رمز HTTP ${response.code})"
-        }
+        val providerCode = runCatching {
+            json.parseToJsonElement(response.body).jsonObject["error_code"]?.jsonPrimitive?.contentOrNull
+        }.getOrNull()
+        val message = CustomerErrorMessages.forResponse(response.code, providerCode, serverErrorDetail(response.body), operation)
         return Result.failure(ClientRequestException(message))
     }
 
@@ -502,7 +774,7 @@ object SupabaseClient {
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: ResponseTooLargeException) {
-            Result.failure(ClientRequestException("استجابة الخادم تجاوزت الحد الآمن"))
+            Result.failure(ClientRequestException("تعذر إكمال هذه الخطوة. حاول مجددًا بعد قليل."))
         } catch (_: IOException) {
             Result.failure(ClientRequestException("تعذر الاتصال بالخدمة؛ تحقق من الشبكة وحاول لاحقاً"))
         } catch (error: ClientRequestException) {
@@ -515,7 +787,7 @@ object SupabaseClient {
     private fun <T> invalidInput(message: String): Result<T> = Result.failure(ClientRequestException(message))
 
     private fun <T> staleSessionFailure(): Result<T> =
-        Result.failure(ClientRequestException("تغيّرت الجلسة أثناء العملية؛ سجّل الدخول من جديد"))
+        Result.failure(ClientRequestException("أعد تسجيل الدخول لإكمال هذه الخطوة."))
 
     private data class HttpResponse(val code: Int, val body: String) {
         val isSuccessful: Boolean get() = code in 200..299
@@ -560,6 +832,57 @@ internal object NetworkInputValidator {
 
     fun phone(raw: String): String? = normalizedText(raw, 64)
 
+    fun displayName(raw: String?): String? = raw?.let { normalizedText(it, 160) }
+
+    fun googleWebClientId(raw: String?): String? = raw?.trim()?.takeIf {
+        it.length in 1..512 && !it.any(::isControlCharacter)
+    }
+
+    /** يقبل كتابات سعودية مألوفة لكنه يخرج دائماً E.164 السعودي فقط. */
+    fun saudiE164(raw: String): String? {
+        val compact = buildString {
+            raw.trim().forEach { character ->
+                when {
+                    character in '0'..'9' || character == '+' -> append(character)
+                    character in '\u0660'..'\u0669' -> append('0' + (character.code - '\u0660'.code))
+                    character in '\u06f0'..'\u06f9' -> append('0' + (character.code - '\u06f0'.code))
+                    character.isWhitespace() || character == '-' || character == '(' || character == ')' -> Unit
+                    else -> return null
+                }
+            }
+        }
+        val national = when {
+            SAUDI_E164.matches(compact) -> return compact
+            SAUDI_INTL_PREFIX.matches(compact) -> compact.substring(2)
+            SAUDI_COUNTRY_PREFIX.matches(compact) -> compact
+            SAUDI_LOCAL_PREFIX.matches(compact) -> "966${compact.substring(1)}"
+            SAUDI_BARE_PREFIX.matches(compact) -> "966$compact"
+            else -> return null
+        }
+        return "+$national".takeIf(SAUDI_E164::matches)
+    }
+
+    /** يطبع الأرقام العربية إلى ASCII ويرفض أي مسافة/محرف غير الرقم. */
+    fun otpCode(raw: String): String? {
+        val normalized = buildString {
+            raw.trim().forEach { character ->
+                when {
+                    character in '0'..'9' -> append(character)
+                    character in '\u0660'..'\u0669' -> append('0' + (character.code - '\u0660'.code))
+                    character in '\u06f0'..'\u06f9' -> append('0' + (character.code - '\u06f0'.code))
+                    else -> return null
+                }
+            }
+        }
+        return normalized.takeIf(OTP_CODE::matches)
+    }
+
+    fun httpsUrl(raw: String): Boolean {
+        if (raw.length > 2_048 || raw.any(::isControlCharacter)) return false
+        val url = raw.toHttpUrlOrNull() ?: return false
+        return url.isHttps && url.host.isNotBlank() && url.username.isEmpty() && url.password.isEmpty()
+    }
+
     fun deviceId(raw: String?): String? = raw?.let { value ->
         val normalized = value.trim()
         normalized.takeIf {
@@ -578,6 +901,40 @@ internal object NetworkInputValidator {
         character.code < 0x20 || character.code == 0x7f
 
     private fun isControlCharacter(character: Char): Boolean = character.code < 0x20 || character.code == 0x7f
+
+    private val SAUDI_E164 = Regex("^\\+9665\\d{8}$")
+    private val SAUDI_INTL_PREFIX = Regex("^009665\\d{8}$")
+    private val SAUDI_COUNTRY_PREFIX = Regex("^9665\\d{8}$")
+    private val SAUDI_LOCAL_PREFIX = Regex("^05\\d{8}$")
+    private val SAUDI_BARE_PREFIX = Regex("^5\\d{8}$")
+    private val OTP_CODE = Regex("^\\d{6}$")
+}
+
+/** قيمة عابرة فقط: Google يتلقى SHA-256 hex وSupabase يتلقى الأصل لمطابقة nonce. */
+internal data class GoogleNonceValue(val raw: String, val sha256: String)
+
+internal object GoogleNonce {
+    private val secureRandom = SecureRandom()
+
+    fun create(): GoogleNonceValue {
+        val bytes = ByteArray(32)
+        secureRandom.nextBytes(bytes)
+        val raw = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+        return GoogleNonceValue(raw = raw, sha256 = sha256Hex(raw))
+    }
+
+    internal fun sha256Hex(raw: String): String = MessageDigest.getInstance("SHA-256")
+        .digest(raw.toByteArray(Charsets.UTF_8))
+        .joinToString(separator = "") { byte -> "%02x".format(Locale.ROOT, byte.toInt() and 0xff) }
+}
+
+private fun Context.findActivity(): Activity? {
+    var current: Context = this
+    while (current is ContextWrapper) {
+        if (current is Activity) return current
+        current = current.baseContext
+    }
+    return current as? Activity
 }
 
 /** جلسة ومهلة ترخيص محميتان بالقفل نفسه، ولا تُحفظان خارج الذاكرة. */
@@ -588,17 +945,23 @@ internal class AuthSessionStore(
     private val licenseLease = LicenseLease(clock)
     private var generation = 0L
     private var session: SessionSnapshot? = null
+    private var pendingPhoneOtp: PendingPhoneOtp? = null
+    private var subscriptionSnapshot: SubscriptionSnapshot? = null
 
     fun beginAuthentication(): Long = synchronized(lock) {
         generation += 1
         session = null
+        pendingPhoneOtp = null
+        subscriptionSnapshot = null
         licenseLease.invalidate()
         generation
     }
 
     fun activate(attempt: Long, token: String): Boolean = synchronized(lock) {
-        if (attempt != generation) return false
+        if (attempt != generation || session != null) return false
         session = SessionSnapshot(generation = generation, token = token, deviceId = null)
+        pendingPhoneOtp = null
+        subscriptionSnapshot = null
         licenseLease.invalidate()
         true
     }
@@ -607,9 +970,21 @@ internal class AuthSessionStore(
 
     fun isCurrentToken(token: String): Boolean = synchronized(lock) { session?.token == token }
 
+    fun markPhoneOtpRequested(attempt: Long, phone: String): Boolean = synchronized(lock) {
+        if (attempt != generation || session != null) return false
+        pendingPhoneOtp = PendingPhoneOtp(attempt, phone)
+        true
+    }
+
+    fun phoneOtpAttempt(phone: String): Long? = synchronized(lock) {
+        pendingPhoneOtp?.takeIf { it.phone == phone && it.generation == generation }?.generation
+    }
+
     fun monotonicNow(): Long = clock.nowMillis()
 
     fun hasValidLicense(): Boolean = synchronized(lock) { licenseLease.isValid() }
+
+    fun subscriptionSnapshot(): SubscriptionSnapshot? = synchronized(lock) { subscriptionSnapshot }
 
     fun bindDevice(token: String, deviceId: String): Boolean = synchronized(lock) {
         val current = session ?: return false
@@ -630,6 +1005,12 @@ internal class AuthSessionStore(
         licenseLease.replace(status, appVersionCode, requestStartedAt)
     }
 
+    fun updateSubscriptionIfMatches(token: String, status: LicenseStatus): Boolean = synchronized(lock) {
+        if (session?.token != token) return false
+        subscriptionSnapshot = status.toSubscriptionSnapshot()
+        true
+    }
+
     fun invalidateLicenseIfMatches(token: String): Boolean = synchronized(lock) {
         if (session?.token != token) return@synchronized false
         licenseLease.invalidate()
@@ -640,6 +1021,8 @@ internal class AuthSessionStore(
         if (session?.token == token) {
             licenseLease.invalidate()
             session = null
+            pendingPhoneOtp = null
+            subscriptionSnapshot = null
         }
     }
 
@@ -647,11 +1030,26 @@ internal class AuthSessionStore(
         generation += 1
         licenseLease.invalidate()
         session = null
+        pendingPhoneOtp = null
+        subscriptionSnapshot = null
     }
+
+    private data class PendingPhoneOtp(val generation: Long, val phone: String)
 }
 
 internal data class SessionSnapshot(
     val generation: Long,
     val token: String,
     val deviceId: String?
+)
+
+private fun LicenseStatus.toSubscriptionSnapshot(): SubscriptionSnapshot = SubscriptionSnapshot(
+    state = state,
+    serverTime = serverTime,
+    validUntil = validUntil,
+    trialUntil = trialUntil,
+    proUntil = proUntil,
+    trialEligible = trialEligible,
+    trialEnabled = trialEnabled,
+    trialDays = trialDays
 )

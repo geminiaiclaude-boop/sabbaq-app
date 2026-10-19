@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Only debug builds contain this development-only Activity. -->
+        <activity android:name=".ui.DesignPreviewActivity" android:exported="true"
+            android:windowSoftInputMode="adjustResize" />
+    </application>
+</manifest>

@@ -34,13 +34,13 @@ internal object UiFormValidation {
 
     fun filtersError(filters: Filters): String? {
         val values = listOf(filters.minFare, filters.maxFare, filters.minFarePerKm, filters.maxPickupKm, filters.minTripKm, filters.maxTripKm)
-        if (values.any { !it.isNullOrBlank() && (Text.parseNumber(Text.normalize(it))?.signum() ?: -1) < 0 }) return "مرشح رقمي غير صالح"
+        if (values.any { !it.isNullOrBlank() && (Text.parseNumber(Text.normalize(it))?.signum() ?: -1) < 0 }) return "أدخل قيمة صحيحة أكبر من أو تساوي صفرًا."
         fun exceeds(min: String?, max: String?): Boolean {
             val low = min?.let { Text.parseNumber(Text.normalize(it)) } ?: return false
             val high = max?.let { Text.parseNumber(Text.normalize(it)) } ?: return false
             return low > high
         }
-        if (exceeds(filters.minFare, filters.maxFare) || exceeds(filters.minTripKm, filters.maxTripKm)) return "الحد الأدنى أكبر من الحد الأقصى"
+        if (exceeds(filters.minFare, filters.maxFare) || exceeds(filters.minTripKm, filters.maxTripKm)) return "اجعل الحد الأقصى أكبر من أو مساويًا للحد الأدنى."
         if (filters.maxPickupMinutes?.let { it < 0 } == true || filters.maxTripMinutes?.let { it < 0 } == true) return "مدة غير صالحة"
         if (filters.scheduleEnabled && (filters.scheduleStartMinute !in 0..1439 || filters.scheduleEndMinute !in 0..1440)) return "وقت تشغيل غير صالح"
         return null

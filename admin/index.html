@@ -13,94 +13,207 @@
 </head>
 <body>
     <main class="container" aria-labelledby="page-title">
-        <h1 id="page-title">لوحة إدارة قناص</h1>
+        <header class="app-hero">
+            <div class="brand-mark" aria-hidden="true">ق</div>
+            <div class="hero-copy">
+                <p class="eyebrow">قناص · مساحة المشرف</p>
+                <h1 id="page-title">لوحة إدارة قناص</h1>
+                <p class="hero-description">إدارة الوصول والسائقين وأكواد التفعيل من مساحة واحدة محمية.</p>
+            </div>
+        </header>
+
         <noscript><p class="notice notice--error">تتطلب لوحة الإدارة تفعيل JavaScript.</p></noscript>
         <p id="app-status" class="notice" role="status" aria-live="polite" aria-atomic="true" hidden></p>
 
-        <section id="login-section" aria-labelledby="login-title">
-            <h2 id="login-title">دخول المشرف</h2>
-            <form id="login-form" novalidate>
+        <section id="login-section" class="auth-layout" aria-labelledby="login-title">
+            <div class="auth-intro">
+                <p class="eyebrow eyebrow--primary">وصول محمي</p>
+                <h2 id="login-title">دخول المشرف</h2>
+                <p>استخدم بيانات حسابك المخوّل فقط. تتحقق اللوحة من الجلسة والصلاحية قبل عرض أي سجل.</p>
+            </div>
+            <form id="login-form" class="auth-card" novalidate>
                 <div class="field">
                     <label for="email">البريد الإلكتروني</label>
-                    <input type="email" id="email" name="email" autocomplete="username" inputmode="email" maxlength="254" required>
+                    <input type="email" id="email" name="email" autocomplete="username" inputmode="email" maxlength="254" required aria-describedby="login-guidance">
                 </div>
                 <div class="field">
                     <label for="password">كلمة المرور</label>
                     <input type="password" id="password" name="password" autocomplete="current-password" required>
                 </div>
+                <p id="login-guidance" class="field-hint">لا تُخزَّن بيانات الدخول في المتصفح بعد انتهاء الجلسة.</p>
                 <button id="login-button" type="submit">تسجيل الدخول</button>
             </form>
         </section>
 
         <section id="dashboard-section" aria-label="لوحة الإدارة" hidden>
-            <div class="dashboard-header">
-                <h2>إدارة الحسابات والأكواد</h2>
-                <button id="logout-button" class="btn-secondary" type="button">تسجيل الخروج</button>
-            </div>
-            <div class="tabs" role="tablist" aria-label="أقسام لوحة الإدارة">
-                <button id="drivers-tab" class="tab active" type="button" role="tab" aria-selected="true" aria-controls="tab-drivers">السائقون</button>
-                <button id="codes-tab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="tab-codes">أكواد التفعيل</button>
-            </div>
-
-            <section id="tab-drivers" class="tab-content" role="tabpanel" aria-labelledby="drivers-tab">
-                <div class="toolbar">
-                    <button id="refresh-drivers" type="button">تحديث بيانات السائقين</button>
-                    <div class="pagination" aria-label="صفحات السائقين">
-                        <button id="drivers-previous" class="btn-secondary" type="button" disabled>السابق</button>
-                        <span id="drivers-page" aria-live="polite">الصفحة 1</span>
-                        <button id="drivers-next" class="btn-secondary" type="button" disabled>التالي</button>
+            <div class="dashboard-layout">
+                <aside class="dashboard-sidebar" aria-label="تنقل لوحة الإدارة">
+                    <div class="sidebar-intro">
+                        <p class="eyebrow eyebrow--primary">إدارة آمنة</p>
+                        <p>اختر القسم المطلوب ثم راجع الحالة قبل تنفيذ أي إجراء.</p>
                     </div>
-                </div>
-                <div class="table-wrapper" tabindex="0">
-                    <table>
-                        <caption class="sr-only">قائمة السائقين</caption>
-                        <thead><tr><th scope="col">الاسم</th><th scope="col">الهاتف</th><th scope="col">الحالة</th><th scope="col">نهاية الاشتراك</th><th scope="col">معرف الجهاز</th><th scope="col">إجراءات</th></tr></thead>
-                        <tbody id="drivers-list"></tbody>
-                    </table>
-                </div>
-            </section>
+                    <nav class="tabs" role="tablist" aria-label="أقسام لوحة الإدارة">
+                        <button id="drivers-tab" class="tab active" type="button" role="tab" aria-selected="true" aria-controls="tab-drivers">السائقون</button>
+                        <button id="codes-tab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="tab-codes">أكواد التفعيل</button>
+                        <button id="commercial-policy-tab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="tab-commercial-policy">سياسة العرض</button>
+                    </nav>
+                </aside>
 
-            <section id="tab-codes" class="tab-content" role="tabpanel" aria-labelledby="codes-tab" hidden>
-                <div class="card">
-                    <h3>توليد أكواد جديدة</h3>
-                    <form id="code-generation-form" class="toolbar" novalidate>
-                        <div class="field compact-field">
-                            <label for="code-count">عدد الأكواد</label>
-                            <input type="number" id="code-count" name="count" value="10" min="1" max="500" step="1" inputmode="numeric" required>
+                <div class="dashboard-main">
+                    <header class="dashboard-header">
+                        <div>
+                            <p class="eyebrow eyebrow--primary">مساحة العمل</p>
+                            <h2>إدارة الحسابات والأكواد</h2>
+                            <p>تُعرض السجلات الحية فقط بعد التحقق من صلاحية المشرف.</p>
                         </div>
-                        <div class="field compact-field">
-                            <label for="code-days">مدة الاشتراك</label>
-                            <select id="code-days" name="days">
-                                <option value="7">7 أيام (أسبوع)</option>
-                                <option value="30" selected>30 يومًا (شهر)</option>
-                                <option value="90">90 يومًا (3 أشهر)</option>
-                                <option value="365">365 يومًا (سنة)</option>
-                            </select>
+                        <button id="logout-button" class="btn-secondary" type="button">تسجيل الخروج</button>
+                    </header>
+
+                    <section id="tab-drivers" class="tab-content" role="tabpanel" aria-labelledby="drivers-tab">
+                        <div class="section-heading">
+                            <div>
+                                <h3>السائقون</h3>
+                                <p>راجع بيانات الحسابات وأعد ربط الجهاز عند الحاجة.</p>
+                            </div>
                         </div>
-                        <div class="field batch-field">
-                            <label for="code-batch">اسم الدفعة (اختياري)</label>
-                            <input type="text" id="code-batch" name="batch" maxlength="80" autocomplete="off">
+                        <div class="toolbar toolbar--list">
+                            <button id="refresh-drivers" type="button">تحديث بيانات السائقين</button>
+                            <div class="pagination" aria-label="صفحات السائقين">
+                                <button id="drivers-previous" class="btn-secondary" type="button" disabled>السابق</button>
+                                <span id="drivers-page" aria-live="polite">الصفحة 1</span>
+                                <button id="drivers-next" class="btn-secondary" type="button" disabled>التالي</button>
+                            </div>
                         </div>
-                        <button id="generate-codes" type="submit">توليد الأكواد</button>
-                        <button id="export-codes" class="btn-secondary" type="button">تصدير الأكواد المتاحة CSV</button>
-                    </form>
+                        <p id="drivers-table-hint" class="table-hint">لرؤية كل الأعمدة على الشاشات الصغيرة، حرّك الجدول أفقيًا.</p>
+                        <div class="table-wrapper" tabindex="0" role="region" aria-label="قائمة السائقين" aria-describedby="drivers-table-hint">
+                            <table>
+                                <caption class="sr-only">قائمة السائقين</caption>
+                                <thead><tr><th scope="col">الاسم</th><th scope="col">الهاتف</th><th scope="col">الحالة</th><th scope="col">نهاية الاشتراك</th><th scope="col">معرف الجهاز</th><th scope="col">إجراءات</th></tr></thead>
+                                <tbody id="drivers-list"></tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <section id="tab-codes" class="tab-content" role="tabpanel" aria-labelledby="codes-tab" hidden>
+                        <div class="section-heading">
+                            <div>
+                                <h3>أكواد التفعيل</h3>
+                                <p>أنشئ دفعات محددة المدة وصدّر الأكواد المتاحة فقط.</p>
+                            </div>
+                        </div>
+                        <section class="card" aria-labelledby="generation-title">
+                            <div class="card-heading">
+                                <h4 id="generation-title">توليد أكواد جديدة</h4>
+                                <p>حدّد الدفعة ومدة الاشتراك قبل الإنشاء.</p>
+                            </div>
+                            <form id="code-generation-form" class="toolbar toolbar--form" novalidate>
+                                <div class="field compact-field">
+                                    <label for="code-count">عدد الأكواد</label>
+                                    <input type="number" id="code-count" name="count" value="10" min="1" max="500" step="1" inputmode="numeric" required>
+                                </div>
+                                <div class="field compact-field">
+                                    <label for="code-days">مدة الاشتراك</label>
+                                    <select id="code-days" name="days">
+                                        <option value="7">7 أيام (أسبوع)</option>
+                                        <option value="30" selected>30 يومًا (شهر)</option>
+                                        <option value="90">90 يومًا (3 أشهر)</option>
+                                        <option value="365">365 يومًا (سنة)</option>
+                                    </select>
+                                </div>
+                                <div class="field batch-field">
+                                    <label for="code-batch">اسم الدفعة (اختياري)</label>
+                                    <input type="text" id="code-batch" name="batch" maxlength="80" autocomplete="off">
+                                </div>
+                                <div class="form-actions">
+                                    <button id="generate-codes" type="submit">توليد الأكواد</button>
+                                    <button id="export-codes" class="btn-secondary" type="button">تصدير الأكواد المتاحة CSV</button>
+                                </div>
+                            </form>
+                        </section>
+                        <div class="toolbar toolbar--list">
+                            <button id="refresh-codes" type="button">تحديث الأكواد</button>
+                            <div class="pagination" aria-label="صفحات الأكواد">
+                                <button id="codes-previous" class="btn-secondary" type="button" disabled>السابق</button>
+                                <span id="codes-page" aria-live="polite">الصفحة 1</span>
+                                <button id="codes-next" class="btn-secondary" type="button" disabled>التالي</button>
+                            </div>
+                        </div>
+                        <p id="codes-table-hint" class="table-hint">لرؤية كل الأعمدة على الشاشات الصغيرة، حرّك الجدول أفقيًا.</p>
+                        <div class="table-wrapper" tabindex="0" role="region" aria-label="قائمة أكواد التفعيل" aria-describedby="codes-table-hint">
+                            <table>
+                                <caption class="sr-only">قائمة أكواد التفعيل</caption>
+                                <thead><tr><th scope="col">الكود</th><th scope="col">المدة (أيام)</th><th scope="col">الدفعة</th><th scope="col">الحالة</th><th scope="col">تاريخ الإنشاء</th><th scope="col">المستخدم (ID)</th></tr></thead>
+                                <tbody id="codes-list"></tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <section id="tab-commercial-policy" class="tab-content" role="tabpanel" aria-labelledby="commercial-policy-tab" hidden>
+                        <div class="section-heading">
+                            <div>
+                                <h3>سياسة العرض والاشتراك</h3>
+                                <p>تُحمّل السياسة من الخادم بعد التحقق من صلاحية المشرف، وتُحفظ كاملة في عملية واحدة.</p>
+                            </div>
+                            <p id="policy-updated-at" class="policy-updated-at" aria-live="polite">لم تُحمّل سياسة مؤكدة بعد.</p>
+                        </div>
+
+                        <section class="card policy-card" aria-labelledby="commercial-policy-title">
+                            <div class="card-heading">
+                                <h4 id="commercial-policy-title">إعدادات العرض التجاري</h4>
+                                <p>السعر بالريال السعودي ويُرسل إلى الخادم كعدد صحيح من الهللات. لا يشمل هذا العرض ضريبة القيمة المضافة.</p>
+                            </div>
+
+                            <p id="commercial-policy-feedback" class="policy-feedback" role="status" aria-live="polite" hidden></p>
+
+                            <form id="commercial-policy-form" class="policy-form" novalidate>
+                                <div class="policy-toggle-row">
+                                    <div>
+                                        <label for="trial-enabled">تفعيل التجربة المجانية</label>
+                                        <p class="field-hint">إيقافها يمنع منح تجارب جديدة. تبقى المدة مطلوبة لعمليات المنح المستقبلية عند إعادة التفعيل.</p>
+                                    </div>
+                                    <label class="switch-control" for="trial-enabled">
+                                        <input id="trial-enabled" name="trialEnabled" type="checkbox" role="switch" disabled>
+                                        <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+                                        <span id="trial-enabled-state" class="switch-label">غير مؤكد</span>
+                                    </label>
+                                </div>
+
+                                <div class="policy-fields">
+                                    <div class="field compact-field">
+                                        <label for="trial-days">مدة التجربة (أيام)</label>
+                                        <input id="trial-days" name="trialDays" type="text" inputmode="numeric" autocomplete="off" maxlength="3" aria-describedby="trial-days-hint trial-days-error" disabled>
+                                        <p id="trial-days-hint" class="field-hint">من 1 إلى 365 يومًا.</p>
+                                        <p id="trial-days-error" class="field-error" aria-live="polite" hidden></p>
+                                    </div>
+                                    <div class="field compact-field">
+                                        <label for="subscription-price-sar">سعر الاشتراك (ريال سعودي)</label>
+                                        <input id="subscription-price-sar" name="priceSar" type="text" inputmode="decimal" autocomplete="off" maxlength="12" dir="ltr" aria-describedby="subscription-price-hint subscription-price-error" disabled>
+                                        <p id="subscription-price-hint" class="field-hint">مثال: 18.75. يُحوَّل إلى هللات من النص دون استخدام أرقام عشرية عائمة.</p>
+                                        <p id="subscription-price-error" class="field-error" aria-live="polite" hidden></p>
+                                    </div>
+                                    <div class="field compact-field">
+                                        <label for="subscription-days">مدة الاشتراك (أيام)</label>
+                                        <input id="subscription-days" name="subscriptionDays" type="text" inputmode="numeric" autocomplete="off" maxlength="3" aria-describedby="subscription-days-hint subscription-days-error" disabled>
+                                        <p id="subscription-days-hint" class="field-hint">من 1 إلى 365 يومًا. تُعرض للعميل كمدة واضحة، مثل «شهري (30 يومًا)».</p>
+                                        <p id="subscription-days-error" class="field-error" aria-live="polite" hidden></p>
+                                    </div>
+                                    <div class="field policy-contact-field">
+                                        <label for="purchase-contact-url">رابط التواصل للشراء (اختياري)</label>
+                                        <input id="purchase-contact-url" name="purchaseContactUrl" type="url" inputmode="url" autocomplete="url" maxlength="2048" dir="ltr" aria-describedby="purchase-contact-hint purchase-contact-error" disabled>
+                                        <p id="purchase-contact-hint" class="field-hint">اتركه فارغًا أو استخدم رابط HTTPS صالحًا فقط، من دون مسافات.</p>
+                                        <p id="purchase-contact-error" class="field-error" aria-live="polite" hidden></p>
+                                    </div>
+                                </div>
+
+                                <div class="form-actions policy-actions">
+                                    <button id="save-commercial-policy" type="submit" disabled>حفظ السياسة كاملة</button>
+                                    <button id="retry-commercial-policy" class="btn-secondary" type="button">إعادة تحميل السياسة</button>
+                                </div>
+                            </form>
+                        </section>
+                    </section>
                 </div>
-                <div class="toolbar">
-                    <button id="refresh-codes" type="button">تحديث الأكواد</button>
-                    <div class="pagination" aria-label="صفحات الأكواد">
-                        <button id="codes-previous" class="btn-secondary" type="button" disabled>السابق</button>
-                        <span id="codes-page" aria-live="polite">الصفحة 1</span>
-                        <button id="codes-next" class="btn-secondary" type="button" disabled>التالي</button>
-                    </div>
-                </div>
-                <div class="table-wrapper" tabindex="0">
-                    <table>
-                        <caption class="sr-only">قائمة أكواد التفعيل</caption>
-                        <thead><tr><th scope="col">الكود</th><th scope="col">المدة (أيام)</th><th scope="col">الدفعة</th><th scope="col">الحالة</th><th scope="col">تاريخ الإنشاء</th><th scope="col">المستخدم (ID)</th></tr></thead>
-                        <tbody id="codes-list"></tbody>
-                    </table>
-                </div>
-            </section>
+            </div>
         </section>
     </main>
 </body>

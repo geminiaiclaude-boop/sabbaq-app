@@ -44,7 +44,12 @@ internal data class LicenseStatus(
     val state: LicenseState,
     val serverTime: Instant? = null,
     val validUntil: Instant? = null,
-    val minimumVersionCode: Int? = null
+    val minimumVersionCode: Int? = null,
+    val trialUntil: Instant? = null,
+    val proUntil: Instant? = null,
+    val trialEligible: Boolean? = null,
+    val trialEnabled: Boolean? = null,
+    val trialDays: Int? = null
 )
 
 /** خطأ حالة قابل للمعالجة ولا يتضمن رموزاً أو تفاصيل خادم غير موثوقة. */
