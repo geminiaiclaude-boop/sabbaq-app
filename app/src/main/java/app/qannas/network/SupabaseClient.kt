@@ -156,20 +156,21 @@ object SupabaseClient {
                 .build()
             val credential = CredentialManager.create(activity).getCredential(activity, request).credential
             if (credential.type != GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
-                return Result.failure(ClientRequestException("لم نتمكن من تأكيد حساب Google. اختر حسابك وحاول مجددًا."))
+                return Result.failure(ClientRequestException("نوع هوية Google غير متطابق. اختر حسابك وحاول مجددًا. [G-CRED-TYPE]"))
             }
             GoogleIdTokenCredential.createFrom(credential.data)
         } catch (_: GetCredentialCancellationException) {
-            return Result.failure(ClientRequestException("تم إلغاء تسجيل الدخول باستخدام Google"))
+            return Result.failure(ClientRequestException("تم إلغاء تسجيل الدخول باستخدام Google. [G-USER-CANCEL]"))
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (_: GetCredentialException) {
-            return Result.failure(ClientRequestException("تعذر الحصول على هوية Google؛ حاول مجدداً"))
+        } catch (credEx: GetCredentialException) {
+            val type = credEx.type.substringAfterLast('.').ifBlank { "UNKNOWN" }
+            return Result.failure(ClientRequestException("تعذر الحصول على هوية Google من خدمات الجهاز. [G-PLAY-$type]"))
         } catch (_: Exception) {
-            return Result.failure(ClientRequestException("تعذر بدء تسجيل الدخول باستخدام Google"))
+            return Result.failure(ClientRequestException("تعذر بدء تسجيل الدخول باستخدام Google. [G-INIT-FAIL]"))
         }
         val idToken = NetworkInputValidator.token(googleCredential.idToken)
-            ?: return invalidInput("لم نتمكن من تأكيد حساب Google. اختر حسابك وحاول مجددًا.")
+            ?: return invalidInput("رمز هوية Google غير صالح أو منتهي الصلاحية. [G-TOKEN-INVALID]")
         val displayName = NetworkInputValidator.displayName(googleCredential.displayName)
 
         return networkCall {

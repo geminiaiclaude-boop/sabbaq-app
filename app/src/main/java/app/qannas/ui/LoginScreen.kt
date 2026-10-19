@@ -1,4 +1,4 @@
-﻿package app.qannas.ui
+package app.qannas.ui
 
 import android.content.Intent
 import android.net.Uri
@@ -261,9 +261,10 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
                 checkRoleAndLicense(result.getOrThrow())
             } catch (cancelled: CancellationException) {
                 throw cancelled
-            } catch (_: Exception) {
+            } catch (e: Exception) {
                 SupabaseClient.clearSession()
-                errorMessage = "تعذر إتمام الدخول باستخدام Google. تحقق من الاتصال ثم أعد المحاولة."
+                errorMessage = e.message?.takeIf { it.isNotBlank() }
+                    ?: "تعذر إتمام الدخول باستخدام Google. تحقق من الاتصال ثم أعد المحاولة. [G-RUNTIME-EX]"
             } finally {
                 if (journey == AuthJourney.Authenticating) journey = AuthJourney.Idle
             }
@@ -848,11 +849,12 @@ private fun formatOfferPrice(minor: Int, currency: String): String {
     return "$riyals.$halalas $currencyLabel"
 }
 
-private fun googleErrorMessage(error: Throwable?): String = when (error?.message) {
-    "تسجيل Google غير مهيأ؛ يلزم GOOGLE_WEB_CLIENT_ID صالح" ->
-        "تسجيل Google غير متاح الآن. استخدم رقم الجوال أو أعد المحاولة لاحقاً."
-    "تم إلغاء تسجيل الدخول باستخدام Google" -> "أُلغي تسجيل الدخول باستخدام Google. يمكنك المحاولة مجدداً."
-    else -> "تعذر إتمام الدخول باستخدام Google. تحقق من الاتصال ثم أعد المحاولة."
+private fun googleErrorMessage(error: Throwable?): String {
+    val msg = error?.message?.trim()
+    if (!msg.isNullOrBlank()) {
+        return msg
+    }
+    return "تعذر إتمام الدخول باستخدام Google. حاول مجددًا بعد قليل. [G-UNKNOWN]"
 }
 
 private fun otpRequestErrorMessage(error: Throwable?): String = when (error?.message) {

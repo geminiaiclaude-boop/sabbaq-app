@@ -9,12 +9,17 @@ class CustomerErrorMessagesTest {
         val message = CustomerErrorMessages.forResponse(400, null, secret, "تبادل هوية Google")
         assertFalse(message.contains(secret))
         listOf("SQL", "HTTP", "Supabase", "token", "تبادل هوية").forEach { assertFalse(message.contains(it)) }
+        assertTrue(message.contains("[G-TOKEN-400]"))
     }
     @Test fun `expired code suggests a new code`() {
-        assertTrue(CustomerErrorMessages.forResponse(403, "otp_expired", null, "").contains("اطلب رمزًا جديدًا"))
+        val message = CustomerErrorMessages.forResponse(403, "otp_expired", null, "")
+        assertTrue(message.contains("اطلب رمزًا جديدًا"))
+        assertTrue(message.contains("[OTP-EXPIRED]"))
     }
     @Test fun `disabled phone suggests Google instead`() {
-        assertTrue(CustomerErrorMessages.forResponse(400, "phone_provider_disabled", null, "").contains("Google"))
+        val message = CustomerErrorMessages.forResponse(400, "phone_provider_disabled", null, "")
+        assertTrue(message.contains("Google"))
+        assertTrue(message.contains("[PHONE-DISABLED]"))
     }
     @Test fun `known code maps without guessing arbitrary detail`() {
         assertTrue(CustomerErrorMessages.forResponse(400, null, "bad_code", "").contains("كود التفعيل"))
