@@ -1,10 +1,6 @@
--- Contract tests for the post-signup driver profile and explicit admin status RPC.
--- Run after bootstrap.sql and migrations; errors make psql (ON_ERROR_STOP) fail.
+-- Regression tests for the retained admin session API and the replacement of the
+-- old raw_user_meta_data signup trigger. Run after bootstrap.sql and migrations.
 \set ON_ERROR_STOP on
-
--- The production auth.users table has this field. Add it only to the local minimal
--- bootstrap stand-in rather than changing the shared bootstrap or a prior migration.
-alter table auth.users add column if not exists raw_user_meta_data jsonb;
 
 create or replace function pg_temp.expect(p_ok boolean, p_what text) returns void language plpgsql as $$
 begin
@@ -14,68 +10,55 @@ begin
 end $$;
 grant execute on function pg_temp.expect(boolean, text) to authenticated;
 
--- The new RPC is callable by authenticated users only; authorization is checked
--- inside the SECURITY DEFINER function rather than exposed by its SQL grant.
+insert into auth.users (
+    id, email, phone, phone_confirmed_at, raw_app_meta_data, raw_user_meta_data
+) values
+    ('00000000-0000-0000-0000-00000000000d', 'google@example.test', null, null,
+     '{"provider":"google","providers":["google"]}'::jsonb,
+     '{"full_name":"  Valid Driver  ","status":"active","is_admin":true}'::jsonb),
+    ('00000000-0000-0000-0000-00000000000e', 'spoof@example.test', null, null,
+     '{"provider":"email","providers":["email"]}'::jsonb,
+     '{"full_name":"Spoofed","provider":"google","status":"active"}'::jsonb),
+    ('00000000-0000-0000-0000-000000000011', 'admin-create@example.test', null, null,
+     '{}'::jsonb, '{}'::jsonb);
+
+-- Insert into auth.users no longer creates a profile from mutable user metadata.
 select pg_temp.expect(
-    has_function_privilege('authenticated', 'public.admin_session_status()', 'EXECUTE'),
-    'authenticated can execute admin_session_status'
+    not exists (select 1 from public.drivers where id = '00000000-0000-0000-0000-00000000000d'),
+    'metadata signup trigger was removed'
 );
 select pg_temp.expect(
-    not has_function_privilege('anon', 'public.admin_session_status()', 'EXECUTE'),
-    'anon cannot execute admin_session_status'
+    has_function_privilege('authenticated', 'public.ensure_driver_profile(text)', 'EXECUTE')
+    and not has_function_privilege('anon', 'public.ensure_driver_profile(text)', 'EXECUTE'),
+    'ensure_driver_profile is authenticated-only'
 );
 select pg_temp.expect(
-    not has_function_privilege('authenticated', 'public.create_driver_from_signup_metadata()', 'EXECUTE'),
-    'authenticated cannot call the privileged signup trigger function directly'
+    has_function_privilege('authenticated', 'public.admin_session_status()', 'EXECUTE')
+    and not has_function_privilege('anon', 'public.admin_session_status()', 'EXECUTE'),
+    'admin_session_status remains authenticated-only'
 );
 
--- Valid metadata creates only the matching pending driver row and applies the same
--- canonical whitespace/hyphen cleanup used by register_driver before table checks.
-insert into auth.users (id, email, raw_user_meta_data) values
-    ('00000000-0000-0000-0000-00000000000d', 'valid-signup@example.test',
-     '{"full_name":"  Valid Driver  ","phone":"+962 79-000-0000","status":"active","is_admin":true}'::jsonb),
-    ('00000000-0000-0000-0000-00000000000e', 'missing-metadata@example.test', null),
-    ('00000000-0000-0000-0000-00000000000f', 'bad-name@example.test',
-     '{"full_name":"x","phone":"+962790000000"}'::jsonb),
-    ('00000000-0000-0000-0000-000000000010', 'bad-phone@example.test',
-     '{"full_name":"Invalid Phone","phone":"not-a-phone"}'::jsonb),
-    ('00000000-0000-0000-0000-000000000011', 'admin-create@example.test', null),
-    ('00000000-0000-0000-0000-000000000012', 'empty-object@example.test', '{}'::jsonb),
-    ('00000000-0000-0000-0000-000000000013', 'missing-phone@example.test', '{"full_name":"Missing Phone"}'::jsonb);
-
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000d';
 select pg_temp.expect(
-    exists (
-        select 1 from public.drivers
-        where id = '00000000-0000-0000-0000-00000000000d'
-          and full_name = 'Valid Driver'
-          and phone = '+962790000000'
-          and status = 'pending'
-    ),
-    'valid signup metadata creates a canonical pending driver profile'
+    (public.ensure_driver_profile() ->> 'created')::boolean,
+    'server app metadata authorizes the Google profile RPC'
 );
 select pg_temp.expect(
-    not exists (
-        select 1 from public.drivers
-        where id in (
-            '00000000-0000-0000-0000-00000000000e',
-            '00000000-0000-0000-0000-00000000000f',
-            '00000000-0000-0000-0000-000000000010',
-            '00000000-0000-0000-0000-000000000011',
-            '00000000-0000-0000-0000-000000000012',
-            '00000000-0000-0000-0000-000000000013'
-        )
-    ),
-    'missing or invalid metadata does not block auth creation or create a profile'
-);
-select pg_temp.expect(
-    not exists (select 1 from public.admins where user_id = '00000000-0000-0000-0000-00000000000d'),
-    'signup metadata cannot grant admin membership'
+    (select full_name = 'Valid Driver' and phone is null and status = 'pending'
+     from public.drivers where id = auth.uid()),
+    'Google profile keeps nullable phone and ignores metadata status/admin claims'
 );
 
--- The admin user is intentionally created without metadata to prove administrative
--- account creation is independent of the driver-profile trigger.
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000e';
+do $$ begin
+    perform public.ensure_driver_profile('Spoofed Provider');
+    raise exception 'EXPECTATION FAILED: user metadata provider authorized profile creation';
+exception when insufficient_privilege then null;
+end $$;
+
+reset role;
 insert into public.admins (user_id) values ('00000000-0000-0000-0000-000000000011');
-
 set role authenticated;
 set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000d';
 do $$ begin

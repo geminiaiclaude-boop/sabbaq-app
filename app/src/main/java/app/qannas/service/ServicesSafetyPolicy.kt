@@ -10,6 +10,12 @@ import app.qannas.core.Bounds
 internal object ServicesSafetyPolicy {
     private const val POST_NOTIFICATIONS_API = 33
 
+    fun canProcessOffers(
+        isExplicitlyEnabled: Boolean,
+        hasDisclosureConsent: Boolean,
+        hasValidLicense: Boolean,
+    ): Boolean = isExplicitlyEnabled && hasDisclosureConsent && hasValidLicense
+
     fun isRelevantAccessibilityEvent(eventType: Int): Boolean =
         eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
             eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED

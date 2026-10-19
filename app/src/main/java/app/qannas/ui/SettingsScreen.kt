@@ -863,88 +863,15 @@ private fun AccountPage(
     onLicenseChanged: (Boolean) -> Unit,
     onMessage: (DriverStatus?) -> Unit,
 ) {
-    val scope = rememberCoroutineScope()
-    var activationCode by remember { mutableStateOf("") }
-    var redeeming by remember { mutableStateOf(false) }
-
-    fun redeem() {
-        if (redeeming) return
-        val error = UiFormValidation.activationCodeError(activationCode)
-        when {
-            error != null -> onMessage(DriverStatus(error, true))
-            !SupabaseClient.hasRedeemableSession() -> onMessage(DriverStatus("انتهت جلسة التفعيل. سجّل الدخول مجدداً ثم أعد إدخال الكود.", true))
-            else -> {
-                redeeming = true
-                onMessage(null)
-                scope.launch {
-                    try {
-                        val redeemed = SupabaseClient.redeemCode(activationCode)
-                        val verified = redeemed.getOrNull() == true && SupabaseClient.revalidateLicense().getOrNull() == true
-                        onLicenseChanged(verified && SupabaseClient.hasValidLicense())
-                        if (verified && SupabaseClient.hasValidLicense()) {
-                            activationCode = ""
-                            onMessage(DriverStatus("تم تفعيل الاشتراك والتحقق من الترخيص في الذاكرة."))
-                        } else {
-                            onMessage(DriverStatus(redeemErrorMessage(redeemed.exceptionOrNull()), true))
-                        }
-                    } catch (cancelled: CancellationException) {
-                        throw cancelled
-                    } catch (_: Exception) {
-                        onLicenseChanged(SupabaseClient.hasValidLicense())
-                        onMessage(DriverStatus("تعذر التحقق من الكود. تحقق من اتصال الإنترنت ثم أعد المحاولة.", true))
-                    } finally {
-                        redeeming = false
-                    }
-                }
-            }
-        }
-    }
-
-    DriverPage {
-        QannasSectionTitle("الحساب", "تجديد الترخيص ومعلومات هذا التطبيق على جهازك.")
-        QannasCard(title = "حالة الترخيص", subtitle = "تُقرأ من الجلسة الحالية في الذاكرة ولا تعرض تاريخاً أو بيانات عميل غير مؤكدة.", icon = Icons.Outlined.VerifiedUser) {
-            QannasStatusPill(
-                text = if (licenseInMemory) "الترخيص صالح في الذاكرة" else "الترخيص يحتاج تحققاً",
-                ready = licenseInMemory,
-            )
-            Text(
-                if (licenseInMemory) "يمكنك متابعة إعداد المرشحات ثم طلب التشغيل."
-                else "جدّد الكود أو سجّل الدخول مجدداً قبل طلب التشغيل.",
-                style = MaterialTheme.typography.bodyMedium,
-            )
-        }
-        QannasCard(title = "تجديد الاشتراك", subtitle = "يُرسل الكود مباشرة لمسار Supabase الموثوق بعد تحقق صيغة محلي.", icon = Icons.Outlined.Refresh) {
-            OutlinedTextField(
-                value = activationCode,
-                onValueChange = { activationCode = UiFormValidation.normalizeActivationCode(it.take(128)); onMessage(null) },
-                label = { Text("كود التفعيل") },
-                enabled = !redeeming,
-                singleLine = true,
-                textStyle = androidx.compose.material3.LocalTextStyle.current.copy(textDirection = TextDirection.Ltr),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Button(
-                onClick = ::redeem,
-                enabled = !redeeming,
-                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-            ) {
-                if (redeeming) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                else Icon(Icons.Outlined.VerifiedUser, contentDescription = null)
-                Spacer(Modifier.size(8.dp))
-                Text(if (redeeming) "جارٍ التحقق" else "تفعيل الكود")
-            }
-        }
-        message?.let { QannasMessage(it.message, isError = it.isError) }
-        QannasCard(title = "الخصوصية والمعلومات المحلية", icon = Icons.Outlined.PrivacyTip) {
-            Text("الإصدار ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})", style = MaterialTheme.typography.bodyMedium)
-            HorizontalDivider()
-            Text(
-                "لا تُخزَّن كلمات المرور أو رموز الجلسة أو كود التفعيل في الإعدادات المحلية. تُحفظ المرشحات والمظهر فقط على الجهاز.",
-                style = MaterialTheme.typography.bodyMedium,
-            )
-        }
-    }
+    SubscriptionScreen(
+        licenseInMemory = licenseInMemory,
+        externalMessage = message?.message,
+        externalMessageIsError = message?.isError == true,
+        onLicenseChanged = onLicenseChanged,
+        onMessage = { nextMessage, isError ->
+            onMessage(nextMessage?.let { DriverStatus(it, isError) })
+        },
+    )
 }
 
 private fun activeFilterCount(filters: Filters): Int = buildList {

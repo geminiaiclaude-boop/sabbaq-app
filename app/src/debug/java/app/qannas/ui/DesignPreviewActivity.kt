@@ -29,9 +29,11 @@ class DesignPreviewActivity : ComponentActivity() {
         setContent {
             QannasTheme(darkTheme = dark) {
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-                    QannasShell(showHeader = screen != "login", themeMode = if (dark) ThemeMode.DARK else ThemeMode.LIGHT,
+                    QannasShell(showHeader = screen !in setOf("login", "welcome", "disclosure"), themeMode = if (dark) ThemeMode.DARK else ThemeMode.LIGHT,
                         onThemeChange = {}, onLogout = { finish() }) {
                         if (screen == "login") LoginScreen(onLoginSuccess = { finish() })
+                        else if (screen == "welcome") OnboardingScreen(onContinue = { finish() })
+                        else if (screen == "disclosure") AccessibilityDisclosureDialog(onAccept = { finish() }, onDismiss = { finish() })
                         else SettingsScreen(
                             notificationPermissionGranted = false,
                             onRequestNotificationPermission = {},

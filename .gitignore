@@ -18,3 +18,7 @@ admin/config.js
 .gradle/
 build/
 */build/
+
+# Python test runner caches
+__pycache__/
+*.pyc

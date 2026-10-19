@@ -17,8 +17,13 @@ val localProps = Properties().apply {
     if (f.exists()) f.inputStream().use { load(it) }
 }
 
+val publicBackend = Properties().apply {
+    rootProject.file("config/public-backend.properties").inputStream().use { load(it) }
+}
+
 fun setting(name: String): String? =
     System.getenv(name)?.takeIf { it.isNotBlank() } ?: localProps.getProperty(name)?.takeIf { it.isNotBlank() }
+        ?: publicBackend.getProperty(name)?.takeIf { it.isNotBlank() }
 
 fun buildConfigString(value: String): String = buildString {
     append('"')
@@ -36,15 +41,16 @@ fun buildConfigString(value: String): String = buildString {
 
 val supabaseUrl = setting("SUPABASE_URL").orEmpty()
 val supabaseAnonKey = setting("SUPABASE_ANON_KEY").orEmpty()
+val googleWebClientId = setting("GOOGLE_WEB_CLIENT_ID").orEmpty()
 val keystorePath = setting("QANNAS_KEYSTORE")
 val releaseStoreFile = keystorePath
     ?.takeIf { it.isNotBlank() }
     ?.let { rootProject.file(it) }
-val versionCodeValue = setting("QANNAS_VERSION_CODE") ?: "1"
+val versionCodeValue = setting("QANNAS_VERSION_CODE") ?: "2"
 val configuredVersionCode = versionCodeValue.toIntOrNull()
     ?: throw GradleException("QANNAS_VERSION_CODE يجب أن يكون عدداً صحيحاً موجباً")
 require(configuredVersionCode > 0) { "QANNAS_VERSION_CODE يجب أن يكون عدداً صحيحاً موجباً" }
-val configuredVersionName = setting("QANNAS_VERSION_NAME") ?: "1.0.0"
+val configuredVersionName = setting("QANNAS_VERSION_NAME") ?: "1.1.0"
 require(configuredVersionName.isNotBlank()) { "QANNAS_VERSION_NAME لا يمكن أن يكون فارغاً" }
 
 android {
@@ -60,6 +66,19 @@ android {
 
         buildConfigField("String", "SUPABASE_URL", buildConfigString(supabaseUrl))
         buildConfigField("String", "SUPABASE_ANON_KEY", buildConfigString(supabaseAnonKey))
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", buildConfigString(googleWebClientId))
+    }
+
+    flavorDimensions += "distribution"
+    productFlavors {
+        create("direct") {
+            dimension = "distribution"
+            buildConfigField("boolean", "DIRECT_DISTRIBUTION", "true")
+        }
+        create("play") {
+            dimension = "distribution"
+            buildConfigField("boolean", "DIRECT_DISTRIBUTION", "false")
+        }
     }
 
     signingConfigs {
@@ -130,6 +149,9 @@ val verifyReleaseConfiguration by tasks.registering {
             if (supabaseAnonKey.startsWith("sb_secret_") || Regex("\"role\"\\s*:\\s*\"service_role\"").containsMatchIn(jwtPayload)) {
                 add("مفتاح الخدمة الخاص لا يجوز تضمينه في تطبيق Android؛ استخدم anon/publishable فقط")
             }
+            if (!Regex("^[A-Za-z0-9_-]+\\.apps\\.googleusercontent\\.com$").matches(googleWebClientId)) {
+                add("GOOGLE_WEB_CLIENT_ID مطلوب بصيغة Web OAuth client ID صحيحة للإصدار")
+            }
 
             if (releaseStoreFile == null) {
                 add("QANNAS_KEYSTORE مطلوب ويجب أن يشير إلى ملف keystore")
@@ -168,7 +190,8 @@ val releaseArtifactTasks = setOf(
     "validateSigningRelease"
 )
 tasks.configureEach {
-    if (name in releaseArtifactTasks) {
+    if (name in releaseArtifactTasks || name.matches(Regex(
+            "(assemble|bundle|package|validateSigning)(Direct|Play)Release|sign(Direct|Play)ReleaseBundle"))) {
         dependsOn(verifyReleaseConfiguration)
     }
 }
@@ -187,6 +210,9 @@ dependencies {
     implementation(libs.compose.material3)
     implementation(libs.compose.material.icons)
     implementation(libs.okhttp)
+    implementation(libs.androidx.credentials)
+    implementation(libs.androidx.credentials.play.services.auth)
+    implementation(libs.googleid)
     implementation(libs.osmdroid)
     debugImplementation(libs.compose.ui.tooling)
     testImplementation(libs.junit)

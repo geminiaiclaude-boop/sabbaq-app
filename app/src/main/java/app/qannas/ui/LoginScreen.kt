@@ -1,5 +1,8 @@
 ﻿package app.qannas.ui
 
+import android.content.Intent
+import android.net.Uri
+import android.os.SystemClock
 import android.provider.Settings as AndroidSettings
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.layout.Arrangement
@@ -19,26 +22,21 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Email
-import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Autorenew
+import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Login
-import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Phone
-import androidx.compose.material.icons.outlined.Visibility
-import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -55,24 +53,28 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
+import app.qannas.BuildConfig
 import app.qannas.Settings
+import app.qannas.network.PublicOffer
 import app.qannas.network.SupabaseClient
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/** مراحل واجهة المصادقة فقط؛ تظل صلاحية الجلسة والترخيص داخل SupabaseClient. */
+/** مراحل محلية للعرض فقط؛ الجلسة والـ lease يظلان حصراً داخل SupabaseClient. */
 private enum class AuthJourney {
     Idle,
     Authenticating,
     CheckingRole,
     CheckingLicense,
-    AwaitingActivation,
-    Activating
+    AwaitingAccess,
+    StartingTrial,
+    ActivatingCode
 }
+
+private const val OTP_COOLDOWN_MILLIS = 60_000L
 
 @Composable
 fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
@@ -80,171 +82,296 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
-    val nameFocus = remember { FocusRequester() }
     val phoneFocus = remember { FocusRequester() }
-    val emailFocus = remember { FocusRequester() }
-    val passwordFocus = remember { FocusRequester() }
+    val otpFocus = remember { FocusRequester() }
 
-    var isSignUpMode by remember { mutableStateOf(false) }
-    var name by remember { mutableStateOf("") }
+    // حالة تركيب عابرة فقط: الجوال والرمز لا ينجوان من إعادة إنشاء العملية.
     var phone by remember { mutableStateOf("") }
-    var email by remember { mutableStateOf("") }
-    // تبقى كلمة المرور في ذاكرة تركيب الشاشة فقط ولا تُحفظ أو تُستعاد.
-    var password by remember { mutableStateOf("") }
-    var passwordVisible by remember { mutableStateOf(false) }
-    var validationRequested by remember { mutableStateOf(false) }
+    var otp by remember { mutableStateOf("") }
+    var otpRequested by remember { mutableStateOf(false) }
+    var otpCooldownEndsAt by remember { mutableStateOf(0L) }
+    var otpCooldownSeconds by remember { mutableStateOf(0) }
+    var phoneValidationRequested by remember { mutableStateOf(false) }
+    var otpValidationRequested by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var infoMessage by remember { mutableStateOf<String?>(null) }
+    var offerErrorMessage by remember { mutableStateOf<String?>(null) }
+    var offer by remember { mutableStateOf<PublicOffer?>(null) }
+    var loadingOffer by remember { mutableStateOf(false) }
     var journey by remember { mutableStateOf(AuthJourney.Idle) }
+    var isAdmin by remember { mutableStateOf(false) }
     var activationCode by remember { mutableStateOf("") }
     var activationValidationRequested by remember { mutableStateOf(false) }
     var activationError by remember { mutableStateOf<String?>(null) }
 
-    val isBusy = journey == AuthJourney.Authenticating ||
-        journey == AuthJourney.CheckingRole ||
-        journey == AuthJourney.CheckingLicense ||
-        journey == AuthJourney.Activating
-    val awaitingActivation = journey == AuthJourney.AwaitingActivation || journey == AuthJourney.Activating
+    val isBusy = journey != AuthJourney.Idle && journey != AuthJourney.AwaitingAccess
+    val awaitingAccess = journey == AuthJourney.AwaitingAccess ||
+        journey == AuthJourney.StartingTrial || journey == AuthJourney.ActivatingCode
+
+    LaunchedEffect(otpCooldownEndsAt) {
+        while (true) {
+            val remaining = ((otpCooldownEndsAt - SystemClock.elapsedRealtime() + 999L) / 1_000L)
+                .coerceAtLeast(0L)
+                .toInt()
+            otpCooldownSeconds = remaining
+            if (remaining == 0) break
+            delay(250L)
+        }
+    }
 
     fun hideKeyboard() {
         focusManager.clearFocus()
         keyboardController?.hide()
     }
 
-    fun resetFormFeedback() {
-        validationRequested = false
+    fun clearPhoneInput() {
+        phone = ""
+        otp = ""
+        otpRequested = false
+        otpCooldownEndsAt = 0L
+        otpCooldownSeconds = 0
+        phoneValidationRequested = false
+        otpValidationRequested = false
+    }
+
+    fun resetMessages() {
         errorMessage = null
         infoMessage = null
     }
 
-    fun cancelActivation() {
+    fun abandonAccess() {
         activationCode = ""
         activationError = null
         activationValidationRequested = false
+        offer = null
+        offerErrorMessage = null
+        loadingOffer = false
+        isAdmin = false
+        clearPhoneInput()
         SupabaseClient.clearSession()
         journey = AuthJourney.Idle
     }
 
-    fun completeDriverLogin() {
-        Settings.isActive = false
-        password = ""
-        activationCode = ""
-        journey = AuthJourney.Idle
-        onLoginSuccess(false)
-    }
-
-    fun submitAuthentication() {
-        if (journey != AuthJourney.Idle) return
-        validationRequested = true
-        val validationError = if (isSignUpMode) {
-            UiFormValidation.signUpError(name, phone, email, password)
-        } else {
-            UiFormValidation.loginError(email, password)
-        }
-        if (validationError != null) {
-            errorMessage = null
+    fun completeLogin(admin: Boolean) {
+        // لا تقبل نتيجة RPC وحدها؛ لا انتقال قبل أن تكون المهلة الذاكرية صالحة الآن.
+        if (!SupabaseClient.hasValidLicense()) {
+            SupabaseClient.clearSession()
+            errorMessage = "تعذر تأكيد ترخيص صالح للحساب. أعد تسجيل الدخول ثم حاول مجدداً."
+            journey = AuthJourney.Idle
             return
         }
+        Settings.isActive = false
+        activationCode = ""
+        clearPhoneInput()
+        journey = AuthJourney.Idle
+        // حتى لو بلغ حساب إداري lease صالحاً في play، يظل انتقاله انتقال عميل.
+        onLoginSuccess(admin && BuildConfig.DIRECT_DISTRIBUTION)
+    }
 
-        hideKeyboard()
-        errorMessage = null
-        infoMessage = null
-        journey = AuthJourney.Authenticating
+    fun completeDirectAdminLogin() {
+        // أدوات الإدارة المحلية معزولة في direct فقط؛ لا يصل هذا المسار إلى play.
+        Settings.isActive = false
+        activationCode = ""
+        clearPhoneInput()
+        journey = AuthJourney.Idle
+        onLoginSuccess(true)
+    }
+
+    suspend fun refreshPublicOffer() {
+        loadingOffer = true
+        offerErrorMessage = null
+        SupabaseClient.fetchPublicOffer().fold(
+            onSuccess = { offer = it },
+            onFailure = {
+                offer = null
+                offerErrorMessage = "تعذر قراءة سياسة التجربة من الخادم. تحقق من الاتصال ثم أعد المحاولة."
+            }
+        )
+        loadingOffer = false
+    }
+
+    fun checkRoleAndLicense(token: String) {
+        journey = AuthJourney.CheckingRole
         scope.launch {
             try {
-                val authResult = if (isSignUpMode) {
-                    SupabaseClient.signUp(email.trim(), password, name.trim(), phone.trim())
-                } else {
-                    SupabaseClient.login(email.trim(), password)
+                val adminResult = SupabaseClient.isAdmin(token)
+                if (adminResult.isFailure) {
+                    SupabaseClient.clearSession()
+                    errorMessage = "تعذر التحقق من صلاحيات الحساب. تحقق من الاتصال ثم أعد المحاولة."
+                    return@launch
                 }
-                // لا نحتاج كلمة المرور بعد أن ينتهي طلب المصادقة، سواء نجح أم فشل.
-                password = ""
-                if (authResult.isFailure) {
-                    val confirmation = accountConfirmationMessage(authResult.exceptionOrNull())
-                    if (confirmation != null) {
-                        infoMessage = confirmation
-                        isSignUpMode = false
-                        name = ""
-                        phone = ""
-                        validationRequested = false
-                    } else {
-                        errorMessage = authenticationErrorMessage(authResult.exceptionOrNull())
-                    }
+                val accountIsAdmin = adminResult.getOrThrow()
+                if (accountIsAdmin && BuildConfig.DIRECT_DISTRIBUTION) {
+                    completeDirectAdminLogin()
+                    return@launch
+                }
+                val deviceId = AndroidSettings.Secure.getString(
+                    context.contentResolver,
+                    AndroidSettings.Secure.ANDROID_ID
+                )?.takeIf { it.isNotBlank() }
+                if (deviceId == null) {
+                    SupabaseClient.clearSession()
+                    errorMessage = "تعذر تحديد هذا الجهاز. أعد فتح التطبيق ثم حاول مرة أخرى."
                     return@launch
                 }
 
-                val token = authResult.getOrThrow()
-                journey = AuthJourney.CheckingRole
-                val adminResult = SupabaseClient.isAdmin(token)
+                journey = AuthJourney.CheckingLicense
+                val licenseResult = SupabaseClient.checkLicenseAndBindDevice(token, deviceId)
                 when {
-                    // لا نعامل تعذر فحص دور المشرف كحساب سائق، ولا نتابع إلى الترخيص.
-                    adminResult.isFailure -> {
-                        SupabaseClient.clearSession()
-                        errorMessage = "تعذر التحقق من صلاحيات الحساب. تحقق من الاتصال ثم أعد المحاولة."
+                    licenseResult.getOrNull() == true -> completeLogin(
+                        admin = accountIsAdmin && BuildConfig.DIRECT_DISTRIBUTION
+                    )
+                    licenseResult.isSuccess -> {
+                        // pending/expired لا يفتح أي لوحة؛ يبقى القرار النهائي للخادم.
+                        isAdmin = accountIsAdmin
+                        journey = AuthJourney.AwaitingAccess
+                        refreshPublicOffer()
                     }
-                    adminResult.getOrThrow() -> onLoginSuccess(true)
                     else -> {
-                        val deviceId = AndroidSettings.Secure.getString(
-                            context.contentResolver,
-                            AndroidSettings.Secure.ANDROID_ID
-                        )?.takeIf { it.isNotBlank() }
-                        if (deviceId == null) {
-                            SupabaseClient.clearSession()
-                            errorMessage = "تعذر تحديد هذا الجهاز. أعد فتح التطبيق ثم حاول مرة أخرى."
-                            return@launch
-                        }
-
-                        journey = AuthJourney.CheckingLicense
-                        val licenseResult = SupabaseClient.checkLicenseAndBindDevice(token, deviceId)
-                        when {
-                            licenseResult.getOrNull() == true -> completeDriverLogin()
-                            licenseResult.isSuccess && SupabaseClient.hasRedeemableSession() -> {
-                                activationError = null
-                                activationValidationRequested = false
-                                journey = AuthJourney.AwaitingActivation
-                            }
-                            else -> {
-                                SupabaseClient.clearSession()
-                                errorMessage = licenseErrorMessage(licenseResult.exceptionOrNull())
-                            }
-                        }
+                        SupabaseClient.clearSession()
+                        errorMessage = licenseErrorMessage(licenseResult.exceptionOrNull())
                     }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
                 SupabaseClient.clearSession()
-                errorMessage = "تعذر إكمال تسجيل الدخول. تحقق من اتصال الإنترنت ثم أعد المحاولة."
+                errorMessage = "تعذر التحقق من الدور والترخيص. تحقق من اتصال الإنترنت ثم أعد المحاولة."
             } finally {
-                if (journey != AuthJourney.AwaitingActivation) journey = AuthJourney.Idle
+                if (journey != AuthJourney.AwaitingAccess && journey != AuthJourney.Idle) {
+                    journey = AuthJourney.Idle
+                }
             }
         }
     }
 
-    fun submitActivation() {
-        if (journey != AuthJourney.AwaitingActivation) return
-        activationValidationRequested = true
-        val validationError = UiFormValidation.activationCodeError(activationCode)
-        if (validationError != null) {
-            activationError = null
-            return
+    fun submitGoogle() {
+        if (journey != AuthJourney.Idle) return
+        hideKeyboard()
+        resetMessages()
+        journey = AuthJourney.Authenticating
+        scope.launch {
+            try {
+                val result = SupabaseClient.signInWithGoogle(context)
+                if (result.isFailure) {
+                    errorMessage = googleErrorMessage(result.exceptionOrNull())
+                    return@launch
+                }
+                clearPhoneInput()
+                checkRoleAndLicense(result.getOrThrow())
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                SupabaseClient.clearSession()
+                errorMessage = "تعذر إتمام تسجيل الدخول باستخدام Google. تحقق من الاتصال ثم أعد المحاولة."
+            } finally {
+                if (journey == AuthJourney.Authenticating) journey = AuthJourney.Idle
+            }
         }
+    }
+
+    fun requestOtp() {
+        if (journey != AuthJourney.Idle || otpCooldownSeconds > 0) return
+        phoneValidationRequested = true
+        if (!SaudiLoginInput.isSaudiMobile(phone)) return
+
+        hideKeyboard()
+        resetMessages()
+        journey = AuthJourney.Authenticating
+        scope.launch {
+            try {
+                val result = SupabaseClient.requestPhoneOtp(phone)
+                if (result.isFailure) {
+                    errorMessage = otpRequestErrorMessage(result.exceptionOrNull())
+                    return@launch
+                }
+                otp = ""
+                otpRequested = true
+                otpValidationRequested = false
+                otpCooldownEndsAt = SystemClock.elapsedRealtime() + OTP_COOLDOWN_MILLIS
+                infoMessage = "أُرسل رمز تحقق من 6 أرقام إلى رقم الجوال."
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                errorMessage = "تعذر طلب رمز التحقق. تحقق من الاتصال ثم أعد المحاولة."
+            } finally {
+                if (journey == AuthJourney.Authenticating) journey = AuthJourney.Idle
+            }
+        }
+    }
+
+    fun verifyOtp() {
+        if (journey != AuthJourney.Idle || !otpRequested) return
+        otpValidationRequested = true
+        if (!SaudiLoginInput.isSixDigitOtp(otp)) return
+
+        hideKeyboard()
+        resetMessages()
+        journey = AuthJourney.Authenticating
+        scope.launch {
+            try {
+                val result = SupabaseClient.verifyPhoneOtp(phone, SaudiLoginInput.normalizeOtp(otp))
+                // لا يبقى الرمز في الذاكرة بعد إرسال طلب التحقق، ناجحاً كان أو فاشلاً.
+                otp = ""
+                if (result.isFailure) {
+                    errorMessage = otpVerificationErrorMessage(result.exceptionOrNull())
+                    return@launch
+                }
+                clearPhoneInput()
+                checkRoleAndLicense(result.getOrThrow())
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                SupabaseClient.clearSession()
+                errorMessage = "تعذر التحقق من الرمز. اطلب رمزاً جديداً ثم أعد المحاولة."
+            } finally {
+                if (journey == AuthJourney.Authenticating) journey = AuthJourney.Idle
+            }
+        }
+    }
+
+    fun startTrial() {
+        if (journey != AuthJourney.AwaitingAccess || !canStartTrial(SupabaseClient.subscriptionSnapshot(), offer)) return
+        hideKeyboard()
+        activationError = null
+        journey = AuthJourney.StartingTrial
+        scope.launch {
+            try {
+                val result = SupabaseClient.startTrial()
+                if (result.getOrNull() == true && SupabaseClient.hasValidLicense()) {
+                    completeLogin(isAdmin)
+                } else {
+                    activationError = trialErrorMessage(result.exceptionOrNull())
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                activationError = "تعذر بدء التجربة. تحقق من الاتصال ثم أعد المحاولة."
+            } finally {
+                if (journey != AuthJourney.Idle) journey = AuthJourney.AwaitingAccess
+            }
+        }
+    }
+
+    fun submitActivationCode() {
+        if (!BuildConfig.DIRECT_DISTRIBUTION || journey != AuthJourney.AwaitingAccess) return
+        activationValidationRequested = true
+        if (UiFormValidation.activationCodeError(activationCode) != null) return
 
         hideKeyboard()
         activationError = null
-        journey = AuthJourney.Activating
+        journey = AuthJourney.ActivatingCode
         scope.launch {
             try {
                 val redeemed = SupabaseClient.redeemCode(activationCode)
+                activationCode = ""
                 if (redeemed.getOrNull() != true) {
                     activationError = activationErrorMessage(redeemed.exceptionOrNull())
                     return@launch
                 }
-
-                // لا يكفي قبول الكود؛ يلزم أن يؤكد فحص الترخيص اللاحق صلاحيته على هذا الجهاز.
                 val revalidated = SupabaseClient.revalidateLicense()
-                if (revalidated.getOrNull() == true) {
-                    completeDriverLogin()
+                if (revalidated.getOrNull() == true && SupabaseClient.hasValidLicense()) {
+                    completeLogin(isAdmin)
                 } else {
                     activationError = licenseErrorMessage(revalidated.exceptionOrNull())
                 }
@@ -253,16 +380,21 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
             } catch (_: Exception) {
                 activationError = "تعذر التحقق من كود التفعيل. تحقق من الاتصال ثم أعد المحاولة."
             } finally {
-                if (journey != AuthJourney.Idle) journey = AuthJourney.AwaitingActivation
+                if (journey != AuthJourney.Idle) journey = AuthJourney.AwaitingAccess
             }
         }
     }
 
-    val nameError = if (validationRequested && isSignUpMode) registrationNameError(name) else null
-    val phoneError = if (validationRequested && isSignUpMode) registrationPhoneError(phone) else null
-    val emailError = if (validationRequested) emailFieldError(email) else null
-    val passwordError = if (validationRequested) passwordFieldError(password, isSignUpMode) else null
-    val codeError = if (activationValidationRequested) UiFormValidation.activationCodeError(activationCode) else null
+    val phoneError = if (phoneValidationRequested && !SaudiLoginInput.isSaudiMobile(phone)) {
+        "أدخل رقم جوال سعودي بصيغة 05XXXXXXXX أو +9665XXXXXXXX."
+    } else {
+        null
+    }
+    val otpError = if (otpValidationRequested && !SaudiLoginInput.isSixDigitOtp(otp)) {
+        "أدخل رمز التحقق المكوّن من 6 أرقام."
+    } else {
+        null
+    }
 
     Box(
         modifier = Modifier
@@ -285,54 +417,73 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
                 AuthBrandHero()
-
-                AnimatedContent(targetState = awaitingActivation, label = "auth-flow") { isActivationStage ->
-                    if (isActivationStage) {
-                        ActivationCard(
-                            code = activationCode,
-                            codeError = codeError,
-                            serverError = activationError,
+                AnimatedContent(targetState = awaitingAccess, label = "auth-flow") { isPendingAccess ->
+                    if (isPendingAccess) {
+                        PendingAccessCard(
                             isBusy = isBusy,
-                            onCodeChange = {
+                            journey = journey,
+                            offer = offer,
+                            loadingOffer = loadingOffer,
+                            offerError = offerErrorMessage,
+                            actionError = activationError,
+                            activationCode = activationCode,
+                            activationCodeError = if (activationValidationRequested) {
+                                UiFormValidation.activationCodeError(activationCode)
+                            } else {
+                                null
+                            },
+                            showTrial = canStartTrial(SupabaseClient.subscriptionSnapshot(), offer),
+                            onRetryOffer = {
+                                if (!loadingOffer && journey == AuthJourney.AwaitingAccess) {
+                                    scope.launch { refreshPublicOffer() }
+                                }
+                            },
+                            onStartTrial = ::startTrial,
+                            onActivationCodeChange = {
                                 activationCode = UiFormValidation.normalizeActivationCode(it.take(128))
                                 activationError = null
                             },
-                            onActivate = ::submitActivation,
-                            onCancel = ::cancelActivation
+                            onActivateCode = ::submitActivationCode,
+                            onOpenPurchaseContact = { url ->
+                                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                                    .onFailure {
+                                        activationError = "تعذر فتح قناة الاشتراك. راجع الإدارة أو أعد المحاولة."
+                                    }
+                            },
+                            onCancel = ::abandonAccess
                         )
                     } else {
                         AuthenticationCard(
-                            isSignUpMode = isSignUpMode,
-                            isBusy = isBusy,
-                            journey = journey,
-                            name = name,
                             phone = phone,
-                            email = email,
-                            password = password,
-                            passwordVisible = passwordVisible,
-                            nameError = nameError,
+                            otp = otp,
+                            otpRequested = otpRequested,
+                            otpCooldownSeconds = otpCooldownSeconds,
                             phoneError = phoneError,
-                            emailError = emailError,
-                            passwordError = passwordError,
+                            otpError = otpError,
                             serverError = errorMessage,
                             infoMessage = infoMessage,
-                            nameFocus = nameFocus,
+                            isBusy = isBusy,
+                            journey = journey,
                             phoneFocus = phoneFocus,
-                            emailFocus = emailFocus,
-                            passwordFocus = passwordFocus,
-                            onModeChange = { signUp ->
-                                if (!isBusy) {
-                                    isSignUpMode = signUp
-                                    passwordVisible = false
-                                    resetFormFeedback()
+                            otpFocus = otpFocus,
+                            onPhoneChange = {
+                                if (phone != it) {
+                                    otp = ""
+                                    otpRequested = false
+                                    otpValidationRequested = false
                                 }
+                                phone = it.take(32)
+                                phoneValidationRequested = false
+                                errorMessage = null
                             },
-                            onNameChange = { name = it.take(128) },
-                            onPhoneChange = { phone = it.take(64) },
-                            onEmailChange = { email = it.take(512) },
-                            onPasswordChange = { password = it.take(4096) },
-                            onPasswordVisibilityChange = { passwordVisible = !passwordVisible },
-                            onSubmit = ::submitAuthentication
+                            onOtpChange = {
+                                otp = SaudiLoginInput.otpDigits(it).take(6)
+                                otpValidationRequested = false
+                                errorMessage = null
+                            },
+                            onGoogle = ::submitGoogle,
+                            onRequestOtp = ::requestOtp,
+                            onVerifyOtp = ::verifyOtp
                         )
                     }
                 }
@@ -358,12 +509,10 @@ private fun AuthBrandHero() {
                 contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                 shape = MaterialTheme.shapes.large
             ) {
-                Box(Modifier.padding(20.dp)) {
-                    QannasBrand()
-                }
+                Box(Modifier.padding(20.dp)) { QannasBrand() }
             }
             Text(
-                text = "ابدأ من حسابك، ثم نتحقق من الدور والترخيص قبل تشغيل الخدمة.",
+                text = "سجّل عبر Google أو رقم جوال سعودي، ثم نتحقق من الدور والترخيص قبل فتح أي لوحة.",
                 style = MaterialTheme.typography.bodyMedium
             )
         }
@@ -372,141 +521,35 @@ private fun AuthBrandHero() {
 
 @Composable
 private fun AuthenticationCard(
-    isSignUpMode: Boolean,
-    isBusy: Boolean,
-    journey: AuthJourney,
-    name: String,
     phone: String,
-    email: String,
-    password: String,
-    passwordVisible: Boolean,
-    nameError: String?,
+    otp: String,
+    otpRequested: Boolean,
+    otpCooldownSeconds: Int,
     phoneError: String?,
-    emailError: String?,
-    passwordError: String?,
+    otpError: String?,
     serverError: String?,
     infoMessage: String?,
-    nameFocus: FocusRequester,
+    isBusy: Boolean,
+    journey: AuthJourney,
     phoneFocus: FocusRequester,
-    emailFocus: FocusRequester,
-    passwordFocus: FocusRequester,
-    onModeChange: (Boolean) -> Unit,
-    onNameChange: (String) -> Unit,
+    otpFocus: FocusRequester,
     onPhoneChange: (String) -> Unit,
-    onEmailChange: (String) -> Unit,
-    onPasswordChange: (String) -> Unit,
-    onPasswordVisibilityChange: () -> Unit,
-    onSubmit: () -> Unit
+    onOtpChange: (String) -> Unit,
+    onGoogle: () -> Unit,
+    onRequestOtp: () -> Unit,
+    onVerifyOtp: () -> Unit
 ) {
     QannasCard(
-        title = if (isSignUpMode) "إنشاء حساب" else "تسجيل الدخول",
-        subtitle = if (isSignUpMode) "قد يلزم تأكيد البريد حسب إعدادات الحساب." else "أدخل بيانات حسابك لمتابعة الإعداد الآمن.",
+        title = "تسجيل الدخول",
+        subtitle = "استخدم طريقة هوية واحدة آمنة. لا نطلب بيانات دخول تقليدية في تطبيق العميل.",
         icon = Icons.Outlined.Login
     ) {
-        TabRow(selectedTabIndex = if (isSignUpMode) 1 else 0) {
-            Tab(
-                selected = !isSignUpMode,
-                enabled = !isBusy,
-                onClick = { onModeChange(false) },
-                text = { Text("دخول") },
-                modifier = Modifier.heightIn(min = 48.dp)
-            )
-            Tab(
-                selected = isSignUpMode,
-                enabled = !isBusy,
-                onClick = { onModeChange(true) },
-                text = { Text("حساب جديد") },
-                modifier = Modifier.heightIn(min = 48.dp)
-            )
-        }
-
         QannasSectionTitle(
-            title = if (isSignUpMode) "بيانات الحساب" else "مرحباً بعودتك",
-            subtitle = if (isSignUpMode) "أكمل الحقول المطلوبة، ثم فعّل بريدك عند الطلب." else "سنفحص دور الحساب والترخيص بعد المصادقة."
+            title = "المتابعة باستخدام Google",
+            subtitle = "تظهر نافذة Google الرسمية عند اكتمال إعداد المزوّد."
         )
-
-        if (isBusy) {
-            QannasStatusPill(text = authProgressLabel(journey), ready = false)
-        }
-
-        if (isSignUpMode) {
-            OutlinedTextField(
-                value = name,
-                onValueChange = onNameChange,
-                enabled = !isBusy,
-                singleLine = true,
-                label = { Text("الاسم الكامل") },
-                leadingIcon = { Icon(Icons.Outlined.Person, contentDescription = null) },
-                isError = nameError != null,
-                supportingText = nameError?.let { { Text(it) } },
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                keyboardActions = KeyboardActions(onNext = { phoneFocus.requestFocus() }),
-                modifier = Modifier.fillMaxWidth().focusRequester(nameFocus)
-            )
-            OutlinedTextField(
-                value = phone,
-                onValueChange = onPhoneChange,
-                enabled = !isBusy,
-                singleLine = true,
-                label = { Text("رقم الهاتف") },
-                leadingIcon = { Icon(Icons.Outlined.Phone, contentDescription = null) },
-                isError = phoneError != null,
-                supportingText = phoneError?.let { { Text(it) } },
-                textStyle = LocalTextStyle.current.copy(textDirection = TextDirection.Ltr),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Next),
-                keyboardActions = KeyboardActions(onNext = { emailFocus.requestFocus() }),
-                modifier = Modifier.fillMaxWidth().focusRequester(phoneFocus)
-            )
-        }
-
-        OutlinedTextField(
-            value = email,
-            onValueChange = onEmailChange,
-            enabled = !isBusy,
-            singleLine = true,
-            label = { Text("البريد الإلكتروني") },
-            leadingIcon = { Icon(Icons.Outlined.Email, contentDescription = null) },
-            isError = emailError != null,
-            supportingText = emailError?.let { { Text(it) } },
-            textStyle = LocalTextStyle.current.copy(textDirection = TextDirection.Ltr),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
-            keyboardActions = KeyboardActions(onNext = { passwordFocus.requestFocus() }),
-            modifier = Modifier.fillMaxWidth().focusRequester(emailFocus)
-        )
-        OutlinedTextField(
-            value = password,
-            onValueChange = onPasswordChange,
-            enabled = !isBusy,
-            singleLine = true,
-            label = { Text("كلمة المرور") },
-            leadingIcon = { Icon(Icons.Outlined.Lock, contentDescription = null) },
-            trailingIcon = {
-                IconButton(onClick = onPasswordVisibilityChange, enabled = !isBusy) {
-                    Icon(
-                        imageVector = if (passwordVisible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
-                        contentDescription = if (passwordVisible) "إخفاء كلمة المرور" else "إظهار كلمة المرور"
-                    )
-                }
-            },
-            isError = passwordError != null,
-            supportingText = {
-                when {
-                    passwordError != null -> Text(passwordError)
-                    isSignUpMode -> Text("استخدم 8 أحرف على الأقل.")
-                }
-            },
-            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-            textStyle = LocalTextStyle.current.copy(textDirection = TextDirection.Ltr),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { onSubmit() }),
-            modifier = Modifier.fillMaxWidth().focusRequester(passwordFocus)
-        )
-
-        infoMessage?.let { QannasMessage(message = it) }
-        serverError?.let { QannasMessage(message = it, isError = true) }
-
         Button(
-            onClick = onSubmit,
+            onClick = onGoogle,
             enabled = !isBusy,
             modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
             contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp)
@@ -520,120 +563,326 @@ private fun AuthenticationCard(
                 Spacer(Modifier.padding(start = 10.dp))
                 Text(authProgressLabel(journey))
             } else {
-                Text(if (isSignUpMode) "إنشاء الحساب" else "متابعة")
+                Text("المتابعة باستخدام Google")
+            }
+        }
+
+        QannasSectionTitle(
+            title = "أو باستخدام رقم الجوال السعودي",
+            subtitle = if (otpRequested) "أدخل الرمز المكوّن من 6 أرقام الذي وصلك." else "نرسل رمز تحقق إلى جوالك عبر خدمة الحساب. لا يُحفظ الرمز في إعدادات الجهاز؛ يحتفظ الخادم برقم الحساب للتحقق والترخيص."
+        )
+        OutlinedTextField(
+            value = phone,
+            onValueChange = onPhoneChange,
+            enabled = !isBusy,
+            singleLine = true,
+            label = { Text("رقم الجوال السعودي") },
+            placeholder = { Text("05XXXXXXXX") },
+            leadingIcon = { Icon(Icons.Outlined.Phone, contentDescription = null) },
+            isError = phoneError != null,
+            supportingText = phoneError?.let { { Text(it) } },
+            textStyle = LocalTextStyle.current.copy(textDirection = TextDirection.Ltr),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = if (otpRequested) ImeAction.Next else ImeAction.Done),
+            keyboardActions = KeyboardActions(
+                onNext = { if (otpRequested) otpFocus.requestFocus() },
+                onDone = { if (!otpRequested) onRequestOtp() else onVerifyOtp() }
+            ),
+            modifier = Modifier.fillMaxWidth().focusRequester(phoneFocus)
+        )
+        if (otpRequested) {
+            OutlinedTextField(
+                value = otp,
+                onValueChange = onOtpChange,
+                enabled = !isBusy,
+                singleLine = true,
+                label = { Text("رمز التحقق") },
+                placeholder = { Text("123456") },
+                leadingIcon = { Icon(Icons.Outlined.Key, contentDescription = null) },
+                isError = otpError != null,
+                supportingText = otpError?.let { { Text(it) } },
+                textStyle = LocalTextStyle.current.copy(textDirection = TextDirection.Ltr),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { onVerifyOtp() }),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(otpFocus)
+                    .semantics { stateDescription = "رمز تحقق من 6 أرقام" }
+            )
+        }
+
+        infoMessage?.let { QannasMessage(message = it) }
+        serverError?.let { QannasMessage(message = it, isError = true) }
+
+        if (otpRequested) {
+            Button(
+                onClick = onVerifyOtp,
+                enabled = !isBusy,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)
+            ) {
+                if (isBusy) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(22.dp),
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(Modifier.padding(start = 10.dp))
+                    Text(authProgressLabel(journey))
+                } else {
+                    Text("تحقق وتابع")
+                }
+            }
+            TextButton(
+                onClick = onRequestOtp,
+                enabled = !isBusy && otpCooldownSeconds == 0,
+                modifier = Modifier.align(Alignment.CenterHorizontally).heightIn(min = 48.dp)
+            ) {
+                Icon(Icons.Outlined.Autorenew, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.padding(start = 8.dp))
+                Text(if (otpCooldownSeconds > 0) "يمكن طلب رمز جديد بعد $otpCooldownSeconds ث" else "إرسال رمز جديد")
+            }
+        } else {
+            Button(
+                onClick = onRequestOtp,
+                enabled = !isBusy && otpCooldownSeconds == 0,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)
+            ) {
+                Text("إرسال رمز التحقق")
             }
         }
     }
 }
 
 @Composable
-private fun ActivationCard(
-    code: String,
-    codeError: String?,
-    serverError: String?,
+private fun PendingAccessCard(
     isBusy: Boolean,
-    onCodeChange: (String) -> Unit,
-    onActivate: () -> Unit,
+    journey: AuthJourney,
+    offer: PublicOffer?,
+    loadingOffer: Boolean,
+    offerError: String?,
+    actionError: String?,
+    activationCode: String,
+    activationCodeError: String?,
+    showTrial: Boolean,
+    onRetryOffer: () -> Unit,
+    onStartTrial: () -> Unit,
+    onActivationCodeChange: (String) -> Unit,
+    onActivateCode: () -> Unit,
+    onOpenPurchaseContact: (String) -> Unit,
     onCancel: () -> Unit
 ) {
     QannasCard(
-        title = "تفعيل الاشتراك",
-        subtitle = "هذه الخطوة مطلوبة قبل تشغيل حساب السائق على هذا الجهاز.",
-        icon = Icons.Outlined.Lock
+        title = "تأكيد الوصول",
+        subtitle = "أصبح حسابك جاهزًا. اكتشف قناص بتجربة إن كانت متاحة لحسابك، أو فعّل وصولك وفق خيارات هذه النسخة.",
+        icon = Icons.Outlined.Key
     ) {
-        QannasStatusPill(text = "بانتظار كود التفعيل", ready = false)
-        QannasSectionTitle(
-            title = "أدخل الكود",
-            subtitle = "أدخل الكود الذي وصلك من الإدارة. لا يُخزَّن الكود على الجهاز."
-        )
-        OutlinedTextField(
-            value = code,
-            onValueChange = onCodeChange,
-            enabled = !isBusy,
-            singleLine = true,
-            label = { Text("كود التفعيل") },
-            placeholder = { Text("XXXX-XXXX-XXXX-XXXX") },
-            leadingIcon = { Icon(Icons.Outlined.Lock, contentDescription = null) },
-            isError = codeError != null,
-            supportingText = codeError?.let { { Text(it) } },
-            textStyle = LocalTextStyle.current.copy(textDirection = TextDirection.Ltr),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { onActivate() }),
-            modifier = Modifier
-                .fillMaxWidth()
-                .semantics { stateDescription = if (isBusy) "جارٍ التحقق من كود التفعيل" else "بانتظار إدخال كود التفعيل" }
-        )
-        serverError?.let { QannasMessage(message = it, isError = true) }
-        Button(
-            onClick = onActivate,
-            enabled = !isBusy,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
-            contentPadding = ButtonDefaults.ContentPadding
-        ) {
-            if (isBusy) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(22.dp),
-                    color = MaterialTheme.colorScheme.onPrimary,
-                    strokeWidth = 2.dp
-                )
-                Spacer(Modifier.padding(start = 10.dp))
-                Text("جارٍ التحقق…")
-            } else {
-                Text("تفعيل والتحقق")
+        QannasStatusPill(text = "بانتظار ترخيص صالح", ready = false)
+        if (loadingOffer) {
+            QannasStatusPill(text = "جارٍ قراءة سياسة التجربة…", ready = false)
+        }
+        offerError?.let {
+            QannasMessage(message = it, isError = true)
+            TextButton(
+                onClick = onRetryOffer,
+                enabled = !isBusy && !loadingOffer,
+                modifier = Modifier.align(Alignment.CenterHorizontally).heightIn(min = 48.dp)
+            ) { Text("إعادة قراءة السياسة") }
+        }
+
+        if (showTrial) {
+            QannasSectionTitle(
+                title = "تجربة متاحة",
+                subtitle = "التجربة متاحة وفق سياسة الخادم لمدة ${offer?.trialDays} أيام وتبدأ مرة واحدة فقط بعد تأكيدك."
+            )
+            Button(
+                onClick = onStartTrial,
+                enabled = !isBusy,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)
+            ) {
+                if (journey == AuthJourney.StartingTrial) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(22.dp),
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(Modifier.padding(start = 10.dp))
+                    Text("جارٍ تأكيد التجربة…")
+                } else {
+                    Text("بدء التجربة")
+                }
             }
         }
+
+        // العزل بالثابت التركيبي: مسار الكود وقناة الإدارة لا يُضمّنان في play.
+        if (BuildConfig.DIRECT_DISTRIBUTION) {
+            DirectAccessOptions(
+                offer = offer,
+                isBusy = isBusy,
+                journey = journey,
+                activationCode = activationCode,
+                activationCodeError = activationCodeError,
+                actionError = actionError,
+                onActivationCodeChange = onActivationCodeChange,
+                onActivateCode = onActivateCode,
+                onOpenPurchaseContact = onOpenPurchaseContact
+            )
+        } else {
+            // لا سعر خادمي ولا كود ولا رابط/CTA خارجي قبل تكامل Play Billing والتحقق الخادمي.
+            QannasMessage(
+                message = "الاشتراك عبر Google Play غير مهيأ حالياً. لا يمكن إتمام شراء من هذه الشاشة."
+            )
+            actionError?.let { QannasMessage(message = it, isError = true) }
+        }
+
         TextButton(
             onClick = onCancel,
             enabled = !isBusy,
             modifier = Modifier.align(Alignment.CenterHorizontally).heightIn(min = 48.dp)
-        ) {
-            Text("إلغاء والعودة لتسجيل الدخول")
+        ) { Text("تسجيل الخروج والعودة") }
+    }
+}
+
+@Composable
+private fun DirectAccessOptions(
+    offer: PublicOffer?,
+    isBusy: Boolean,
+    journey: AuthJourney,
+    activationCode: String,
+    activationCodeError: String?,
+    actionError: String?,
+    onActivationCodeChange: (String) -> Unit,
+    onActivateCode: () -> Unit,
+    onOpenPurchaseContact: (String) -> Unit
+) {
+    QannasSectionTitle(
+        title = "اشتراك الإدارة",
+        subtitle = offer?.let {
+            "سعر الاشتراك ${formatSarMinor(it.priceMinor)} لمدة ${it.subscriptionDays} يومًا. راجع السعر النهائي والضرائب، إن انطبقت، مع الإدارة قبل الدفع."
+        } ?: "اقرأ سياسة الخادم لإظهار تفاصيل الاشتراك المتاحة."
+    )
+    offer?.purchaseContactUrl?.let { url ->
+        TextButton(
+            onClick = { onOpenPurchaseContact(url) },
+            enabled = !isBusy,
+            modifier = Modifier.heightIn(min = 48.dp)
+        ) { Text("التواصل مع الإدارة للاشتراك") }
+    }
+    OutlinedTextField(
+        value = activationCode,
+        onValueChange = onActivationCodeChange,
+        enabled = !isBusy,
+        singleLine = true,
+        label = { Text("كود التفعيل") },
+        placeholder = { Text("XXXX-XXXX-XXXX-XXXX") },
+        leadingIcon = { Icon(Icons.Outlined.Key, contentDescription = null) },
+        isError = activationCodeError != null,
+        supportingText = activationCodeError?.let { { Text(it) } },
+        textStyle = LocalTextStyle.current.copy(textDirection = TextDirection.Ltr),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Done),
+        keyboardActions = KeyboardActions(onDone = { onActivateCode() }),
+        modifier = Modifier.fillMaxWidth()
+    )
+    actionError?.let { QannasMessage(message = it, isError = true) }
+    Button(
+        onClick = onActivateCode,
+        enabled = !isBusy,
+        modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+        contentPadding = ButtonDefaults.ContentPadding
+    ) {
+        if (journey == AuthJourney.ActivatingCode) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(22.dp),
+                color = MaterialTheme.colorScheme.onPrimary,
+                strokeWidth = 2.dp
+            )
+            Spacer(Modifier.padding(start = 10.dp))
+            Text("جارٍ التحقق…")
+        } else {
+            Text("تفعيل والتحقق")
         }
     }
 }
 
-private fun registrationNameError(value: String): String? = when {
-    value.trim().isEmpty() -> "أدخل الاسم الكامل."
-    value.trim().length !in 2..80 -> "الاسم الكامل يجب أن يكون بين حرفين و80 حرفاً."
-    else -> null
+/** تطبيع واجهة فقط؛ يبقى التحقق الحاسم وتطبيع E.164 في NetworkInputValidator. */
+internal object SaudiLoginInput {
+    fun isSaudiMobile(value: String): Boolean {
+        val compact = normalizeDigits(value).filterNot { it.isWhitespace() || it == '-' || it == '(' || it == ')' }
+        return Regex("^(?:\\+9665|009665|9665|05|5)\\d{8}$").matches(compact)
+    }
+
+    fun otpDigits(value: String): String = normalizeDigits(value).filter(Char::isDigit)
+
+    fun normalizeOtp(value: String): String = otpDigits(value)
+
+    fun isSixDigitOtp(value: String): Boolean {
+        val trimmed = value.trim()
+        if (trimmed.isEmpty() || trimmed.any { character ->
+                character !in '0'..'9' && character !in '\u0660'..'\u0669' && character !in '\u06f0'..'\u06f9'
+            }) {
+            return false
+        }
+        return Regex("^\\d{6}$").matches(normalizeOtp(trimmed))
+    }
+
+    private fun normalizeDigits(value: String): String = buildString {
+        value.forEach { character ->
+            when (character) {
+                in '0'..'9' -> append(character)
+                in '\u0660'..'\u0669' -> append('0' + (character.code - '\u0660'.code))
+                in '\u06f0'..'\u06f9' -> append('0' + (character.code - '\u06f0'.code))
+                else -> append(character)
+            }
+        }
+    }
 }
 
-private fun registrationPhoneError(value: String): String? = when {
-    value.trim().isEmpty() -> "أدخل رقم الهاتف."
-    !Regex("^\\+?[0-9]{7,15}$").matches(value.replace(Regex("[\\s-]"), "")) -> "أدخل رقم هاتف من 7 إلى 15 رقماً."
-    else -> null
+private fun canStartTrial(snapshot: app.qannas.network.SubscriptionSnapshot?, offer: PublicOffer?): Boolean =
+    snapshot?.trialEligible == true && snapshot.trialEnabled == true && offer?.trialEnabled == true
+
+private fun formatSarMinor(minor: Int): String {
+    val riyals = minor / 100
+    val halalas = (minor % 100).toString().padStart(2, '0')
+    return "$riyals.$halalas ر.س"
 }
 
-private fun emailFieldError(value: String): String? =
-    if (Regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$").matches(value.trim())) null else "أدخل بريداً إلكترونياً صحيحاً."
-
-private fun passwordFieldError(value: String, isSignUp: Boolean): String? = when {
-    value.isBlank() -> "أدخل كلمة المرور."
-    isSignUp && value.length < 8 -> "استخدم كلمة مرور من 8 أحرف على الأقل."
-    else -> null
+private fun googleErrorMessage(error: Throwable?): String = when (error?.message) {
+    "تسجيل Google غير مهيأ؛ يلزم GOOGLE_WEB_CLIENT_ID صالح" ->
+        "تسجيل Google غير مهيأ لهذا الإصدار. استخدم رقم الجوال أو تواصل مع الإدارة."
+    "تم إلغاء تسجيل الدخول باستخدام Google" -> "أُلغي تسجيل الدخول باستخدام Google. يمكنك المحاولة مجدداً."
+    else -> "تعذر إتمام تسجيل الدخول باستخدام Google. تأكد من الإعداد والاتصال ثم أعد المحاولة."
 }
 
-private fun accountConfirmationMessage(error: Throwable?): String? =
-    error?.message?.takeIf { it == "تم إنشاء الحساب. فعّل البريد الإلكتروني ثم سجّل الدخول لإكمال الإعداد." }
+private fun otpRequestErrorMessage(error: Throwable?): String = when (error?.message) {
+    "تم تجاوز حد المحاولات؛ يرجى الانتظار" -> "تم تجاوز حد طلب الرموز. انتظر ثم أعد المحاولة."
+    "أدخل رقم جوال سعودي بصيغة +9665XXXXXXXX" -> "أدخل رقم جوال سعودي صالحاً."
+    else -> "تعذر إرسال رمز التحقق. تحقق من الرقم والاتصال ثم أعد المحاولة."
+}
 
-private fun authenticationErrorMessage(error: Throwable?): String = when (error?.message) {
-    "البريد الإلكتروني غير صالح", "كلمة المرور يجب أن تكون بين 1 و128 حرفاً" ->
-        "تحقق من البريد الإلكتروني وكلمة المرور ثم أعد المحاولة."
-    else -> "تعذر إتمام المصادقة. تأكد من البريد وكلمة المرور واتصال الإنترنت ثم أعد المحاولة."
+private fun otpVerificationErrorMessage(error: Throwable?): String = when (error?.message) {
+    "رمز التحقق يجب أن يتكون من 6 أرقام" -> "أدخل رمز التحقق المكوّن من 6 أرقام."
+    "اطلب رمز تحقق جديداً قبل التحقق" -> "اطلب رمز تحقق جديداً أولاً."
+    "تم تجاوز حد المحاولات؛ يرجى الانتظار" -> "تم تجاوز حد المحاولات. انتظر ثم اطلب رمزاً جديداً."
+    else -> "تعذر التحقق من الرمز. تأكد من الرمز أو اطلب رمزاً جديداً."
 }
 
 private fun licenseErrorMessage(error: Throwable?): String = when (error?.message) {
     "الحساب مرتبط بجهاز آخر",
     "تم حظر أو رفض الحساب",
     "حساب السائق غير مكتمل؛ أعد تسجيل الدخول أو تواصل مع الإدارة",
-    "حساب السائق غير مكتمل؛ تواصل مع الإدارة" -> error.message.orEmpty()
+    "حساب السائق غير مكتمل؛ تواصل مع الإدارة",
     "يلزم تحديث التطبيق قبل استخدام الخدمة" -> error.message.orEmpty()
     else -> "تعذر التحقق من حالة الاشتراك. تحقق من الاتصال ومن تحديث التطبيق ثم أعد المحاولة."
 }
 
+private fun trialErrorMessage(error: Throwable?): String = when (error?.message) {
+    "تعذر بدء التجربة" -> "لا يمكن بدء التجربة وفق سياسة الخادم الحالية."
+    "تحقق من الترخيص والجهاز قبل بدء التجربة" -> "تحقق من الترخيص والجهاز قبل بدء التجربة."
+    "تم تجاوز حد المحاولات؛ يرجى الانتظار" -> "تم تجاوز حد المحاولات. انتظر قبل إعادة المحاولة."
+    else -> "تعذر بدء التجربة. تحقق من الاتصال ثم أعد المحاولة."
+}
+
 private fun activationErrorMessage(error: Throwable?): String = when (error?.message) {
-    "كود التفعيل غير صالح" -> "كود التفعيل غير صالح. راجعه ثم أعد المحاولة."
-    "انتهت الجلسة؛ سجّل الدخول من جديد" -> "انتهت جلسة التفعيل. ألغِ العملية ثم سجّل الدخول من جديد."
+    "كود التفعيل غير صالح", "الكود غير صحيح أو استُخدم مسبقاً" -> "كود التفعيل غير صالح. راجعه ثم أعد المحاولة."
+    "انتهت الجلسة؛ سجّل الدخول من جديد" -> "انتهت جلسة التفعيل. سجّل الدخول من جديد."
     else -> "تعذر قبول كود التفعيل. راجع الكود والاتصال ثم أعد المحاولة."
 }
 
@@ -641,7 +890,8 @@ private fun authProgressLabel(journey: AuthJourney): String = when (journey) {
     AuthJourney.Authenticating -> "جارٍ التحقق…"
     AuthJourney.CheckingRole -> "جارٍ التحقق من الدور…"
     AuthJourney.CheckingLicense -> "جارٍ التحقق من الترخيص…"
-    AuthJourney.Activating -> "جارٍ تفعيل الاشتراك…"
-    AuthJourney.AwaitingActivation -> "بانتظار كود التفعيل"
+    AuthJourney.StartingTrial -> "جارٍ تأكيد التجربة…"
+    AuthJourney.ActivatingCode -> "جارٍ تفعيل الاشتراك…"
+    AuthJourney.AwaitingAccess -> "بانتظار ترخيص"
     AuthJourney.Idle -> "متابعة"
 }

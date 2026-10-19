@@ -2,10 +2,12 @@
 -- which makes psql (ON_ERROR_STOP) exit non-zero and fails CI.
 \set ON_ERROR_STOP on
 
-insert into auth.users (id, email) values
-    ('00000000-0000-0000-0000-00000000000a', 'admin@example.test'),
-    ('00000000-0000-0000-0000-00000000000b', 'driver@example.test'),
-    ('00000000-0000-0000-0000-00000000000c', 'other@example.test');
+insert into auth.users (id, email, phone, phone_confirmed_at, raw_app_meta_data) values
+    ('00000000-0000-0000-0000-00000000000a', 'admin@example.test', null, null, '{}'::jsonb),
+    ('00000000-0000-0000-0000-00000000000b', 'driver@example.test', '+966512345678', now(),
+     '{"provider":"phone","providers":["phone"]}'::jsonb),
+    ('00000000-0000-0000-0000-00000000000c', 'other@example.test', '+966512345679', now(),
+     '{"provider":"phone","providers":["phone"]}'::jsonb);
 insert into public.admins (user_id) values ('00000000-0000-0000-0000-00000000000a');
 
 create or replace function pg_temp.expect(p_ok boolean, p_what text) returns void language plpgsql as $$
@@ -115,12 +117,12 @@ do $$ declare i int; begin
 end $$;
 select pg_temp.expect(public.redeem_code('ZZZZ-ZZZZ-ZZZZ-ZZZZ', 'device-cccccccccccccccc') ->> 'error' = 'rate_limited', 'redeem throttled');
 
--- trial is granted on admin activation when configured
+-- Trials now require a clear user action. Admin status changes do not mint them.
 set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000a';
-select public.admin_set_config('trial_days', '3'::jsonb);
-select public.admin_set_status('00000000-0000-0000-0000-00000000000c', 'active');
+select public.admin_set_commercial_policy(true, 3, 1875, 30, null);
 set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000c';
-select pg_temp.expect(public.license_status('device-cccccccccccccccc') ->> 'state' = 'trial', 'trial after activation');
+select pg_temp.expect((public.start_trial('device-cccccccccccccccc', 1) ->> 'created')::boolean, 'explicit trial claim');
+select pg_temp.expect(public.license_status('device-cccccccccccccccc') ->> 'state' = 'trial', 'trial after explicit claim');
 
 -- a driver only sees its own row
 select pg_temp.expect((select count(*) from public.drivers) = 1, 'driver sees only itself');

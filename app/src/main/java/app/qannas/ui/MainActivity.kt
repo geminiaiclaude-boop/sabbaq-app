@@ -26,19 +26,30 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import app.qannas.BuildConfig
 import app.qannas.Settings
 import app.qannas.ThemeMode
 import app.qannas.network.SupabaseClient
 import app.qannas.service.KeeperService
 import app.qannas.ui.theme.QannasTheme
 
-enum class AppState { LOGIN, DRIVER_PANEL, ADMIN_PANEL }
+enum class AppState { WELCOME, LOGIN, DRIVER_PANEL, ADMIN_PANEL }
 
 /** Keeps navigation across rotation only. No credentials or authorization are persisted. */
 class SessionNavigationViewModel : ViewModel() {
     var route by mutableStateOf(AppState.LOGIN)
         private set
-    fun authenticated(isAdmin: Boolean) { route = if (isAdmin) AppState.ADMIN_PANEL else AppState.DRIVER_PANEL }
+    private var initialized = false
+    fun initialize(showWelcome: Boolean) {
+        if (!initialized) {
+            route = if (showWelcome) AppState.WELCOME else AppState.LOGIN
+            initialized = true
+        }
+    }
+    fun welcomeFinished() { route = AppState.LOGIN }
+    fun authenticated(isAdmin: Boolean) {
+        route = if (isAdmin && BuildConfig.DIRECT_DISTRIBUTION) AppState.ADMIN_PANEL else AppState.DRIVER_PANEL
+    }
     fun signedOut() { route = AppState.LOGIN }
 }
 
@@ -47,8 +58,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val navigation = ViewModelProvider(this)[SessionNavigationViewModel::class.java]
+        navigation.initialize(!OnboardingPreferences.isComplete(this))
         setContent {
             var mode by remember { mutableStateOf(Settings.themeMode) }
+            var showA11yDisclosure by remember { mutableStateOf(false) }
+            var permissionMessage by remember { mutableStateOf<String?>(null) }
             val systemDark = isSystemInDarkTheme()
             val dark = when (mode) { ThemeMode.SYSTEM -> systemDark; ThemeMode.DARK -> true; ThemeMode.LIGHT -> false }
             var notificationsGranted by remember { mutableStateOf(hasNotificationPermission()) }
@@ -63,19 +77,29 @@ class MainActivity : ComponentActivity() {
             QannasTheme(darkTheme = dark) {
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                     QannasShell(
-                        showHeader = navigation.route != AppState.LOGIN,
+                        showHeader = navigation.route == AppState.DRIVER_PANEL || navigation.route == AppState.ADMIN_PANEL,
                         themeMode = mode,
                         onThemeChange = { mode = it; Settings.themeMode = it },
                         onLogout = {
                             Settings.isActive = false
+                            Settings.a11yDisclosureAccepted = false
                             stopService(Intent(this@MainActivity, KeeperService::class.java))
                             SupabaseClient.clearSession()
                             navigation.signedOut()
                         }
                     ) {
                         when (navigation.route) {
+                            AppState.WELCOME -> OnboardingScreen(onContinue = {
+                                if (!OnboardingPreferences.markComplete(this@MainActivity)) {
+                                    permissionMessage = "لم يُحفظ اكتمال التعريف على الجهاز. يمكنك تسجيل الدخول، وقد يظهر التعريف مجددًا عند الفتح التالي."
+                                }
+                                navigation.welcomeFinished()
+                            })
                             AppState.LOGIN -> LoginScreen(onLoginSuccess = navigation::authenticated)
-                            AppState.ADMIN_PANEL -> AdminScreen()
+                            AppState.ADMIN_PANEL -> {
+                                if (BuildConfig.DIRECT_DISTRIBUTION) AdminScreen()
+                                else Text("لوحة الإدارة غير متاحة في هذه النسخة")
+                            }
                             AppState.DRIVER_PANEL -> SettingsScreen(
                                 notificationPermissionGranted = notificationsGranted,
                                 onRequestNotificationPermission = {
@@ -83,11 +107,16 @@ class MainActivity : ComponentActivity() {
                                         permissionRequest.launch(Manifest.permission.POST_NOTIFICATIONS)
                                 },
                                 onOpenA11y = { runCatching {
-                                    startActivity(Intent(AndroidSettings.ACTION_ACCESSIBILITY_SETTINGS)); Unit
+                                    showA11yDisclosure = true
+                                    Unit
                                 } },
                                 onToggleKeeper = { start -> runCatching {
                                     val intent = Intent(this@MainActivity, KeeperService::class.java)
                                     if (start) {
+                                        if (!Settings.a11yDisclosureAccepted) {
+                                            showA11yDisclosure = true
+                                            error("راجع إفصاح إمكانية الوصول ووافق عليه قبل التشغيل")
+                                        }
                                         check(SupabaseClient.hasValidLicense()) { "يلزم اشتراك صالح قبل التشغيل" }
                                         Settings.isActive = true
                                         startForegroundService(intent)
@@ -100,6 +129,24 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                     }
+                    if (showA11yDisclosure) AccessibilityDisclosureDialog(
+                        onAccept = {
+                            showA11yDisclosure = false
+                            Settings.a11yDisclosureAccepted = true
+                            runCatching { startActivity(Intent(AndroidSettings.ACTION_ACCESSIBILITY_SETTINGS)) }
+                                .onFailure { permissionMessage = "تعذر فتح إعدادات إمكانية الوصول. حاول مجددًا من لوحة القيادة." }
+                        },
+                        onDismiss = {
+                            showA11yDisclosure = false
+                            Settings.a11yDisclosureAccepted = false
+                            stopService(Intent(this@MainActivity, KeeperService::class.java))
+                        }
+                    )
+                    permissionMessage?.let { message -> AlertDialog(
+                        onDismissRequest = { permissionMessage = null },
+                        title = { Text("تنبيه") }, text = { Text(message) },
+                        confirmButton = { TextButton(onClick = { permissionMessage = null }) { Text("حسنًا") } }
+                    ) }
                 }
             }
         }

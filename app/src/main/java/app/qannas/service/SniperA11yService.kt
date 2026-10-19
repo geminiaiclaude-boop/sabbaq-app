@@ -41,6 +41,10 @@ class SniperA11yService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
+        if (!Settings.a11yDisclosureAccepted) {
+            Settings.isActive = false
+            return
+        }
         if (!Settings.isActive || !ServicesSafetyPolicy.isRelevantAccessibilityEvent(event.eventType)) return
         if (!SupabaseClient.hasValidLicense()) {
             Settings.isActive = false
@@ -92,6 +96,8 @@ class SniperA11yService : AccessibilityService() {
     }
 
     private fun performClick(bounds: Bounds): Boolean {
+        if (!ServicesSafetyPolicy.canProcessOffers(Settings.isActive,
+                Settings.a11yDisclosureAccepted, SupabaseClient.hasValidLicense())) return false
         val path = Path().apply {
             moveTo(bounds.centerX.toFloat(), bounds.centerY.toFloat())
         }

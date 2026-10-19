@@ -24,6 +24,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -33,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import app.qannas.BuildConfig
+import app.qannas.network.SupabaseClient
 import java.io.ByteArrayInputStream
 import java.io.IOException
 import org.json.JSONObject
@@ -54,14 +56,31 @@ fun AdminScreen() {
 
     var loadError by remember { mutableStateOf<String?>(null) }
     var loadAttempt by remember { mutableIntStateOf(0) }
+    var authorizedAttempt by remember { mutableIntStateOf(-1) }
+    var nativeToken by remember { mutableStateOf<String?>(null) }
     val configScript = remember { adminConfigScript() }
+
+    LaunchedEffect(loadAttempt) {
+        nativeToken = null
+        loadError = null
+        SupabaseClient.authorizedAdminWebSession().fold(
+            onSuccess = { nativeToken = it; authorizedAttempt = loadAttempt },
+            onFailure = { loadError = it.message ?: "تعذر التحقق من جلسة الإدارة" }
+        )
+    }
+    val token = nativeToken.takeIf { authorizedAttempt == loadAttempt }
+    if (token == null) {
+        loadError?.let { AdminErrorState(message = it, onRetry = { loadAttempt++ }) }
+            ?: Box(Modifier.fillMaxSize().padding(24.dp)) { Text("جاري التحقق من جلسة الإدارة…") }
+        return
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { context ->
                 WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
-                createHardenedAdminWebView(context, configScript) { message ->
+                createHardenedAdminWebView(context, configScript, token) { message ->
                     loadError = message
                 }.also { webView ->
                     webView.tag = loadAttempt
@@ -113,9 +132,10 @@ private fun adminConfigScript(): String = """
 private fun createHardenedAdminWebView(
     context: Context,
     configScript: String,
+    authorizedToken: String,
     onMainFrameError: (String) -> Unit
 ): WebView = WebView(context).apply {
-    settings.apply {
+        settings.apply {
         // JavaScript مطلوب للوحة المحلية فقط؛ لا توجد واجهة JavaScript أصلية مضافة إلى WebView.
         javaScriptEnabled = true
         domStorageEnabled = true
@@ -125,11 +145,20 @@ private fun createHardenedAdminWebView(
         setSupportMultipleWindows(false)
         mediaPlaybackRequiresUserGesture = true
         mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+        cacheMode = WebSettings.LOAD_NO_CACHE
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) safeBrowsingEnabled = true
     }
     CookieManager.getInstance().setAcceptThirdPartyCookies(this, false)
     webChromeClient = WebChromeClient()
     webViewClient = object : WebViewClient() {
+        override fun onPageFinished(view: WebView, url: String?) {
+            if (url == null || !isAllowedAdminNavigation(Uri.parse(url))) return
+            val invocation = "window.QANNAS_ACCEPT_NATIVE_SESSION ? (window.QANNAS_ACCEPT_NATIVE_SESSION(${JSONObject.quote(authorizedToken)}), true) : false"
+            view.evaluateJavascript(invocation) { available ->
+                if (available == "false") onMainFrameError("تعذر ربط جلسة لوحة الإدارة. أعد المحاولة.")
+            }
+        }
+
         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
             !isAllowedAdminNavigation(request.url)
 
