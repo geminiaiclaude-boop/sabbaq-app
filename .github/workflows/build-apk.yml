@@ -1,104 +1,176 @@
-﻿name: Qannas CI/CD Pipeline
+﻿name: Qannas CI
 
 on:
+  pull_request:
   push:
-    branches: [ "main", "master" ]
+    branches: [main, master]
   workflow_dispatch:
 
+# لا يحتاج أي عمل إلى صلاحيات كتابة أو إلى GITHUB_TOKEN ذي صلاحيات افتراضية واسعة.
+permissions:
+  contents: read
+
+concurrency:
+  group: qannas-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  unit-tests:
-    name: Kotlin Unit Tests
+  dependency-review:
+    name: Dependency review
+    # للمستودعات الخاصة: فعّل هذا المتغير فقط عند توفر GitHub Code Security.
+    if: github.event_name == 'pull_request' && vars.ENABLE_DEPENDENCY_REVIEW == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with: 
-          distribution: 'temurin'
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Review introduced dependencies
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+          fail-on-scopes: runtime
+
+  verify:
+    name: Android unit tests and lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Verify Gradle Wrapper
+        uses: gradle/actions/wrapper-validation@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
           java-version: '17'
-          cache: 'gradle'
+          cache: gradle
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
-      - name: Run Core Tests
-        run: ./gradlew :core:test
+      - name: Run deterministic Android checks
+        run: ./gradlew --no-daemon :core:test :app:testDebugUnitTest :app:lint :app:assembleDebug
+      - name: Run admin regression tests
+        run: node --test admin/tests/admin-static.test.mjs
+      - name: Upload debug APK and validation reports
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: qannas-validation-${{ github.sha }}
+          path: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/reports/
+            core/build/reports/tests/
+          if-no-files-found: warn
+          retention-days: 14
 
   database-tests:
-    name: PostgreSQL License Tests
+    name: PostgreSQL license tests
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     services:
       postgres:
         image: postgres:16
-        env: 
+        env:
+          POSTGRES_DB: postgres
           POSTGRES_PASSWORD: postgres
-        ports: 
+        ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready 
-          --health-interval 10s 
-          --health-timeout 5s 
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
           --health-retries 5
     env:
+      PGDATABASE: postgres
       PGHOST: localhost
       PGUSER: postgres
       PGPASSWORD: postgres
     steps:
-      - uses: actions/checkout@v4
-      - name: Run Bootstrap
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Run bootstrap
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/bootstrap.sql
-      - name: Run Migrations
+      - name: Run migrations
+        shell: bash
         run: |
-          for f in supabase/migrations/*.sql; do 
-            echo "Running $f..."
-            psql -v ON_ERROR_STOP=1 -f "$f"
+          set -euo pipefail
+          shopt -s nullglob
+          migrations=(supabase/migrations/*.sql)
+          ((${#migrations[@]} > 0)) || { echo "No database migrations found" >&2; exit 1; }
+          for migration in "${migrations[@]}"; do
+            echo "Running ${migration}..."
+            psql -v ON_ERROR_STOP=1 -f "${migration}"
           done
-      - name: Run License Tests
+      - name: Run license tests
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/license_test.sql
+      - name: Run registration and admin contract tests
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/registration_admin_test.sql
 
   build-release:
-    name: Build Release APK & AAB
-    needs: [unit-tests, database-tests]
+    name: Build signed release APK and AAB
+    needs: [verify, database-tests]
+    # لا تُتاح الأسرار في PR؛ كما يلزم أن يكون المصدر فرعاً محمياً ومسمّى صراحةً.
+    if: >-
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      github.ref_protected &&
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    environment: production
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      QANNAS_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+      QANNAS_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      QANNAS_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          distribution: 'temurin'
+          persist-credentials: false
+      - name: Verify Gradle Wrapper
+        uses: gradle/actions/wrapper-validation@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
           java-version: '17'
-          cache: 'gradle'
+          cache: gradle
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
-        
-      - name: Decode Keystore from Secrets
+      - name: Validate and stage signing material
+        shell: bash
         env:
-          KEYSTORE_BASE64: "${{ secrets.KEYSTORE_BASE64 }}"
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
-          else
-            echo "Warning: KEYSTORE_BASE64 secret is not set. Build will fail if release is requested."
-          fi
-
-      - name: Create local.properties from Secrets
-        run: |
-          echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" > local.properties
-          echo "SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}" >> local.properties
-          echo "QANNAS_KEYSTORE=$RUNNER_TEMP/upload.jks" >> local.properties
-          echo "QANNAS_KEYSTORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }}" >> local.properties
-          echo "QANNAS_KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> local.properties
-          echo "QANNAS_KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> local.properties
-
-      - name: Build with Gradle
-        run: ./gradlew assembleRelease bundleRelease
-
+          set -euo pipefail
+          for required in KEYSTORE_BASE64 SUPABASE_URL SUPABASE_ANON_KEY QANNAS_KEYSTORE_PASSWORD QANNAS_KEY_ALIAS QANNAS_KEY_PASSWORD; do
+            if [[ -z "${!required:-}" ]]; then
+              echo "::error title=Missing release configuration::${required} is required for a signed release."
+              exit 1
+            fi
+          done
+          umask 077
+          keystore_path="${RUNNER_TEMP}/qannas-release.jks"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$keystore_path"
+          test -s "$keystore_path"
+          keytool -list -keystore "$keystore_path" -storepass "$QANNAS_KEYSTORE_PASSWORD" -alias "$QANNAS_KEY_ALIAS" >/dev/null
+          printf 'QANNAS_KEYSTORE=%s\n' "$keystore_path" >> "$GITHUB_ENV"
+      - name: Run release configuration preflight
+        run: ./gradlew --no-daemon :app:verifyReleaseConfiguration
+      - name: Build signed release artifacts
+        run: ./gradlew --no-daemon :app:assembleRelease :app:bundleRelease
       - name: Upload APK
-        uses: actions/upload-artifact@v4
-        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: qannas-release-apk
+          name: qannas-release-apk-${{ github.sha }}
           path: app/build/outputs/apk/release/app-release.apk
-
+          if-no-files-found: error
+          retention-days: 14
       - name: Upload AAB
-        uses: actions/upload-artifact@v4
-        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: qannas-release-aab
+          name: qannas-release-aab-${{ github.sha }}
           path: app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+          retention-days: 14

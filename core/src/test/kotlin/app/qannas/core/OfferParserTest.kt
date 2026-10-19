@@ -66,7 +66,7 @@ class OfferParserTest {
 
     @Test
     fun hoursAndMinutesInOneLabelAreCombined() {
-        val root = screen(node("SAR 60"), node("1 h 15 min"), node("Accept"))
+        val root = screen(node("SAR 60"), node("1 h 15 min"), node("Accept", clickable = true))
         val offer = OfferParser(profiles.getValue("bolt")).parse(root).offer!!
         assertEquals(75, offer.pickupMinutes)
     }
@@ -97,18 +97,61 @@ class OfferParserTest {
     @Test
     fun countdownDoesNotChangeTheFingerprint() {
         val parser = OfferParser(profiles.getValue("bolt"))
-        val a = parser.parse(screen(node("JD 4"), node("2 km"), node("9 km"), node("Mecca Street"), node("Accept (12)"))).offer!!
-        val b = parser.parse(screen(node("JD 4"), node("2 km"), node("9 km"), node("Mecca Street"), node("Accept (11)"))).offer!!
+        val a = parser.parse(screen(node("JD 4"), node("2 km"), node("9 km"), node("Mecca Street"), node("Accept (12)", clickable = true))).offer!!
+        val b = parser.parse(screen(node("JD 4"), node("2 km"), node("9 km"), node("Mecca Street"), node("Accept (11)", clickable = true))).offer!!
         assertEquals(a.fingerprint, b.fingerprint)
     }
 
     @Test
     fun minutesTokenDoesNotSwallowMetres() {
-        val root = screen(node("JD 3"), node("5 min"), node("Accept"))
+        val root = screen(node("JD 3"), node("5 min"), node("Accept", clickable = true))
         val offer = OfferParser(profiles.getValue("bolt")).parse(root).offer!!
         assertNull(offer.pickupKm)
         assertNull(offer.tripKm)
         assertEquals(5, offer.pickupMinutes)
         assertFalse(offer.fare == null)
+    }
+
+    @Test
+    fun staticAcceptTextIsNotAnActionableOffer() {
+        val parsed = OfferParser(profiles.getValue("bolt")).parse(screen(node("JD 4"), node("Accept")))
+        assertNull(parsed.offer)
+        assertNull(parsed.acceptNode)
+    }
+
+    @Test
+    fun confirmationStateSuppressesAnOtherwiseActionableOffer() {
+        val parsed = OfferParser(profiles.getValue("bolt")).parse(
+            screen(node("JD 4"), node("Navigate"), node("Accept", clickable = true)),
+        )
+        assertTrue(parsed.confirmed)
+        assertNull(parsed.offer)
+        assertNotNull(parsed.acceptNode)
+    }
+
+    @Test
+    fun emptyCurrencyConfigurationDoesNotTreatAnyNumberAsFare() {
+        val profile = profiles.getValue("bolt").copy(currencyTokens = emptyList())
+        val offer = OfferParser(profile).parse(screen(node("4.25"), node("Accept", clickable = true))).offer!!
+        assertNull(offer.fare)
+        assertNull(offer.currency)
+    }
+
+    @Test
+    fun multipleHourMinutePairsPreserveBothDurations() {
+        val offer = OfferParser(profiles.getValue("bolt")).parse(
+            screen(node("JD 60"), node("1 h 15 min; 2 h 10 min"), node("Accept", clickable = true)),
+        ).offer!!
+        assertEquals(75, offer.pickupMinutes)
+        assertEquals(130, offer.tripMinutes)
+    }
+
+    @Test
+    fun unrepresentableDurationIsLeftUnreadableInsteadOfOverflowing() {
+        val offer = OfferParser(profiles.getValue("bolt")).parse(
+            screen(node("JD 60"), node("2147483648 min"), node("Accept", clickable = true)),
+        ).offer!!
+        assertNull(offer.pickupMinutes)
+        assertNull(offer.tripMinutes)
     }
 }

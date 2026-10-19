@@ -1,16 +1,23 @@
 ﻿package app.qannas.ui
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings as AndroidSettings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.Surface
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
+import app.qannas.Settings
+import app.qannas.network.SupabaseClient
 import app.qannas.service.KeeperService
 import app.qannas.ui.theme.QannasTheme
 
@@ -22,11 +29,28 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
+            var notificationPermissionGranted by remember {
+                mutableStateOf(hasNotificationPermission())
+            }
+            val notificationPermissionLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.RequestPermission()
+            ) { granted ->
+                notificationPermissionGranted = granted
+            }
             QannasTheme {
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                     Surface(modifier = Modifier.fillMaxSize()) {
                         var appState by remember { mutableStateOf(AppState.LOGIN) }
 
+                        Column(Modifier.fillMaxSize()) {
+                            if (appState != AppState.LOGIN) {
+                                TextButton(onClick = {
+                                    Settings.isActive = false
+                                    stopService(Intent(this@MainActivity, KeeperService::class.java))
+                                    SupabaseClient.clearSession()
+                                    appState = AppState.LOGIN
+                                }) { Text("تسجيل الخروج") }
+                            }
                         when (appState) {
                             AppState.LOGIN -> {
                                 LoginScreen(onLoginSuccess = { isAdmin ->
@@ -38,27 +62,49 @@ class MainActivity : ComponentActivity() {
                             }
                             AppState.DRIVER_PANEL -> {
                                 SettingsScreen(
-                                    onOpenA11y = {
-                                        startActivity(Intent(AndroidSettings.ACTION_ACCESSIBILITY_SETTINGS))
+                                    notificationPermissionGranted = notificationPermissionGranted,
+                                    onRequestNotificationPermission = {
+                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                        }
                                     },
-                                    onToggleKeeper = { start ->
-                                        val intent = Intent(this, KeeperService::class.java)
-                                        if (start) {
-                                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                                                startForegroundService(intent)
+                                    onOpenA11y = {
+                                        runCatching {
+                                            startActivity(Intent(AndroidSettings.ACTION_ACCESSIBILITY_SETTINGS))
+                                        }
+                                    },
+                                    onToggleKeeper = { shouldStart ->
+                                        runCatching {
+                                            val intent = Intent(this@MainActivity, KeeperService::class.java)
+                                            if (shouldStart) {
+                                                check(SupabaseClient.hasValidLicense()) { "يلزم اشتراك صالح قبل التشغيل" }
+                                                // تتحقق KeeperService من هذه الحالة قبل عرض الإشعار الأمامي.
+                                                Settings.isActive = true
+                                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                                    startForegroundService(intent)
+                                                } else {
+                                                    startService(intent)
+                                                }
                                             } else {
-                                                startService(intent)
+                                                Settings.isActive = false
+                                                stopService(intent)
                                             }
-                                        } else {
-                                            stopService(intent)
+                                            Unit
+                                        }.onFailure {
+                                            if (shouldStart) Settings.isActive = false
                                         }
                                     }
                                 )
                             }
+                        }
                         }
                     }
                 }
             }
         }
     }
+
+    private fun hasNotificationPermission(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 }
