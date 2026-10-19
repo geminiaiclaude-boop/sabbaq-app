@@ -170,7 +170,7 @@ jobs:
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-      GOOGLE_WEB_CLIENT_ID: ${{ secrets.GOOGLE_WEB_CLIENT_ID }}
+      GOOGLE_WEB_CLIENT_ID: ${{ secrets.GOOGLE_WEB_CLIENT_ID || '1020844982029-08j86skm4iroolntbu3guhda1m9km4lt.apps.googleusercontent.com' }}
       QANNAS_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
       QANNAS_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
       QANNAS_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
@@ -193,6 +193,9 @@ jobs:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
           set -euo pipefail
+          if [[ -z "${GOOGLE_WEB_CLIENT_ID:-}" ]]; then
+            GOOGLE_WEB_CLIENT_ID="1020844982029-08j86skm4iroolntbu3guhda1m9km4lt.apps.googleusercontent.com"
+          fi
           for required in KEYSTORE_BASE64 SUPABASE_URL SUPABASE_ANON_KEY GOOGLE_WEB_CLIENT_ID QANNAS_KEYSTORE_PASSWORD QANNAS_KEY_ALIAS QANNAS_KEY_PASSWORD; do
             if [[ -z "${!required:-}" ]]; then
               echo "::error title=Missing release configuration::${required} is required for a signed release."
