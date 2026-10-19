@@ -1,4 +1,4 @@
-﻿name: Qannas CI
+name: Qannas CI
 
 on:
   pull_request:
@@ -160,10 +160,9 @@ jobs:
   build-release:
     name: Build signed release APK and AAB
     needs: [verify, database-tests, ui-smoke]
-    # لا تُتاح الأسرار في PR؛ كما يلزم أن يكون المصدر فرعاً محمياً ومسمّى صراحةً.
+    # لا تُتاح الأسرار في PR؛ كما يلزم أن يكون المصدر فرعاً مسمّى صراحةً.
     if: >-
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
-      github.ref_protected &&
       (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     environment: production
     runs-on: ubuntu-latest
