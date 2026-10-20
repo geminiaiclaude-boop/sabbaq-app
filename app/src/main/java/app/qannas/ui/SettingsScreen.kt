@@ -631,7 +631,7 @@ private fun DashboardPage(
     QannasCard(
         title = if (readyCount == readiness.size) "كل شيء جاهز" else "قبل بدء العمل",
         subtitle = if (readyCount == readiness.size) "يمكنك بدء المتابعة في أي وقت."
-            else "أكمل ${readiness.size - readyCount} من ${readiness.size} لتبدأ.",
+            else "متبقٍ ${readiness.size - readyCount} من ${readiness.size} خطوات قبل البدء.",
         icon = Icons.Outlined.VerifiedUser,
         modifier = Modifier.qannasEntrance(1),
     ) {
