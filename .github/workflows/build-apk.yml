@@ -156,6 +156,8 @@ jobs:
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/registration_admin_test.sql
       - name: Run Saudi commercial policy tests
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/saudi_commercial_trial_test.sql
+      - name: Run account deletion tests
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/account_deletion_test.sql
 
   build-release:
     name: Build signed release APK and AAB

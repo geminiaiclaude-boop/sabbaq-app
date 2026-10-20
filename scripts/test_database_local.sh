@@ -12,7 +12,7 @@ for migration in supabase/migrations/*.sql; do
   echo "MIGRATION: $migration"
   psql_local -f "$migration"
 done
-for suite in supabase/tests/license_test.sql supabase/tests/registration_admin_test.sql supabase/tests/saudi_commercial_trial_test.sql; do
+for suite in supabase/tests/license_test.sql supabase/tests/registration_admin_test.sql supabase/tests/saudi_commercial_trial_test.sql supabase/tests/account_deletion_test.sql; do
   echo "TEST FILE: $suite"
   psql_local -f "$suite"
 done
