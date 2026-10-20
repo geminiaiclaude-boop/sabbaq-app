@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -21,7 +20,17 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import app.qannas.ui.theme.LocalReducedMotion
+import app.qannas.ui.theme.QannasMotion
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -58,6 +67,7 @@ internal fun AdvancedFiltersEditor(
             title = "السعر والعائد",
             subtitle = "اختر سعر الطلب والعائد الذي يناسبك لكل كيلومتر",
             hasError = errors.keys.any { it in setOf("minFare", "maxFare", "minFarePerKm") },
+            filledCount = listOf(draft.minFare, draft.maxFare, draft.minFarePerKm).count { it.isNotBlank() },
         ) {
             DraftField(
                 value = draft.minFare,
@@ -101,6 +111,7 @@ internal fun AdvancedFiltersEditor(
             title = "الوصول إلى الراكب",
             subtitle = "استبعد الطلبات التي يكون الوصول إليها أبعد أو أطول مما تفضّل",
             hasError = errors.keys.any { it in setOf("maxPickupKm", "maxPickupMinutes") },
+            filledCount = listOf(draft.maxPickupKm, draft.maxPickupMinutes).count { it.isNotBlank() },
         ) {
             DraftField(
                 value = draft.maxPickupKm,
@@ -122,6 +133,7 @@ internal fun AdvancedFiltersEditor(
             title = "الرحلات التي تناسبك",
             subtitle = "حدّد مسافة الرحلة ومدتها بعد استلام الراكب",
             hasError = errors.keys.any { it in setOf("minTripKm", "maxTripKm", "maxTripMinutes") },
+            filledCount = listOf(draft.minTripKm, draft.maxTripKm, draft.maxTripMinutes).count { it.isNotBlank() },
         ) {
             DraftField(
                 value = draft.minTripKm,
@@ -150,6 +162,7 @@ internal fun AdvancedFiltersEditor(
             title = "طلبات لا تناسبك",
             subtitle = "اكتب كلمات لا تريدها في وصف الطلب، وافصل بينها بفاصلة",
             hasError = errors.containsKey("excludeKeywords"),
+            filledCount = draft.excludeKeywords.split(',', '،', '\n', '\r').count { it.isNotBlank() },
         ) {
             DraftField(
                 value = draft.excludeKeywords,
@@ -165,6 +178,7 @@ internal fun AdvancedFiltersEditor(
             title = "أوقات العمل",
             subtitle = "اختر متى تريد متابعة الطلبات؛ يمكن أن يمتد الوقت إلى ما بعد منتصف الليل",
             hasError = errors.keys.any { it in setOf("scheduleStart", "scheduleEnd") },
+            filledCount = if (draft.scheduleEnabled) 1 else 0,
         ) {
             ToggleRow(
                 text = "العمل في أوقات محددة",
@@ -193,29 +207,61 @@ internal fun AdvancedFiltersEditor(
     }
 }
 
+/**
+ * Collapsible group. The whole header is the toggle (no separate "show options" row),
+ * and a collapsed group still says how many of its conditions are set, so drivers can
+ * scan their rules without expanding everything.
+ */
 @Composable
 private fun FilterGroup(
     title: String,
     subtitle: String,
     hasError: Boolean = false,
+    filledCount: Int = 0,
     content: @Composable () -> Unit,
 ) {
     var expanded by rememberSaveable(title) { mutableStateOf(title == "السعر والعائد") }
     LaunchedEffect(hasError) { if (hasError) expanded = true }
-    QannasCard(title = title, subtitle = subtitle) {
-        TextButton(
-            onClick = { expanded = !expanded },
-            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+    val reduced = LocalReducedMotion.current
+    val chevron by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        animationSpec = if (reduced) snap() else tween(QannasMotion.MEDIUM, easing = QannasMotion.Emphasized),
+        label = "filter-group-chevron",
+    )
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, if (hasError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .toggleable(value = expanded, role = Role.Button, onValueChange = { expanded = it })
+                .heightIn(min = 64.dp)
+                .padding(horizontal = 20.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(if (expanded) "إخفاء الخيارات" else "عرض الخيارات", modifier = Modifier.weight(1f))
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
+                Text(
+                    if (expanded || filledCount == 0) subtitle else "$filledCount محدد",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (hasError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             Icon(
-                imageVector = if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
-                contentDescription = null,
-                modifier = Modifier.size(20.dp),
+                imageVector = Icons.Outlined.ExpandMore,
+                contentDescription = if (expanded) "إخفاء الخيارات" else "عرض الخيارات",
+                modifier = Modifier.size(24.dp).graphicsLayer { rotationZ = chevron },
             )
         }
         AnimatedVisibility(expanded) {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) { content() }
+            Column(
+                Modifier.padding(start = 20.dp, end = 20.dp, bottom = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) { content() }
         }
     }
 }

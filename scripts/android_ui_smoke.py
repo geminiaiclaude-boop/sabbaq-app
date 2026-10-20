@@ -69,6 +69,19 @@ for name, screen, dark, font_scale in cases:
         assert jargon not in visible, f'Developer-facing copy in customer screen {name}: {jargon}'
     if screen == 'welcome-example':
         assert '٢٫٥ ر.س قبل التكاليف' in visible, f'Concrete fare/distance example missing: {name}'
+    if screen == 'account':
+        # Google Play requires an in-app path to delete the account in every distribution.
+        # It sits at the end of the page, below the first screen, so scroll before reading.
+        deletion_visible = 'حذف حسابي' in visible
+        for _ in range(6):
+            if deletion_visible:
+                break
+            adb('shell', 'input', 'swipe', '540', '1700', '540', '500', '250')
+            time.sleep(1)
+            adb('shell', 'uiautomator', 'dump', '/sdcard/qannas-ui.xml', timeout=60)
+            scrolled = ET.fromstring(adb('shell', 'cat', '/sdcard/qannas-ui.xml')).findall('.//node')
+            deletion_visible = any('حذف حسابي' in (n.get('text', '') + n.get('content-desc', '')) for n in scrolled)
+        assert deletion_visible, f'Account deletion entry point missing: {name}'
     if args.distribution == 'play' and screen in ('login', 'account'):
         visible = ' '.join(node.get('text', '') + ' ' + node.get('content-desc', '') for node in nodes)
         for forbidden in ('كود التفعيل', 'شراء كود', 'شراء الاشتراك من الإدارة', 'واتساب', '18.75'):

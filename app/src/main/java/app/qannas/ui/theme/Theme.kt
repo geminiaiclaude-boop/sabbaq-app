@@ -4,6 +4,9 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
@@ -66,14 +69,48 @@ private val QannasTypography = Typography(
     labelMedium = type(12, 18, FontWeight.Medium), labelSmall = type(11, 16, FontWeight.Medium)
 )
 
+/**
+ * Brand roles Material3 has no slot for: the deep "command" surface used by hero areas,
+ * and a success role distinct from primary so confirmations never look like actions.
+ */
+@Immutable
+data class QannasBrandColors(
+    val heroStart: Color,
+    val heroEnd: Color,
+    val onHero: Color,
+    val onHeroMuted: Color,
+    val heroAccent: Color,
+    val success: Color,
+    val successContainer: Color,
+    val onSuccessContainer: Color,
+)
+
+internal val QannasLightBrand = QannasBrandColors(
+    heroStart = Color(0xFF0F3442), heroEnd = Color(0xFF00594A),
+    onHero = Color.White, onHeroMuted = Color(0xFFCFE6E0), heroAccent = Color(0xFF82DFC3),
+    success = Color(0xFF006B3F), successContainer = Color(0xFFD3F5E2), onSuccessContainer = Color(0xFF00391F),
+)
+internal val QannasDarkBrand = QannasBrandColors(
+    heroStart = Color(0xFF0C2A35), heroEnd = Color(0xFF004638),
+    onHero = Color(0xFFE9F4F2), onHeroMuted = Color(0xFFB4CFC9), heroAccent = Color(0xFF82DFC3),
+    success = Color(0xFF8CDDB1), successContainer = Color(0xFF0D4A2D), onSuccessContainer = Color(0xFFD3F5E2),
+)
+
+val LocalQannasBrand = staticCompositionLocalOf { QannasLightBrand }
+
 /** Brand colors stay stable; theme follows the system unless the user explicitly chooses. */
 @Composable
 fun QannasTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = if (darkTheme) QannasDarkColors else QannasLightColors,
-        typography = QannasTypography,
-        shapes = Shapes(extraSmall = RoundedCornerShape(8.dp), small = RoundedCornerShape(12.dp),
-            medium = RoundedCornerShape(16.dp), large = RoundedCornerShape(24.dp), extraLarge = RoundedCornerShape(32.dp)),
-        content = content
-    )
+    CompositionLocalProvider(
+        LocalQannasBrand provides if (darkTheme) QannasDarkBrand else QannasLightBrand,
+        LocalReducedMotion provides rememberSystemReducedMotion(),
+    ) {
+        MaterialTheme(
+            colorScheme = if (darkTheme) QannasDarkColors else QannasLightColors,
+            typography = QannasTypography,
+            shapes = Shapes(extraSmall = RoundedCornerShape(8.dp), small = RoundedCornerShape(12.dp),
+                medium = RoundedCornerShape(16.dp), large = RoundedCornerShape(24.dp), extraLarge = RoundedCornerShape(32.dp)),
+            content = content
+        )
+    }
 }

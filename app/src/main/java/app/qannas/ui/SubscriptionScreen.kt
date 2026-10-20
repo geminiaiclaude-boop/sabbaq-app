@@ -14,7 +14,15 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.ImeAction
+import app.qannas.ui.theme.qannasEntrance
 import androidx.compose.material.icons.outlined.PrivacyTip
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.VerifiedUser
@@ -65,8 +73,50 @@ internal fun SubscriptionScreen(
     externalMessageIsError: Boolean,
     onLicenseChanged: (Boolean) -> Unit,
     onMessage: (String?, Boolean) -> Unit,
+    onAccountDeleted: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
+    var identity by remember { mutableStateOf<String?>(null) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    var isDeleting by remember { mutableStateOf(false) }
+    var deleteError by remember { mutableStateOf<String?>(null) }
+
+    fun deleteAccount() {
+        if (isDeleting) return
+        isDeleting = true
+        deleteError = null
+        scope.launch {
+            try {
+                SupabaseClient.deleteAccount().fold(
+                    onSuccess = {
+                        showDeleteDialog = false
+                        onAccountDeleted()
+                    },
+                    onFailure = { deleteError = it.message ?: "تعذر حذف الحساب الآن. حاول مجدداً بعد قليل." },
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                deleteError = "تعذر حذف الحساب الآن. تحقق من الاتصال ثم أعد المحاولة."
+            } finally {
+                isDeleting = false
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        // للعرض فقط: فشل القراءة لا يغيّر الوصول ولا يظهر خطأ؛ تبقى البطاقة بلا معرّف.
+        identity = SupabaseClient.accountIdentity().getOrNull()
+    }
+
+    if (showDeleteDialog) {
+        DeleteAccountDialog(
+            isDeleting = isDeleting,
+            error = deleteError,
+            onConfirm = ::deleteAccount,
+            onDismiss = { if (!isDeleting) { showDeleteDialog = false; deleteError = null } },
+        )
+    }
     val context = LocalContext.current
     val isDirectDistribution = BuildConfig.DIRECT_DISTRIBUTION
 
@@ -268,19 +318,89 @@ internal fun SubscriptionScreen(
             PlayInformationCard()
         }
 
-        externalMessage?.let { QannasMessage(it, isError = externalMessageIsError) }
+        QannasAnimatedMessage(externalMessage, if (externalMessageIsError) QannasTone.Error else QannasTone.Info)
 
-        QannasCard(title = "معلومات حسابك", icon = Icons.Outlined.PrivacyTip) {
+        QannasCard(title = "معلومات حسابك", icon = Icons.Outlined.PrivacyTip, modifier = Modifier.qannasEntrance(3)) {
+            identity?.let {
+                Text(
+                    "تسجيل الدخول بـ: $it",
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.semantics { contentDescription = "الحساب المسجّل: $it" },
+                )
+            }
             Text(
                 "نستخدم بيانات حسابك لتأكيد هويتك وحماية الوصول إليه.",
                 style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+
+        QannasCard(title = "حذف الحساب", icon = Icons.Outlined.DeleteForever, modifier = Modifier.qannasEntrance(4)) {
             Text(
-                "رقم الجوال محفوظ بأمان في حسابك لطلب رمز الدخول وتأكيد الوصول عند الحاجة.",
+                "يحذف حسابك واشتراكك وشروطك وبيانات الجهاز المرتبطة نهائياً. لا يمكن التراجع عن الحذف، ولا تُستعاد مدة اشتراك متبقية.",
                 style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            QannasButton(
+                text = "حذف حسابي",
+                onClick = { deleteError = null; showDeleteDialog = true },
+                style = QannasButtonStyle.Secondary,
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                icon = Icons.Outlined.DeleteForever,
             )
         }
     }
+}
+
+/** Typed confirmation keeps a destructive, irreversible action from being a single mis-tap. */
+@Composable
+private fun DeleteAccountDialog(
+    isDeleting: Boolean,
+    error: String?,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var typed by remember { mutableStateOf("") }
+    val confirmed = AccountDeletionConfirmation.matches(typed)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Outlined.DeleteForever, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+        title = { Text("حذف الحساب نهائياً؟") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("سيُحذف حسابك واشتراكك وكل البيانات المرتبطة به، وسيتوقف قناص فوراً. إذا استخدمت التجربة سابقاً فلن تتاح لك تجربة جديدة بنفس الرقم أو الجهاز.")
+                OutlinedTextField(
+                    value = typed,
+                    onValueChange = { typed = it.take(32) },
+                    enabled = !isDeleting,
+                    singleLine = true,
+                    label = { Text("اكتب «${AccountDeletionConfirmation.WORD}» للتأكيد") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                error?.let { QannasMessage(it, tone = QannasTone.Error) }
+            }
+        },
+        confirmButton = {
+            QannasButton(
+                text = "حذف نهائي",
+                onClick = onConfirm,
+                enabled = confirmed,
+                busy = isDeleting,
+                busyText = "جارٍ الحذف",
+                style = QannasButtonStyle.Destructive,
+                fillWidth = false,
+            )
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isDeleting, modifier = Modifier.heightIn(min = 48.dp)) { Text("إلغاء") }
+        },
+    )
+}
+
+/** The word the driver types; normalised so Arabic keyboard variants of the same word match. */
+internal object AccountDeletionConfirmation {
+    const val WORD = "حذف"
+    fun matches(input: String): Boolean = input.trim().replace("ـ", "") == WORD
 }
 
 @Composable
@@ -311,21 +431,14 @@ private fun LicenseStatusCard(
         if (snapshot != null) {
             ServerTimestampRows(snapshot)
         }
-        OutlinedButton(
+        QannasButton(
+            text = "تحديث الاشتراك",
             onClick = onRefresh,
-            enabled = !isRefreshing,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-        ) {
-            if (isRefreshing) {
-                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                Spacer(Modifier.size(8.dp))
-                Text("جارٍ تحديث الحالة")
-            } else {
-                Icon(Icons.Outlined.Refresh, contentDescription = null)
-                Spacer(Modifier.size(8.dp))
-                Text("تحديث الاشتراك")
-            }
-        }
+            busy = isRefreshing,
+            busyText = "جارٍ تحديث الحالة",
+            style = QannasButtonStyle.Secondary,
+            icon = Icons.Outlined.Refresh,
+        )
     }
 }
 
@@ -374,23 +487,13 @@ private fun TrialCard(
     ) {
         Text(presentation.detail)
         if (presentation.canStart) {
-            Button(
+            QannasButton(
+                text = "ابدأ التجربة",
                 onClick = onStart,
-                enabled = !isStarting && !isBusy && hasBoundSession,
-                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-            ) {
-                if (isStarting) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        strokeWidth = 2.dp,
-                    )
-                    Spacer(Modifier.size(8.dp))
-                    Text("جارٍ بدء التجربة")
-                } else {
-                    Text("ابدأ التجربة")
-                }
-            }
+                enabled = !isBusy && hasBoundSession,
+                busy = isStarting,
+                busyText = "جارٍ بدء التجربة",
+            )
         }
     }
 }
@@ -438,12 +541,7 @@ private fun DirectDistributionCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 offer.purchaseContactUrl?.let { contactUrl ->
-                    OutlinedButton(
-                        onClick = { onOpenContact(contactUrl) },
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                    ) {
-                        Text("التواصل مع الإدارة")
-                    }
+                    QannasButton(text = "التواصل مع الإدارة", onClick = { onOpenContact(contactUrl) }, style = QannasButtonStyle.Secondary)
                 }
             }
         }
@@ -462,16 +560,15 @@ private fun DirectDistributionCard(
             label = { Text("رمز التفعيل") },
             placeholder = { Text("XXXX-XXXX-XXXX-XXXX") },
             textStyle = LocalTextStyle.current.copy(textDirection = TextDirection.Ltr),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { onRedeem() }),
             modifier = Modifier.fillMaxWidth(),
         )
-        Button(
+        QannasButton(
+            text = "تفعيل اشتراكي",
             onClick = onRedeem,
-            enabled = !isBusy,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-        ) {
-            Text("تفعيل اشتراكي")
-        }
+            enabled = activationCode.isNotBlank() && !isBusy,
+        )
     }
 }
 

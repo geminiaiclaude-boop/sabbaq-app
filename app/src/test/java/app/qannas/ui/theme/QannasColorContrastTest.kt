@@ -20,7 +20,15 @@ class QannasColorContrastTest {
             "background" to (c.background to c.onBackground),
             "errorContainer" to (c.errorContainer to c.onErrorContainer)
         )
-        pairs.forEach { (name, pair) ->
+        val brand = if (dark) QannasDarkBrand else QannasLightBrand
+        val brandPairs = mapOf(
+            "hero start" to (brand.heroStart to brand.onHero),
+            "hero end" to (brand.heroEnd to brand.onHero),
+            "muted hero text" to (brand.heroEnd to brand.onHeroMuted),
+            "successContainer" to (brand.successContainer to brand.onSuccessContainer),
+            "success on surface" to (c.surface to brand.success),
+        )
+        (pairs + brandPairs).forEach { (name, pair) ->
             val contrast = ratio(pair.first, pair.second)
             assertTrue("$name contrast=$contrast dark=$dark", contrast >= 4.5)
         }
