@@ -5,7 +5,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.PrivacyTip
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -31,7 +34,8 @@ fun AccessibilityDisclosureDialog(onAccept: () -> Unit, onDismiss: () -> Unit) {
                 Text("بعد موافقتك سنفتح إعدادات Android لتفعّل الإذن بنفسك، ثم يمكنك العودة وتشغيل قناص. اختيار «ليس الآن» أو إغلاق هذه النافذة لا يمنح موافقة، ولا يفعّل القبول التلقائي.", style = MaterialTheme.typography.bodyMedium)
             }
         },
-        confirmButton = { Button(onClick = onAccept) { Text("أوافق، افتح إعدادات الإذن") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("ليس الآن") } }
+        icon = { Icon(Icons.Outlined.PrivacyTip, contentDescription = null) },
+        confirmButton = { QannasButton(text = "أوافق، افتح إعدادات الإذن", onClick = onAccept, fillWidth = false) },
+        dismissButton = { TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) { Text("ليس الآن") } }
     )
 }

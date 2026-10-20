@@ -31,6 +31,11 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.material3.FilterChip
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import app.qannas.ui.theme.LocalQannasBrand
 import app.qannas.ui.theme.LocalReducedMotion
 import app.qannas.ui.theme.QannasDepthContent
@@ -198,6 +203,7 @@ fun SettingsScreen(
     var pendingDestination by remember { mutableStateOf<DriverDestination?>(null) }
 
     val latestToggleKeeper by rememberUpdatedState(onToggleKeeper)
+    val haptics = LocalHapticFeedback.current
     val latestUnsavedChanged by rememberUpdatedState(onUnsavedFiltersChanged)
     LaunchedEffect(filtersDirty) { latestUnsavedChanged(filtersDirty) }
 
@@ -280,9 +286,11 @@ fun SettingsScreen(
                     savedFilters = filters
                     if (draft === submittedDraft) draft = FilterDraft.from(filters)
                     filtersMessage = DriverStatus("حُفظت شروطك. ستُستخدم عند بدء متابعة الطلبات.", success = true)
+                    haptics.performHapticFeedback(HapticFeedbackType.Confirm)
                     onSaved()
                 } else {
                     filtersMessage = DriverStatus("لم نستطع حفظ شروطك على جهازك؛ ما زالت الشروط السابقة هي المستخدمة.", isError = true)
+                    haptics.performHapticFeedback(HapticFeedbackType.Reject)
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -368,6 +376,7 @@ fun SettingsScreen(
             runtimeMessage = DriverStatus("لم نتمكن من بدء متابعة الطلبات. راجع أذونات الجهاز ثم حاول مرة أخرى.", isError = true)
         } else {
             isActive = true
+            haptics.performHapticFeedback(HapticFeedbackType.Confirm)
             runtimeMessage = DriverStatus("متابعة الطلبات تعمل وفق شروطك المحفوظة وأوقات عملك. يمكنك إيقافها في أي وقت.", success = true)
         }
     }
@@ -809,6 +818,7 @@ private fun FiltersPage(
         if (validationErrors.isNotEmpty()) "راجع الحقول المعلَّمة؛ لن نستبدل شروطك المحفوظة حتى تصلحها." else null,
         QannasTone.Error,
     )
+    FilterPresetsCard(draft = draft, enabled = !isSaving, onDraftChange = onDraftChange)
     AdvancedFiltersEditor(
         draft = draft,
         errors = validationErrors,
@@ -833,6 +843,33 @@ private fun FiltersPage(
             style = QannasButtonStyle.Text,
             icon = Icons.Outlined.Refresh,
         )
+    }
+}
+
+/** One-tap starting points for distance/time conditions; the result is still an unsaved draft. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FilterPresetsCard(draft: FilterDraft, enabled: Boolean, onDraftChange: (FilterDraft) -> Unit) {
+    val selected = FilterPreset.entries.firstOrNull { it.matches(draft) }
+    QannasCard(
+        title = "ابدأ من قالب",
+        subtitle = selected?.description ?: "يضبط المسافة والوقت فقط. راجع القيم ثم احفظ.",
+        icon = Icons.Outlined.Tune,
+    ) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterPreset.entries.forEach { preset ->
+                FilterChip(
+                    selected = preset == selected,
+                    enabled = enabled,
+                    onClick = { onDraftChange(preset.applyTo(draft)) },
+                    label = { Text(preset.label) },
+                    leadingIcon = if (preset == selected) {
+                        { Icon(Icons.Outlined.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                    } else null,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                )
+            }
+        }
     }
 }
 

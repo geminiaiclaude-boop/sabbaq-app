@@ -12,16 +12,18 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.Alignment
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -71,7 +73,12 @@ fun AdminScreen() {
     val token = nativeToken.takeIf { authorizedAttempt == loadAttempt }
     if (token == null) {
         loadError?.let { AdminErrorState(message = it, onRetry = { loadAttempt++ }) }
-            ?: Box(Modifier.fillMaxSize().padding(24.dp)) { Text("جاري التحقق من جلسة الإدارة…") }
+            ?: Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    CircularProgressIndicator()
+                    Text("جارٍ التحقق من جلسة الإدارة…", style = MaterialTheme.typography.bodyMedium)
+                }
+            }
         return
     }
 
@@ -236,19 +243,11 @@ private fun WebView.loadLocalAdminPage(onError: (String) -> Unit) {
 
 @Composable
 private fun AdminErrorState(message: String, onRetry: (() -> Unit)?) {
-    Box(modifier = Modifier.fillMaxSize().padding(24.dp)) {
-        Card(
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-            modifier = Modifier.fillMaxSize()
-        ) {
-            Column(modifier = Modifier.padding(24.dp)) {
-                Text("تعذر فتح لوحة الإدارة", style = MaterialTheme.typography.titleLarge)
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(message, color = MaterialTheme.colorScheme.onErrorContainer)
-                if (onRetry != null) {
-                    Spacer(modifier = Modifier.height(20.dp))
-                    Button(onClick = onRetry) { Text("إعادة المحاولة") }
-                }
+    Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+        QannasCard(title = "تعذر فتح لوحة الإدارة", icon = Icons.Outlined.ErrorOutline, modifier = Modifier.widthIn(max = 560.dp)) {
+            QannasMessage(message, tone = QannasTone.Error)
+            if (onRetry != null) {
+                QannasButton(text = "إعادة المحاولة", onClick = onRetry, icon = Icons.Outlined.Refresh)
             }
         }
     }
