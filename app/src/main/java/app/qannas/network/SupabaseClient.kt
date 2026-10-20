@@ -72,8 +72,8 @@ object SupabaseClient {
     private const val MAX_TOKEN_LENGTH = 8 * 1024
     private const val MAX_ANON_KEY_LENGTH = 8 * 1024
     private const val MAX_EMAIL_LENGTH = 254
-    private const val MAX_PASSWORD_LENGTH = 4 * 1024
     private const val MAX_NAME_LENGTH = 160
+    private const val ACCOUNT_DELETION_CONFIRMATION = "DELETE"
     private const val MAX_PHONE_LENGTH = 64
     private const val MAX_CODE_LENGTH = 128
     private const val MIN_OFFER_DAYS = 1
@@ -309,58 +309,56 @@ object SupabaseClient {
         )
     }
 
-    suspend fun signUp(email: String, password: String, name: String, phone: String): Result<String> {
-        val safeEmail = NetworkInputValidator.email(email)
-            ?: return invalidInput("البريد الإلكتروني غير صالح")
-        val safePassword = NetworkInputValidator.password(password)
-            ?: return invalidInput("كلمة المرور يجب أن تكون بين 1 و$MAX_PASSWORD_LENGTH حرفاً")
-        val safeName = NetworkInputValidator.registrationName(name)
-            ?: return invalidInput("الاسم الكامل غير صالح")
-        val safePhone = NetworkInputValidator.phone(phone)
-            ?: return invalidInput("رقم الهاتف غير صالح")
-        val attempt = sessions.beginAuthentication()
-
+    /**
+     * يحذف حساب الجلسة الحالية نهائياً عبر `delete_my_account`. لا يُرسل الطلب إلا بعد
+     * تأكيد صريح في الواجهة، وتُمسح الجلسة الذاكرية بعد نجاح الخادم فقط.
+     */
+    suspend fun deleteAccount(): Result<Unit> {
+        val session = sessions.snapshot()
+            ?: return Result.failure(ClientRequestException("انتهت الجلسة؛ سجّل الدخول من جديد"))
         return networkCall {
-            val request = requestBuilder(endpoint("auth/v1/signup"))
-                .post(
-                    buildJsonObject {
-                        put("email", safeEmail)
-                        put("password", safePassword)
-                        put("data", buildJsonObject {
-                            put("full_name", safeName)
-                            put("phone", safePhone)
-                        })
-                    }.toString().toRequestBody(jsonMediaType)
-                )
+            val request = authenticatedRequest(
+                endpoint("rest/v1/rpc/delete_my_account"),
+                session.token,
+                buildJsonObject { put("p_confirmation", ACCOUNT_DELETION_CONFIRMATION) }
+                    .toString().toRequestBody(jsonMediaType)
+            )
+            val response = execute(request)
+            if (response.code == 401) sessions.clearIfMatches(session.token)
+            if (!response.isSuccessful) return@networkCall httpFailure("حذف الحساب", response)
+            val result = responseObject(response.body)
+            if (result["ok"]?.jsonPrimitive?.booleanOrNull == true) {
+                sessions.clearIfMatches(session.token)
+                Result.success(Unit)
+            } else {
+                Result.failure(ClientRequestException(
+                    when (result["error"]?.jsonPrimitive?.contentOrNull) {
+                        "admin_account" -> "حسابات الإدارة لا تُحذف من التطبيق؛ تواصل مع مسؤول النظام."
+                        "not_found" -> "لم يعد هذا الحساب موجوداً."
+                        else -> "تعذر حذف الحساب الآن. حاول مجدداً بعد قليل."
+                    }
+                ))
+            }
+        }
+    }
+
+    /** هوية الدخول للعرض فقط، مقنّعة قبل مغادرة العميل الشبكي ولا تُخزَّن. */
+    suspend fun accountIdentity(): Result<String> {
+        val session = sessions.snapshot()
+            ?: return Result.failure(ClientRequestException("انتهت الجلسة؛ سجّل الدخول من جديد"))
+        return networkCall {
+            val request = requestBuilder(endpoint("auth/v1/user"))
+                .header("Authorization", "Bearer ${session.token}")
+                .get()
                 .build()
             val response = execute(request)
-            if (!response.isSuccessful) {
-                return@networkCall httpFailure("إنشاء الحساب", response)
-            }
-
-            val token = accessTokenFrom(response.body)
-                ?: return@networkCall Result.failure(ClientRequestException(
-                    "تم إنشاء الحساب. فعّل البريد الإلكتروني ثم سجّل الدخول لإكمال الإعداد."
-                ))
-
-            // لا نفعّل الجلسة قبل نجاح RPC كي لا يصل المستخدم إلى التطبيق بحساب غير مهيأ.
-            val registrationRequest = authenticatedRequest(
-                endpoint("rest/v1/rpc/register_driver"),
-                token,
-                buildJsonObject {
-                    put("p_full_name", safeName)
-                    put("p_phone", safePhone)
-                }.toString().toRequestBody(jsonMediaType)
-            )
-            val registrationResponse = execute(registrationRequest)
-            if (!registrationResponse.isSuccessful) {
-                return@networkCall httpFailure("إعداد ملف السائق", registrationResponse)
-            }
-
-            if (!sessions.activate(attempt, token)) {
-                return@networkCall staleSessionFailure()
-            }
-            Result.success(token)
+            if (response.code == 401) sessions.clearIfMatches(session.token)
+            if (!response.isSuccessful) return@networkCall httpFailure("قراءة بيانات الحساب", response)
+            val user = responseObject(response.body)
+            val label = AccountIdentityMask.phone(user["phone"]?.jsonPrimitive?.contentOrNull)
+                ?: AccountIdentityMask.email(user["email"]?.jsonPrimitive?.contentOrNull)
+                ?: return@networkCall Result.failure(ClientRequestException("لا تتوفر بيانات دخول لعرضها."))
+            Result.success(label)
         }
     }
 
@@ -390,39 +388,6 @@ object SupabaseClient {
             } else {
                 Result.success(value)
             }
-        }
-    }
-
-    suspend fun login(email: String, password: String): Result<String> {
-        val safeEmail = NetworkInputValidator.email(email)
-            ?: return invalidInput("البريد الإلكتروني غير صالح")
-        val safePassword = NetworkInputValidator.password(password)
-            ?: return invalidInput("كلمة المرور يجب أن تكون بين 1 و$MAX_PASSWORD_LENGTH حرفاً")
-        val attempt = sessions.beginAuthentication()
-
-        return networkCall {
-            val url = endpoint("auth/v1/token").newBuilder()
-                .addQueryParameter("grant_type", "password")
-                .build()
-            val request = requestBuilder(url)
-                .post(
-                    buildJsonObject {
-                        put("email", safeEmail)
-                        put("password", safePassword)
-                    }.toString().toRequestBody(jsonMediaType)
-                )
-                .build()
-            val response = execute(request)
-            if (!response.isSuccessful) {
-                return@networkCall httpFailure("تسجيل الدخول", response)
-            }
-
-            val accessToken = accessTokenFrom(response.body)
-                ?: return@networkCall Result.failure(ClientRequestException("لم يكتمل تسجيل الدخول. حاول مجددًا."))
-            if (!sessions.activate(attempt, accessToken)) {
-                return@networkCall staleSessionFailure()
-            }
-            Result.success(accessToken)
         }
     }
 
@@ -799,6 +764,22 @@ object SupabaseClient {
 }
 
 /** تحقق محلي لا يكشف القيم الحساسة ولا يحوّلها إلى سجلات. */
+/** يعرض ما يكفي ليتعرّف السائق على حسابه، دون كشف المعرّف كاملاً على الشاشة. */
+internal object AccountIdentityMask {
+    fun phone(raw: String?): String? {
+        val digits = raw?.filter(Char::isDigit)?.takeIf { it.length >= 8 } ?: return null
+        val local = if (digits.startsWith("966")) "0" + digits.drop(3) else digits
+        return local.take(2) + "•".repeat(local.length - 5) + local.takeLast(3)
+    }
+
+    fun email(raw: String?): String? {
+        val value = raw?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        val at = value.indexOf('@').takeIf { it > 0 && it == value.lastIndexOf('@') && it < value.length - 1 }
+            ?: return null
+        return value.first() + "•••" + value.substring(at)
+    }
+}
+
 internal object NetworkInputValidator {
     fun baseUrl(raw: String): HttpUrl? {
         val value = raw.trim()

@@ -62,6 +62,18 @@ object Settings {
         }.getOrDefault(false)
     }
 
+    /**
+     * After the account is deleted on the server nothing tied to it may stay on the
+     * device. Display preferences (theme) are kept because they belong to the device.
+     */
+    fun clearAccountData(): Boolean = runCatching {
+        prefs().edit()
+            .remove(KEY_FILTERS)
+            .putBoolean(KEY_IS_ACTIVE, false)
+            .remove(KEY_A11Y_DISCLOSURE_VERSION)
+            .commit()
+    }.getOrDefault(false)
+
     var themeMode: ThemeMode
         get() = runCatching { ThemeMode.valueOf(prefs().getString("theme_mode", "SYSTEM") ?: "SYSTEM") }
             .getOrDefault(ThemeMode.SYSTEM)

@@ -59,6 +59,11 @@ import app.qannas.BuildConfig
 import app.qannas.Settings
 import app.qannas.network.PublicOffer
 import app.qannas.network.SupabaseClient
+import app.qannas.ui.theme.LocalQannasBrand
+import app.qannas.ui.theme.QannasDepthContent
+import app.qannas.ui.theme.qannasEntrance
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.HorizontalDivider
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -99,6 +104,8 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
     var offer by remember { mutableStateOf<PublicOffer?>(null) }
     var loadingOffer by remember { mutableStateOf(false) }
     var journey by remember { mutableStateOf(AuthJourney.Idle) }
+    // Which sign-in method owns the current busy state, so only its button shows progress.
+    var googleFlow by remember { mutableStateOf(false) }
     var isAdmin by remember { mutableStateOf(false) }
     var activationCode by remember { mutableStateOf("") }
     var activationValidationRequested by remember { mutableStateOf(false) }
@@ -250,6 +257,7 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
         hideKeyboard()
         resetMessages()
         journey = AuthJourney.Authenticating
+        googleFlow = true
         scope.launch {
             try {
                 val result = SupabaseClient.signInWithGoogle(context)
@@ -279,6 +287,7 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
         hideKeyboard()
         resetMessages()
         journey = AuthJourney.Authenticating
+        googleFlow = false
         scope.launch {
             try {
                 val result = SupabaseClient.requestPhoneOtp(phone)
@@ -309,6 +318,7 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
         hideKeyboard()
         resetMessages()
         journey = AuthJourney.Authenticating
+        googleFlow = false
         scope.launch {
             try {
                 val result = SupabaseClient.verifyPhoneOtp(phone, SaudiLoginInput.normalizeOtp(otp))
@@ -418,7 +428,7 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
                 AuthBrandHero()
-                AnimatedContent(targetState = awaitingAccess, label = "auth-flow") { isPendingAccess ->
+                QannasDepthContent(target = awaitingAccess, order = { if (it) 1 else 0 }, label = "auth-flow") { isPendingAccess ->
                     if (isPendingAccess) {
                         PendingAccessCard(
                             isBusy = isBusy,
@@ -464,6 +474,7 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
                             serverError = errorMessage,
                             infoMessage = infoMessage,
                             isBusy = isBusy,
+                            googleBusy = isBusy && googleFlow,
                             journey = journey,
                             phoneFocus = phoneFocus,
                             otpFocus = otpFocus,
@@ -495,28 +506,23 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
 
 @Composable
 private fun AuthBrandHero() {
-    androidx.compose.material3.Surface(
-        color = MaterialTheme.colorScheme.secondary,
-        contentColor = MaterialTheme.colorScheme.onSecondary,
-        shape = MaterialTheme.shapes.extraLarge
-    ) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            QannasStatusPill(text = "وصول آمن", ready = true)
-            androidx.compose.material3.Surface(
-                color = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                shape = MaterialTheme.shapes.large
-            ) {
-                Box(Modifier.padding(20.dp)) { QannasBrand() }
-            }
-            Text(
-                text = "تابع عبر Google أو رقم جوالك السعودي، ثم استعد لضبط فرصك والاستفادة من أدوات قناص.",
-                style = MaterialTheme.typography.bodyMedium
-            )
-        }
+    val brand = LocalQannasBrand.current
+    QannasHeroSurface(Modifier.qannasEntrance(0)) {
+        QannasBrand(onHero = true)
+        Text(
+            text = "ادخل بحساب Google أو رقم جوالك السعودي، ثم اضبط شروط طلباتك.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = brand.onHeroMuted,
+        )
+    }
+}
+
+@Composable
+private fun OrDivider() {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        HorizontalDivider(Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
+        Text("أو", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        HorizontalDivider(Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
     }
 }
 
@@ -531,6 +537,7 @@ private fun AuthenticationCard(
     serverError: String?,
     infoMessage: String?,
     isBusy: Boolean,
+    googleBusy: Boolean,
     journey: AuthJourney,
     phoneFocus: FocusRequester,
     otpFocus: FocusRequester,
@@ -545,31 +552,16 @@ private fun AuthenticationCard(
         subtitle = "اختر الطريقة الأنسب لتأكيد هويتك وحماية الوصول إلى حسابك.",
         icon = Icons.Outlined.Login
     ) {
-        QannasSectionTitle(
-            title = "المتابعة باستخدام Google",
-            subtitle = "تفتح نافذة Google لإتمام الدخول إلى حسابك."
-        )
-        Button(
+        QannasButton(
+            text = "المتابعة باستخدام Google",
             onClick = onGoogle,
+            busy = googleBusy,
+            busyText = authProgressLabel(journey),
             enabled = !isBusy,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
-            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp)
-        ) {
-            if (isBusy) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(22.dp),
-                    color = MaterialTheme.colorScheme.onPrimary,
-                    strokeWidth = 2.dp
-                )
-                Spacer(Modifier.padding(start = 10.dp))
-                Text(authProgressLabel(journey))
-            } else {
-                Text("المتابعة باستخدام Google")
-            }
-        }
-
+        )
+        OrDivider()
         QannasSectionTitle(
-            title = "أو باستخدام رقم الجوال السعودي",
+            title = "رقم الجوال السعودي",
             subtitle = if (otpRequested) "أدخل الرمز المكوّن من 6 أرقام الذي وصلك." else "نرسل رمزاً لمرة واحدة إلى جوالك. رقم الجوال محفوظ بأمان في حسابك لتأكيد هويتك والوصول إليه عند الحاجة."
         )
         OutlinedTextField(
@@ -611,44 +603,32 @@ private fun AuthenticationCard(
             )
         }
 
-        infoMessage?.let { QannasMessage(message = it) }
-        serverError?.let { QannasMessage(message = it, isError = true) }
+        QannasAnimatedMessage(infoMessage, QannasTone.Success)
+        QannasAnimatedMessage(serverError, QannasTone.Error)
 
         if (otpRequested) {
-            Button(
+            QannasButton(
+                text = "تحقق وتابع",
                 onClick = onVerifyOtp,
-                enabled = !isBusy,
-                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)
-            ) {
-                if (isBusy) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(22.dp),
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        strokeWidth = 2.dp
-                    )
-                    Spacer(Modifier.padding(start = 10.dp))
-                    Text(authProgressLabel(journey))
-                } else {
-                    Text("تحقق وتابع")
-                }
-            }
-            TextButton(
+                busy = isBusy && !googleBusy,
+                busyText = authProgressLabel(journey),
+            )
+            QannasButton(
+                text = if (otpCooldownSeconds > 0) "يمكن طلب رمز جديد بعد $otpCooldownSeconds ث" else "إرسال رمز جديد",
                 onClick = onRequestOtp,
                 enabled = !isBusy && otpCooldownSeconds == 0,
-                modifier = Modifier.align(Alignment.CenterHorizontally).heightIn(min = 48.dp)
-            ) {
-                Icon(Icons.Outlined.Autorenew, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.padding(start = 8.dp))
-                Text(if (otpCooldownSeconds > 0) "يمكن طلب رمز جديد بعد $otpCooldownSeconds ث" else "إرسال رمز جديد")
-            }
+                style = QannasButtonStyle.Text,
+                icon = Icons.Outlined.Autorenew,
+            )
         } else {
-            Button(
+            QannasButton(
+                text = "إرسال رمز التحقق",
                 onClick = onRequestOtp,
                 enabled = !isBusy && otpCooldownSeconds == 0,
-                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)
-            ) {
-                Text("إرسال رمز التحقق")
-            }
+                busy = isBusy && !googleBusy,
+                busyText = "جارٍ إرسال الرمز…",
+                style = QannasButtonStyle.Secondary,
+            )
         }
     }
 }
@@ -694,23 +674,13 @@ private fun PendingAccessCard(
                 title = "تجربة متاحة لحسابك",
                 subtitle = "جرّب أدوات الفرز والشروط، وراجع العائد ووقت العرض. التجربة لمدة ${offer?.trialDays} يومًا وتبدأ فقط بعد ضغطك على الزر."
             )
-            Button(
+            QannasButton(
+                text = "ابدأ التجربة",
                 onClick = onStartTrial,
                 enabled = !isBusy,
-                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)
-            ) {
-                if (journey == AuthJourney.StartingTrial) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(22.dp),
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        strokeWidth = 2.dp
-                    )
-                    Spacer(Modifier.padding(start = 10.dp))
-                    Text("جارٍ تأكيد التجربة…")
-                } else {
-                    Text("ابدأ التجربة")
-                }
-            }
+                busy = journey == AuthJourney.StartingTrial,
+                busyText = "جارٍ تأكيد التجربة…",
+            )
         }
 
         // العزل بالثابت التركيبي: مسار الكود وقناة الإدارة لا يُضمّنان في play.
@@ -782,25 +752,14 @@ private fun DirectAccessOptions(
         keyboardActions = KeyboardActions(onDone = { onActivateCode() }),
         modifier = Modifier.fillMaxWidth()
     )
-    actionError?.let { QannasMessage(message = it, isError = true) }
-    Button(
+    QannasAnimatedMessage(actionError, QannasTone.Error)
+    QannasButton(
+        text = "تفعيل الوصول",
         onClick = onActivateCode,
         enabled = !isBusy,
-        modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
-        contentPadding = ButtonDefaults.ContentPadding
-    ) {
-        if (journey == AuthJourney.ActivatingCode) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(22.dp),
-                color = MaterialTheme.colorScheme.onPrimary,
-                strokeWidth = 2.dp
-            )
-            Spacer(Modifier.padding(start = 10.dp))
-            Text("جارٍ التحقق…")
-        } else {
-            Text("تفعيل الوصول")
-        }
-    }
+        busy = journey == AuthJourney.ActivatingCode,
+        busyText = "جارٍ التحقق…",
+    )
 }
 
 /** تطبيع واجهة فقط؛ يبقى التحقق الحاسم وتطبيع E.164 في NetworkInputValidator. */

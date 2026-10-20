@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
@@ -41,6 +40,10 @@ import androidx.compose.ui.unit.dp
 import app.qannas.BuildConfig
 import app.qannas.network.SupabaseClient
 import kotlinx.coroutines.launch
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import app.qannas.ui.theme.QannasDepthContent
+import app.qannas.ui.theme.QannasMotion
 
 private const val ONBOARDING_PAGES = 3
 
@@ -110,14 +113,21 @@ fun OnboardingScreen(onContinue: () -> Unit, initialPage: Int = 0) {
                         page = page,
                         onSkip = onContinue
                     )
+                    val progress by animateFloatAsState(
+                        targetValue = (page + 1).toFloat() / ONBOARDING_PAGES,
+                        animationSpec = tween(QannasMotion.LONG, easing = QannasMotion.Emphasized),
+                        label = "onboarding-progress",
+                    )
                     LinearProgressIndicator(
-                        progress = { (page + 1).toFloat() / ONBOARDING_PAGES },
+                        progress = { progress },
                         modifier = Modifier
                             .fillMaxWidth()
                             .semantics { stateDescription = "الصفحة ${page + 1} من $ONBOARDING_PAGES" }
                     )
 
-                    when (page) {
+                    QannasDepthContent(target = page, order = { it }, label = "onboarding-page") { shown ->
+                    Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                    when (shown) {
                         0 -> WelcomePage(
                             loadingOffer = loadingOffer,
                             offerCopy = offerCopy,
@@ -135,6 +145,8 @@ fun OnboardingScreen(onContinue: () -> Unit, initialPage: Int = 0) {
                             }
                         )
                         else -> ReadyPage(canShowTrialJourney = offerCopy.canShowTrialJourney)
+                    }
+                    }
                     }
 
                     OnboardingNavigation(
@@ -336,17 +348,12 @@ private fun OnboardingNavigation(
         } else {
             Spacer(Modifier.weight(1f))
         }
-        Button(
+        QannasButton(
+            text = if (page == ONBOARDING_PAGES - 1) onboardingFinalCta(canShowTrialJourney)
+                else if (page == 0) "ورّني كيف" else "أضبط طلباتي",
             onClick = onNext,
-            modifier = Modifier
-                .weight(1f)
-                .heightIn(min = 52.dp),
-            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp)
-        ) {
-            Text(
-                if (page == ONBOARDING_PAGES - 1) onboardingFinalCta(canShowTrialJourney)
-                else if (page == 0) "ورّني كيف" else "أضبط طلباتي"
-            )
-        }
+            modifier = Modifier.weight(1f),
+            fillWidth = false,
+        )
     }
 }

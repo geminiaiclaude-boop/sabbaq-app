@@ -34,6 +34,34 @@ $$;
 
 revoke all on function public.identity_digest(text, text) from public, anon, authenticated;
 
+-- Only identifiers the provider verified may block a future trial: a confirmed Saudi
+-- phone, or an email asserted by Google. Anything typed but unverified is ignored, so
+-- deleting an account can never deny a trial to the real owner of that identifier.
+create or replace function public.verified_identity_digests(p_user_id uuid)
+returns table (identity_hash text, kind text)
+language sql
+stable
+security definer
+set search_path = pg_catalog, public
+as $$
+    select public.identity_digest('phone', u.phone), 'phone'
+    from auth.users u
+    where u.id = p_user_id
+      and u.phone_confirmed_at is not null
+      and u.phone ~ '^[+]?9665[0-9]{8}$'
+    union all
+    select public.identity_digest('email', u.email), 'email'
+    from auth.users u
+    where u.id = p_user_id
+      and u.email is not null
+      and (
+          coalesce(u.raw_app_meta_data ->> 'provider', '') = 'google'
+          or coalesce(u.raw_app_meta_data -> 'providers', '[]'::jsonb) ? 'google'
+      );
+$$;
+
+revoke all on function public.verified_identity_digests(uuid) from public, anon, authenticated;
+
 alter table public.trial_claims drop constraint if exists trial_claims_source_check;
 alter table public.trial_claims add constraint trial_claims_source_check
     check (source in ('start_trial', 'legacy_seed', 'deleted_identity'));
@@ -46,17 +74,11 @@ language plpgsql
 security definer
 set search_path = pg_catalog, public
 as $$
-declare
-    v_phone text;
-    v_email text;
 begin
-    select u.phone, u.email into v_phone, v_email from auth.users u where u.id = new.id;
     if exists (
-        select 1 from public.deleted_identity_tombstones t
-        where t.identity_hash in (
-            public.identity_digest('phone', v_phone),
-            public.identity_digest('email', v_email)
-        )
+        select 1
+        from public.deleted_identity_tombstones t
+        join public.verified_identity_digests(new.id) v on v.identity_hash = t.identity_hash
     ) then
         insert into public.trial_claims (account_id, reported_device_id, policy_trial_days, trial_until, source)
         values (new.id, null, null, null, 'deleted_identity')
@@ -105,8 +127,6 @@ set search_path = pg_catalog, public
 as $$
 declare
     v_uid       uuid := auth.uid();
-    v_phone     text;
-    v_email     text;
     v_had_trial boolean;
 begin
     if v_uid is null then
@@ -121,7 +141,7 @@ begin
         return jsonb_build_object('ok', false, 'error', 'admin_account');
     end if;
 
-    select u.phone, u.email into v_phone, v_email from auth.users u where u.id = v_uid for update;
+    perform 1 from auth.users u where u.id = v_uid for update;
     if not found then
         return jsonb_build_object('ok', false, 'error', 'not_found');
     end if;
@@ -129,11 +149,9 @@ begin
     v_had_trial := exists (select 1 from public.trial_claims c where c.account_id = v_uid);
     if v_had_trial then
         insert into public.deleted_identity_tombstones (identity_hash, kind)
-        select h, k from (
-            values (public.identity_digest('phone', v_phone), 'phone'),
-                   (public.identity_digest('email', v_email), 'email')
-        ) as ids(h, k)
-        where h is not null
+        select v.identity_hash, v.kind
+        from public.verified_identity_digests(v_uid) v
+        where v.identity_hash is not null
         on conflict (identity_hash) do nothing;
 
         insert into public.deleted_identity_tombstones (identity_hash, kind)

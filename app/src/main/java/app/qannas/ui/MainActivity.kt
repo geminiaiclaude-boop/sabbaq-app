@@ -31,6 +31,7 @@ import app.qannas.Settings
 import app.qannas.ThemeMode
 import app.qannas.network.SupabaseClient
 import app.qannas.service.KeeperService
+import app.qannas.ui.theme.QannasDepthContent
 import app.qannas.ui.theme.QannasTheme
 
 enum class AppState { WELCOME, LOGIN, DRIVER_PANEL, ADMIN_PANEL }
@@ -66,8 +67,17 @@ class MainActivity : ComponentActivity() {
             val systemDark = isSystemInDarkTheme()
             val dark = when (mode) { ThemeMode.SYSTEM -> systemDark; ThemeMode.DARK -> true; ThemeMode.LIGHT -> false }
             var notificationsGranted by remember { mutableStateOf(hasNotificationPermission()) }
+            var unsavedFilters by remember { mutableStateOf(false) }
             val permissionRequest = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
                 notificationsGranted = it
+            }
+            val endSession = {
+                Settings.isActive = false
+                Settings.a11yDisclosureAccepted = false
+                stopService(Intent(this@MainActivity, KeeperService::class.java))
+                SupabaseClient.clearSession()
+                unsavedFilters = false
+                navigation.signedOut()
             }
             SideEffect {
                 val style = if (dark) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
@@ -80,15 +90,11 @@ class MainActivity : ComponentActivity() {
                         showHeader = navigation.route == AppState.DRIVER_PANEL || navigation.route == AppState.ADMIN_PANEL,
                         themeMode = mode,
                         onThemeChange = { mode = it; Settings.themeMode = it },
-                        onLogout = {
-                            Settings.isActive = false
-                            Settings.a11yDisclosureAccepted = false
-                            stopService(Intent(this@MainActivity, KeeperService::class.java))
-                            SupabaseClient.clearSession()
-                            navigation.signedOut()
-                        }
+                        hasUnsavedChanges = unsavedFilters,
+                        onLogout = endSession,
                     ) {
-                        when (navigation.route) {
+                        QannasDepthContent(target = navigation.route, order = { it.ordinal }, label = "app-route") { route ->
+                        when (route) {
                             AppState.WELCOME -> OnboardingScreen(onContinue = {
                                 if (!OnboardingPreferences.markComplete(this@MainActivity)) {
                                     permissionMessage = "قد تظهر هذه المقدمة مرة أخرى عند فتح التطبيق. يمكنك المتابعة الآن."
@@ -125,8 +131,16 @@ class MainActivity : ComponentActivity() {
                                         stopService(intent)
                                     }
                                     Unit
-                                }.onFailure { if (start) Settings.isActive = false } }
+                                }.onFailure { if (start) Settings.isActive = false } },
+                                onUnsavedFiltersChanged = { unsavedFilters = it },
+                                onAccountDeleted = {
+                                    val wiped = Settings.clearAccountData()
+                                    endSession()
+                                    permissionMessage = if (wiped) "حُذف حسابك وبياناته المرتبطة. شكراً لاستخدامك قناص."
+                                        else "حُذف حسابك من الخادم، لكن تعذّر مسح بعض الإعدادات المحلية. احذف بيانات التطبيق من إعدادات الجهاز لإكمال المسح."
+                                },
                             )
+                        }
                         }
                     }
                     if (showA11yDisclosure) AccessibilityDisclosureDialog(
@@ -162,6 +176,7 @@ internal fun QannasShell(
     themeMode: ThemeMode,
     onThemeChange: (ThemeMode) -> Unit,
     onLogout: () -> Unit,
+    hasUnsavedChanges: Boolean = false,
     content: @Composable () -> Unit
 ) {
     var showThemeMenu by remember { mutableStateOf(false) }
@@ -199,8 +214,13 @@ internal fun QannasShell(
     if (confirmLogout) AlertDialog(
         onDismissRequest = { confirmLogout = false },
         title = { Text("تسجيل الخروج؟") },
-        text = { Text("سيتوقف القبول التلقائي بقناص. احفظ تعديلات شروطك قبل الخروج حتى لا تفقدها.") },
-        confirmButton = { TextButton(onClick = { confirmLogout = false; onLogout() }) { Text("إيقاف القناص والخروج") } },
+        text = { Text(
+            if (hasUnsavedChanges) "لديك تعديلات على شروطك لم تُحفظ وستُفقد عند الخروج. سيتوقف القبول التلقائي أيضاً."
+            else "سيتوقف القبول التلقائي بقناص. شروطك المحفوظة تبقى على هذا الجهاز."
+        ) },
+        confirmButton = { TextButton(onClick = { confirmLogout = false; onLogout() }) {
+            Text(if (hasUnsavedChanges) "تجاهل التعديلات والخروج" else "إيقاف القناص والخروج")
+        } },
         dismissButton = { TextButton(onClick = { confirmLogout = false }) { Text("البقاء") } }
     )
 }

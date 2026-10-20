@@ -8,6 +8,34 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.view.accessibility.AccessibilityManager
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.input.ImeAction
+import app.qannas.ui.theme.LocalQannasBrand
+import app.qannas.ui.theme.LocalReducedMotion
+import app.qannas.ui.theme.QannasDepthContent
+import app.qannas.ui.theme.QannasMotion
+import app.qannas.ui.theme.qannasEntrance
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -104,7 +132,13 @@ import kotlinx.serialization.json.Json
 /** وجهات لوحة السائق؛ يمكن استدعاء الشاشة مباشرة إلى أي منها في معاينات/اختبارات الواجهة. */
 enum class DriverDestination { Dashboard, Filters, Simulator, Account }
 
-private data class DriverStatus(val message: String, val isError: Boolean = false)
+private data class DriverStatus(val message: String, val isError: Boolean = false, val success: Boolean = false) {
+    val tone: QannasTone get() = when {
+        isError -> QannasTone.Error
+        success -> QannasTone.Success
+        else -> QannasTone.Info
+    }
+}
 private data class PreviewResult(val verdict: Verdict, val error: String? = null)
 private data class DriverNavItem(
     val destination: DriverDestination,
@@ -130,6 +164,8 @@ fun SettingsScreen(
     onOpenA11y: () -> Result<Unit>,
     onToggleKeeper: (Boolean) -> Result<Unit>,
     initialDestination: DriverDestination = DriverDestination.Dashboard,
+    onUnsavedFiltersChanged: (Boolean) -> Unit = {},
+    onAccountDeleted: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -162,6 +198,8 @@ fun SettingsScreen(
     var pendingDestination by remember { mutableStateOf<DriverDestination?>(null) }
 
     val latestToggleKeeper by rememberUpdatedState(onToggleKeeper)
+    val latestUnsavedChanged by rememberUpdatedState(onUnsavedFiltersChanged)
+    LaunchedEffect(filtersDirty) { latestUnsavedChanged(filtersDirty) }
 
     fun stopKeeper(message: String? = null) {
         val stopResult = latestToggleKeeper(false)
@@ -241,7 +279,7 @@ fun SettingsScreen(
                 if (saved) {
                     savedFilters = filters
                     if (draft === submittedDraft) draft = FilterDraft.from(filters)
-                    filtersMessage = DriverStatus("حُفظت شروطك. ستُستخدم عند بدء متابعة الطلبات.")
+                    filtersMessage = DriverStatus("حُفظت شروطك. ستُستخدم عند بدء متابعة الطلبات.", success = true)
                     onSaved()
                 } else {
                     filtersMessage = DriverStatus("لم نستطع حفظ شروطك على جهازك؛ ما زالت الشروط السابقة هي المستخدمة.", isError = true)
@@ -330,7 +368,7 @@ fun SettingsScreen(
             runtimeMessage = DriverStatus("لم نتمكن من بدء متابعة الطلبات. راجع أذونات الجهاز ثم حاول مرة أخرى.", isError = true)
         } else {
             isActive = true
-            runtimeMessage = DriverStatus("متابعة الطلبات تعمل وفق شروطك المحفوظة وأوقات عملك. يمكنك إيقافها في أي وقت.")
+            runtimeMessage = DriverStatus("متابعة الطلبات تعمل وفق شروطك المحفوظة وأوقات عملك. يمكنك إيقافها في أي وقت.", success = true)
         }
     }
 
@@ -435,7 +473,8 @@ fun SettingsScreen(
         destination = destination,
         onDestinationSelected = ::navigateTo,
     ) {
-        when (destination) {
+        QannasDepthContent(target = destination, order = { it.ordinal }, label = "driver-destination") { page ->
+        when (page) {
             DriverDestination.Dashboard -> DashboardPage(
                 isActive = isActive,
                 isCheckingActivation = checkingActivation,
@@ -474,7 +513,12 @@ fun SettingsScreen(
                 message = accountMessage,
                 onLicenseChanged = { licenseInMemory = it },
                 onMessage = { accountMessage = it },
+                onAccountDeleted = {
+                    if (isActive) stopKeeper()
+                    onAccountDeleted()
+                },
             )
+        }
         }
     }
 }
@@ -554,147 +598,194 @@ private fun DashboardPage(
     onOpenFilters: () -> Unit,
     onOpenAccount: () -> Unit,
 ) = DriverPage {
-    QannasSectionTitle("حالة العمل", "تابع الطلبات عندما تكون شروطك وأذوناتك جاهزة.")
+    val readiness = listOf(
+        ReadinessItem(Icons.Outlined.FilterAlt, "شروط الطلبات", activeFilterCount > 0,
+            "$activeFilterCount شرط محفوظ", "اختر ما يناسبك أولاً", "تعديل الشروط", onOpenFilters),
+        ReadinessItem(Icons.Outlined.AccessibilityNew, "إذن متابعة الطلبات", accessibilityEnabled,
+            "مفعّل", "يحتاج إلى تفعيل", "تفعيل الإذن", onOpenA11y),
+        ReadinessItem(Icons.Outlined.Notifications, "تنبيهات حالة العمل", notificationsEnabled,
+            "مفعّلة", "تحتاج إلى سماح", "السماح", onRequestNotifications),
+        ReadinessItem(Icons.Outlined.VerifiedUser, "حالة الاشتراك", licenseInMemory,
+            "جاهز للعمل", "تحتاج إلى تحقق", "فتح حسابي", onOpenAccount),
+    )
+    val readyCount = readiness.count { it.ready }
     OperationHero(
         isActive = isActive,
         isChecking = isCheckingActivation,
+        readyCount = readyCount,
+        totalCount = readiness.size,
         onToggle = onToggle,
+        modifier = Modifier.qannasEntrance(0),
     )
-    message?.let { QannasMessage(it.message, isError = it.isError) }
+    QannasAnimatedMessage(message?.message, message?.tone ?: QannasTone.Info)
 
     QannasCard(
-        title = "قبل بدء العمل",
-        subtitle = "أكمل هذه الخطوات لتتابع الطلبات التي تناسبك.",
+        title = if (readyCount == readiness.size) "كل شيء جاهز" else "قبل بدء العمل",
+        subtitle = if (readyCount == readiness.size) "يمكنك بدء المتابعة في أي وقت."
+            else "أكمل ${readiness.size - readyCount} من ${readiness.size} لتبدأ.",
         icon = Icons.Outlined.VerifiedUser,
+        modifier = Modifier.qannasEntrance(1),
     ) {
-        ReadinessRow(
-            icon = Icons.Outlined.FilterAlt,
-            title = "شروط الطلبات",
-            ready = activeFilterCount > 0,
-            readyText = "$activeFilterCount شرط محفوظ",
-            missingText = "اختر ما يناسبك أولاً",
-            actionLabel = "تعديل الشروط",
-            onAction = onOpenFilters,
+        val progress by animateFloatAsState(
+            targetValue = readyCount.toFloat() / readiness.size,
+            animationSpec = tween(QannasMotion.LONG, easing = QannasMotion.Emphasized),
+            label = "readiness-progress",
         )
-        ReadinessRow(
-            icon = Icons.Outlined.AccessibilityNew,
-            title = "إذن متابعة الطلبات",
-            ready = accessibilityEnabled,
-            readyText = "مفعّلة",
-            missingText = "يحتاج إلى تفعيل",
-            actionLabel = if (accessibilityEnabled) "مراجعة الإذن" else "تفعيل الإذن",
-            onAction = onOpenA11y,
+        LinearProgressIndicator(
+            progress = { progress },
+            modifier = Modifier.fillMaxWidth().semantics { stateDescription = "$readyCount من ${readiness.size} جاهزة" },
         )
-        ReadinessRow(
-            icon = Icons.Outlined.Notifications,
-            title = "تنبيهات حالة العمل",
-            ready = notificationsEnabled,
-            readyText = "مفعّلة",
-            missingText = "تحتاج إلى سماح",
-            actionLabel = if (notificationsEnabled) "مراجعة الإذن" else "السماح بالتنبيهات",
-            onAction = onRequestNotifications,
-        )
-        ReadinessRow(
-            icon = Icons.Outlined.VerifiedUser,
-            title = "حالة الاشتراك",
-            ready = licenseInMemory,
-            readyText = "جاهز للعمل",
-            missingText = "تحتاج إلى تحقق",
-            actionLabel = "فتح حسابي",
-            onAction = onOpenAccount,
-        )
+        readiness.forEachIndexed { index, item ->
+            if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            ReadinessRow(item)
+        }
     }
 
-    QannasCard(title = "أثناء وقت العمل", icon = Icons.Outlined.Info) {
+    QannasCard(title = "أثناء وقت العمل", icon = Icons.Outlined.Info, modifier = Modifier.qannasEntrance(2)) {
         Text(
             "يتابع قناص الطلبات الظاهرة وفق سعر الطلب والعائد لكل كم ومسافة الوصول وأوقات العمل التي حددتها. " +
                 "عند ظهور طلب مطابق، يمكنه النقر عليه تلقائياً. يمكنك إيقاف المتابعة في أي وقت.",
             style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+private data class ReadinessItem(
+    val icon: ImageVector,
+    val title: String,
+    val ready: Boolean,
+    val readyText: String,
+    val missingText: String,
+    val actionLabel: String,
+    val onAction: () -> Unit,
+)
+
+/**
+ * The single control of the dashboard. While monitoring is live a slow radar pulse
+ * radiates from the status mark; it stops the moment monitoring stops, so the motion
+ * itself is the state signal (paired with text for screen readers).
+ */
+@Composable
+private fun OperationHero(
+    isActive: Boolean,
+    isChecking: Boolean,
+    readyCount: Int,
+    totalCount: Int,
+    onToggle: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val brand = LocalQannasBrand.current
+    QannasHeroSurface(modifier) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            LiveStatusMark(isActive = isActive)
+            Column(modifier = Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite }) {
+                AnimatedContent(
+                    targetState = isActive,
+                    transitionSpec = { (fadeIn(tween(QannasMotion.MEDIUM)) togetherWith fadeOut(tween(QannasMotion.SHORT))) },
+                    label = "hero-status",
+                ) { active ->
+                    Column {
+                        Text(if (active) "متابعة الطلبات تعمل" else "متابعة الطلبات متوقفة", style = MaterialTheme.typography.titleLarge)
+                        Text(
+                            if (active) "تُطبّق شروطك المحفوظة وأوقات عملك."
+                            else if (readyCount < totalCount) "جاهز $readyCount من $totalCount. أكمل المتطلبات أدناه."
+                            else "كل المتطلبات جاهزة. ابدأ عندما تكون مستعداً.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = brand.onHeroMuted,
+                        )
+                    }
+                }
+            }
+        }
+        QannasButton(
+            text = if (isActive) "إيقاف متابعة الطلبات" else "ابدأ متابعة الطلبات",
+            onClick = { onToggle(!isActive) },
+            busy = isChecking,
+            busyText = "جارٍ التحقق من الاشتراك",
+            icon = if (isActive) Icons.Outlined.Stop else Icons.Outlined.PlayArrow,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = if (isActive) brand.onHero.copy(alpha = 0.14f) else brand.onHero,
+                contentColor = if (isActive) brand.onHero else brand.heroStart,
+                disabledContainerColor = brand.onHero.copy(alpha = 0.24f),
+                disabledContentColor = brand.onHero,
+            ),
         )
     }
 }
 
 @Composable
-private fun OperationHero(
-    isActive: Boolean,
-    isChecking: Boolean,
-    onToggle: (Boolean) -> Unit,
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        color = Color(0xFF142C37),
-        contentColor = Color.White,
-    ) {
-        Column(
-            modifier = Modifier.padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+private fun LiveStatusMark(isActive: Boolean) {
+    val brand = LocalQannasBrand.current
+    val reduced = LocalReducedMotion.current
+    Box(Modifier.size(56.dp), contentAlignment = Alignment.Center) {
+        if (isActive && !reduced) {
+            val pulse = rememberInfiniteTransition(label = "live-pulse")
+            val phase by pulse.animateFloat(
+                initialValue = 0f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(tween(1800, easing = LinearEasing)),
+                label = "live-pulse-phase",
+            )
+            Canvas(Modifier.matchParentSize()) {
+                listOf(phase, (phase + 0.5f) % 1f).forEach { p ->
+                    drawCircle(
+                        color = brand.heroAccent.copy(alpha = (1f - p) * 0.45f),
+                        radius = size.minDimension / 2f * (0.45f + 0.55f * p),
+                        style = Stroke(width = 2.dp.toPx()),
+                    )
+                }
+            }
+        }
+        Surface(
+            shape = CircleShape,
+            color = if (isActive) brand.heroAccent else brand.onHero.copy(alpha = 0.16f),
+            contentColor = if (isActive) brand.heroStart else brand.onHero,
+            modifier = Modifier.size(40.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Box(contentAlignment = Alignment.Center) {
                 Icon(
                     imageVector = if (isActive) Icons.Outlined.CheckCircle else Icons.Outlined.Stop,
                     contentDescription = if (isActive) "متابعة الطلبات تعمل" else "متابعة الطلبات متوقفة",
-                    modifier = Modifier.size(28.dp),
+                    modifier = Modifier.size(24.dp),
                 )
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(if (isActive) "متابعة الطلبات تعمل" else "متابعة الطلبات متوقفة", style = MaterialTheme.typography.titleLarge)
-                    Text(
-                        if (isActive) "تُطبّق شروطك المحفوظة وأوقات عملك." else "راجع الشروط والأذونات، ثم ابدأ عندما تكون جاهزاً.",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
-                Switch(
-                    checked = isActive,
-                    onCheckedChange = if (isChecking) null else onToggle,
-                    enabled = !isChecking,
-                )
-            }
-            Button(
-                onClick = { onToggle(!isActive) },
-                enabled = !isChecking,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color.White,
-                    contentColor = Color(0xFF142C37),
-                ),
-                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-            ) {
-                if (isChecking) {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                    Spacer(Modifier.size(8.dp))
-                    Text("جارٍ التحقق من الاشتراك")
-                } else {
-                    Icon(if (isActive) Icons.Outlined.Stop else Icons.Outlined.PlayArrow, contentDescription = null)
-                    Spacer(Modifier.size(8.dp))
-                    Text(if (isActive) "إيقاف متابعة الطلبات" else "ابدأ متابعة الطلبات")
-                }
             }
         }
     }
 }
 
+/** One readiness requirement. The whole row is the action, so no extra button rows are needed. */
 @Composable
-private fun ReadinessRow(
-    icon: ImageVector,
-    title: String,
-    ready: Boolean,
-    readyText: String,
-    missingText: String,
-    actionLabel: String,
-    onAction: () -> Unit,
-) {
+private fun ReadinessRow(item: ReadinessItem) {
+    val tint by animateColorAsState(
+        if (item.ready) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+        tween(QannasMotion.MEDIUM),
+        label = "readiness-tint",
+    )
     Row(
-        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.small)
+            .clickable(onClickLabel = item.actionLabel, role = Role.Button, onClick = item.onAction)
+            .heightIn(min = 56.dp)
+            .padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Icon(icon, contentDescription = title, tint = if (ready) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+        Icon(item.icon, contentDescription = null, tint = tint)
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleSmall)
-            Text(if (ready) readyText else missingText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(item.title, style = MaterialTheme.typography.titleSmall)
+            Text(if (item.ready) item.readyText else item.missingText, style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        QannasStatusPill(if (ready) "جاهز" else "يلزم إجراء", ready = ready)
+        if (item.ready) {
+            QannasStatusPill("جاهز", ready = true)
+        } else {
+            Text(item.actionLabel, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+            Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+        }
     }
-    OutlinedButton(onClick = onAction, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(actionLabel) }
 }
 
 @Composable
@@ -713,40 +804,35 @@ private fun FiltersPage(
         title = "طلبات تناسبك",
         subtitle = if (dirty) "لديك تعديلات لم تحفظ بعد." else "حدّد ما يلائم وقتك ومسافة وصولك والعائد الذي تريده.",
     )
-    message?.let { QannasMessage(it.message, isError = it.isError) }
-    if (validationErrors.isNotEmpty()) {
-        QannasMessage("راجع الحقول المعلَّمة؛ لن نستبدل شروطك المحفوظة حتى تصلحها.", isError = true)
-    }
+    QannasAnimatedMessage(message?.message, message?.tone ?: QannasTone.Info)
+    QannasAnimatedMessage(
+        if (validationErrors.isNotEmpty()) "راجع الحقول المعلَّمة؛ لن نستبدل شروطك المحفوظة حتى تصلحها." else null,
+        QannasTone.Error,
+    )
     AdvancedFiltersEditor(
         draft = draft,
         errors = validationErrors,
         onDraftChange = onDraftChange,
     )
     QannasCard(title = "احفظ شروطك", subtitle = "لا تصبح التعديلات جاهزة للعمل إلا بعد الحفظ.", icon = Icons.Outlined.Save) {
-        Button(
+        QannasButton(
+            text = "حفظ شروط الطلبات",
             onClick = onSave,
-            enabled = dirty && !isSaving && validationErrors.isEmpty(),
-            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-        ) {
-            if (isSaving) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-            else Icon(Icons.Outlined.Save, contentDescription = null)
-            Spacer(Modifier.size(8.dp))
-            Text(if (isSaving) "جارٍ حفظ الشروط" else "حفظ شروط الطلبات")
+            enabled = dirty && validationErrors.isEmpty(),
+            busy = isSaving,
+            busyText = "جارٍ حفظ الشروط",
+            icon = Icons.Outlined.Save,
+        )
+        AnimatedVisibility(dirty && !isSaving) {
+            QannasButton(text = "التراجع عن التعديلات", onClick = onRevert, style = QannasButtonStyle.Secondary)
         }
-        OutlinedButton(
-            onClick = onRevert,
-            enabled = dirty && !isSaving,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-        ) { Text("التراجع عن التعديلات") }
-        TextButton(
+        QannasButton(
+            text = "مسح التعديلات",
             onClick = onReset,
             enabled = !isSaving,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-        ) {
-            Icon(Icons.Outlined.Refresh, contentDescription = null)
-            Spacer(Modifier.size(8.dp))
-            Text("مسح التعديلات")
-        }
+            style = QannasButtonStyle.Text,
+            icon = Icons.Outlined.Refresh,
+        )
     }
 }
 
@@ -759,6 +845,7 @@ private fun SimulatorPage(savedFilters: Filters) {
     var tripMinutes by rememberSaveable { mutableStateOf("") }
     var offerText by rememberSaveable { mutableStateOf("") }
     var result by remember { mutableStateOf<PreviewResult?>(null) }
+    val hasInput = listOf(fare, pickupKm, tripKm, pickupMinutes, tripMinutes, offerText).any { it.isNotBlank() }
 
     fun evaluate() {
         val fareValue = parsePreviewDecimal(fare)
@@ -794,23 +881,37 @@ private fun SimulatorPage(savedFilters: Filters) {
         result = PreviewResult(OfferEvaluator.evaluate(offer, savedFilters, currentMinuteOfDay()))
     }
 
+    fun clearAll() {
+        fare = ""; pickupKm = ""; tripKm = ""; pickupMinutes = ""; tripMinutes = ""; offerText = ""
+        result = null
+    }
+
     DriverPage {
         QannasSectionTitle("جرّب شروطك", "أدخل تفاصيل طلب مشابه لتعرف إن كان يطابق شروطك المحفوظة، من دون التأثير في عملك.")
         QannasMessage("هذه تجربة فقط: لن تغيّر شروطك ولن تنقر على أي طلب.")
         QannasCard(title = "تفاصيل الطلب للتجربة", subtitle = "أدخل ما تعرفه من تفاصيل الطلب، واترك أي خانة فارغة إذا لم تظهر لك.", icon = Icons.Outlined.Visibility) {
             PreviewField(fare, "سعر الطلب", KeyboardType.Decimal) { fare = it; result = null }
-            PreviewField(pickupKm, "مسافة الوصول إليك (كم)", KeyboardType.Decimal) { pickupKm = it; result = null }
-            PreviewField(tripKm, "مسافة الرحلة (كم)", KeyboardType.Decimal) { tripKm = it; result = null }
-            PreviewField(pickupMinutes, "وقت الوصول إليك (دقائق)", KeyboardType.Number) { pickupMinutes = it; result = null }
-            PreviewField(tripMinutes, "مدة الرحلة (دقائق)", KeyboardType.Number) { tripMinutes = it; result = null }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                PreviewField(pickupKm, "مسافة الوصول (كم)", KeyboardType.Decimal, Modifier.weight(1f)) { pickupKm = it; result = null }
+                PreviewField(pickupMinutes, "وقت الوصول (دقائق)", KeyboardType.Number, Modifier.weight(1f)) { pickupMinutes = it; result = null }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                PreviewField(tripKm, "مسافة الرحلة (كم)", KeyboardType.Decimal, Modifier.weight(1f)) { tripKm = it; result = null }
+                PreviewField(tripMinutes, "مدة الرحلة (دقائق)", KeyboardType.Number, Modifier.weight(1f)) { tripMinutes = it; result = null }
+            }
             PreviewField(offerText, "كلمات في وصف الطلب (اختياري)", KeyboardType.Text, singleLine = false) { offerText = it; result = null }
-            Button(onClick = ::evaluate, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                Icon(Icons.Outlined.Visibility, contentDescription = null)
-                Spacer(Modifier.size(8.dp))
-                Text("اعرف هل يناسبك")
+            QannasButton(text = "اعرف هل يناسبك", onClick = ::evaluate, enabled = hasInput, icon = Icons.Outlined.Visibility)
+            AnimatedVisibility(hasInput) {
+                QannasButton(text = "مسح التجربة", onClick = ::clearAll, style = QannasButtonStyle.Text, icon = Icons.Outlined.Refresh)
             }
         }
-        result?.let { preview -> PreviewVerdictCard(preview) }
+        AnimatedContent(
+            targetState = result,
+            transitionSpec = { fadeIn(tween(QannasMotion.MEDIUM)) togetherWith fadeOut(tween(QannasMotion.SHORT)) },
+            label = "preview-verdict",
+        ) { preview ->
+            if (preview != null) Box(Modifier.qannasEntrance(0)) { PreviewVerdictCard(preview) }
+        }
     }
 }
 
@@ -819,6 +920,7 @@ private fun PreviewField(
     value: String,
     label: String,
     keyboardType: KeyboardType,
+    modifier: Modifier = Modifier.fillMaxWidth(),
     singleLine: Boolean = true,
     onValueChange: (String) -> Unit,
 ) {
@@ -827,15 +929,15 @@ private fun PreviewField(
         onValueChange = { onValueChange(it.take(2048)) },
         label = { Text(label) },
         singleLine = singleLine,
-        keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
-        modifier = Modifier.fillMaxWidth(),
+        keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = if (singleLine) ImeAction.Next else ImeAction.Default),
+        modifier = modifier,
     )
 }
 
 @Composable
 private fun PreviewVerdictCard(result: PreviewResult) {
     if (result.error != null) {
-        QannasMessage(result.error, isError = true)
+        QannasMessage(result.error, tone = QannasTone.Error)
         return
     }
     val verdict = result.verdict
@@ -844,14 +946,16 @@ private fun PreviewVerdictCard(result: PreviewResult) {
         subtitle = if (verdict.accept) "بحسب شروطك المحفوظة وتفاصيل التجربة." else "لن يطابق هذا الطلب شروطك للأسباب التالية.",
         icon = if (verdict.accept) Icons.Outlined.CheckCircle else Icons.Outlined.WarningAmber,
     ) {
-        QannasStatusPill(if (verdict.accept) "يناسبك" else "لا يناسبك", ready = verdict.accept)
-        if (verdict.reasons.isNotEmpty()) {
-            verdict.reasons.forEach { reason ->
-                Text("• ${reasonArabic(reason.code)}", style = MaterialTheme.typography.bodyMedium)
-            }
+        QannasMessage(
+            if (verdict.accept) "يطابق شروطك المحفوظة." else "لا يطابق ${verdict.reasons.size} من شروطك.",
+            tone = if (verdict.accept) QannasTone.Success else QannasTone.Error,
+        )
+        verdict.reasons.forEach { reason ->
+            Text("• ${reasonArabic(reason.code)}", style = MaterialTheme.typography.bodyMedium)
         }
         verdict.farePerKm?.let { perKm ->
-            Text("العائد المحسوب لكل كم: ${perKm.stripTrailingZeros().toPlainString()}", style = MaterialTheme.typography.bodySmall)
+            Text("العائد المحسوب لكل كم: ${perKm.stripTrailingZeros().toPlainString()}", style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -862,6 +966,7 @@ private fun AccountPage(
     message: DriverStatus?,
     onLicenseChanged: (Boolean) -> Unit,
     onMessage: (DriverStatus?) -> Unit,
+    onAccountDeleted: () -> Unit,
 ) {
     SubscriptionScreen(
         licenseInMemory = licenseInMemory,
@@ -871,6 +976,7 @@ private fun AccountPage(
         onMessage = { nextMessage, isError ->
             onMessage(nextMessage?.let { DriverStatus(it, isError) })
         },
+        onAccountDeleted = onAccountDeleted,
     )
 }
 

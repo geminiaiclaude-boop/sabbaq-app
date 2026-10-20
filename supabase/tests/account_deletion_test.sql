@@ -12,7 +12,8 @@ $$;
 grant execute on function pg_temp.expect(boolean, text) to authenticated;
 
 insert into auth.users (id, email, phone, phone_confirmed_at, raw_app_meta_data, raw_user_meta_data) values
-    ('20000000-0000-0000-0000-000000000001', null, '+966512399001', now(),
+    -- The typed email is not provider-verified and must never be tombstoned.
+    ('20000000-0000-0000-0000-000000000001', 'typed-not-verified@example.test', '+966512399001', now(),
      '{"provider":"phone","providers":["phone"]}'::jsonb, '{}'::jsonb),
     ('20000000-0000-0000-0000-000000000002', 'del-admin@example.test', null, null,
      '{"provider":"google","providers":["google"]}'::jsonb, '{}'::jsonb),
@@ -79,6 +80,13 @@ select pg_temp.expect(
         where identity_hash like '%966512399001%' or identity_hash like '%device-delete%'
     ),
     'a consumed trial leaves exactly phone and device digests, never raw identifiers'
+);
+select pg_temp.expect(
+    not exists (
+        select 1 from public.deleted_identity_tombstones
+        where identity_hash = public.identity_digest('email', 'typed-not-verified@example.test')
+    ),
+    'an unverified email is never tombstoned'
 );
 
 -- Re-registering the same verified phone must not mint a second trial.
