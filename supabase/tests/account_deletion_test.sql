@@ -23,6 +23,10 @@ insert into auth.users (id, email, phone, phone_confirmed_at, raw_app_meta_data,
      '{"provider":"phone","providers":["phone"]}'::jsonb, '{}'::jsonb);
 insert into public.admins (user_id) values ('20000000-0000-0000-0000-000000000002');
 
+-- Suites share one database and earlier suites leave the commercial policy changed;
+-- this suite states the policy it depends on instead of assuming the seed default.
+update public.commercial_policy set trial_enabled = true, trial_days = 3 where singleton;
+
 create temp table baseline as
 select (select count(*) from public.deleted_identity_tombstones) as tombstones;
 grant select on baseline to authenticated;
@@ -41,9 +45,10 @@ set role authenticated;
 set request.jwt.claim.sub = '20000000-0000-0000-0000-000000000001';
 select public.ensure_driver_profile('Deleting Driver');
 select public.license_status('device-delete-0000001', 1);
+create temp table first_trial as select public.start_trial('device-delete-0000001', 1) as result;
 select pg_temp.expect(
-    (public.start_trial('device-delete-0000001', 1) ->> 'created')::boolean,
-    'driver consumes a trial before deletion'
+    (select (result ->> 'created')::boolean from first_trial),
+    'driver consumes a trial before deletion: ' || (select result::text from first_trial)
 );
 
 select pg_temp.expect(
