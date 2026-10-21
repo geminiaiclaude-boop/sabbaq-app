@@ -91,6 +91,15 @@ for name, screen, dark, font_scale, env in cases:
         if any(node.get('package') == args.package for node in nodes):
             break
         print(f'{name}: app tree not on top (attempt {attempt + 1}), relaunching', flush=True)
+        # The emulator's own launcher often raises "isn't responding" right after boot.
+        # Close that system dialog; it belongs to another package, never to the app under test.
+        for node in nodes:
+            if node.get('resource-id') in ('android:id/aerr_close', 'android:id/aerr_wait') and node.get('package') != args.package:
+                x1, y1, x2, y2 = map(int, re.findall(r'\d+', node.get('bounds', '')))
+                print(f'{name}: dismissing system dialog {node.get("resource-id")}', flush=True)
+                adb('shell', 'input', 'tap', str((x1 + x2) // 2), str((y1 + y2) // 2))
+                time.sleep(2)
+                break
         adb(*command, timeout=60)
         time.sleep(5)
     assert any(node.get('package') == args.package for node in nodes), f'No app accessibility tree: {name}'
