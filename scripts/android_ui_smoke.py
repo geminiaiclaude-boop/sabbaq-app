@@ -160,8 +160,12 @@ for name, screen, dark, font_scale, env in cases:
             # into the button node, which may expose it through either attribute.
             return {value.strip() for n in found for value in (n.get('text', ''), n.get('content-desc', '')) if value.strip()}
         labels = node_labels(nodes)
-        # Short, slow drags: a fast swipe flings past the middle of the page, which is
-        # exactly where the purchase steps and their button sit.
+        # The deletion check above left the page at its end: go back to the top first,
+        # then walk down with short, slow drags so the middle (purchase steps and their
+        # button) is not flung past.
+        for _ in range(10):
+            adb('shell', 'input', 'swipe', '540', '600', '540', '1900', '150')
+        time.sleep(1)
         for index in range(14):
             adb('shell', 'input', 'swipe', '540', '1500', '540', '1000', '700')
             time.sleep(1)
