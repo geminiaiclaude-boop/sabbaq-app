@@ -17,6 +17,7 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.automirrored.outlined.Login
 import androidx.compose.material.icons.outlined.CardGiftcard
 import androidx.compose.material.icons.outlined.ContentPaste
@@ -139,17 +140,27 @@ private fun ChoiceTile(icon: ImageVector, title: String, detail: String, selecte
  */
 @Composable
 internal fun PurchaseSteps(offer: PublicOffer?, enabled: Boolean, onOpenPurchase: (String) -> Unit) {
-    val url = offer?.purchaseContactUrl
+    val target = PurchaseLink.target(offer)
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        if (url == null) {
-            // No payment link configured on the server: never point to a button that is not there.
-            QannasMessage("الاشتراك يتم عبر الإدارة حاليًا. إذا استلمت رمز تفعيل، الصقه أدناه واضغط «تفعيل الوصول».")
+        if (target == null) {
+            // No purchase channel on the server: never point to a button that is not there.
+            QannasMessage("إذا استلمت رمز تفعيل من الإدارة، الصقه أدناه واضغط «تفعيل الوصول».")
             return@Column
         }
-        PurchaseStep("١", "اضغط «اشترك الآن» وأكمل الدفع.")
-        PurchaseStep("٢", "يصلك رمز التفعيل بعد تأكيد الدفع.")
+        if (target.viaWhatsapp) {
+            PurchaseStep("١", "اضغط «اشترك عبر واتساب»؛ تُفتح محادثة مع الإدارة برسالة جاهزة.")
+            PurchaseStep("٢", "أكمل الدفع كما توضح لك الإدارة، ويصلك رمز التفعيل في المحادثة.")
+        } else {
+            PurchaseStep("١", "اضغط «اشترك الآن» وأكمل الدفع.")
+            PurchaseStep("٢", "يصلك رمز التفعيل بعد تأكيد الدفع.")
+        }
         PurchaseStep("٣", "الصق الرمز أدناه واضغط «تفعيل الوصول».")
-        QannasButton(text = "اشترك الآن", onClick = { onOpenPurchase(url) }, enabled = enabled, icon = Icons.Outlined.WorkspacePremium)
+        QannasButton(
+            text = if (target.viaWhatsapp) "اشترك عبر واتساب" else "اشترك الآن",
+            onClick = { onOpenPurchase(target.url) },
+            enabled = enabled,
+            icon = if (target.viaWhatsapp) Icons.AutoMirrored.Outlined.Chat else Icons.Outlined.WorkspacePremium,
+        )
     }
 }
 

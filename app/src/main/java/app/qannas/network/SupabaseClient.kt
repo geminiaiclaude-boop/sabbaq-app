@@ -48,7 +48,9 @@ data class PublicOffer(
     val priceMinor: Int,
     val currency: String,
     val subscriptionDays: Int,
-    val purchaseContactUrl: String? = null
+    val purchaseContactUrl: String? = null,
+    /** wa.me digits of the administration's WhatsApp, set from the admin panel. */
+    val adminWhatsapp: String? = null,
 )
 
 /** لقطة قراءة فقط من آخر `license_status` ناجح للجلسة الذاكرية الحالية. */
@@ -544,13 +546,17 @@ object SupabaseClient {
         val purchaseContactUrl = response["purchase_contact_url"]?.jsonPrimitive?.contentOrNull
             ?.trim()?.takeIf { it.isNotEmpty() }
         if (purchaseContactUrl != null && !NetworkInputValidator.httpsUrl(purchaseContactUrl)) return null
+        // An invalid number is dropped rather than failing the whole offer.
+        val adminWhatsapp = response["admin_whatsapp"]?.jsonPrimitive?.contentOrNull
+            ?.trim()?.takeIf { Regex("^[1-9][0-9]{7,14}$").matches(it) }
         PublicOffer(
             trialEnabled = trialEnabled,
             trialDays = trialDays,
             priceMinor = priceMinor,
             currency = currency,
             subscriptionDays = subscriptionDays,
-            purchaseContactUrl = purchaseContactUrl
+            purchaseContactUrl = purchaseContactUrl,
+            adminWhatsapp = adminWhatsapp,
         )
     } catch (_: Exception) {
         null
