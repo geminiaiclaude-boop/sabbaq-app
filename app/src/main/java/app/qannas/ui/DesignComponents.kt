@@ -141,7 +141,7 @@ internal fun QannasHeroSurface(
         shape = shape, color = brand.heroStart, contentColor = brand.onHero,
     ) {
         Box(Modifier.background(Brush.linearGradient(listOf(brand.heroStart, brand.heroEnd)))) {
-            if (scene) QannasRadarScene(active = sceneActive, modifier = Modifier.matchParentSize().graphicsLayer { alpha = 0.55f })
+            if (scene) QannasRadarScene(active = sceneActive, pins = false, modifier = Modifier.matchParentSize().graphicsLayer { alpha = 0.5f })
             Column(
                 Modifier.padding(24.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),

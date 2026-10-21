@@ -76,7 +76,7 @@ internal fun AccessChoiceCard(
             if (showTrial) ChoiceTile(
                 icon = Icons.Outlined.CardGiftcard,
                 title = "جرّب مجانًا",
-                detail = offer?.takeIf { it.trialDays > 0 }?.let { "تجربة كاملة لمدة ${it.trialDays} يومًا دون دفع، للحسابات المؤهلة." }
+                detail = offer?.takeIf { it.trialDays > 0 }?.let { "تجربة كاملة لمدة ${ArabicCount.days(it.trialDays)} دون دفع، للحسابات المؤهلة." }
                     ?: "جرّب قناص دون دفع، للحسابات المؤهلة.",
                 selected = selected == AccessIntent.Trial,
                 onClick = { onSelect(AccessIntent.Trial) },

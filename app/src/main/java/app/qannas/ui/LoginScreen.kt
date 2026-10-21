@@ -726,7 +726,7 @@ private fun PendingAccessCard(
         if (showTrial) {
             QannasSectionTitle(
                 title = "تجربة متاحة لحسابك",
-                subtitle = "جرّب أدوات الفرز والشروط، وراجع العائد ووقت العرض. التجربة لمدة ${offer?.trialDays} يومًا وتبدأ فقط بعد ضغطك على الزر."
+                subtitle = "جرّب أدوات الفرز والشروط، وراجع العائد ووقت العرض. التجربة لمدة ${ArabicCount.days(offer?.trialDays)} وتبدأ فقط بعد ضغطك على الزر."
             )
             QannasButton(
                 text = "ابدأ التجربة",
@@ -783,7 +783,7 @@ private fun DirectAccessOptions(
     QannasSectionTitle(
         title = "اشتراك قناص",
         subtitle = offer?.let {
-            "السعر ${formatOfferPrice(it.priceMinor, it.currency)} لمدة ${it.subscriptionDays} يومًا."
+            "السعر ${formatOfferPrice(it.priceMinor, it.currency)} لمدة ${ArabicCount.days(it.subscriptionDays)}."
         } ?: "لا نستطيع عرض السعر أو المدة الآن. أعد المحاولة قبل اتخاذ قرار الاشتراك."
     )
     PurchaseSteps(offer = offer, enabled = !isBusy, onOpenPurchase = onOpenPurchaseContact)

@@ -28,4 +28,14 @@ internal object ArabicCount {
         n in 3..10 -> "$n خطوات"
         else -> "$n خطوة"
     }
+
+    /** Days: 1 → "يوم واحد", 2 → "يومان", 3..10 → "3 أيام", 11+ → "30 يومًا". */
+    fun days(n: Int): String = when {
+        n == 1 -> "يوم واحد"
+        n == 2 -> "يومان"
+        n in 3..10 -> "$n أيام"
+        else -> "$n يومًا"
+    }
+
+    fun days(n: Int?): String = days(n ?: 0)
 }

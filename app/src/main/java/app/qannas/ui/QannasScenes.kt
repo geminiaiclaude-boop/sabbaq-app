@@ -104,7 +104,7 @@ private fun DrawScope.glow(center: Offset, radius: Float, color: Color) {
  * Faster and brighter while monitoring runs ([active]).
  */
 @Composable
-internal fun QannasRadarScene(active: Boolean, modifier: Modifier = Modifier) {
+internal fun QannasRadarScene(active: Boolean, modifier: Modifier = Modifier, pins: Boolean = true) {
     val brand = LocalQannasBrand.current
     val reduced = LocalReducedMotion.current
     val clock = if (reduced) null else rememberInfiniteTransition(label = "radar-scene").animateFloat(
@@ -179,8 +179,9 @@ internal fun QannasRadarScene(active: Boolean, modifier: Modifier = Modifier) {
         )
 
         // Floating order pins: ground shadow, a beam, and a chip that bobs in depth.
-        val pins = listOf(Triple(-1.35f, 0.40f, false), Triple(1.15f, 0.52f, true), Triple(-0.75f, 0.82f, false))
-        pins.forEachIndexed { index, (x, u, matched) ->
+        // Pins only where the scene stands alone (the intro); behind text they would compete with it.
+        val pinSpots = if (pins) listOf(Triple(-1.35f, 0.40f, false), Triple(1.15f, 0.52f, true), Triple(-0.75f, 0.82f, false)) else emptyList()
+        pinSpots.forEachIndexed { index, (x, u, matched) ->
             val base = at(x, u)
             val bob = sin((t * 2f + index * 0.33f) * 2f * PI.toFloat()) * 4f * density * u
             val lift = 56f * density * u + bob

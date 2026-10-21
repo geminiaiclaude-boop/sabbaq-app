@@ -19,7 +19,7 @@ class OnboardingModelsTest {
 
         assertTrue(copy.hasServerOffer)
         assertTrue(copy.canShowTrialJourney)
-        assertTrue(copy.detail.contains("7 يومًا"))
+        assertTrue(copy.detail.contains("7 أيام"))
         assertTrue(copy.detail.contains("30 يومًا"))
         assertTrue(copy.detail.contains("ر.س"))
         assertTrue(copy.detail.contains("بعد تأكيدك"))
@@ -47,7 +47,7 @@ class OnboardingModelsTest {
         assertTrue(copy.hasServerOffer)
         assertFalse(copy.canShowTrialJourney)
         assertTrue(copy.detail.contains("التجربة غير متاحة"))
-        assertFalse(copy.detail.contains("7 يومًا"))
+        assertFalse(copy.detail.contains("7 أيام"))
         assertFalse(onboardingFinalCta(copy.canShowTrialJourney).contains("ابدأ تجربتك"))
     }
 

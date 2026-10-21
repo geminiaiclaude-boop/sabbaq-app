@@ -574,7 +574,7 @@ private fun DirectDistributionCard(
                     style = MaterialTheme.typography.titleMedium,
                 )
                 if (!subscribed && offer.trialEnabled && offer.trialDays > 0) Text(
-                    "قد تتوفر تجربة لمدة ${offer.trialDays} يومًا للحسابات المؤهلة. راجع بطاقة التجربة لتأكيد أهلية حسابك.",
+                    "قد تتوفر تجربة لمدة ${ArabicCount.days(offer.trialDays)} للحسابات المؤهلة. راجع بطاقة التجربة لتأكيد أهلية حسابك.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 PurchaseSteps(offer = offer, enabled = !isBusy, onOpenPurchase = onOpenContact)
@@ -633,7 +633,7 @@ internal data class CustomerTrialPresentation(
 internal object CustomerCommerceCopy {
     fun offerSummary(offer: PublicOffer): String {
         val currencyLabel = if (offer.currency.equals("SAR", ignoreCase = true)) "ر.س" else offer.currency
-        return "${formatServerPrice(offer.priceMinor)} $currencyLabel لمدة ${offer.subscriptionDays} يومًا"
+        return "${formatServerPrice(offer.priceMinor)} $currencyLabel لمدة ${ArabicCount.days(offer.subscriptionDays)}"
     }
 
     fun trialPresentation(snapshot: SubscriptionSnapshot?): CustomerTrialPresentation = when {
@@ -661,7 +661,7 @@ internal object CustomerCommerceCopy {
                 canStart = false,
             )
         else -> CustomerTrialPresentation(
-            detail = "تجربة لمدة ${snapshot.trialDays} يومًا. تبدأ فقط عند ضغط «ابدأ التجربة»، ولا تبدأ تلقائيًا.",
+            detail = "تجربة لمدة ${ArabicCount.days(snapshot.trialDays)}. تبدأ فقط عند ضغط «ابدأ التجربة»، ولا تبدأ تلقائيًا.",
             canStart = true,
         )
     }
