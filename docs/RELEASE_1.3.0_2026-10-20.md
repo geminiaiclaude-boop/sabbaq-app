@@ -48,11 +48,12 @@
 ## الإعدادات الخارجية المنجزة
 
 - Google Cloud: عميل OAuth Android لـ `app.qannas.driver` بشهادة الإصدار؛ صفحة الخصوصية والصفحة الرئيسية والنطاق المصرح به؛ **تطبيق OAuth منشور للإنتاج**.
+- Supabase Phone: مزود Twilio Verify، تأكيد رقم الجوال إلزامي.
 - صفحات عامة: https://yahooyahoo99.github.io/ و`/privacy.html` و`/delete-account.html`.
 
 ## قيود متبقية
 
-1. **الدخول برقم الجوال:** مزود SMS غير مربوط؛ يلزم دخول المالك إلى Twilio ثم تفعيل Verify وPhone في Supabase.
+1. **الدخول برقم الجوال:** مفعّل — Twilio Verify (خدمة «Qannas»، Fraud Guard مفعّل) مربوط بمزود Phone في Supabase، ومؤكد عبر `/auth/v1/settings` (`phone=true`, `sms_provider=twilio_verify`). حساب Twilio **تجريبي**: يرسل فقط إلى الأرقام الموثقة فيه حتى يرقّيه المالك (دفع).
 2. **Play App Signing:** بعد أول رفع إلى Play أضف عميل Android ثانيًا ببصمة توقيع Play، وإلا لن يعمل Google في نسخة المتجر.
 3. **اختبار جهاز حقيقي:** دخول Google فعلي وحذف حساب تجريبي على الـ APK الموقّع.
 4. **Play Console:** إقرار Accessibility وFGS `specialUse` وData safety، ورابط الحذف `https://yahooyahoo99.github.io/delete-account.html`.
