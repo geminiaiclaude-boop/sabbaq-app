@@ -96,7 +96,7 @@ class FilterDraft private constructor(
             val end = scheduleMinute("scheduleEnd", scheduleEnd, allowEndOfDay = true, errors = errors)
             if (start != null && end != null) Schedule(start, end) else null
         } else {
-            // الحقول مخفية عند التعطيل؛ لا نرفض نصاً قديماً لا يراه السائق.
+            // الحقول مخفية عند التعطيل؛ لا نرفض نصًا قديمًا لا يراه السائق.
             null
         }
 
@@ -142,12 +142,12 @@ class FilterDraft private constructor(
             return null
         }
         if (DECIMAL_PATTERN.matchEntire(value) == null) {
-            errors[field] = "أدخل رقماً غير سالب صالحاً."
+            errors[field] = "أدخل رقمًا غير سالب صالحًا."
             return null
         }
         val parsed = Text.parseNumber(value)
         if (parsed == null || parsed.signum() < 0) {
-            errors[field] = "أدخل رقماً غير سالب صالحاً."
+            errors[field] = "أدخل رقمًا غير سالب صالحًا."
             return null
         }
         return parsed
@@ -161,7 +161,7 @@ class FilterDraft private constructor(
             return null
         }
         if (INTEGER_PATTERN.matchEntire(value) == null) {
-            errors[field] = "أدخل عدداً صحيحاً غير سالب."
+            errors[field] = "أدخل عددًا صحيحًا غير سالب."
             return null
         }
         return value.toIntOrNull().also {
@@ -182,7 +182,7 @@ class FilterDraft private constructor(
         }
         val match = TIME_PATTERN.matchEntire(value)
         if (match == null) {
-            errors[field] = "أدخل وقتاً صالحاً مثل 08:30."
+            errors[field] = "أدخل وقتًا صالحًا مثل 08:30."
             return null
         }
         val hour = match.groupValues[1].toInt()
@@ -193,7 +193,7 @@ class FilterDraft private constructor(
             return null
         }
         if (hour !in 0..23 || minute !in 0..59) {
-            errors[field] = "أدخل وقتاً صالحاً مثل 08:30."
+            errors[field] = "أدخل وقتًا صالحًا مثل 08:30."
             return null
         }
         return hour * 60 + minute

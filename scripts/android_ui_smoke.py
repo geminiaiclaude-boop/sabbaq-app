@@ -3,6 +3,7 @@
 import argparse
 import json
 import pathlib
+import re
 import subprocess
 import time
 import xml.etree.ElementTree as ET
@@ -27,21 +28,39 @@ adb('shell', 'settings', 'put', 'global', 'animator_duration_scale', '0')
 adb('shell', 'input', 'keyevent', '82')
 results = []
 
+def apply_environment(env):
+    """Device conditions for a case: tablet geometry or no network; None restores the phone defaults."""
+    adb('shell', 'wm', 'size', '1600x2560' if env == 'tablet' else 'reset')
+    adb('shell', 'wm', 'density', '320' if env == 'tablet' else 'reset')
+    state = 'disable' if env == 'offline' else 'enable'
+    adb('shell', 'svc', 'wifi', state)
+    adb('shell', 'svc', 'data', state)
+    if env is not None:
+        time.sleep(4)
+
+
 cases = [
-    ('first-launch', None, False, 1.0),
-    ('welcome-example', 'welcome-example', False, 1.0),
-    ('welcome-ready', 'welcome-ready', False, 1.0),
-    ('login', 'login', False, 1.0),
-    ('dashboard', 'dashboard', False, 1.0),
-    ('filters', 'filters', False, 1.0),
-    ('simulator', 'simulator', False, 1.0),
-    ('account', 'account', False, 1.0),
-    ('disclosure', 'disclosure', False, 1.0),
-    ('dashboard-dark', 'dashboard', True, 1.0),
-    ('login-large-font', 'login', False, 1.6),
+    ('first-launch', None, False, 1.0, None),
+    ('welcome-example', 'welcome-example', False, 1.0, None),
+    ('welcome-ready', 'welcome-ready', False, 1.0, None),
+    ('login', 'login', False, 1.0, None),
+    ('dashboard', 'dashboard', False, 1.0, None),
+    ('filters', 'filters', False, 1.0, None),
+    ('simulator', 'simulator', False, 1.0, None),
+    ('account', 'account', False, 1.0, None),
+    ('disclosure', 'disclosure', False, 1.0, None),
+    ('dashboard-dark', 'dashboard', True, 1.0, None),
+    ('login-large-font', 'login', False, 1.6, None),
+    ('dashboard-tablet', 'dashboard', False, 1.0, 'tablet'),
+    ('filters-tablet', 'filters', False, 1.0, 'tablet'),
+    ('login-offline', 'login', False, 1.0, 'offline'),
 ]
-for name, screen, dark, font_scale in cases:
+current_env = 'unset'
+for name, screen, dark, font_scale, env in cases:
     print(f'Capturing {args.package} {name}', flush=True)
+    if env != current_env:
+        apply_environment(env)
+        current_env = env
     adb('shell', 'am', 'force-stop', args.package)
     adb('shell', 'settings', 'put', 'system', 'font_scale', str(font_scale))
     adb('logcat', '-c')
@@ -52,6 +71,9 @@ for name, screen, dark, font_scale in cases:
     launch = adb(*command, timeout=60)
     (out / f'{name}-launch.txt').write_text(launch)
     assert 'Error:' not in launch, launch
+    total = re.search(r'TotalTime: (\d+)', launch)
+    startup_ms = int(total.group(1)) if total else None
+    print(f'{name} startup TotalTime={startup_ms}ms', flush=True)
     time.sleep(5)
     logs = adb('logcat', '-d', '-s', 'AndroidRuntime:E')
     (out / f'{name}-runtime.txt').write_text(logs)
@@ -69,6 +91,9 @@ for name, screen, dark, font_scale in cases:
         assert jargon not in visible, f'Developer-facing copy in customer screen {name}: {jargon}'
     if screen == 'welcome-example':
         assert '٢٫٥ ر.س قبل التكاليف' in visible, f'Concrete fare/distance example missing: {name}'
+    if env == 'offline':
+        # The app-wide offline banner must tell the driver what needs a connection.
+        assert 'لا يوجد اتصال بالإنترنت' in visible, f'Offline banner missing: {name}'
     if screen == 'login':
         # Play requires the privacy policy to be reachable inside the app before sign-in.
         assert 'سياسة الخصوصية' in visible, f'Privacy policy link missing: {name}'
@@ -93,9 +118,11 @@ for name, screen, dark, font_scale in cases:
     assert image.startswith(b'\x89PNG\r\n\x1a\n'), f'Invalid screenshot: {name}'
     (out / f'{name}.png').write_bytes(image)
     results.append({'screen': name, 'package': args.package, 'distribution': args.distribution, 'fontScale': font_scale,
-                    'dark': dark, 'accessibilityNodes': len(nodes), 'nativeLaunch': True})
+                    'dark': dark, 'accessibilityNodes': len(nodes), 'nativeLaunch': True,
+                    'startupMs': startup_ms, 'environment': env or 'phone-online'})
 
 adb('shell', 'settings', 'put', 'system', 'font_scale', '1.0')
+apply_environment(None)
 adb('shell', 'am', 'force-stop', args.package)
 (out / 'results.json').write_text(json.dumps(results, indent=2))
 print(json.dumps(results, indent=2), flush=True)

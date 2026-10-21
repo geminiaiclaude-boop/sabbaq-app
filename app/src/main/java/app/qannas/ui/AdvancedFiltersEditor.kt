@@ -46,8 +46,8 @@ import app.qannas.core.PerKmBasis
 import app.qannas.core.Text as CoreText
 
 /**
- * محرر declarative فقط: لا يحتفظ بقيم المرشحات داخلياً ولا يكتب Settings. كل تغيير
- * يعود إلى الشاشة المالكة لمسودة [FilterDraft] كي يبقى الحفظ صريحاً وذرياً.
+ * محرر declarative فقط: لا يحتفظ بقيم المرشحات داخليًا ولا يكتب Settings. كل تغيير
+ * يعود إلى الشاشة المالكة لمسودة [FilterDraft] كي يبقى الحفظ صريحًا وذريًا.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -246,7 +246,7 @@ private fun FilterGroup(
             Column(Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
                 Text(
-                    if (expanded || filledCount == 0) subtitle else "$filledCount محدد",
+                    if (expanded || filledCount == 0) subtitle else "المحدد: ${ArabicCount.conditions(filledCount)}",
                     style = MaterialTheme.typography.bodySmall,
                     color = if (hasError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                 )

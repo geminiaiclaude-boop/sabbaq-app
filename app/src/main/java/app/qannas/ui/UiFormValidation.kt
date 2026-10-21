@@ -7,7 +7,7 @@ import java.util.Locale
 /** تحقّق محلي محدود قبل أي طلب شبكة؛ لا يفرض سياسة خادم غير مؤكدة. */
 internal object UiFormValidation {
     fun loginError(email: String, password: String): String? = when {
-        !isEmailValid(email) -> "أدخل بريداً إلكترونياً صحيحاً."
+        !isEmailValid(email) -> "أدخل بريدًا إلكترونيًا صحيحًا."
         password.isBlank() -> "أدخل كلمة المرور."
         else -> null
     }
@@ -15,18 +15,18 @@ internal object UiFormValidation {
     fun signUpError(name: String, phone: String, email: String, password: String): String? = when {
         name.trim().isEmpty() -> "أدخل الاسم الكامل."
         phone.trim().isEmpty() -> "أدخل رقم الهاتف."
-        name.trim().length !in 2..80 -> "الاسم الكامل يجب أن يكون بين حرفين و80 حرفاً."
-        !Regex("^\\+?[0-9]{7,15}$").matches(phone.replace(Regex("[\\s-]"), "")) -> "أدخل رقم هاتف من 7 إلى 15 رقماً."
-        !isEmailValid(email) -> "أدخل بريداً إلكترونياً صحيحاً."
+        name.trim().length !in 2..80 -> "الاسم الكامل يجب أن يكون بين حرفين و80 حرفًا."
+        !Regex("^\\+?[0-9]{7,15}$").matches(phone.replace(Regex("[\\s-]"), "")) -> "أدخل رقم هاتف من 7 إلى 15 رقمًا."
+        !isEmailValid(email) -> "أدخل بريدًا إلكترونيًا صحيحًا."
         password.isBlank() -> "أدخل كلمة المرور."
         password.length < 8 -> "استخدم كلمة مرور من 8 أحرف على الأقل."
         else -> null
     }
 
     fun activationCodeError(code: String): String? = when {
-        code.trim().isEmpty() -> "أدخل كود التفعيل أولاً."
+        code.trim().isEmpty() -> "أدخل رمز التفعيل أولًا."
         !Regex("^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){3}$").matches(normalizeActivationCode(code)) &&
-            !Regex("^[0-9A-HJKMNP-TV-Z]{16}$").matches(normalizeActivationCode(code)) -> "أدخل كوداً صحيحاً من 16 حرفاً ورقماً."
+            !Regex("^[0-9A-HJKMNP-TV-Z]{16}$").matches(normalizeActivationCode(code)) -> "أدخل رمزًا صحيحًا من 16 حرفًا ورقمًا."
         else -> null
     }
 

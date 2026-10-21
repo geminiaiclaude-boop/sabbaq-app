@@ -38,7 +38,7 @@ internal object CustomerErrorMessages {
             "invalid_credentials" ->
                 FormattedError("تعذر تسجيل الدخول. تحقق من بياناتك وحاول مجددًا.", "AUTH-INVALID-CRED")
             "user_already_exists" ->
-                FormattedError("الحساب مسجل مسبقاً. سجل دخولك بنفس الطريقة الأصلية.", "AUTH-USER-EXISTS")
+                FormattedError("الحساب مسجل مسبقًا. سجل دخولك بنفس الطريقة الأصلية.", "AUTH-USER-EXISTS")
             else -> null
         }
         if (fromProvider != null) return fromProvider
@@ -52,7 +52,7 @@ internal object CustomerErrorMessages {
             cleanDetail == "not_admin" ->
                 FormattedError("هذه الخطوة متاحة لإدارة التطبيق فقط.", "AUTH-NOT-ADMIN")
             cleanDetail == "bad_code" ->
-                FormattedError("كود التفعيل غير صحيح. تحقق منه وحاول مجددًا.", "CODE-INVALID")
+                FormattedError("رمز التفعيل غير صحيح. تحقق منه وحاول مجددًا.", "CODE-INVALID")
             cleanDetail == "bad_device" ->
                 FormattedError("تعذر التحقق من هذا الجهاز. أعد تسجيل الدخول وحاول مجددًا.", "DEVICE-MISMATCH")
             cleanDetail == "bad_version_code" ->
@@ -81,7 +81,7 @@ internal object CustomerErrorMessages {
             400 -> FormattedError("تعذر إكمال طلب الدخول. تحقق من صحة الحساب المستخدم.", "$opCode-400")
             401 -> FormattedError("جلسة الدخول غير مصرحة أو غير مسجلة في النظام.", "$opCode-401")
             403 -> FormattedError("لا يمكنك إكمال هذه الخطوة بحسابك الحالي. تواصل مع الدعم إذا استمرت المشكلة.", "$opCode-403")
-            404 -> FormattedError("خدمة التحقق غير متوفرة حالياً. حاول مجدداً لاحقاً.", "$opCode-404")
+            404 -> FormattedError("خدمة التحقق غير متوفرة حاليًا. حاول مجددًا لاحقًا.", "$opCode-404")
             else -> FormattedError("لم نتمكن من إكمال هذه الخطوة. تحقق من بياناتك وحاول مجددًا.", "$opCode-$status")
         }
     }

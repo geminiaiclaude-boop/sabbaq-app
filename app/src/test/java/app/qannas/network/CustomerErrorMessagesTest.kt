@@ -22,8 +22,8 @@ class CustomerErrorMessagesTest {
         assertTrue(message.contains("[PHONE-DISABLED]"))
     }
     @Test fun `known code maps without guessing arbitrary detail`() {
-        assertTrue(CustomerErrorMessages.forResponse(400, null, "bad_code", "").contains("كود التفعيل"))
-        assertFalse(CustomerErrorMessages.forResponse(400, null, "unknown bad_code details", "").contains("كود التفعيل"))
+        assertTrue(CustomerErrorMessages.forResponse(400, null, "bad_code", "").contains("رمز التفعيل"))
+        assertFalse(CustomerErrorMessages.forResponse(400, null, "unknown bad_code details", "").contains("رمز التفعيل"))
     }
     @Test fun `rate limit and outage are actionable not sales prompts`() {
         assertTrue(CustomerErrorMessages.forResponse(429, null, null, "").contains("انتظر"))

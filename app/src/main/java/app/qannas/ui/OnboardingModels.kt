@@ -4,7 +4,7 @@ import java.text.NumberFormat
 import java.util.Locale
 
 /**
- * نسخة مصغّرة من العرض العام للاستخدام المرئي فقط. لا تمنح تجربة أو اشتراكاً،
+ * نسخة مصغّرة من العرض العام للاستخدام المرئي فقط. لا تمنح تجربة أو اشتراكًا،
  * ولا تُخزَّن خارج تركيب الشاشة.
  */
 internal data class OnboardingOffer(
@@ -68,7 +68,7 @@ internal fun onboardingOfferCopy(
         "التجربة غير متاحة حاليًا."
     }
     return OnboardingOfferCopy(
-        headline = if (validOffer.trialEnabled) "جرّبه قبل ما تشترك" else "اختر ما يناسب شغلك",
+        headline = if (validOffer.trialEnabled) "جرّبه قبل الاشتراك" else "اختر ما يناسب عملك",
         detail = "$trial سعر الاشتراك الحالي $price ر.س لمدة ${validOffer.subscriptionDays} يومًا.",
         hasServerOffer = true,
         canShowTrialJourney = validOffer.trialEnabled
@@ -83,7 +83,7 @@ internal enum class DecisionSignal(val label: String) {
 }
 
 internal fun localDecisionPreview(selected: Set<DecisionSignal>): String {
-    if (selected.isEmpty()) return "اختر تفصيلاً أو أكثر لتظهره في المثال."
+    if (selected.isEmpty()) return "اختر تفصيلًا أو أكثر لتظهره في المثال."
     return buildString {
         append("في هذا المثال:\n")
         if (DecisionSignal.DISPLAYED_FARE in selected) append("السعر الظاهر: ٤٥ ر.س\n")

@@ -46,11 +46,11 @@ val keystorePath = setting("QANNAS_KEYSTORE")
 val releaseStoreFile = keystorePath
     ?.takeIf { it.isNotBlank() }
     ?.let { rootProject.file(it) }
-val versionCodeValue = setting("QANNAS_VERSION_CODE") ?: "5"
+val versionCodeValue = setting("QANNAS_VERSION_CODE") ?: "6"
 val configuredVersionCode = versionCodeValue.toIntOrNull()
     ?: throw GradleException("QANNAS_VERSION_CODE يجب أن يكون عدداً صحيحاً موجباً")
 require(configuredVersionCode > 0) { "QANNAS_VERSION_CODE يجب أن يكون عدداً صحيحاً موجباً" }
-val configuredVersionName = setting("QANNAS_VERSION_NAME") ?: "1.3.1"
+val configuredVersionName = setting("QANNAS_VERSION_NAME") ?: "1.3.2"
 require(configuredVersionName.isNotBlank()) { "QANNAS_VERSION_NAME لا يمكن أن يكون فارغاً" }
 
 android {
@@ -63,6 +63,7 @@ android {
         targetSdk = 36
         versionCode = configuredVersionCode
         versionName = configuredVersionName
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("String", "SUPABASE_URL", buildConfigString(supabaseUrl))
         buildConfigField("String", "SUPABASE_ANON_KEY", buildConfigString(supabaseAnonKey))
@@ -214,6 +215,12 @@ dependencies {
     implementation(libs.androidx.credentials.play.services.auth)
     implementation(libs.googleid)
     implementation(libs.osmdroid)
+    implementation(libs.androidx.profileinstaller)
     debugImplementation(libs.compose.ui.tooling)
+    debugImplementation(libs.compose.ui.test.manifest)
     testImplementation(libs.junit)
+    androidTestImplementation(platform(libs.compose.bom))
+    androidTestImplementation(libs.compose.ui.test.junit4)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
 }

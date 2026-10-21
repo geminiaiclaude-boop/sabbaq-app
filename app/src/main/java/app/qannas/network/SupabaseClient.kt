@@ -100,20 +100,20 @@ object SupabaseClient {
 
     /**
      * توافق مؤقت مع مستهلكي الواجهة الحاليين. القيمة تُقرأ من الذاكرة ولا يمكن تعديلها
-     * من خارج العميل؛ يجب أن تهاجر الواجهة إلى [hasRedeemableSession] بدلاً من قراءة الرمز.
+     * من خارج العميل؛ يجب أن تهاجر الواجهة إلى [hasRedeemableSession] بدلًا من قراءة الرمز.
      */
     @Deprecated("استخدم hasRedeemableSession() ولا تمرر رموز الجلسة بين المكونات")
     val currentToken: String
         get() = sessions.snapshot()?.token.orEmpty()
 
-    /** معرّف الجهاز المقترن بالجلسة الذاكرية فقط، وليس معرّفاً محفوظاً. */
+    /** معرّف الجهاز المقترن بالجلسة الذاكرية فقط، وليس معرّفًا محفوظًا. */
     @Deprecated("استخدم hasRedeemableSession()")
     val currentDeviceId: String
         get() = sessions.snapshot()?.deviceId.orEmpty()
 
     fun hasRedeemableSession(): Boolean = sessions.snapshot()?.deviceId != null
 
-    /** فحص محلي فقط؛ لا ينفّذ اتصالاً من مسار أحداث إمكانية الوصول. */
+    /** فحص محلي فقط؛ لا ينفّذ اتصالًا من مسار أحداث إمكانية الوصول. */
     fun hasValidLicense(): Boolean = sessions.hasValidLicense()
 
     /** يمكّن مسار تسجيل خروج مستقبلي من إبطال الجلسة الذاكرية صراحةً. */
@@ -232,7 +232,7 @@ object SupabaseClient {
         val safeCode = NetworkInputValidator.otpCode(code)
             ?: return invalidInput("رمز التحقق يجب أن يتكون من 6 أرقام")
         val attempt = sessions.phoneOtpAttempt(safePhone)
-            ?: return Result.failure(ClientRequestException("اطلب رمز تحقق جديداً قبل التحقق"))
+            ?: return Result.failure(ClientRequestException("اطلب رمز تحقق جديدًا قبل التحقق"))
 
         return networkCall {
             val request = requestBuilder(endpoint("auth/v1/verify"))
@@ -257,7 +257,7 @@ object SupabaseClient {
         }
     }
 
-    /** يقرأ سياسة الاشتراك العامة من RPC بلا جلسة ولا يقدم بديلاً محلياً عند الفشل. */
+    /** يقرأ سياسة الاشتراك العامة من RPC بلا جلسة ولا يقدم بديلًا محليًا عند الفشل. */
     suspend fun fetchPublicOffer(): Result<PublicOffer> = networkCall {
         val request = requestBuilder(endpoint("rest/v1/rpc/public_offer"))
             .post("{}".toRequestBody(jsonMediaType))
@@ -283,7 +283,7 @@ object SupabaseClient {
     fun subscriptionSnapshot(): SubscriptionSnapshot? = sessions.subscriptionSnapshot()
 
     /**
-     * يبدأ التجربة على الخادم للجهاز المربوط فقط. الرد `ok` لا يكوّن lease محلياً؛
+     * يبدأ التجربة على الخادم للجهاز المربوط فقط. الرد `ok` لا يكوّن lease محليًا؛
      * يجب أن يعقبَه `license_status` ناجح، وتكون قيمة النتيجة هي نتيجة إعادة الفحص.
      */
     suspend fun startTrial(): Result<Boolean> {
@@ -321,7 +321,7 @@ object SupabaseClient {
     }
 
     /**
-     * يحذف حساب الجلسة الحالية نهائياً عبر `delete_my_account`. لا يُرسل الطلب إلا بعد
+     * يحذف حساب الجلسة الحالية نهائيًا عبر `delete_my_account`. لا يُرسل الطلب إلا بعد
      * تأكيد صريح في الواجهة، وتُمسح الجلسة الذاكرية بعد نجاح الخادم فقط.
      */
     suspend fun deleteAccount(): Result<Unit> {
@@ -345,8 +345,8 @@ object SupabaseClient {
                 Result.failure(ClientRequestException(
                     when (result["error"]?.jsonPrimitive?.contentOrNull) {
                         "admin_account" -> "حسابات الإدارة لا تُحذف من التطبيق؛ تواصل مع مسؤول النظام."
-                        "not_found" -> "لم يعد هذا الحساب موجوداً."
-                        else -> "تعذر حذف الحساب الآن. حاول مجدداً بعد قليل."
+                        "not_found" -> "لم يعد هذا الحساب موجودًا."
+                        else -> "تعذر حذف الحساب الآن. حاول مجددًا بعد قليل."
                     }
                 ))
             }
@@ -442,7 +442,7 @@ object SupabaseClient {
 
     /**
      * يعيد الفحص باستعمال جلسة الجهاز الحالية؛ تستدعيه الواجهة/نبض الخدمة فقط.
-     * لا يستدعي [hasValidLicense] هذه الدالة مطلقاً.
+     * لا يستدعي [hasValidLicense] هذه الدالة مطلقًا.
      */
     suspend fun revalidateLicense(): Result<Boolean> {
         val session = sessions.snapshot()
@@ -476,11 +476,11 @@ object SupabaseClient {
 
     suspend fun redeemCode(code: String): Result<Boolean> {
         val safeCode = NetworkInputValidator.activationCode(code)
-            ?: return invalidInput("كود التفعيل غير صالح")
+            ?: return invalidInput("رمز التفعيل غير صالح")
         val session = sessions.snapshot()
             ?: return Result.failure(ClientRequestException("انتهت الجلسة؛ سجّل الدخول من جديد"))
         val deviceId = session.deviceId
-            ?: return Result.failure(ClientRequestException("تحقق من الترخيص والجهاز قبل إدخال كود التفعيل"))
+            ?: return Result.failure(ClientRequestException("تحقق من الترخيص والجهاز قبل إدخال رمز التفعيل"))
 
         return networkCall {
             val request = authenticatedRequest(
@@ -494,7 +494,7 @@ object SupabaseClient {
             val response = execute(request)
             if (response.code == 401) sessions.clearIfMatches(session.token)
             if (!response.isSuccessful) {
-                return@networkCall httpFailure("تفعيل الكود", response)
+                return@networkCall httpFailure("تفعيل الرمز", response)
             }
 
             val result = responseObject(response.body)
@@ -503,11 +503,11 @@ object SupabaseClient {
                 else staleSessionFailure()
             } else {
                 when (result["error"]?.jsonPrimitive?.contentOrNull?.lowercase(Locale.ROOT)) {
-                    "invalid_code" -> Result.failure(ClientRequestException("الكود غير صحيح أو استُخدم مسبقاً"))
-                    "rate_limited" -> Result.failure(ClientRequestException("محاولات كثيرة؛ يرجى الانتظار قبل المحاولة مجدداً"))
+                    "invalid_code" -> Result.failure(ClientRequestException("الرمز غير صحيح أو استُخدم مسبقًا"))
+                    "rate_limited" -> Result.failure(ClientRequestException("محاولات كثيرة؛ يرجى الانتظار قبل المحاولة مجددًا"))
                     "device_mismatch" -> Result.failure(ClientRequestException("هذا الحساب مرتبط بجهاز آخر"))
                     "unregistered" -> Result.failure(licenseStateFailure(LicenseState.UNREGISTERED))
-                    else -> Result.failure(ClientRequestException("تعذر تفعيل الكود"))
+                    else -> Result.failure(ClientRequestException("تعذر تفعيل الرمز"))
                 }
             }
         }
@@ -753,7 +753,7 @@ object SupabaseClient {
         } catch (_: ResponseTooLargeException) {
             Result.failure(ClientRequestException("تعذر إكمال هذه الخطوة. حاول مجددًا بعد قليل."))
         } catch (_: IOException) {
-            Result.failure(ClientRequestException("تعذر الاتصال بالخدمة؛ تحقق من الشبكة وحاول لاحقاً"))
+            Result.failure(ClientRequestException("تعذر الاتصال بالخدمة؛ تحقق من الشبكة وحاول لاحقًا"))
         } catch (error: ClientRequestException) {
             Result.failure(error)
         } catch (_: Exception) {
@@ -788,7 +788,7 @@ internal object AuthSettingsParser {
     }.getOrNull()
 }
 
-/** يعرض ما يكفي ليتعرّف السائق على حسابه، دون كشف المعرّف كاملاً على الشاشة. */
+/** يعرض ما يكفي ليتعرّف السائق على حسابه، دون كشف المعرّف كاملًا على الشاشة. */
 internal object AccountIdentityMask {
     fun phone(raw: String?): String? {
         val digits = raw?.filter(Char::isDigit)?.takeIf { it.length >= 8 } ?: return null
@@ -844,7 +844,7 @@ internal object NetworkInputValidator {
         it.length in 1..512 && !it.any(::isControlCharacter)
     }
 
-    /** يقبل كتابات سعودية مألوفة لكنه يخرج دائماً E.164 السعودي فقط. */
+    /** يقبل كتابات سعودية مألوفة لكنه يخرج دائمًا E.164 السعودي فقط. */
     fun saudiE164(raw: String): String? {
         val compact = buildString {
             raw.trim().forEach { character ->

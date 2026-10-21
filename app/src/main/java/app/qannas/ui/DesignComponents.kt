@@ -75,6 +75,7 @@ internal fun QannasCard(
     subtitle: String? = null,
     icon: ImageVector? = null,
     modifier: Modifier = Modifier,
+    destructive: Boolean = false,
     content: @Composable ColumnScope.() -> Unit
 ) {
     Card(modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large,
@@ -82,7 +83,7 @@ internal fun QannasCard(
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (title != null) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (icon != null) QannasIconBadge(icon)
+                if (icon != null) QannasIconBadge(icon, destructive = destructive)
                 Column(Modifier.weight(1f)) {
                     Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
                     subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -94,10 +95,11 @@ internal fun QannasCard(
 }
 
 @Composable
-internal fun QannasIconBadge(icon: ImageVector, modifier: Modifier = Modifier) {
+internal fun QannasIconBadge(icon: ImageVector, modifier: Modifier = Modifier, destructive: Boolean = false) {
+    val colors = MaterialTheme.colorScheme
     Box(modifier.size(40.dp).clip(MaterialTheme.shapes.small)
-        .background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
-        Icon(icon, null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(22.dp))
+        .background(if (destructive) colors.errorContainer else colors.primaryContainer), contentAlignment = Alignment.Center) {
+        Icon(icon, null, tint = if (destructive) colors.onErrorContainer else colors.onPrimaryContainer, modifier = Modifier.size(22.dp))
     }
 }
 

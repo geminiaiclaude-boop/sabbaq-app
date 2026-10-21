@@ -32,7 +32,7 @@ class SupabaseClientHardeningTest {
         assertEquals("a".repeat(16), NetworkInputValidator.deviceId("a".repeat(16)))
         assertEquals("a".repeat(256), NetworkInputValidator.deviceId("a".repeat(256)))
         assertNull(NetworkInputValidator.deviceId("a".repeat(257)))
-        assertNull(NetworkInputValidator.deviceId("أ".repeat(129))) // 258 بايتاً في UTF-8
+        assertNull(NetworkInputValidator.deviceId("أ".repeat(129))) // 258 بايتًا في UTF-8
     }
 
     @Test

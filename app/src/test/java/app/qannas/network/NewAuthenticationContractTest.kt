@@ -8,7 +8,7 @@ import org.junit.Test
 
 class NewAuthenticationContractTest {
     @Test
-    fun `رقم الجوال السعودي يخرج دائماً بصيغة E164 فقط`() {
+    fun `رقم الجوال السعودي يخرج دائمًا بصيغة E164 فقط`() {
         assertEquals("+966512345678", NetworkInputValidator.saudiE164("+966 512 345 678"))
         assertEquals("+966512345678", NetworkInputValidator.saudiE164("0512345678"))
         assertEquals("+966512345678", NetworkInputValidator.saudiE164("٠٥١٢٣٤٥٦٧٨"))
@@ -27,7 +27,7 @@ class NewAuthenticationContractTest {
     }
 
     @Test
-    fun `nonce هو SHA256 hex للنص الاصلي ولا يقبل Client ID فارغاً`() {
+    fun `nonce هو SHA256 hex للنص الاصلي ولا يقبل Client ID فارغًا`() {
         assertEquals(
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
             GoogleNonce.sha256Hex("abc")
