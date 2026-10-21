@@ -26,6 +26,8 @@ import androidx.compose.material.icons.outlined.Autorenew
 import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Login
 import androidx.compose.material.icons.outlined.Phone
+import androidx.compose.material.icons.outlined.PhonelinkSetup
+import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -58,7 +60,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.saveable.rememberSaveable
 import app.qannas.BuildConfig
 import app.qannas.Settings
+import app.qannas.network.DeviceTransferLimitException
 import app.qannas.network.LicenseState
+import app.qannas.network.LicenseStateException
 import app.qannas.network.PublicOffer
 import app.qannas.network.SupabaseClient
 import app.qannas.ui.theme.LocalQannasBrand
@@ -78,7 +82,9 @@ private enum class AuthJourney {
     CheckingLicense,
     AwaitingAccess,
     StartingTrial,
-    ActivatingCode
+    ActivatingCode,
+    /** Signed in, but the account is bound to another device; offer to move it here. */
+    DeviceTransfer
 }
 
 private const val OTP_COOLDOWN_MILLIS = 60_000L
@@ -121,7 +127,15 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
     var accessIntent by rememberSaveable { mutableStateOf(AccessIntent.None) }
     val knownSubscriber = remember { Settings.knownSubscriber }
 
-    val isBusy = journey != AuthJourney.Idle && journey != AuthJourney.AwaitingAccess
+    // Device move: kept only for the signed-in session that hit «مرتبط بجهاز آخر».
+    var transferToken by remember { mutableStateOf<String?>(null) }
+    var transferDeviceId by remember { mutableStateOf<String?>(null) }
+    var transferring by remember { mutableStateOf(false) }
+    var transferError by remember { mutableStateOf<String?>(null) }
+    var transferLimitReached by remember { mutableStateOf(false) }
+
+    val isBusy = journey != AuthJourney.Idle && journey != AuthJourney.AwaitingAccess &&
+        journey != AuthJourney.DeviceTransfer
     val awaitingAccess = journey == AuthJourney.AwaitingAccess ||
         journey == AuthJourney.StartingTrial || journey == AuthJourney.ActivatingCode
 
@@ -157,6 +171,10 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
     }
 
     fun abandonAccess() {
+        transferToken = null
+        transferDeviceId = null
+        transferError = null
+        transferLimitReached = false
         activationCode = ""
         activationError = null
         activationValidationRequested = false
@@ -250,8 +268,19 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
                         refreshPublicOffer()
                     }
                     else -> {
-                        SupabaseClient.clearSession()
-                        errorMessage = licenseErrorMessage(licenseResult.exceptionOrNull())
+                        val failure = licenseResult.exceptionOrNull()
+                        if (failure is LicenseStateException && failure.state == LicenseState.DEVICE_MISMATCH) {
+                            // Not a dead end: the signed-in owner can move the account here.
+                            isAdmin = accountIsAdmin
+                            transferToken = token
+                            transferDeviceId = deviceId
+                            transferError = null
+                            transferLimitReached = false
+                            journey = AuthJourney.DeviceTransfer
+                        } else {
+                            SupabaseClient.clearSession()
+                            errorMessage = licenseErrorMessage(failure)
+                        }
                     }
                 }
             } catch (cancelled: CancellationException) {
@@ -260,9 +289,44 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
                 SupabaseClient.clearSession()
                 errorMessage = "تعذر تأكيد الوصول إلى حسابك. تحقق من اتصال الإنترنت ثم أعد المحاولة."
             } finally {
-                if (journey != AuthJourney.AwaitingAccess && journey != AuthJourney.Idle) {
+                if (journey != AuthJourney.AwaitingAccess && journey != AuthJourney.Idle &&
+                    journey != AuthJourney.DeviceTransfer) {
                     journey = AuthJourney.Idle
                 }
+            }
+        }
+    }
+
+    fun transferDeviceHere() {
+        val token = transferToken ?: return
+        val device = transferDeviceId ?: return
+        if (transferring) return
+        transferring = true
+        transferError = null
+        scope.launch {
+            try {
+                SupabaseClient.transferDevice(token, device).fold(
+                    onSuccess = {
+                        transferToken = null
+                        transferDeviceId = null
+                        checkRoleAndLicense(token)
+                    },
+                    onFailure = { failure ->
+                        transferLimitReached = failure is DeviceTransferLimitException
+                        transferError = when (failure) {
+                            is DeviceTransferLimitException -> failure.retryAfter
+                                ?.let { "نقلت حسابك مرتين خلال 30 يومًا. يمكنك نقله مجددًا ابتداءً من $it، أو تواصل مع الإدارة الآن." }
+                                ?: "نقلت حسابك مرتين خلال 30 يومًا. تواصل مع الإدارة لنقله الآن."
+                            else -> failure.message ?: "تعذر نقل الحساب الآن. حاول مجددًا بعد قليل."
+                        }
+                    },
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                transferError = "تعذر نقل الحساب الآن. تحقق من الاتصال ثم أعد المحاولة."
+            } finally {
+                transferring = false
             }
         }
     }
@@ -479,6 +543,15 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
                             },
                             onCancel = ::abandonAccess
                         )
+                    } else if (journey == AuthJourney.DeviceTransfer) {
+                        DeviceTransferCard(
+                            busy = transferring,
+                            error = transferError,
+                            supportUrl = if (transferLimitReached) offer?.adminWhatsapp?.let { PurchaseLink.supportChatUrl(it) } else null,
+                            onTransfer = ::transferDeviceHere,
+                            onOpenSupport = { url -> runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } },
+                            onCancel = ::abandonAccess,
+                        )
                     } else Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
                         AccessChoiceCard(
                             offer = offer,
@@ -667,6 +740,47 @@ private fun AuthenticationCard(
                 busyText = "جارٍ إرسال الرمز…",
                 style = QannasButtonStyle.Secondary,
             )
+        }
+    }
+}
+
+/**
+ * Shown instead of a dead-end error when the account is bound to another device: the
+ * driver just proved who they are, so they may move it here (server-limited).
+ */
+@Composable
+private fun DeviceTransferCard(
+    busy: Boolean,
+    error: String?,
+    supportUrl: String?,
+    onTransfer: () -> Unit,
+    onOpenSupport: (String) -> Unit,
+    onCancel: () -> Unit,
+) {
+    QannasCard(
+        title = "حسابك مفعّل على جهاز آخر",
+        subtitle = "يحدث هذا عند تغيير الجوال أو إعادة ضبطه أو تثبيت نسخة أخرى من قناص.",
+        icon = Icons.Outlined.PhonelinkSetup,
+    ) {
+        Text(
+            "يمكنك نقل حسابك إلى هذا الجهاز الآن. سيتوقف قناص على الجهاز الآخر، وتبقى مدة اشتراكك كما هي. يمكن النقل مرتين كل 30 يومًا.",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        QannasAnimatedMessage(error, QannasTone.Error)
+        if (supportUrl != null) {
+            QannasButton("تواصل مع الإدارة عبر واتساب", onClick = { onOpenSupport(supportUrl) },
+                icon = Icons.AutoMirrored.Outlined.Chat)
+        } else {
+            QannasButton(
+                text = "نقل حسابي إلى هذا الجهاز",
+                onClick = onTransfer,
+                busy = busy,
+                busyText = "جارٍ نقل الحساب…",
+                icon = Icons.Outlined.PhonelinkSetup,
+            )
+        }
+        TextButton(onClick = onCancel, enabled = !busy, modifier = Modifier.align(Alignment.CenterHorizontally).heightIn(min = 48.dp)) {
+            Text("تسجيل الخروج والعودة")
         }
     }
 }
@@ -900,5 +1014,6 @@ private fun authProgressLabel(journey: AuthJourney): String = when (journey) {
     AuthJourney.StartingTrial -> "جارٍ تأكيد التجربة…"
     AuthJourney.ActivatingCode -> "جارٍ تفعيل الاشتراك…"
     AuthJourney.AwaitingAccess -> "بانتظار التفعيل"
+    AuthJourney.DeviceTransfer -> "جارٍ نقل الحساب…"
     AuthJourney.Idle -> "متابعة"
 }

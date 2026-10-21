@@ -52,6 +52,10 @@ internal data class LicenseStatus(
     val trialDays: Int? = null
 )
 
+/** The server refused a device move: two moves per 30 days. [retryAfter] is yyyy-MM-dd when known. */
+class DeviceTransferLimitException(val retryAfter: String?) :
+    IllegalStateException("وصلت إلى حد نقل الحساب بين الأجهزة")
+
 /** خطأ حالة قابل للمعالجة ولا يتضمن رموزًا أو تفاصيل خادم غير موثوقة. */
 class LicenseStateException(
     val state: LicenseState,

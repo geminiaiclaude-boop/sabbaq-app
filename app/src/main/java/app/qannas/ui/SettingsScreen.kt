@@ -1181,7 +1181,7 @@ private fun reasonArabic(code: ReasonCode): String = when (code) {
 private fun redeemErrorMessage(error: Throwable?): String = when (error?.message) {
     "الرمز غير صحيح أو استُخدم مسبقًا",
     "محاولات كثيرة؛ يرجى الانتظار قبل المحاولة مجددًا",
-    "هذا الحساب مرتبط بجهاز آخر" -> error.message.orEmpty()
+    "هذا الحساب مرتبط بجهاز آخر" -> "نُقل حسابك إلى جهاز آخر. سجّل الدخول هنا مجددًا لنقله إلى هذا الجهاز."
     else -> "تعذر تفعيل الرمز. تحقق من الرمز واتصال الإنترنت ثم أعد المحاولة."
 }
 

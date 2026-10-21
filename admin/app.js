@@ -39,6 +39,8 @@
 
     document.addEventListener('DOMContentLoaded', initialize);
 
+    const WHATSAPP_PATTERN = /^[1-9]\d{7,14}$/;
+
     function initialize() {
         Object.assign(el, {
             status: document.getElementById('app-status'),
@@ -78,6 +80,8 @@
             subscriptionPriceSar: document.getElementById('subscription-price-sar'),
             subscriptionDays: document.getElementById('subscription-days'),
             purchaseContactUrl: document.getElementById('purchase-contact-url'),
+            adminWhatsapp: document.getElementById('admin-whatsapp'),
+            adminWhatsappError: document.getElementById('admin-whatsapp-error'),
             trialDaysError: document.getElementById('trial-days-error'),
             subscriptionPriceError: document.getElementById('subscription-price-error'),
             subscriptionDaysError: document.getElementById('subscription-days-error'),
@@ -219,7 +223,7 @@
         el.commercialPolicyForm.addEventListener('submit', handleCommercialPolicySave);
         el.retryCommercialPolicy.addEventListener('click', () => { void loadCommercialPolicy({ announce: true }); });
         el.trialEnabled.addEventListener('change', updateTrialEnabledLabel);
-        [el.trialDays, el.subscriptionPriceSar, el.subscriptionDays, el.purchaseContactUrl].forEach((field) => {
+        [el.trialDays, el.subscriptionPriceSar, el.subscriptionDays, el.purchaseContactUrl, el.adminWhatsapp].forEach((field) => {
             field.addEventListener('input', () => clearPolicyFieldError(field));
         });
 
@@ -517,20 +521,24 @@
                     p_purchase_contact_url: values.purchaseContactUrl
                 });
                 if (error) {
-                    await handleCommercialPolicyFailure(error, 'لم نتأكد من حفظ السياسة؛ لم تُحدَّث الواجهة. أعد تحميل السياسة قبل المحاولة مجددًا.');
+                    await handleCommercialPolicyFailure(error, 'لم نتأكد من حفظ السياسة؛ لم تُحدَّث الواجهة. أعد تحميل السياسة قبل المحاولة مجددًا.');
+                    return;
+                }
+                if (!data || typeof data !== 'object') {
+                    invalidateCommercialPolicy('لم نتأكد من استجابة الحفظ؛ لم تُحدَّث الواجهة. أعد تحميل السياسة قبل المحاولة مجددًا.');
                     return;
                 }
 
-                const policy = parseCommercialPolicy(data);
-                if (!policy) {
-                    invalidateCommercialPolicy('لم نتأكد من استجابة الحفظ؛ لم تُحدَّث الواجهة. أعد تحميل السياسة قبل المحاولة مجددًا.');
+                // The WhatsApp number has its own server operation; save it, then reload the
+                // whole policy so the form only ever shows values the server confirmed.
+                const whatsapp = await db.rpc('admin_set_whatsapp', { p_number: values.adminWhatsapp });
+                if (whatsapp.error) {
+                    await handleCommercialPolicyFailure(whatsapp.error, 'حُفظت السياسة، لكن لم نتأكد من حفظ رقم واتساب. أعد تحميل السياسة ثم حاول مجددًا.');
                     return;
                 }
-
-                state.commercialPolicy = policy;
-                state.commercialPolicyLoaded = true;
-                populateCommercialPolicyForm(policy);
-                setPolicyFeedback('تم حفظ سياسة العرض كاملة وتأكيدها من الخادم.', 'success');
+                if (await loadCommercialPolicy({ announce: false })) {
+                    setPolicyFeedback('تم حفظ سياسة العرض ورقم واتساب وتأكيدهما من الخادم.', 'success');
+                }
             } catch (_) {
                 invalidateCommercialPolicy('تعذر تأكيد حفظ السياسة. أعد تحميلها قبل أي محاولة جديدة.');
             }
@@ -568,6 +576,7 @@
             priceMinor: data.price_minor,
             subscriptionDays: data.subscription_days,
             purchaseContactUrl: contact,
+            adminWhatsapp: typeof data.admin_whatsapp === 'string' && WHATSAPP_PATTERN.test(data.admin_whatsapp) ? data.admin_whatsapp : null,
             updatedAt
         };
     }
@@ -578,6 +587,7 @@
         const priceMinor = parseSarToMinor(el.subscriptionPriceSar.value);
         const subscriptionDays = parseBoundedInteger(el.subscriptionDays.value, POLICY_MIN_DAYS, POLICY_MAX_DAYS);
         const purchaseContactUrl = el.purchaseContactUrl.value.trim();
+        const adminWhatsapp = normalizeWhatsapp(el.adminWhatsapp.value);
         let valid = true;
 
         if (trialDays === null) {
@@ -596,6 +606,10 @@
             setPolicyFieldError(el.purchaseContactUrl, 'استخدم رابط HTTPS بلا مسافات وبحد أقصى 2048 بايت، أو اترك الحقل فارغًا.');
             valid = false;
         }
+        if (adminWhatsapp === undefined) {
+            setPolicyFieldError(el.adminWhatsapp, 'أدخل رقمًا صحيحًا مثل 05XXXXXXXX أو ‎+9665XXXXXXXX، أو اترك الحقل فارغًا.');
+            valid = false;
+        }
         if (!valid) {
             setPolicyFeedback('صحح الحقول المعلَّمة قبل حفظ السياسة. لم تُرسل أي عملية إلى الخادم.', 'error');
             return null;
@@ -606,8 +620,18 @@
             trialDays,
             priceMinor,
             subscriptionDays,
-            purchaseContactUrl: purchaseContactUrl || null
+            purchaseContactUrl: purchaseContactUrl || null,
+            adminWhatsapp
         };
+    }
+
+    // Mirrors admin_set_whatsapp: wa.me digits, null when empty, undefined when invalid.
+    function normalizeWhatsapp(rawValue) {
+        let digits = normalizeArabicNumerals(String(rawValue || '')).replace(/[\s()+-]/g, '');
+        if (!digits) return null;
+        if (/^05\d{8}$/.test(digits)) digits = '966' + digits.slice(1);
+        else if (/^00[1-9]/.test(digits)) digits = digits.slice(2);
+        return WHATSAPP_PATTERN.test(digits) ? digits : undefined;
     }
 
     function populateCommercialPolicyForm(policy) {
@@ -616,6 +640,7 @@
         el.subscriptionPriceSar.value = minorToSarInput(policy.priceMinor);
         el.subscriptionDays.value = String(policy.subscriptionDays);
         el.purchaseContactUrl.value = policy.purchaseContactUrl || '';
+        el.adminWhatsapp.value = policy.adminWhatsapp ? '+' + policy.adminWhatsapp : '';
         el.policyUpdatedAt.textContent = `آخر تأكيد من الخادم: ${formatPolicyDate(policy.updatedAt)}`;
         clearAllPolicyFieldErrors();
         updateTrialEnabledLabel();
@@ -631,6 +656,7 @@
         el.subscriptionPriceSar.value = '';
         el.subscriptionDays.value = '';
         el.purchaseContactUrl.value = '';
+        el.adminWhatsapp.value = '';
         el.policyUpdatedAt.textContent = 'لم تُحمّل سياسة مؤكدة بعد.';
         clearAllPolicyFieldErrors();
         clearPolicyFeedback();
@@ -654,6 +680,7 @@
             el.subscriptionPriceSar,
             el.subscriptionDays,
             el.purchaseContactUrl,
+            el.adminWhatsapp,
             el.saveCommercialPolicy
         ].forEach((control) => { control.disabled = disabled; });
     }
@@ -687,7 +714,7 @@
     }
 
     function clearAllPolicyFieldErrors() {
-        [el.trialDays, el.subscriptionPriceSar, el.subscriptionDays, el.purchaseContactUrl]
+        [el.trialDays, el.subscriptionPriceSar, el.subscriptionDays, el.purchaseContactUrl, el.adminWhatsapp]
             .forEach(clearPolicyFieldError);
     }
 
@@ -696,6 +723,7 @@
         if (input === el.subscriptionPriceSar) return el.subscriptionPriceError;
         if (input === el.subscriptionDays) return el.subscriptionDaysError;
         if (input === el.purchaseContactUrl) return el.purchaseContactError;
+        if (input === el.adminWhatsapp) return el.adminWhatsappError;
         return null;
     }
 

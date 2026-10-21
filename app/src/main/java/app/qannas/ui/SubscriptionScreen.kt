@@ -674,7 +674,7 @@ private fun licenseStatePresentation(state: LicenseState): LicenseStatePresentat
     LicenseState.TRIAL -> LicenseStatePresentation("تجربة فعّالة", true)
     LicenseState.PENDING -> LicenseStatePresentation("بانتظار تفعيل الوصول", false)
     LicenseState.EXPIRED -> LicenseStatePresentation("انتهى الوصول", false)
-    LicenseState.DEVICE_MISMATCH -> LicenseStatePresentation("الحساب مرتبط بجهاز آخر", false)
+    LicenseState.DEVICE_MISMATCH -> LicenseStatePresentation("حسابك مفعّل على جهاز آخر؛ سجّل الدخول هنا لنقله", false)
     LicenseState.BANNED -> LicenseStatePresentation("لا يمكن استخدام الحساب حاليًا", false)
     LicenseState.REJECTED -> LicenseStatePresentation("لا يمكن استخدام الحساب حاليًا", false)
     LicenseState.UNREGISTERED -> LicenseStatePresentation("أكمل بيانات حسابك", false)
@@ -697,7 +697,7 @@ private fun subscriptionRequestError(error: Throwable?): String = when (error?.m
 private fun directCodeError(error: Throwable?): String = when (error?.message) {
     "الرمز غير صحيح أو استُخدم مسبقًا" -> "رمز التفعيل غير صحيح أو استُخدم مسبقًا. راجعه ثم أعد المحاولة."
     "محاولات كثيرة؛ يرجى الانتظار قبل المحاولة مجددًا" -> "محاولات كثيرة؛ انتظر قليلًا ثم أعد المحاولة."
-    "هذا الحساب مرتبط بجهاز آخر" -> "هذا الحساب مرتبط بجهاز آخر."
+    "هذا الحساب مرتبط بجهاز آخر" -> "نُقل حسابك إلى جهاز آخر. سجّل الدخول هنا مجددًا لنقله إلى هذا الجهاز."
     "انتهت الجلسة؛ سجّل الدخول من جديد" -> "انتهت الجلسة؛ سجّل الدخول من جديد ثم أعد إرسال رمز التفعيل."
     else -> "تعذر إرسال رمز التفعيل. تحقق من الرمز والاتصال ثم أعد المحاولة."
 }

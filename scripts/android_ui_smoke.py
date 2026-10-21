@@ -150,6 +150,39 @@ for name, screen, dark, font_scale, env in cases:
         # Google Play requires an in-app path to delete the account in every distribution.
         # It sits at the end of the page, below the first screen, so scroll before reading.
         assert reachable_by_scrolling('حذف حسابي', visible), f'Account deletion entry point missing: {name}'
+    if args.distribution == 'direct' and screen == 'account':
+        # No dead ends: a purchase step may only appear together with the button it tells
+        # the driver to press, whatever channel the live offer configures. Labels are
+        # collected as a set of exact node texts so overlapping scroll dumps cannot
+        # double-count a step and fake a button.
+        def node_labels(found):
+            # Text and content description both count: Compose merges a button's label
+            # into the button node, which may expose it through either attribute.
+            return {value.strip() for n in found for value in (n.get('text', ''), n.get('content-desc', '')) if value.strip()}
+        labels = node_labels(nodes)
+        # The deletion check above left the page at its end: go back to the top first,
+        # then walk down with short, slow drags so the middle (purchase steps and their
+        # button) is not flung past.
+        for _ in range(10):
+            adb('shell', 'input', 'swipe', '540', '600', '540', '1900', '150')
+        time.sleep(1)
+        for index in range(14):
+            adb('shell', 'input', 'swipe', '540', '1500', '540', '1000', '700')
+            time.sleep(1)
+            adb('shell', 'uiautomator', 'dump', '/sdcard/qannas-ui.xml', timeout=60)
+            scrolled_xml = adb('shell', 'cat', '/sdcard/qannas-ui.xml')
+            (out / f'{name}-scroll-{index}.xml').write_text(scrolled_xml)
+            (out / f'{name}-scroll-{index}.png').write_bytes(screencap())
+            labels |= node_labels(ET.fromstring(scrolled_xml).findall('.//node'))
+        whatsapp_step = any(label.startswith('اضغط «اشترك عبر واتساب»') for label in labels)
+        page_step = any(label.startswith('اضغط «اشترك الآن»') for label in labels)
+        def has_button(label_text):
+            return any(label == label_text or (label_text in label and not label.startswith('اضغط')) for label in labels)
+        if whatsapp_step:
+            assert has_button('اشترك عبر واتساب'), f'WhatsApp purchase step shown without its button: {name}: {sorted(labels)}'
+        if page_step:
+            assert has_button('اشترك الآن'), f'Purchase step shown without its button: {name}: {sorted(labels)}'
+        (out / f'{name}-purchase.txt').write_text('whatsapp' if whatsapp_step else 'page' if page_step else 'none')
     if args.distribution == 'play' and screen in ('login', 'account'):
         visible = ' '.join(node.get('text', '') + ' ' + node.get('content-desc', '') for node in nodes)
         for forbidden in ('كود التفعيل', 'شراء كود', 'شراء الاشتراك من الإدارة', 'واتساب', '18.75'):
