@@ -160,8 +160,24 @@ for name, screen, dark, font_scale, env in cases:
         # double-count a step and fake a button.
         def node_labels(found):
             # Text and content description both count: Compose merges a button's label
-            # into the button node, which may expose it through either attribute.
-            return {value.strip() for n in found for value in (n.get('text', ''), n.get('content-desc', '')) if value.strip()}
+            # into the button node, which may expose it through either attribute. Only the
+            # app's own nodes count: another app on top must never supply or hide a label.
+            return {value.strip() for n in found if n.get('package') == args.package
+                    for value in (n.get('text', ''), n.get('content-desc', '')) if value.strip()}
+
+        def dump_app_tree(index):
+            # A drag on a slow emulator can land as a tap on a link (privacy page, WhatsApp)
+            # and bring a browser to the front. Go back to the app and dump again.
+            for _ in range(3):
+                adb('shell', 'uiautomator', 'dump', '/sdcard/sabbaq-ui.xml', timeout=60)
+                dumped = adb('shell', 'cat', '/sdcard/sabbaq-ui.xml')
+                found = ET.fromstring(dumped).findall('.//node')
+                if found and found[0].get('package') == args.package:
+                    return dumped, found
+                print(f'{name}: scroll {index} left the app, returning', flush=True)
+                adb('shell', 'input', 'keyevent', '4')
+                time.sleep(2)
+            raise AssertionError(f'{name}: app not in front after scroll {index}')
         labels = node_labels(nodes)
         # The deletion check above left the page at its end: go back to the top first,
         # then walk down with short, slow drags so the middle (purchase steps and their
@@ -172,11 +188,10 @@ for name, screen, dark, font_scale, env in cases:
         for index in range(14):
             adb('shell', 'input', 'swipe', '540', '1500', '540', '1000', '700')
             time.sleep(1)
-            adb('shell', 'uiautomator', 'dump', '/sdcard/sabbaq-ui.xml', timeout=60)
-            scrolled_xml = adb('shell', 'cat', '/sdcard/sabbaq-ui.xml')
+            scrolled_xml, scrolled_nodes = dump_app_tree(index)
             (out / f'{name}-scroll-{index}.xml').write_text(scrolled_xml)
             (out / f'{name}-scroll-{index}.png').write_bytes(screencap())
-            labels |= node_labels(ET.fromstring(scrolled_xml).findall('.//node'))
+            labels |= node_labels(scrolled_nodes)
         whatsapp_step = any(label.startswith('اضغط «اشترك عبر واتساب»') for label in labels)
         page_step = any(label.startswith('اضغط «اشترك الآن»') for label in labels)
         def has_button(label_text):
