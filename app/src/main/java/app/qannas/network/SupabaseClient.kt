@@ -443,6 +443,42 @@ object SupabaseClient {
     }
 
     /**
+     * Moves the signed-in account to this device (self-service, limited by the server to
+     * two moves per 30 days). The caller re-checks the license afterwards.
+     */
+    suspend fun transferDevice(token: String, deviceId: String): Result<Unit> {
+        val safeToken = NetworkInputValidator.token(token)
+            ?: return invalidInput("رمز الجلسة غير صالح")
+        val safeDeviceId = NetworkInputValidator.deviceId(deviceId)
+            ?: return invalidInput("معرّف الجهاز غير صالح")
+        if (!sessions.isCurrentToken(safeToken)) {
+            return Result.failure(ClientRequestException("انتهت الجلسة أو تغيّرت؛ سجّل الدخول من جديد"))
+        }
+        return networkCall {
+            val request = authenticatedRequest(
+                endpoint("rest/v1/rpc/transfer_device"),
+                safeToken,
+                buildJsonObject { put("p_device_id", safeDeviceId) }.toString().toRequestBody(jsonMediaType)
+            )
+            val response = execute(request)
+            if (response.code == 401) sessions.clearIfMatches(safeToken)
+            if (!response.isSuccessful) return@networkCall httpFailure("نقل الحساب", response)
+            val result = responseObject(response.body)
+            if (result["ok"]?.jsonPrimitive?.booleanOrNull == true) {
+                Result.success(Unit)
+            } else {
+                when (result["error"]?.jsonPrimitive?.contentOrNull) {
+                    "transfer_limit" -> Result.failure(DeviceTransferLimitException(
+                        result["retry_after"]?.jsonPrimitive?.contentOrNull?.take(10)
+                    ))
+                    "account_blocked" -> Result.failure(ClientRequestException("تم حظر أو رفض الحساب"))
+                    else -> Result.failure(ClientRequestException("تعذر نقل الحساب الآن. حاول مجددًا بعد قليل."))
+                }
+            }
+        }
+    }
+
+    /**
      * يعيد الفحص باستعمال جلسة الجهاز الحالية؛ تستدعيه الواجهة/نبض الخدمة فقط.
      * لا يستدعي [hasValidLicense] هذه الدالة مطلقًا.
      */

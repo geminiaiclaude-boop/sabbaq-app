@@ -162,6 +162,8 @@ jobs:
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/account_deletion_test.sql
       - name: Run administration WhatsApp tests
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/admin_whatsapp_test.sql
+      - name: Run device transfer tests
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/device_transfer_test.sql
 
   build-release:
     name: Build signed release APK and AAB

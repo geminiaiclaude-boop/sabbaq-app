@@ -150,6 +150,25 @@ for name, screen, dark, font_scale, env in cases:
         # Google Play requires an in-app path to delete the account in every distribution.
         # It sits at the end of the page, below the first screen, so scroll before reading.
         assert reachable_by_scrolling('حذف حسابي', visible), f'Account deletion entry point missing: {name}'
+    if args.distribution == 'direct' and screen == 'account':
+        # No dead ends: a purchase step may only appear together with the button it tells
+        # the driver to press, whatever channel the live offer configures. Labels are
+        # collected as a set of exact node texts so overlapping scroll dumps cannot
+        # double-count a step and fake a button.
+        labels = {(n.get('text') or n.get('content-desc') or '').strip() for n in nodes}
+        for _ in range(8):
+            adb('shell', 'input', 'swipe', '540', '1700', '540', '500', '250')
+            time.sleep(1)
+            adb('shell', 'uiautomator', 'dump', '/sdcard/qannas-ui.xml', timeout=60)
+            labels |= {(n.get('text') or n.get('content-desc') or '').strip()
+                       for n in ET.fromstring(adb('shell', 'cat', '/sdcard/qannas-ui.xml')).findall('.//node')}
+        whatsapp_step = any(label.startswith('اضغط «اشترك عبر واتساب»') for label in labels)
+        page_step = any(label.startswith('اضغط «اشترك الآن»') for label in labels)
+        if whatsapp_step:
+            assert 'اشترك عبر واتساب' in labels, f'WhatsApp purchase step shown without its button: {name}'
+        if page_step:
+            assert 'اشترك الآن' in labels, f'Purchase step shown without its button: {name}'
+        (out / f'{name}-purchase.txt').write_text('whatsapp' if whatsapp_step else 'page' if page_step else 'none')
     if args.distribution == 'play' and screen in ('login', 'account'):
         visible = ' '.join(node.get('text', '') + ' ' + node.get('content-desc', '') for node in nodes)
         for forbidden in ('كود التفعيل', 'شراء كود', 'شراء الاشتراك من الإدارة', 'واتساب', '18.75'):

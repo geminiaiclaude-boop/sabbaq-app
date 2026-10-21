@@ -15,9 +15,15 @@ internal object PurchaseLink {
     fun whatsappMessage(offer: PublicOffer): String =
         "مرحبًا، أرغب في الاشتراك في قناص (${CustomerCommerceCopy.offerSummary(offer)}). أرجو إرسال طريقة الدفع ورمز التفعيل."
 
-    fun whatsappUrl(number: String, offer: PublicOffer): String? {
+    fun whatsappUrl(number: String, offer: PublicOffer): String? = chatUrl(number, whatsappMessage(offer))
+
+    /** A chat with the administration about moving an account to a new device. */
+    fun supportChatUrl(number: String): String? =
+        chatUrl(number, "مرحبًا، أحتاج إلى نقل حسابي في قناص إلى جهاز جديد.")
+
+    private fun chatUrl(number: String, message: String): String? {
         if (!whatsappDigits.matches(number)) return null
-        val text = URLEncoder.encode(whatsappMessage(offer), "UTF-8").replace("+", "%20")
+        val text = URLEncoder.encode(message, "UTF-8").replace("+", "%20")
         return "https://wa.me/$number?text=$text"
     }
 
