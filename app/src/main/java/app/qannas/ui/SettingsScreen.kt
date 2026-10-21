@@ -41,6 +41,9 @@ import app.qannas.ui.theme.LocalReducedMotion
 import app.qannas.ui.theme.QannasDepthContent
 import app.qannas.ui.theme.QannasMotion
 import app.qannas.ui.theme.flipWhenSelected
+import app.qannas.ui.theme.qannasFlipIn
+import app.qannas.ui.theme.tilt3D
+import androidx.compose.runtime.key
 import app.qannas.ui.theme.qannasEntrance
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -1041,7 +1044,8 @@ private fun SimulatorPage(savedFilters: Filters) {
             transitionSpec = { fadeIn(tween(QannasMotion.MEDIUM)) togetherWith fadeOut(tween(QannasMotion.SHORT)) },
             label = "preview-verdict",
         ) { preview ->
-            if (preview != null) Box(Modifier.qannasEntrance(0)) { PreviewVerdictCard(preview) }
+            // Each new result turns over into view like a card, then leans with the finger.
+            if (preview != null) key(preview) { Box(Modifier.qannasFlipIn().tilt3D(maxDegrees = 6f, idle = false)) { PreviewVerdictCard(preview) } }
         }
     }
 }

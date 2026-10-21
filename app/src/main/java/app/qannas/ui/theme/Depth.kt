@@ -109,6 +109,21 @@ fun Modifier.glint(enabled: Boolean = true, color: Color = Color.White.copy(alph
     }
 }
 
+/** A result card arriving face-down turns over to face the driver (with reduced motion it simply appears). */
+fun Modifier.qannasFlipIn(): Modifier = composed {
+    val reduced = LocalReducedMotion.current
+    val turn = remember { Animatable(if (reduced) 0f else 90f) }
+    LaunchedEffect(Unit) {
+        if (!reduced) turn.animateTo(0f, spring(dampingRatio = 0.62f, stiffness = Spring.StiffnessLow))
+    }
+    val density = LocalDensity.current.density
+    graphicsLayer {
+        rotationY = turn.value
+        alpha = (1f - turn.value / 90f).coerceIn(0f, 1f) * 0.6f + 0.4f
+        cameraDistance = QannasMotion.CAMERA_DISTANCE * density
+    }
+}
+
 /** The selected navigation icon turns once around its vertical axis, like a coin landing. */
 fun Modifier.flipWhenSelected(selected: Boolean): Modifier = composed {
     val reduced = LocalReducedMotion.current
