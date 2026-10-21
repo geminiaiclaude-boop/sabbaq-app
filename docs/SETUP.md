@@ -131,4 +131,4 @@ git add gradle/verification-metadata.xml
 
 المشروع: `rxioktlmecdpuyokyatl`، والعنوان `https://rxioktlmecdpuyokyatl.supabase.co`. إعدادات العميل العامة في `config/public-backend.properties` ومفاتيح الإدارة غير مضمنة. وجد المخطط الأول موجودًا بلا سجل migrations؛ لذلك طُبقت 0002 و0003 و0004 معًا كترحيل `qannas_production_hardening_and_saudi_identity_20261019`، ولم تُعد0001 أوتُحذفبيانات. تحققنا من `public_offer` HTTP200 بسياسة3 أيام/1875هللة/30يومًا ومنحجبdrivers وcommercial_policyعنanonHTTP401. بقيusers2 وadmins1 وdrivers0 وcodes0 قبلوبعد.
 
-**ما يزال غير مكتمل:** Google وPhone معطّلان فيAuth. يلزم مالك المشروعإعداد OAuth (WebclientID/secretوشهادةAndroid) ومزودSMSحقيقيثم الاختبار. لايكفيpublickeyلتهيئةهذهالمفاتيح، ولايوجدنجاحدخولحيأوإرسالSMSفيهذهالنتيجة.
+**تحديث 20 أكتوبر 2026:** Google منشور للإنتاج (عميل Android لـ `app.qannas.driver` بشهادة الإصدار)، وPhone مفعّل عبر Twilio Verify، وترحيل `0005` مطبّق. حساب Twilio تجريبي حتى يرقّيه المالك. حالة 19 أكتوبر للسجل: Google وPhone كانا معطّلين فيAuth. يلزم مالك المشروعإعداد OAuth (WebclientID/secretوشهادةAndroid) ومزودSMSحقيقيثم الاختبار. لايكفيpublickeyلتهيئةهذهالمفاتيح، ولايوجدنجاحدخولحيأوإرسالSMSفيهذهالنتيجة.

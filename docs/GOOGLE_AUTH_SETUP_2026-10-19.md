@@ -1,5 +1,16 @@
 # إعداد Google للمصادقة — 19 أكتوبر 2026
 
+## تحديث 20 أكتوبر 2026 (الحالة الحالية)
+
+- أُنشئ عميل Android باسم `Qannas Android Release` للحزمة `app.qannas.driver` ببصمة شهادة الإصدار `82:28:DC:E8:E6:C6:42:DC:4A:69:71:95:FB:0E:E7:3F:64:A1:36:23` (مستخرجة من APK الموقّع في CI، وهي نفسها لنسختي direct وplay).
+- Branding: الصفحة الرئيسية `https://yahooyahoo99.github.io/`، سياسة الخصوصية `https://yahooyahoo99.github.io/privacy.html`، والنطاق المصرح `yahooyahoo99.github.io` إلى جانب نطاق Supabase.
+- **نُشر تطبيق OAuth للإنتاج** (لم يعد Testing). النطاقات أساسية فقط، فلا يلزم تحقق Google.
+- مزود Supabase Google مفعّل ويقبل Web client ID في Client IDs (مطلوب لدخول Credential Manager الأصلي).
+- **Phone مفعّل** عبر Twilio Verify (خدمة «Qannas»، Fraud Guard)، وأكد `auth/v1/settings`: `phone=true`, `sms_provider=twilio_verify`. حساب Twilio تجريبي حتى يرقّيه المالك.
+- **متبقٍ بعد الرفع إلى Google Play:** أضف عميل Android ثالثًا ببصمة **Play App Signing** من Play Console، وإلا يفشل Google في نسخة المتجر.
+
+ما يلي سجل حالة 19 أكتوبر.
+
 ## الإعداد المنفذ
 
 أُعدّت Google Auth Platform في مشروع المالك الموجود `kassab-387401` لأن الحساب بلغ حد إنشاء المشاريع الجديدة. العلامة في شاشة الموافقة «قناص | Qannas»، والجمهور External في وضع **Testing**، مع إضافة حساب المالك الحالي كمختبر. لم يُنشر OAuth للعامة ولم تُفعّل فوترة أو تجربة Cloud المدفوعة.

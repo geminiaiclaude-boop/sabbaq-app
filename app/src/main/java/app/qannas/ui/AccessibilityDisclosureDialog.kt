@@ -30,6 +30,7 @@ fun AccessibilityDisclosureDialog(onAccept: () -> Unit, onDismiss: () -> Unit) {
                 Text("إذا طابق الطلب شروطك المحفوظة للأجرة والمسافة والوقت والكلمات المستبعدة، يستطيع قناص الضغط مرة واحدة على زر القبول. أنت تحدد الشروط وتقرر متى تشغّل الميزة أو توقفها. لا تتخذ الميزة قرارات مستقلة ولا تستخدم ذكاءً اصطناعيًا للاختيار.", style = MaterialTheme.typography.bodyMedium)
                 Text("خصوصية تفاصيل الطلب", style = MaterialTheme.typography.titleSmall)
                 Text("تُعالج تفاصيل الشاشة على جهازك، ولا ترسلها خدمة إمكانية الوصول عبر الإنترنت. تُحفظ بيانات الحساب والاشتراك عبر خدمة الحساب بشكل منفصل، كما توضح سياسة الخصوصية.", style = MaterialTheme.typography.bodyMedium)
+                QannasLegalLinks(showDeletion = false)
                 Text("الموافقة لا تشغّل الميزة", style = MaterialTheme.typography.titleSmall)
                 Text("بعد موافقتك سنفتح إعدادات Android لتفعّل الإذن بنفسك، ثم يمكنك العودة وتشغيل قناص. اختيار «ليس الآن» أو إغلاق هذه النافذة لا يمنح موافقة، ولا يفعّل القبول التلقائي.", style = MaterialTheme.typography.bodyMedium)
             }

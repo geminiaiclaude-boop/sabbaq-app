@@ -333,6 +333,7 @@ internal fun SubscriptionScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            QannasLegalLinks()
         }
 
         QannasCard(title = "حذف الحساب", icon = Icons.Outlined.DeleteForever, modifier = Modifier.qannasEntrance(4)) {
