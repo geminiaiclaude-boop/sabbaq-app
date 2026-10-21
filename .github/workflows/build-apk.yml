@@ -49,7 +49,7 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
       - name: Run deterministic Android checks
-        run: ./gradlew --no-daemon :core:test :app:testDirectDebugUnitTest :app:testPlayDebugUnitTest :app:lintDirectDebug :app:lintPlayDebug :app:assembleDirectDebug :app:assemblePlayDebug
+        run: ./gradlew --no-daemon :core:test :app:testDirectDebugUnitTest :app:testPlayDebugUnitTest :app:lintDirectDebug :app:lintPlayDebug :app:assembleDirectDebug :app:assemblePlayDebug :app:assembleDirectDebugAndroidTest
       - name: Run admin regression tests
         run: node --test admin/tests/admin-static.test.mjs
       - name: Upload debug APK and validation reports
@@ -59,6 +59,7 @@ jobs:
           name: qannas-validation-${{ github.sha }}
           path: |
             app/build/outputs/apk/*/debug/*.apk
+            app/build/outputs/apk/androidTest/direct/debug/*.apk
             app/build/reports/
             core/build/reports/tests/
           if-no-files-found: warn
@@ -101,6 +102,7 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
           script: |
             python3 scripts/android_ui_smoke.py --apk ci-input/app/build/outputs/apk/direct/debug/app-direct-debug.apk --package app.qannas.driver.debug --distribution direct --out ui-screenshots/direct
+            python3 scripts/android_flow_tests.py --apk ci-input/app/build/outputs/apk/direct/debug/app-direct-debug.apk --test-apk ci-input/app/build/outputs/apk/androidTest/direct/debug/app-direct-debug-androidTest.apk --out ui-screenshots/flow-tests
             python3 scripts/android_ui_smoke.py --apk ci-input/app/build/outputs/apk/play/debug/app-play-debug.apk --package app.qannas.driver.debug --distribution play --out ui-screenshots/play
       - name: Preserve native screenshots and launch evidence
         if: always()

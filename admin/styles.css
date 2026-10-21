@@ -10,6 +10,8 @@
     --primary-soft: #DDF1EB;
     --on-primary: #FFF;
     --navy: #142C37;
+    --hero-start: #0F3442;
+    --hero-end: #00594A;
     --border: #D5E1E4;
     --border-strong: #97ADB4;
     --focus: #007F69;
@@ -143,7 +145,7 @@ p { text-wrap: pretty; }
     padding: clamp(26px, 5vw, 48px);
     border: 1px solid rgb(255 255 255 / 12%);
     border-radius: 24px;
-    background: var(--navy);
+    background: linear-gradient(135deg, var(--hero-start), var(--hero-end));
     box-shadow: var(--shadow);
     color: #FFF;
 }
@@ -765,18 +767,20 @@ tbody tr:hover { background: var(--primary-soft); }
 
 @media (prefers-color-scheme: dark) {
     :root {
-        --bg: #0F1B20;
-        --surface: #17282F;
-        --surface-muted: #20353D;
-        --ink: #EFF8F7;
-        --muted: #B4C6C9;
-        --primary: #70D3BA;
-        --primary-hover: #93E4CF;
-        --primary-soft: #1B554A;
-        --on-primary: #062820;
-        --navy: #0B2028;
-        --border: #36505A;
-        --border-strong: #7F9AA3;
+        --bg: #081A22;
+        --surface: #112A35;
+        --surface-muted: #17333E;
+        --ink: #E1EDF0;
+        --muted: #B7CBD1;
+        --primary: #82DFC3;
+        --primary-hover: #A3EAD4;
+        --primary-soft: #005443;
+        --on-primary: #00382E;
+        --navy: #0C2A35;
+        --hero-start: #0C2A35;
+        --hero-end: #004638;
+        --border: #35515D;
+        --border-strong: #8CA6B0;
         --focus: #A2F0DB;
         --danger: #FF8C83;
         --danger-hover: #FFADA6;

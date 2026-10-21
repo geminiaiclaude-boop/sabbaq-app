@@ -3,6 +3,7 @@
 import argparse
 import json
 import pathlib
+import re
 import subprocess
 import time
 import xml.etree.ElementTree as ET
@@ -52,6 +53,9 @@ for name, screen, dark, font_scale in cases:
     launch = adb(*command, timeout=60)
     (out / f'{name}-launch.txt').write_text(launch)
     assert 'Error:' not in launch, launch
+    total = re.search(r'TotalTime: (\d+)', launch)
+    startup_ms = int(total.group(1)) if total else None
+    print(f'{name} startup TotalTime={startup_ms}ms', flush=True)
     time.sleep(5)
     logs = adb('logcat', '-d', '-s', 'AndroidRuntime:E')
     (out / f'{name}-runtime.txt').write_text(logs)
@@ -93,7 +97,8 @@ for name, screen, dark, font_scale in cases:
     assert image.startswith(b'\x89PNG\r\n\x1a\n'), f'Invalid screenshot: {name}'
     (out / f'{name}.png').write_bytes(image)
     results.append({'screen': name, 'package': args.package, 'distribution': args.distribution, 'fontScale': font_scale,
-                    'dark': dark, 'accessibilityNodes': len(nodes), 'nativeLaunch': True})
+                    'dark': dark, 'accessibilityNodes': len(nodes), 'nativeLaunch': True,
+                    'startupMs': startup_ms})
 
 adb('shell', 'settings', 'put', 'system', 'font_scale', '1.0')
 adb('shell', 'am', 'force-stop', args.package)

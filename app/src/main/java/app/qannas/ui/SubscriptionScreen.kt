@@ -15,7 +15,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.DeleteForever
+import androidx.compose.material.icons.outlined.Share
+import app.qannas.CrashLog
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
@@ -336,6 +339,8 @@ internal fun SubscriptionScreen(
             QannasLegalLinks()
         }
 
+        CrashReportCard()
+
         QannasCard(title = "حذف الحساب", icon = Icons.Outlined.DeleteForever, modifier = Modifier.qannasEntrance(4)) {
             Text(
                 "يحذف حسابك واشتراكك وشروطك وبيانات الجهاز المرتبطة نهائياً. لا يمكن التراجع عن الحذف، ولا تُستعاد مدة اشتراك متبقية.",
@@ -350,6 +355,39 @@ internal fun SubscriptionScreen(
                 icon = Icons.Outlined.DeleteForever,
             )
         }
+    }
+}
+
+/**
+ * Appears only after a crash was recorded on this device. Sharing is the driver's explicit
+ * choice through the system share sheet; nothing is uploaded automatically.
+ */
+@Composable
+private fun CrashReportCard() {
+    val context = LocalContext.current
+    var report by remember { mutableStateOf(CrashLog.read(context)) }
+    val text = report ?: return
+    QannasCard(
+        title = "تقرير عطل سابق",
+        subtitle = "توقّف التطبيق مرة على هذا الجهاز. التقرير تقني فقط ولا يحتوي بياناتك.",
+        icon = Icons.Outlined.BugReport,
+    ) {
+        QannasButton(
+            text = "مشاركة التقرير مع الدعم",
+            onClick = {
+                val send = Intent(Intent.ACTION_SEND).setType("text/plain")
+                    .putExtra(Intent.EXTRA_SUBJECT, "تقرير عطل قناص")
+                    .putExtra(Intent.EXTRA_TEXT, text)
+                runCatching { context.startActivity(Intent.createChooser(send, "مشاركة التقرير")) }
+            },
+            style = QannasButtonStyle.Secondary,
+            icon = Icons.Outlined.Share,
+        )
+        QannasButton(
+            text = "حذف التقرير",
+            onClick = { if (CrashLog.clear(context)) report = null },
+            style = QannasButtonStyle.Text,
+        )
     }
 }
 

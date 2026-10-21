@@ -209,7 +209,10 @@ internal fun QannasShell(
             )
         }
     ) { insets ->
-        Box(Modifier.fillMaxSize().padding(insets).consumeWindowInsets(insets)) { content() }
+        Column(Modifier.fillMaxSize().padding(insets).consumeWindowInsets(insets)) {
+            OfflineBanner(online = rememberIsOnline())
+            Box(Modifier.weight(1f).fillMaxWidth()) { content() }
+        }
     }
     if (confirmLogout) AlertDialog(
         onDismissRequest = { confirmLogout = false },
