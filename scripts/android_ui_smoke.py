@@ -155,19 +155,27 @@ for name, screen, dark, font_scale, env in cases:
         # the driver to press, whatever channel the live offer configures. Labels are
         # collected as a set of exact node texts so overlapping scroll dumps cannot
         # double-count a step and fake a button.
-        labels = {(n.get('text') or n.get('content-desc') or '').strip() for n in nodes}
-        for _ in range(8):
+        def node_labels(found):
+            # Text and content description both count: Compose merges a button's label
+            # into the button node, which may expose it through either attribute.
+            return {value.strip() for n in found for value in (n.get('text', ''), n.get('content-desc', '')) if value.strip()}
+        labels = node_labels(nodes)
+        for index in range(8):
             adb('shell', 'input', 'swipe', '540', '1700', '540', '500', '250')
             time.sleep(1)
             adb('shell', 'uiautomator', 'dump', '/sdcard/qannas-ui.xml', timeout=60)
-            labels |= {(n.get('text') or n.get('content-desc') or '').strip()
-                       for n in ET.fromstring(adb('shell', 'cat', '/sdcard/qannas-ui.xml')).findall('.//node')}
+            scrolled_xml = adb('shell', 'cat', '/sdcard/qannas-ui.xml')
+            (out / f'{name}-scroll-{index}.xml').write_text(scrolled_xml)
+            (out / f'{name}-scroll-{index}.png').write_bytes(screencap())
+            labels |= node_labels(ET.fromstring(scrolled_xml).findall('.//node'))
         whatsapp_step = any(label.startswith('اضغط «اشترك عبر واتساب»') for label in labels)
         page_step = any(label.startswith('اضغط «اشترك الآن»') for label in labels)
+        def has_button(label_text):
+            return any(label == label_text or (label_text in label and not label.startswith('اضغط')) for label in labels)
         if whatsapp_step:
-            assert 'اشترك عبر واتساب' in labels, f'WhatsApp purchase step shown without its button: {name}'
+            assert has_button('اشترك عبر واتساب'), f'WhatsApp purchase step shown without its button: {name}: {sorted(labels)}'
         if page_step:
-            assert 'اشترك الآن' in labels, f'Purchase step shown without its button: {name}'
+            assert has_button('اشترك الآن'), f'Purchase step shown without its button: {name}: {sorted(labels)}'
         (out / f'{name}-purchase.txt').write_text('whatsapp' if whatsapp_step else 'page' if page_step else 'none')
     if args.distribution == 'play' and screen in ('login', 'account'):
         visible = ' '.join(node.get('text', '') + ' ' + node.get('content-desc', '') for node in nodes)
