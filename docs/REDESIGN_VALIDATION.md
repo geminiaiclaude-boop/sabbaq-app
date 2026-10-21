@@ -32,11 +32,11 @@ Android Lint ناجح بلا أخطاء، مع **11 تحذيرًا معلنًا*
 
 ```bash
 adb install -r app/build/outputs/apk/debug/app-debug.apk
-adb shell am start -n app.qannas.driver.debug/app.qannas.ui.DesignPreviewActivity --es screen login
-adb shell am start -n app.qannas.driver.debug/app.qannas.ui.DesignPreviewActivity --es screen dashboard
-adb shell am start -n app.qannas.driver.debug/app.qannas.ui.DesignPreviewActivity --es screen filters
-adb shell am start -n app.qannas.driver.debug/app.qannas.ui.DesignPreviewActivity --es screen simulator
-adb shell am start -n app.qannas.driver.debug/app.qannas.ui.DesignPreviewActivity --es screen account --ez dark true
+adb shell am start -n app.sabbaq.driver.debug/app.sabbaq.ui.DesignPreviewActivity --es screen login
+adb shell am start -n app.sabbaq.driver.debug/app.sabbaq.ui.DesignPreviewActivity --es screen dashboard
+adb shell am start -n app.sabbaq.driver.debug/app.sabbaq.ui.DesignPreviewActivity --es screen filters
+adb shell am start -n app.sabbaq.driver.debug/app.sabbaq.ui.DesignPreviewActivity --es screen simulator
+adb shell am start -n app.sabbaq.driver.debug/app.sabbaq.ui.DesignPreviewActivity --es screen account --ez dark true
 ```
 
 نسخة debug المرفقة بلا عنوان Supabase أو مفتاحها الحقيقي؛ الدخول الحي يتطلب بناء مهيأ. ما زالت بوابات [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md) والتوقيع والخصوصية وشروط منصات الرحلات والمتجر مطلوبة. المظهر الاحترافي لا يثبت تفوقًا تجاريًا أو جاهزية إنتاجية شاملة.

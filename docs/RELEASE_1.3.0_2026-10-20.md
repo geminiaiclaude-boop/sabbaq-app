@@ -1,6 +1,6 @@
 # إصدار 1.3.0 (versionCode 4) — ترقية Pro/Premium — 20 أكتوبر 2026
 
-دُمج في `main` عبر PR #4 بعد نجاح كل فحوص CI. محرك القبول الآلي (`SniperA11yService` و`OfferParser` و`ClickGate` وملفات تعريف التطبيقات) **لم يُعدَّل** بقرار المالك.
+دُمج في `main` عبر PR #4 بعد نجاح كل فحوص CI. محرك القبول الآلي (`SabbaqA11yService` و`OfferParser` و`ClickGate` وملفات تعريف التطبيقات) **لم يُعدَّل** بقرار المالك.
 
 ## الصفحات التي طُوّرت
 
@@ -47,13 +47,13 @@
 
 ## الإعدادات الخارجية المنجزة
 
-- Google Cloud: عميل OAuth Android لـ `app.qannas.driver` بشهادة الإصدار؛ صفحة الخصوصية والصفحة الرئيسية والنطاق المصرح به؛ **تطبيق OAuth منشور للإنتاج**.
+- Google Cloud: عميل OAuth Android لـ `app.sabbaq.driver` بشهادة الإصدار؛ صفحة الخصوصية والصفحة الرئيسية والنطاق المصرح به؛ **تطبيق OAuth منشور للإنتاج**.
 - Supabase Phone: مزود Twilio Verify، تأكيد رقم الجوال إلزامي.
 - صفحات عامة: https://yahooyahoo99.github.io/ و`/privacy.html` و`/delete-account.html`.
 
 ## قيود متبقية
 
-1. **الدخول برقم الجوال:** مفعّل — Twilio Verify (خدمة «Qannas»، Fraud Guard مفعّل) مربوط بمزود Phone في Supabase، ومؤكد عبر `/auth/v1/settings` (`phone=true`, `sms_provider=twilio_verify`). حساب Twilio **تجريبي**: يرسل فقط إلى الأرقام الموثقة فيه حتى يرقّيه المالك (دفع).
+1. **الدخول برقم الجوال:** مفعّل — Twilio Verify (خدمة «Sabbaq»، Fraud Guard مفعّل) مربوط بمزود Phone في Supabase، ومؤكد عبر `/auth/v1/settings` (`phone=true`, `sms_provider=twilio_verify`). حساب Twilio **تجريبي**: يرسل فقط إلى الأرقام الموثقة فيه حتى يرقّيه المالك (دفع).
 2. **Play App Signing:** بعد أول رفع إلى Play أضف عميل Android ثانيًا ببصمة توقيع Play، وإلا لن يعمل Google في نسخة المتجر.
 3. **اختبار جهاز حقيقي:** دخول Google فعلي وحذف حساب تجريبي على الـ APK الموقّع.
 4. **Play Console:** إقرار Accessibility وFGS `specialUse` وData safety، ورابط الحذف `https://yahooyahoo99.github.io/delete-account.html`.

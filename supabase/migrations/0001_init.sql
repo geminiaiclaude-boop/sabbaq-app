@@ -1,4 +1,4 @@
--- Qannas backend: driver accounts, admin activation, sold activation codes,
+-- Sabbaq backend: driver accounts, admin activation, sold activation codes,
 -- single-device binding, remotely updatable ride-app profiles.
 -- Every write a driver can make goes through a SECURITY DEFINER function;
 -- tables expose read access only through row-level security.

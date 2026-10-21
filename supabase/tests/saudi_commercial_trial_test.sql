@@ -263,7 +263,7 @@ select pg_temp.expect(
     public.license_status('device-google-00000000', 1) ->> 'state' = 'active',
     'disabled global trial does not stop a paid pro_until entitlement'
 );
-insert into public.calibration_captures (package, tree) values ('app.qannas', '{}'::jsonb);
+insert into public.calibration_captures (package, tree) values ('app.sabbaq', '{}'::jsonb);
 
 set request.jwt.claim.sub = '10000000-0000-0000-0000-000000000001';
 select public.admin_set_status('10000000-0000-0000-0000-000000000002', 'pending');
@@ -273,7 +273,7 @@ select pg_temp.expect(
     'administrative pending suspension overrides stored paid dates'
 );
 do $$ begin
-    insert into public.calibration_captures (package, tree) values ('app.qannas', '{}'::jsonb);
+    insert into public.calibration_captures (package, tree) values ('app.sabbaq', '{}'::jsonb);
     raise exception 'EXPECTATION FAILED: pending account ingested a capture';
 exception when insufficient_privilege then null;
 end $$;

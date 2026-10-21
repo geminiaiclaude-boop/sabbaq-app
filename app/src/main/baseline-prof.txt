@@ -1,12 +1,12 @@
 # Startup and first-screen code paths, compiled ahead of time by ART via ProfileInstaller.
-# Compose, Material3 and AndroidX ship their own profiles; these rules cover Qannas code.
-HSPLapp/qannas/App;->**(**)**
-HSPLapp/qannas/Settings;->**(**)**
-HSPLapp/qannas/CrashLog;->**(**)**
-HSPLapp/qannas/ui/MainActivity;->**(**)**
-HSPLapp/qannas/ui/SessionNavigationViewModel;->**(**)**
-HSPLapp/qannas/ui/**;->**(**)**
-HSPLapp/qannas/ui/theme/**;->**(**)**
-HSPLapp/qannas/network/SupabaseClient;->**(**)**
-HSPLapp/qannas/core/**;->**(**)**
-Lapp/qannas/**;
+# Compose, Material3 and AndroidX ship their own profiles; these rules cover Sabbaq code.
+HSPLapp/sabbaq/App;->**(**)**
+HSPLapp/sabbaq/Settings;->**(**)**
+HSPLapp/sabbaq/CrashLog;->**(**)**
+HSPLapp/sabbaq/ui/MainActivity;->**(**)**
+HSPLapp/sabbaq/ui/SessionNavigationViewModel;->**(**)**
+HSPLapp/sabbaq/ui/**;->**(**)**
+HSPLapp/sabbaq/ui/theme/**;->**(**)**
+HSPLapp/sabbaq/network/SupabaseClient;->**(**)**
+HSPLapp/sabbaq/core/**;->**(**)**
+Lapp/sabbaq/**;

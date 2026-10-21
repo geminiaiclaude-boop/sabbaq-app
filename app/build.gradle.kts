@@ -42,23 +42,23 @@ fun buildConfigString(value: String): String = buildString {
 val supabaseUrl = setting("SUPABASE_URL").orEmpty()
 val supabaseAnonKey = setting("SUPABASE_ANON_KEY").orEmpty()
 val googleWebClientId = setting("GOOGLE_WEB_CLIENT_ID").orEmpty()
-val keystorePath = setting("QANNAS_KEYSTORE")
+val keystorePath = setting("SABBAQ_KEYSTORE")
 val releaseStoreFile = keystorePath
     ?.takeIf { it.isNotBlank() }
     ?.let { rootProject.file(it) }
-val versionCodeValue = setting("QANNAS_VERSION_CODE") ?: "10"
+val versionCodeValue = setting("SABBAQ_VERSION_CODE") ?: "11"
 val configuredVersionCode = versionCodeValue.toIntOrNull()
-    ?: throw GradleException("QANNAS_VERSION_CODE يجب أن يكون عدداً صحيحاً موجباً")
-require(configuredVersionCode > 0) { "QANNAS_VERSION_CODE يجب أن يكون عدداً صحيحاً موجباً" }
-val configuredVersionName = setting("QANNAS_VERSION_NAME") ?: "1.5.0"
-require(configuredVersionName.isNotBlank()) { "QANNAS_VERSION_NAME لا يمكن أن يكون فارغاً" }
+    ?: throw GradleException("SABBAQ_VERSION_CODE يجب أن يكون عدداً صحيحاً موجباً")
+require(configuredVersionCode > 0) { "SABBAQ_VERSION_CODE يجب أن يكون عدداً صحيحاً موجباً" }
+val configuredVersionName = setting("SABBAQ_VERSION_NAME") ?: "2.0.0"
+require(configuredVersionName.isNotBlank()) { "SABBAQ_VERSION_NAME لا يمكن أن يكون فارغاً" }
 
 android {
-    namespace = "app.qannas"
+    namespace = "app.sabbaq"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "app.qannas.driver"
+        applicationId = "app.sabbaq.driver"
         minSdk = 26
         targetSdk = 36
         versionCode = configuredVersionCode
@@ -85,9 +85,9 @@ android {
     signingConfigs {
         create("release") {
             releaseStoreFile?.let { storeFile = it }
-            storePassword = setting("QANNAS_KEYSTORE_PASSWORD")
-            keyAlias = setting("QANNAS_KEY_ALIAS")
-            keyPassword = setting("QANNAS_KEY_PASSWORD")
+            storePassword = setting("SABBAQ_KEYSTORE_PASSWORD")
+            keyAlias = setting("SABBAQ_KEY_ALIAS")
+            keyPassword = setting("SABBAQ_KEY_PASSWORD")
         }
     }
 
@@ -155,16 +155,16 @@ val verifyReleaseConfiguration by tasks.registering {
             }
 
             if (releaseStoreFile == null) {
-                add("QANNAS_KEYSTORE مطلوب ويجب أن يشير إلى ملف keystore")
+                add("SABBAQ_KEYSTORE مطلوب ويجب أن يشير إلى ملف keystore")
             } else {
-                if (!releaseStoreFile.isFile) add("QANNAS_KEYSTORE لا يشير إلى ملف موجود")
-                if (!releaseStoreFile.canRead()) add("ملف QANNAS_KEYSTORE غير قابل للقراءة")
+                if (!releaseStoreFile.isFile) add("SABBAQ_KEYSTORE لا يشير إلى ملف موجود")
+                if (!releaseStoreFile.canRead()) add("ملف SABBAQ_KEYSTORE غير قابل للقراءة")
             }
 
             listOf(
-                "QANNAS_KEYSTORE_PASSWORD" to setting("QANNAS_KEYSTORE_PASSWORD"),
-                "QANNAS_KEY_ALIAS" to setting("QANNAS_KEY_ALIAS"),
-                "QANNAS_KEY_PASSWORD" to setting("QANNAS_KEY_PASSWORD")
+                "SABBAQ_KEYSTORE_PASSWORD" to setting("SABBAQ_KEYSTORE_PASSWORD"),
+                "SABBAQ_KEY_ALIAS" to setting("SABBAQ_KEY_ALIAS"),
+                "SABBAQ_KEY_PASSWORD" to setting("SABBAQ_KEY_PASSWORD")
             ).forEach { (name, value) ->
                 if (value.isNullOrBlank()) add("$name مطلوب لإصدار release")
             }
@@ -174,8 +174,8 @@ val verifyReleaseConfiguration by tasks.registering {
             throw GradleException("فشل فحص ما قبل إصدار release:\n${errors.joinToString("\n") { " - $it" }}")
         }
         try {
-            val store = KeyStore.getInstance(releaseStoreFile!!, setting("QANNAS_KEYSTORE_PASSWORD")!!.toCharArray())
-            val key = store.getKey(setting("QANNAS_KEY_ALIAS"), setting("QANNAS_KEY_PASSWORD")!!.toCharArray())
+            val store = KeyStore.getInstance(releaseStoreFile!!, setting("SABBAQ_KEYSTORE_PASSWORD")!!.toCharArray())
+            val key = store.getKey(setting("SABBAQ_KEY_ALIAS"), setting("SABBAQ_KEY_PASSWORD")!!.toCharArray())
             if (key !is PrivateKey) throw GradleException("Alias التوقيع لا يحتوي مفتاحاً خاصاً")
         } catch (_: Exception) {
             throw GradleException("تعذر فتح مفتاح التوقيع؛ راجع نوع الملف وكلمات المرور والـ alias دون نشرها")

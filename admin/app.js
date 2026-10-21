@@ -92,7 +92,7 @@
             retryCommercialPolicy: document.getElementById('retry-commercial-policy')
         });
 
-        if (!isValidConfiguration(window.QANNAS_CONFIG)) {
+        if (!isValidConfiguration(window.SABBAQ_CONFIG)) {
             renderFatalError('الإعداد مفقود أو غير صالح. انسخ config.example.js إلى config.js وأدخل رابط مشروع Supabase ومفتاح anon الصحيحين.');
             return;
         }
@@ -127,14 +127,14 @@
             options.global = { headers: { Authorization: `Bearer ${nativeAccessToken}` } };
         }
         return window.supabase.createClient(
-            window.QANNAS_CONFIG.supabaseUrl,
-            window.QANNAS_CONFIG.supabaseAnonKey,
+            window.SABBAQ_CONFIG.supabaseUrl,
+            window.SABBAQ_CONFIG.supabaseAnonKey,
             options
         );
     }
 
     function installNativeSessionAcceptor() {
-        if (isTrustedNativeBridgeOrigin()) window.QANNAS_ACCEPT_NATIVE_SESSION = acceptNativeSession;
+        if (isTrustedNativeBridgeOrigin()) window.SABBAQ_ACCEPT_NATIVE_SESSION = acceptNativeSession;
     }
 
     async function acceptNativeSession(nativeAccessToken) {
@@ -156,7 +156,7 @@
             el.email.value = '';
             el.password.value = '';
             await enterDashboard();
-            delete window.QANNAS_ACCEPT_NATIVE_SESSION;
+            delete window.SABBAQ_ACCEPT_NATIVE_SESSION;
             return true;
         } catch (_) {
             clearNativeAccessState();
@@ -171,7 +171,7 @@
     }
 
     function isTrustedNativeBridgeOrigin() {
-        return window.location.origin === 'https://qannas.local';
+        return window.location.origin === 'https://sabbaq.local';
     }
 
     function isValidNativeAccessToken(value) {
@@ -1021,7 +1021,7 @@
         const objectUrl = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = objectUrl;
-        link.download = 'qannas_available_codes.csv';
+        link.download = 'sabbaq_available_codes.csv';
         link.hidden = true;
         document.body.append(link);
         link.click();

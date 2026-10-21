@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Qannas"
+rootProject.name = "Sabbaq"
 include(":core", ":app")

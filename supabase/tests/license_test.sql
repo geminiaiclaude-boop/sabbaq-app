@@ -34,7 +34,7 @@ do $$ begin
     raise exception 'EXPECTATION FAILED: driver updated own licence state';
 exception when insufficient_privilege then null; end $$;
 do $$ begin
-    insert into public.calibration_captures (package, tree) values ('app.qannas', '{}'::jsonb);
+    insert into public.calibration_captures (package, tree) values ('app.sabbaq', '{}'::jsonb);
     raise exception 'EXPECTATION FAILED: pending driver uploaded a capture';
 exception when insufficient_privilege then null; end $$;
 
@@ -79,7 +79,7 @@ select pg_temp.expect(
     (public.redeem_code(lower(replace((select min(code) from issued), '-', '')), 'device-aaaaaaaaaaaaaaaa') ->> 'ok')::boolean,
     'valid code redeemed');
 select pg_temp.expect(public.license_status('device-aaaaaaaaaaaaaaaa') ->> 'state' = 'active', 'active after redeem');
-insert into public.calibration_captures (package, tree) values ('app.qannas', '{}'::jsonb);
+insert into public.calibration_captures (package, tree) values ('app.sabbaq', '{}'::jsonb);
 select pg_temp.expect((select count(*) from public.calibration_captures) = 0, 'driver cannot read calibration captures');
 
 -- code is single use

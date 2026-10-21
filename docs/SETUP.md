@@ -1,4 +1,4 @@
-﻿# إعداد مشروع Qannas
+﻿# إعداد مشروع Sabbaq
 
 يوثق هذا الدليل إعداد قاعدة البيانات ولوحة التحكم وبناء Android المحلي وCI للإصدار. لا تنسخ قيماً حقيقية للمفاتيح أو كلمات المرور إلى المستودع أو إلى سجل طرفية مشترك.
 
@@ -69,12 +69,12 @@ chmod 600 upload.jks
 | `SUPABASE_URL` | رابط مشروع HTTPS الكامل. |
 | `SUPABASE_ANON_KEY` | مفتاح العميل `anon`. |
 | `GOOGLE_WEB_CLIENT_ID` | معرّف WebOAuth عام صحيح لدخولGoogle، لا clientsecret. |
-| `QANNAS_KEYSTORE` | المسار المطلق إلى ملف `.jks` أو `.keystore`. |
-| `QANNAS_KEYSTORE_PASSWORD` | كلمة مرور ملف التوقيع. |
-| `QANNAS_KEY_ALIAS` | اسم المفتاح داخل الملف. |
-| `QANNAS_KEY_PASSWORD` | كلمة مرور الـ alias. |
-| `QANNAS_VERSION_CODE` | اختياري؛ عدد صحيح موجب. |
-| `QANNAS_VERSION_NAME` | اختياري؛ اسم إصدار غير فارغ. |
+| `SABBAQ_KEYSTORE` | المسار المطلق إلى ملف `.jks` أو `.keystore`. |
+| `SABBAQ_KEYSTORE_PASSWORD` | كلمة مرور ملف التوقيع. |
+| `SABBAQ_KEY_ALIAS` | اسم المفتاح داخل الملف. |
+| `SABBAQ_KEY_PASSWORD` | كلمة مرور الـ alias. |
+| `SABBAQ_VERSION_CODE` | اختياري؛ عدد صحيح موجب. |
+| `SABBAQ_VERSION_NAME` | اختياري؛ اسم إصدار غير فارغ. |
 
 نفّذ فحصاً غير منتج قبل إنتاج أي ملف. يفشل الفحص برسائل تحدد **اسم** الإعداد الناقص من دون طباعة قيمته:
 
@@ -95,9 +95,9 @@ chmod 600 upload.jks
 | `SUPABASE_URL` | `SUPABASE_URL` |
 | `SUPABASE_ANON_KEY` | `SUPABASE_ANON_KEY` |
 | `GOOGLE_WEB_CLIENT_ID` | `GOOGLE_WEB_CLIENT_ID`، قيمةتهيئة لا سرOAuth. |
-| `KEYSTORE_PASSWORD` | `QANNAS_KEYSTORE_PASSWORD` |
-| `KEY_ALIAS` | `QANNAS_KEY_ALIAS` |
-| `KEY_PASSWORD` | `QANNAS_KEY_PASSWORD` |
+| `KEYSTORE_PASSWORD` | `SABBAQ_KEYSTORE_PASSWORD` |
+| `KEY_ALIAS` | `SABBAQ_KEY_ALIAS` |
+| `KEY_PASSWORD` | `SABBAQ_KEY_PASSWORD` |
 | `KEYSTORE_BASE64` | يفك إلى keystore مؤقت بصلاحية `0600` داخل runner فقط. |
 
 لإنشاء قيمة `KEYSTORE_BASE64` من ملف جديد، استخدم `base64 -w0 upload.jks` في Linux أو `[Convert]::ToBase64String([IO.File]::ReadAllBytes("upload.jks"))` في PowerShell. لا تسجل الناتج في terminal history ولا تضفه إلى ملف.
@@ -119,7 +119,7 @@ git add gradle/verification-metadata.xml
 
 القيمةالافتراضية18.75ريال/30يومًا مرتبطةمرجعيًا بـ5دولارات عندربط3.75، وليستسعرصرفحيًا أو تصريحًابشمولالضريبة. تُحفظبالهللات integer1875 وتُعدلإداريًا معمدةالاشتراك وإعدادالتجربة ذريًا. التجربةالافتراضية3أيام تبدأبعدفعلواضح؛ تعطيلها يوقفمنحهاوترخيصها عندإعادةالفحصدونوقف المدفوع. تعديلالأيام يطبّقعلىالتجاربالجديدة، ولايحذفledgerمطالباتقديمة.
 
-يجب أن تكون الروابطالعلنية للخصوصية وطلبحذفالحساب والجهةالمسؤولةعنهما صحيحةقبلنشرPlay؛ لا تستخدممثالًا أو رابطًاوهميًا. أتمِم نموذجالإتاحة والإفصاح المستقل والخدمةالأمامية وDataSafety ومراجعةSDKs/الفيديو/اختباراتالجهاز. لايُسجلالتطبيق أداةإعاقة بالادعاء ولايُحوَّل إلىوكيلذاتيالقرارات؛ قناصيتبعقواعدحتميةيحددها المستخدم.
+يجب أن تكون الروابطالعلنية للخصوصية وطلبحذفالحساب والجهةالمسؤولةعنهما صحيحةقبلنشرPlay؛ لا تستخدممثالًا أو رابطًاوهميًا. أتمِم نموذجالإتاحة والإفصاح المستقل والخدمةالأمامية وDataSafety ومراجعةSDKs/الفيديو/اختباراتالجهاز. لايُسجلالتطبيق أداةإعاقة بالادعاء ولايُحوَّل إلىوكيلذاتيالقرارات؛ سبّاقيتبعقواعدحتميةيحددها المستخدم.
 
 ## ملفات ممنوعة من Git
 
@@ -129,6 +129,6 @@ git add gradle/verification-metadata.xml
 
 ## ربط الإنتاج الفعلي — 19 أكتوبر 2026
 
-المشروع: `rxioktlmecdpuyokyatl`، والعنوان `https://rxioktlmecdpuyokyatl.supabase.co`. إعدادات العميل العامة في `config/public-backend.properties` ومفاتيح الإدارة غير مضمنة. وجد المخطط الأول موجودًا بلا سجل migrations؛ لذلك طُبقت 0002 و0003 و0004 معًا كترحيل `qannas_production_hardening_and_saudi_identity_20261019`، ولم تُعد0001 أوتُحذفبيانات. تحققنا من `public_offer` HTTP200 بسياسة3 أيام/1875هللة/30يومًا ومنحجبdrivers وcommercial_policyعنanonHTTP401. بقيusers2 وadmins1 وdrivers0 وcodes0 قبلوبعد.
+المشروع: `rxioktlmecdpuyokyatl`، والعنوان `https://rxioktlmecdpuyokyatl.supabase.co`. إعدادات العميل العامة في `config/public-backend.properties` ومفاتيح الإدارة غير مضمنة. وجد المخطط الأول موجودًا بلا سجل migrations؛ لذلك طُبقت 0002 و0003 و0004 معًا كترحيل `sabbaq_production_hardening_and_saudi_identity_20261019`، ولم تُعد0001 أوتُحذفبيانات. تحققنا من `public_offer` HTTP200 بسياسة3 أيام/1875هللة/30يومًا ومنحجبdrivers وcommercial_policyعنanonHTTP401. بقيusers2 وadmins1 وdrivers0 وcodes0 قبلوبعد.
 
-**تحديث 20 أكتوبر 2026:** Google منشور للإنتاج (عميل Android لـ `app.qannas.driver` بشهادة الإصدار)، وPhone مفعّل عبر Twilio Verify، وترحيل `0005` مطبّق. حساب Twilio تجريبي حتى يرقّيه المالك. حالة 19 أكتوبر للسجل: Google وPhone كانا معطّلين فيAuth. يلزم مالك المشروعإعداد OAuth (WebclientID/secretوشهادةAndroid) ومزودSMSحقيقيثم الاختبار. لايكفيpublickeyلتهيئةهذهالمفاتيح، ولايوجدنجاحدخولحيأوإرسالSMSفيهذهالنتيجة.
+**تحديث 20 أكتوبر 2026:** Google منشور للإنتاج (عميل Android لـ `app.sabbaq.driver` بشهادة الإصدار)، وPhone مفعّل عبر Twilio Verify، وترحيل `0005` مطبّق. حساب Twilio تجريبي حتى يرقّيه المالك. حالة 19 أكتوبر للسجل: Google وPhone كانا معطّلين فيAuth. يلزم مالك المشروعإعداد OAuth (WebclientID/secretوشهادةAndroid) ومزودSMSحقيقيثم الاختبار. لايكفيpublickeyلتهيئةهذهالمفاتيح، ولايوجدنجاحدخولحيأوإرسالSMSفيهذهالنتيجة.

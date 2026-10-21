@@ -109,14 +109,14 @@ test('سياسة العرض لا تُعرض أو تُحفظ قبل تحقق ال
     assert.match(app, /retryCommercialPolicy/);
 });
 
-test('جسر جلسة التطبيق الأصلية أحادي الاستخدام ومرتبط بـ qannas.local فقط', () => {
+test('جسر جلسة التطبيق الأصلية أحادي الاستخدام ومرتبط بـ sabbaq.local فقط', () => {
     const app = read(sourceAdmin, 'app.js');
 
-    assert.match(app, /window\.QANNAS_ACCEPT_NATIVE_SESSION = acceptNativeSession/);
-    assert.match(app, /window\.location\.origin === 'https:\/\/qannas\.local'/);
+    assert.match(app, /window\.SABBAQ_ACCEPT_NATIVE_SESSION = acceptNativeSession/);
+    assert.match(app, /window\.location\.origin === 'https:\/\/sabbaq\.local'/);
     assert.match(app, /state\.nativeAccessToken = nativeAccessToken/);
     assert.match(app, /await verifyAdminSession\(\)/);
-    assert.match(app, /delete window\.QANNAS_ACCEPT_NATIVE_SESSION/);
+    assert.match(app, /delete window\.SABBAQ_ACCEPT_NATIVE_SESSION/);
     assert.match(app, /autoRefreshToken: nativeAccessToken === null/);
     assert.match(app, /db\.auth\.getUser\(state\.nativeAccessToken\)/);
     assert.match(app, /clearNativeAccessState\(\)/);
