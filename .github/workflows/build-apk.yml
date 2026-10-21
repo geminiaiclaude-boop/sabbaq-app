@@ -31,8 +31,55 @@ jobs:
           fail-on-severity: high
           fail-on-scopes: runtime
 
+  # Every check runs once per exact source tree. A merge to main whose tree was already
+  # verified by its pull request reuses that verification instead of repeating 30 minutes
+  # of tests; anything untested (a direct push, a moved base) is tested in full.
+  tested-tree:
+    name: Reuse pull request verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      tree: ${{ steps.tree.outputs.tree }}
+      verified: ${{ steps.tree.outputs.verified }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Look for a verification of this exact tree
+        id: tree
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO_ID: ${{ github.repository_id }}
+          WORKFLOW_PATH: .github/workflows/build-apk.yml
+        run: |
+          set -euo pipefail
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "tree=${tree}" >> "$GITHUB_OUTPUT"
+          verified=false
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            # A marker is only a pointer to a run; the run itself must prove the tree passed:
+            # this repository (never a fork), this workflow file, a pull_request run, finished
+            # successfully. Its workflow definition is part of this same tree, so it is exactly
+            # the definition now merged into main (a run cannot vouch with a different one).
+            runs="$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?name=sabbaq-verified-${tree}&per_page=20" \
+              --jq "[.artifacts[] | select(.expired == false and .workflow_run.head_repository_id == ${REPO_ID}) | .workflow_run.id] | unique | .[]")"
+            for run in ${runs}; do
+              ok="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run}" \
+                --jq "(.path == \"${WORKFLOW_PATH}\") and (.event == \"pull_request\") and (.status == \"completed\") and (.conclusion == \"success\") and (.head_repository.id == ${REPO_ID})")"
+              if [[ "${ok}" == "true" ]]; then verified=true; echo "Verified by run ${run}"; break; fi
+            done
+          fi
+          echo "verified=${verified}" >> "$GITHUB_OUTPUT"
+          echo "Tree ${tree}: already verified = ${verified}"
+
   verify:
     name: Android unit tests and lint
+    needs: tested-tree
+    if: needs.tested-tree.outputs.verified != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -66,10 +113,22 @@ jobs:
           retention-days: 14
 
   ui-smoke:
-    name: Native Android screens (direct and Play)
-    needs: verify
+    name: Native Android screens (${{ matrix.suite }})
+    needs: [tested-tree, verify]
+    if: needs.tested-tree.outputs.verified != 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 30
+    strategy:
+      # Each suite has its own emulator, in parallel; one flaky suite can be re-run alone.
+      fail-fast: false
+      matrix:
+        include:
+          - suite: direct-screens
+            command: python3 scripts/android_ui_smoke.py --apk ci-input/app/build/outputs/apk/direct/debug/app-direct-debug.apk --package app.sabbaq.driver.debug --distribution direct --out ui-screenshots/direct
+          - suite: direct-flows
+            command: python3 scripts/android_flow_tests.py --apk ci-input/app/build/outputs/apk/direct/debug/app-direct-debug.apk --test-apk ci-input/app/build/outputs/apk/androidTest/direct/debug/app-direct-debug-androidTest.apk --out ui-screenshots/flow-tests
+          - suite: play-screens
+            command: python3 scripts/android_ui_smoke.py --apk ci-input/app/build/outputs/apk/play/debug/app-play-debug.apk --package app.sabbaq.driver.debug --distribution play --out ui-screenshots/play
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -89,6 +148,30 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+      # A booted emulator snapshot is cached, so each run resumes it instead of cold-booting.
+      # Tests never save back into it (-no-snapshot-save): every run starts from the same clean state.
+      - name: Restore emulator snapshot
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-35-google_apis-x86_64-pixel_6-2048M-v1
+      - name: Create emulator snapshot
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          ram-size: 2048M
+          emulator-boot-timeout: 360
+          force-avd-creation: false
+          disable-animations: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: echo "Emulator snapshot created for caching."
       - name: Open native screens without account credentials or service activation
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
@@ -98,20 +181,36 @@ jobs:
           profile: pixel_6
           ram-size: 2048M
           emulator-boot-timeout: 360
+          force-avd-creation: false
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
-          script: |
-            python3 scripts/android_ui_smoke.py --apk ci-input/app/build/outputs/apk/direct/debug/app-direct-debug.apk --package app.sabbaq.driver.debug --distribution direct --out ui-screenshots/direct
-            python3 scripts/android_flow_tests.py --apk ci-input/app/build/outputs/apk/direct/debug/app-direct-debug.apk --test-apk ci-input/app/build/outputs/apk/androidTest/direct/debug/app-direct-debug-androidTest.apk --out ui-screenshots/flow-tests
-            python3 scripts/android_ui_smoke.py --apk ci-input/app/build/outputs/apk/play/debug/app-play-debug.apk --package app.sabbaq.driver.debug --distribution play --out ui-screenshots/play
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot-save -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: ${{ matrix.command }}
       - name: Preserve native screenshots and launch evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: sabbaq-native-ui-${{ github.sha }}
+          name: sabbaq-native-ui-${{ github.sha }}-${{ matrix.suite }}
           path: ui-screenshots/
           if-no-files-found: warn
           retention-days: 14
+
+  # Records that this exact tree passed every check, so the merge to main can reuse it.
+  verified-marker:
+    name: Record verified tree
+    needs: [tested-tree, verify, ui-smoke, database-tests]
+    if: github.event_name == 'pull_request' && needs.tested-tree.outputs.verified != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Write marker
+        env:
+          TREE: ${{ needs.tested-tree.outputs.tree }}
+        run: printf '%s\n' "$TREE" > verified-tree.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sabbaq-verified-${{ needs.tested-tree.outputs.tree }}
+          path: verified-tree.txt
+          retention-days: 30
 
   database-tests:
     name: PostgreSQL license tests
@@ -167,11 +266,17 @@ jobs:
 
   build-release:
     name: Build signed release APK and AAB
-    needs: [verify, database-tests, ui-smoke]
+    needs: [tested-tree, verify, database-tests, ui-smoke]
     # لا تُتاح الأسرار في PR؛ كما يلزم أن يكون المصدر فرعاً مسمّى صراحةً.
+    # Builds only when this exact tree passed every check: here, or in its pull request.
     if: >-
+      always() && !cancelled() &&
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
-      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') &&
+      needs.tested-tree.result == 'success' &&
+      needs.database-tests.result == 'success' &&
+      (needs.tested-tree.outputs.verified == 'true' ||
+        (needs.verify.result == 'success' && needs.ui-smoke.result == 'success'))
     environment: production
     runs-on: ubuntu-latest
     timeout-minutes: 30
