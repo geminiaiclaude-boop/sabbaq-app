@@ -40,6 +40,20 @@ def apply_environment(env):
         time.sleep(4)
 
 
+def reachable_by_scrolling(text, visible):
+    """True when [text] is on screen now or appears after scrolling the page down."""
+    if text in visible:
+        return True
+    for _ in range(8):
+        adb('shell', 'input', 'swipe', '540', '1700', '540', '500', '250')
+        time.sleep(1)
+        adb('shell', 'uiautomator', 'dump', '/sdcard/qannas-ui.xml', timeout=60)
+        scrolled = ET.fromstring(adb('shell', 'cat', '/sdcard/qannas-ui.xml')).findall('.//node')
+        if any(text in (n.get('text', '') + n.get('content-desc', '')) for n in scrolled):
+            return True
+    return False
+
+
 cases = [
     ('first-launch', None, False, 1.0, None),
     ('intro', 'intro', False, 1.0, None),
@@ -118,20 +132,12 @@ for name, screen, dark, font_scale, env in cases:
         assert 'لا يوجد اتصال بالإنترنت' in visible, f'Offline banner missing: {name}'
     if screen == 'login':
         # Play requires the privacy policy to be reachable inside the app before sign-in.
-        assert 'سياسة الخصوصية' in visible, f'Privacy policy link missing: {name}'
+        # It sits at the end of the sign-in page, below the first screen.
+        assert reachable_by_scrolling('سياسة الخصوصية', visible), f'Privacy policy link missing: {name}'
     if screen == 'account':
         # Google Play requires an in-app path to delete the account in every distribution.
         # It sits at the end of the page, below the first screen, so scroll before reading.
-        deletion_visible = 'حذف حسابي' in visible
-        for _ in range(6):
-            if deletion_visible:
-                break
-            adb('shell', 'input', 'swipe', '540', '1700', '540', '500', '250')
-            time.sleep(1)
-            adb('shell', 'uiautomator', 'dump', '/sdcard/qannas-ui.xml', timeout=60)
-            scrolled = ET.fromstring(adb('shell', 'cat', '/sdcard/qannas-ui.xml')).findall('.//node')
-            deletion_visible = any('حذف حسابي' in (n.get('text', '') + n.get('content-desc', '')) for n in scrolled)
-        assert deletion_visible, f'Account deletion entry point missing: {name}'
+        assert reachable_by_scrolling('حذف حسابي', visible), f'Account deletion entry point missing: {name}'
     if args.distribution == 'play' and screen in ('login', 'account'):
         visible = ' '.join(node.get('text', '') + ' ' + node.get('content-desc', '') for node in nodes)
         for forbidden in ('كود التفعيل', 'شراء كود', 'شراء الاشتراك من الإدارة', 'واتساب', '18.75'):
