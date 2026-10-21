@@ -869,9 +869,11 @@ private fun DashboardPage(
             "تلقائي إذا تركت المتابعة تعمل", "", "", {}))
     }
 
-    SupportedPlatformsCard(Modifier.qannasEntrance(3))
+    VoiceAlertsCard(Modifier.qannasEntrance(3))
 
-    QannasCard(title = "أثناء وقت العمل", icon = Icons.Outlined.Info, modifier = Modifier.qannasEntrance(4)) {
+    SupportedPlatformsCard(Modifier.qannasEntrance(4))
+
+    QannasCard(title = "أثناء وقت العمل", icon = Icons.Outlined.Info, modifier = Modifier.qannasEntrance(5)) {
         Text(
             "يتابع قناص الطلبات الظاهرة وفق سعر الطلب والعائد لكل كم ومسافة الوصول وأوقات العمل التي حددتها. " +
                 "عند ظهور طلب مطابق، يمكنه النقر عليه تلقائيًا. يمكنك إيقاف المتابعة في أي وقت.",

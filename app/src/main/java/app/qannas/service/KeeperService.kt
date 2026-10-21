@@ -3,20 +3,31 @@ package app.qannas.service
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.app.Service
+import android.content.ComponentName
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
+import android.view.accessibility.AccessibilityManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import app.qannas.Settings
 import app.qannas.network.SupabaseClient
+import app.qannas.voice.VoiceAnnouncer
+import app.qannas.voice.VoiceKind
+import app.qannas.voice.VoiceLines
+import app.qannas.voice.VoiceRules
+import java.time.Instant
 import app.qannas.ui.MainActivity
 import kotlinx.coroutines.*
 
@@ -31,6 +42,13 @@ class KeeperService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var licenseMonitor: Job? = null
     private var screenReceiver: BroadcastReceiver? = null
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private var offlineAlert: Job? = null
+    private var offlineAnnounced = false
+    private var monitoringLive = false
+    private var accessibilityWasOn: Boolean? = null
+    private var subscriptionWarnedFor: Instant? = null
+    private var subscriptionWarnedLevel = 0
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -87,16 +105,22 @@ class KeeperService : Service() {
 
     private suspend fun monitor() {
         // After a restart the license lease is empty: resume the saved session first.
-        if (!SupabaseClient.hasValidLicense()) {
+        val resuming = !SupabaseClient.hasValidLicense()
+        if (resuming) {
             val restored = runCatching { SupabaseClient.restoreSession().getOrNull() == true }.getOrDefault(false)
             if (!restored) {
-                notifySignInNeeded()
+                stoppedOnItsOwn()
                 shutDown()
                 return
             }
         }
         Settings.isActive = true
+        monitoringLive = true
         updateNotification()
+        VoiceAnnouncer.announce(VoiceKind.Status, if (resuming) VoiceLines.RESUMED else VoiceLines.STARTED)
+        registerNetworkCallback()
+        checkAccessibility()
+        warnIfSubscriptionEnding()
         while (currentCoroutineContext().isActive) {
             delay(60_000)
             if (!checkStillAllowed()) break
@@ -108,8 +132,99 @@ class KeeperService : Service() {
         runCatching { SupabaseClient.revalidateLicense() }
         val allowed = Settings.monitoringWanted && Settings.a11yDisclosureAccepted &&
             hasNotificationPermission() && SupabaseClient.hasValidLicense()
-        if (!allowed) shutDown()
+        if (!allowed) {
+            // A stop the driver chose (stop button, consent withdrawn) needs no alert.
+            if (monitoringLive && Settings.monitoringWanted && Settings.a11yDisclosureAccepted) stoppedOnItsOwn()
+            shutDown()
+        } else {
+            checkAccessibility()
+            warnIfSubscriptionEnding()
+        }
         return allowed
+    }
+
+    /** Monitoring stopped without the driver: say why, and leave a notification that opens the app. */
+    private fun stoppedOnItsOwn() {
+        val cause = VoiceRules.stopCause(
+            notificationsAllowed = hasNotificationPermission(),
+            hasSavedSession = SupabaseClient.hasSavedSession(),
+            serverState = SupabaseClient.subscriptionSnapshot()?.state,
+        )
+        monitoringLive = false
+        VoiceAnnouncer.announce(VoiceKind.Problem, VoiceRules.line(cause))
+        notifyAlert(STOP_NOTIFICATION_ID, "توقفت متابعة الطلبات", VoiceRules.line(cause).removePrefix("توقف قناص. "))
+    }
+
+    /** The engine cannot accept anything while its permission is off: warn once per change. */
+    private fun checkAccessibility() {
+        val on = isAccessibilityEnabled()
+        val before = accessibilityWasOn
+        accessibilityWasOn = on
+        if (!on && before != false) {
+            VoiceAnnouncer.announce(VoiceKind.Problem, VoiceLines.ACCESSIBILITY_OFF)
+            notifyAlert(A11Y_NOTIFICATION_ID, "إذن متابعة الطلبات مغلق", "لن يقبل قناص أي طلب حتى تفعّله. اضغط لفتح التطبيق.")
+        } else if (on && before == false) {
+            VoiceAnnouncer.announce(VoiceKind.Problem, VoiceLines.ACCESSIBILITY_BACK)
+            runCatching { getSystemService(NotificationManager::class.java)?.cancel(A11Y_NOTIFICATION_ID) }
+        }
+    }
+
+    /** One reminder a day before the end and one in the last hour, per subscription period. */
+    private fun warnIfSubscriptionEnding() {
+        val validUntil = SupabaseClient.subscriptionSnapshot()?.validUntil ?: return
+        val millisLeft = validUntil.toEpochMilli() - System.currentTimeMillis()
+        val level = VoiceRules.subscriptionWarningLevel(millisLeft)
+        if (validUntil != subscriptionWarnedFor) {
+            subscriptionWarnedFor = validUntil
+            subscriptionWarnedLevel = 0
+        }
+        if (level > subscriptionWarnedLevel) {
+            subscriptionWarnedLevel = level
+            VoiceAnnouncer.announce(VoiceKind.Subscription, VoiceLines.subscriptionEnding(VoiceRules.hoursLeft(millisLeft)))
+        }
+    }
+
+    /** Internet loss is announced only if it lasts, and its return only after a loss was announced. */
+    private fun registerNetworkCallback() {
+        if (networkCallback != null) return
+        val manager = getSystemService(ConnectivityManager::class.java) ?: return
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+                val online = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                    capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                serviceScope.launch { onConnectivity(online) }
+            }
+
+            override fun onLost(network: Network) {
+                serviceScope.launch { onConnectivity(false) }
+            }
+        }
+        if (runCatching { manager.registerDefaultNetworkCallback(callback) }.isSuccess) networkCallback = callback
+    }
+
+    private fun onConnectivity(online: Boolean) {
+        if (online) {
+            offlineAlert?.cancel()
+            offlineAlert = null
+            if (offlineAnnounced) {
+                offlineAnnounced = false
+                VoiceAnnouncer.announce(VoiceKind.Connection, VoiceLines.CONNECTION_BACK)
+            }
+        } else if (offlineAlert?.isActive != true && !offlineAnnounced) {
+            offlineAlert = serviceScope.launch {
+                delay(OFFLINE_GRACE_MILLIS)
+                if (monitoringLive) {
+                    offlineAnnounced = true
+                    VoiceAnnouncer.announce(VoiceKind.Connection, VoiceLines.CONNECTION_LOST)
+                }
+            }
+        }
+    }
+
+    private fun isAccessibilityEnabled(): Boolean {
+        val expectedId = ComponentName(this, SniperA11yService::class.java).flattenToString()
+        val manager = getSystemService(AccessibilityManager::class.java) ?: return true
+        return manager.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK).any { it.id == expectedId }
     }
 
     private fun shutDown() {
@@ -123,7 +238,8 @@ class KeeperService : Service() {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
                 // The device may have slept through the periodic check: refresh at once.
-                serviceScope.launch { checkStillAllowed() }
+                // Not while the saved session is still being restored: that is not a lost license.
+                serviceScope.launch { if (monitoringLive) checkStillAllowed() }
             }
         }
         val filter = IntentFilter().apply {
@@ -151,7 +267,7 @@ class KeeperService : Service() {
                 ALERT_CHANNEL_ID,
                 "تنبيهات قناص",
                 NotificationManager.IMPORTANCE_DEFAULT
-            ).apply { description = "تنبيه عندما تحتاج المتابعة إلى تسجيل الدخول لتستأنف." })
+            ).apply { description = "تنبيه عندما تتوقف المتابعة أو يُغلق إذن تحتاجه." })
         }
     }
 
@@ -159,17 +275,18 @@ class KeeperService : Service() {
         getSystemService(NotificationManager::class.java)?.notify(NOTIFICATION_ID, buildNotification(resuming = false))
     }
 
-    private fun notifySignInNeeded() {
+    private fun notifyAlert(id: Int, title: String, text: String) {
         createChannel()
         val notification = NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
-            .setContentTitle("توقفت متابعة الطلبات")
-            .setContentText("افتح قناص وسجّل الدخول لاستئناف المتابعة.")
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setSmallIcon(app.qannas.R.drawable.ic_stat_qannas)
             .setColor(0xFF006B58.toInt())
             .setAutoCancel(true)
             .setContentIntent(openAppIntent())
             .build()
-        runCatching { getSystemService(NotificationManager::class.java)?.notify(SIGN_IN_NOTIFICATION_ID, notification) }
+        runCatching { getSystemService(NotificationManager::class.java)?.notify(id, notification) }
     }
 
     private fun openAppIntent() = android.app.PendingIntent.getActivity(
@@ -208,6 +325,13 @@ class KeeperService : Service() {
     override fun onDestroy() {
         screenReceiver?.let { runCatching { unregisterReceiver(it) } }
         screenReceiver = null
+        networkCallback?.let { callback ->
+            runCatching { getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(callback) }
+        }
+        networkCallback = null
+        // The driver turned it off (here, from the app or by signing out): confirm it aloud.
+        if (monitoringLive && !Settings.monitoringWanted) VoiceAnnouncer.announce(VoiceKind.Status, VoiceLines.STOPPED)
+        monitoringLive = false
         serviceScope.cancel()
         // Not monitoringWanted: if Android destroyed us, the sticky restart resumes monitoring.
         Settings.isActive = false
@@ -220,7 +344,9 @@ class KeeperService : Service() {
         private const val CHANNEL_ID = "qannas_monitoring"
         private const val ALERT_CHANNEL_ID = "qannas_alerts"
         private const val NOTIFICATION_ID = 1001
-        private const val SIGN_IN_NOTIFICATION_ID = 1002
+        private const val STOP_NOTIFICATION_ID = 1002
+        private const val A11Y_NOTIFICATION_ID = 1003
+        private const val OFFLINE_GRACE_MILLIS = 20_000L
         private const val ACTION_STOP = "app.qannas.STOP_MONITORING"
 
         /** Starts monitoring if the driver left it on; safe to call from any context. */

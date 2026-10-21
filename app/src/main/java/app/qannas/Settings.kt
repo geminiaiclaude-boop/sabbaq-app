@@ -3,6 +3,8 @@ package app.qannas
 import android.content.Context
 import android.content.SharedPreferences
 import app.qannas.core.Filters
+import app.qannas.voice.VoicePreferences
+import app.qannas.voice.VoiceRules
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
@@ -94,6 +96,36 @@ object Settings {
     var knownSubscriber: Boolean
         get() = runCatching { prefs().getBoolean(KEY_KNOWN_SUBSCRIBER, false) }.getOrDefault(false)
         set(value) { runCatching { prefs().edit().putBoolean(KEY_KNOWN_SUBSCRIBER, value).apply() } }
+
+    /** Spoken alerts belong to the device (like the theme), so they survive sign-out. */
+    var voicePreferences: VoicePreferences
+        get() = runCatching {
+            val p = prefs()
+            VoicePreferences(
+                enabled = p.getBoolean("voice_enabled", true),
+                status = p.getBoolean("voice_status", true),
+                problems = p.getBoolean("voice_problems", true),
+                connection = p.getBoolean("voice_connection", true),
+                subscription = p.getBoolean("voice_subscription", true),
+                offers = p.getBoolean("voice_offers", true),
+                evenWhenSilent = p.getBoolean("voice_even_silent", false),
+                volume = VoiceRules.clampVolume(p.getFloat("voice_volume", 1f)),
+            )
+        }.getOrDefault(VoicePreferences())
+        set(value) {
+            runCatching {
+                prefs().edit()
+                    .putBoolean("voice_enabled", value.enabled)
+                    .putBoolean("voice_status", value.status)
+                    .putBoolean("voice_problems", value.problems)
+                    .putBoolean("voice_connection", value.connection)
+                    .putBoolean("voice_subscription", value.subscription)
+                    .putBoolean("voice_offers", value.offers)
+                    .putBoolean("voice_even_silent", value.evenWhenSilent)
+                    .putFloat("voice_volume", VoiceRules.clampVolume(value.volume))
+                    .apply()
+            }
+        }
 
     var themeMode: ThemeMode
         get() = runCatching { ThemeMode.valueOf(prefs().getString("theme_mode", "SYSTEM") ?: "SYSTEM") }

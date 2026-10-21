@@ -27,6 +27,10 @@
         <package android:name="com.meizu.safe" />
         <package android:name="com.letv.android.letvsafe" />
         <package android:name="com.transsion.phonemaster" />
+        <!-- Spoken alerts (VoiceAnnouncer): Android 11+ hides TTS engines without this. -->
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
     </queries>
 
     <application
