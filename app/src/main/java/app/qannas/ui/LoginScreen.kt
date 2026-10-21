@@ -106,6 +106,11 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
     var journey by remember { mutableStateOf(AuthJourney.Idle) }
     // Which sign-in method owns the current busy state, so only its button shows progress.
     var googleFlow by remember { mutableStateOf(false) }
+    // يظهر الجوال ما لم يؤكد الخادم أنه معطّل؛ فشل القراءة لا يُخفي طريقة قد تعمل.
+    var phoneAvailable by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) {
+        SupabaseClient.fetchAuthProviders().onSuccess { phoneAvailable = it.phone }
+    }
     var isAdmin by remember { mutableStateOf(false) }
     var activationCode by remember { mutableStateOf("") }
     var activationValidationRequested by remember { mutableStateOf(false) }
@@ -475,6 +480,7 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
                             infoMessage = infoMessage,
                             isBusy = isBusy,
                             googleBusy = isBusy && googleFlow,
+                            phoneAvailable = phoneAvailable || otpRequested,
                             journey = journey,
                             phoneFocus = phoneFocus,
                             otpFocus = otpFocus,
@@ -516,7 +522,7 @@ private fun AuthBrandHero() {
     QannasHeroSurface(Modifier.qannasEntrance(0)) {
         QannasBrand(onHero = true)
         Text(
-            text = "ادخل بحساب Google أو رقم جوالك السعودي، ثم اضبط شروط طلباتك.",
+            text = "ادخل إلى حسابك، ثم اضبط شروط طلباتك.",
             style = MaterialTheme.typography.bodyMedium,
             color = brand.onHeroMuted,
         )
@@ -544,6 +550,7 @@ private fun AuthenticationCard(
     infoMessage: String?,
     isBusy: Boolean,
     googleBusy: Boolean,
+    phoneAvailable: Boolean,
     journey: AuthJourney,
     phoneFocus: FocusRequester,
     otpFocus: FocusRequester,
@@ -565,6 +572,7 @@ private fun AuthenticationCard(
             busyText = authProgressLabel(journey),
             enabled = !isBusy,
         )
+        if (phoneAvailable) {
         OrDivider()
         QannasSectionTitle(
             title = "رقم الجوال السعودي",
@@ -608,11 +616,12 @@ private fun AuthenticationCard(
                     .semantics { stateDescription = "رمز تحقق من 6 أرقام" }
             )
         }
+        }
 
         QannasAnimatedMessage(infoMessage, QannasTone.Success)
         QannasAnimatedMessage(serverError, QannasTone.Error)
 
-        if (otpRequested) {
+        if (phoneAvailable && otpRequested) {
             QannasButton(
                 text = "تحقق وتابع",
                 onClick = onVerifyOtp,
@@ -626,7 +635,7 @@ private fun AuthenticationCard(
                 style = QannasButtonStyle.Text,
                 icon = Icons.Outlined.Autorenew,
             )
-        } else {
+        } else if (phoneAvailable) {
             QannasButton(
                 text = "إرسال رمز التحقق",
                 onClick = onRequestOtp,

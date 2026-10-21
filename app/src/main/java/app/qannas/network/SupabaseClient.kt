@@ -268,6 +268,17 @@ object SupabaseClient {
             ?: Result.failure(ClientRequestException("تعذر عرض تفاصيل الاشتراك الآن. حاول مجددًا بعد قليل."))
     }
 
+    /**
+     * طرق الدخول المفعّلة على الخادم الآن. تسمح للواجهة بإخفاء طريقة معطّلة (مثل الجوال
+     * قبل ربط مزود SMS مدفوع) دون إصدار جديد؛ تفعيلها في Supabase يعيد إظهارها.
+     */
+    suspend fun fetchAuthProviders(): Result<AuthProviders> = networkCall {
+        val response = execute(requestBuilder(endpoint("auth/v1/settings")).get().build())
+        if (!response.isSuccessful) return@networkCall httpFailure("قراءة طرق الدخول", response)
+        AuthSettingsParser.parse(response.body)?.let { Result.success(it) }
+            ?: Result.failure(ClientRequestException("تعذر قراءة طرق الدخول المتاحة."))
+    }
+
     /** آخر لقطة `license_status` تخص رمز الجلسة الموجود في الذاكرة فقط. */
     fun subscriptionSnapshot(): SubscriptionSnapshot? = sessions.subscriptionSnapshot()
 
@@ -764,6 +775,19 @@ object SupabaseClient {
 }
 
 /** تحقق محلي لا يكشف القيم الحساسة ولا يحوّلها إلى سجلات. */
+/** طرق الدخول كما يعلنها `auth/v1/settings` العام. */
+data class AuthProviders(val google: Boolean, val phone: Boolean)
+
+internal object AuthSettingsParser {
+    fun parse(body: String): AuthProviders? = runCatching {
+        val external = Json.parseToJsonElement(body).jsonObject["external"]?.jsonObject ?: return null
+        AuthProviders(
+            google = external["google"]?.jsonPrimitive?.booleanOrNull == true,
+            phone = external["phone"]?.jsonPrimitive?.booleanOrNull == true,
+        )
+    }.getOrNull()
+}
+
 /** يعرض ما يكفي ليتعرّف السائق على حسابه، دون كشف المعرّف كاملاً على الشاشة. */
 internal object AccountIdentityMask {
     fun phone(raw: String?): String? {
