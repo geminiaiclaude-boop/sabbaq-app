@@ -73,7 +73,7 @@ select pg_temp.expect(
 );
 set role anon;
 select 1 / case when public.public_offer() =
-    '{"currency":"SAR","trial_days":3,"price_minor":1875,"trial_enabled":true,"subscription_days":30,"purchase_contact_url":null}'::jsonb
+    '{"currency":"SAR","trial_days":3,"price_minor":1875,"trial_enabled":true,"subscription_days":30,"purchase_contact_url":null,"admin_whatsapp":null}'::jsonb
     then 1 else 0 end as anon_offer_defaults_assertion;
 reset role;
 
