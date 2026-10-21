@@ -83,6 +83,10 @@ import androidx.compose.material.icons.outlined.VerifiedUser
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.AlertDialog
+import androidx.compose.ui.semantics.heading
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.Badge
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -217,6 +221,7 @@ fun SettingsScreen(
     var showActivationConsent by remember { mutableStateOf(false) }
     var showAccessibilityRequired by remember { mutableStateOf(false) }
     var showNotificationRequired by remember { mutableStateOf(false) }
+    var showMissingPermissions by remember { mutableStateOf(false) }
     var showResetFilters by remember { mutableStateOf(false) }
     var showUnsavedChanges by remember { mutableStateOf(false) }
     var pendingDestination by remember { mutableStateOf<DriverDestination?>(null) }
@@ -347,12 +352,9 @@ fun SettingsScreen(
             return
         }
         refreshRuntimePrerequisites()
-        if (!accessibilityEnabled) {
-            showAccessibilityRequired = true
-            return
-        }
-        if (!notificationsEnabled) {
-            showNotificationRequired = true
+        // Everything that blocks the start is listed together, not one prompt at a time.
+        if (!accessibilityEnabled || !notificationsEnabled) {
+            showMissingPermissions = true
             return
         }
         checkingActivation = true
@@ -420,6 +422,38 @@ fun SettingsScreen(
                 }) { Text("فتح إعدادات الجهاز") }
             },
             dismissButton = { TextButton(onClick = { showAccessibilityRequired = false }) { Text("إلغاء") } },
+        )
+    }
+
+    if (showMissingPermissions) {
+        AlertDialog(
+            onDismissRequest = { showMissingPermissions = false },
+            icon = { Icon(Icons.Outlined.WarningAmber, contentDescription = null) },
+            title = { Text("قبل البدء: أذونات مطلوبة") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("يحتاج قناص إلى هذه الأذونات ليعمل. امنحها من هنا، ثم اضغط «ابدأ» مجددًا.",
+                        style = MaterialTheme.typography.bodyMedium)
+                    if (!accessibilityEnabled) PermissionAction(Icons.Outlined.AccessibilityNew, "إذن متابعة الطلبات",
+                        "ليقرأ الطلب الظاهر ويقارنه بشروطك", "تفعيل") {
+                        showMissingPermissions = false
+                        if (onOpenA11y().isFailure) {
+                            runtimeMessage = DriverStatus("لم نتمكن من فتح إعدادات إمكانية الوصول. افتحها يدويًا من إعدادات الجهاز.", true)
+                        }
+                    }
+                    if (!notificationsEnabled) PermissionAction(Icons.Outlined.Notifications, "التنبيهات",
+                        "ليظهر لك أن المتابعة تعمل", "السماح") {
+                        showMissingPermissions = false
+                        onRequestNotificationPermission()
+                    }
+                    if (!batteryUnrestricted) PermissionAction(Icons.Outlined.BatteryChargingFull, "العمل دون قيود البطارية",
+                        "حتى لا يوقفه أندرويد عند قفل الشاشة (موصى به)", "السماح") {
+                        runCatching { context.startActivity(PowerSetup.batteryIntent(context)) }
+                            .recoverCatching { context.startActivity(PowerSetup.appDetailsIntent(context)) }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showMissingPermissions = false }) { Text("تم") } },
         )
     }
 
@@ -499,9 +533,13 @@ fun SettingsScreen(
         )
     }
 
+    val missingCount = listOf(
+        savedFilters.anyActive(), accessibilityEnabled, notificationsEnabled, licenseInMemory, batteryUnrestricted, autostartDone,
+    ).count { !it }
     DriverNavigationShell(
         destination = destination,
         onDestinationSelected = ::navigateTo,
+        dashboardBadge = missingCount,
     ) {
         QannasDepthContent(target = destination, order = { it.ordinal }, label = "driver-destination") { page ->
         when (page) {
@@ -601,6 +639,21 @@ fun SettingsScreen(
                             done = licenseInMemory,
                             onAction = { navigateTo(DriverDestination.Account) },
                         ),
+                    ) + listOfNotNull(
+                        // Some phone makers block restarts unless their own auto-start switch is on.
+                        if (PowerSetup.needsAutostart()) SetupStep(
+                            icon = Icons.Outlined.RestartAlt,
+                            title = "فعّل التشغيل التلقائي في جوالك",
+                            why = "جوالك يمنع التطبيقات من العودة بعد إعادة التشغيل ما لم تفعّل لها «التشغيل التلقائي». سنفتح لك الإعداد مباشرة.",
+                            doneText = "مفعّل لقناص",
+                            actionLabel = "فتح الإعداد",
+                            done = autostartDone,
+                            onAction = {
+                                runCatching { context.startActivity(PowerSetup.autostartIntent(context)) }
+                                Settings.autostartConfirmed = true
+                                autostartDone = true
+                            },
+                        ) else null
                     ),
                     onTryExample = { SetupGuidePreferences.markDone(context); navigateTo(DriverDestination.Simulator) },
                     onFinish = leaveGuide,
@@ -641,8 +694,20 @@ fun SettingsScreen(
 private fun DriverNavigationShell(
     destination: DriverDestination,
     onDestinationSelected: (DriverDestination) -> Unit,
+    dashboardBadge: Int = 0,
     content: @Composable () -> Unit,
 ) {
+    // A red count on «حالة العمل» keeps missing permissions visible from every page.
+    val navIcon: @Composable (DriverNavItem) -> Unit = { item ->
+        val selected = destination == item.destination
+        if (item.destination == DriverDestination.Dashboard && dashboardBadge > 0) {
+            BadgedBox(badge = { Badge { Text("$dashboardBadge") } }) {
+                Icon(item.icon, contentDescription = "${item.label}، ينقصه $dashboardBadge", modifier = Modifier.flipWhenSelected(selected))
+            }
+        } else {
+            Icon(item.icon, contentDescription = item.label, modifier = Modifier.flipWhenSelected(selected))
+        }
+    }
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val useRail = maxWidth >= 700.dp
         if (useRail) {
@@ -652,7 +717,7 @@ private fun DriverNavigationShell(
                         NavigationRailItem(
                             selected = destination == item.destination,
                             onClick = { onDestinationSelected(item.destination) },
-                            icon = { Icon(item.icon, contentDescription = item.label, modifier = Modifier.flipWhenSelected(destination == item.destination)) },
+                            icon = { navIcon(item) },
                             // The rail item is a fixed 80dp; two centred lines keep labels like
                             // «طلبات تناسبك» whole instead of clipping at the screen edge.
                             label = {
@@ -678,7 +743,7 @@ private fun DriverNavigationShell(
                             NavigationBarItem(
                                 selected = destination == item.destination,
                                 onClick = { onDestinationSelected(item.destination) },
-                                icon = { Icon(item.icon, contentDescription = item.label, modifier = Modifier.flipWhenSelected(destination == item.destination)) },
+                                icon = { navIcon(item) },
                                 label = { Text(item.label) },
                             )
                         }
@@ -729,20 +794,20 @@ private fun DashboardPage(
 ) = DriverPage {
     val readiness = listOf(
         ReadinessItem(Icons.Outlined.FilterAlt, "شروط الطلبات", activeFilterCount > 0,
-            "محفوظ لديك: ${ArabicCount.conditions(activeFilterCount)}", "اختر ما يناسبك أولًا", "تعديل الشروط", onOpenFilters),
+            "محفوظ لديك: ${ArabicCount.conditions(activeFilterCount)}", "حتى يعرف أي الطلبات تناسبك", "تعديل الشروط", onOpenFilters),
         ReadinessItem(Icons.Outlined.AccessibilityNew, "إذن متابعة الطلبات", accessibilityEnabled,
-            "مفعّل", "يحتاج إلى تفعيل", "تفعيل الإذن", onOpenA11y),
+            "مفعّل", "ليقرأ الطلب ويقبل المطابق؛ بدونه لا يعمل", "تفعيل الإذن", onOpenA11y),
         ReadinessItem(Icons.Outlined.Notifications, "تنبيهات حالة العمل", notificationsEnabled,
-            "مفعّلة", "تحتاج إلى سماح", "السماح", onRequestNotifications),
+            "مفعّلة", "ليظهر لك دائمًا أن المتابعة تعمل", "السماح", onRequestNotifications),
         ReadinessItem(Icons.Outlined.VerifiedUser, "حالة الاشتراك", licenseInMemory,
-            "جاهز للعمل", "تحتاج إلى تحقق", "فتح حسابي", onOpenAccount),
+            "جاهز للعمل", "ابدأ تجربتك أو فعّل اشتراكك", "فتح حسابي", onOpenAccount),
     )
     // What keeps it running when the screen locks, the phone sleeps or restarts.
     val power = buildList {
         add(ReadinessItem(Icons.Outlined.BatteryChargingFull, "العمل دون قيود البطارية", batteryUnrestricted,
             "لن يوقفه توفير الطاقة", "قد يوقفه أندرويد عند قفل الشاشة", "السماح", onOpenBattery))
         if (autostartNeeded) add(ReadinessItem(Icons.Outlined.RestartAlt, "التشغيل التلقائي في جوالك", autostartDone,
-            "مفعّل لقناص", "فعّل «التشغيل التلقائي» لقناص", "فتح الإعداد", onOpenAutostart))
+            "مفعّل لقناص", "ليعود بعد إعادة تشغيل الجوال؛ فعّل «التشغيل التلقائي»", "فتح الإعداد", onOpenAutostart))
     }
     val readyCount = readiness.count { it.ready }
     val allCount = readiness.size + power.size
@@ -755,6 +820,8 @@ private fun DashboardPage(
         onToggle = onToggle,
         modifier = Modifier.qannasEntrance(0),
     )
+    val missing = (readiness + power).filterNot { it.ready }
+    if (missing.isNotEmpty()) MissingPermissionsCard(missing, Modifier.qannasEntrance(1))
     QannasAnimatedMessage(message?.message, message?.tone ?: QannasTone.Info)
 
     QannasCard(
@@ -943,10 +1010,60 @@ private fun ReadinessRow(item: ReadinessItem) {
         }
         if (item.ready) {
             QannasStatusPill("جاهز", ready = true)
-        } else {
-            Text(item.actionLabel, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-            Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+        } else if (item.actionLabel.isNotEmpty()) {
+            Button(onClick = item.onAction, contentPadding = PaddingValues(horizontal = 16.dp), modifier = Modifier.heightIn(min = 40.dp)) {
+                Text(item.actionLabel, style = MaterialTheme.typography.labelLarge)
+            }
+        }
+    }
+}
+
+/**
+ * The missing permissions, alone and loud: warning colours, why each one matters, and a
+ * button that opens the exact system screen. Disappears once everything is granted.
+ */
+@Composable
+private fun MissingPermissionsCard(missing: List<ReadinessItem>, modifier: Modifier = Modifier) {
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        color = colors.errorContainer,
+        contentColor = colors.onErrorContainer,
+        shadowElevation = 6.dp,
+    ) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Icon(Icons.Outlined.WarningAmber, contentDescription = null)
+                Text(
+                    "ينقص قناص ${ArabicCount.permissions(missing.size)} ليعمل بكامل طاقته",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f).semantics { heading() },
+                )
+            }
+            Text("بدونها قد لا يقبل الطلبات، أو يتوقف عند قفل الشاشة أو بعد إعادة التشغيل. اضغط على كل زر وامنح الإذن.",
+                style = MaterialTheme.typography.bodyMedium)
+            missing.forEach { item ->
+                PermissionAction(item.icon, item.title, item.missingText, item.actionLabel, item.onAction)
+            }
+        }
+    }
+}
+
+/** One permission: what it is, why, and the button that grants it. */
+@Composable
+private fun PermissionAction(icon: ImageVector, title: String, why: String, action: String, onClick: () -> Unit) {
+    Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surface, contentColor = MaterialTheme.colorScheme.onSurface) {
+        Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            QannasIconBadge(icon, destructive = true)
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleSmall)
+                Text(why, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Button(onClick = onClick, contentPadding = PaddingValues(horizontal = 16.dp), modifier = Modifier.heightIn(min = 40.dp)) {
+                Text(action, style = MaterialTheme.typography.labelLarge)
+            }
         }
     }
 }

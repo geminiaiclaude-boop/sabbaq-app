@@ -29,6 +29,14 @@ internal object ArabicCount {
         else -> "$n خطوة"
     }
 
+    /** Permissions/requirements: 1 → "إذن واحد", 2 → "إذنان", 3..10 → "3 أذونات". */
+    fun permissions(n: Int): String = when {
+        n == 1 -> "إذن واحد"
+        n == 2 -> "إذنان"
+        n in 3..10 -> "$n أذونات"
+        else -> "$n إذنًا"
+    }
+
     /** Days: 1 → "يوم واحد", 2 → "يومان", 3..10 → "3 أيام", 11+ → "30 يومًا". */
     fun days(n: Int): String = when {
         n == 1 -> "يوم واحد"
