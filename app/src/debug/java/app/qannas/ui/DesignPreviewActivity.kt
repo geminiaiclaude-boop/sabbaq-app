@@ -30,10 +30,11 @@ class DesignPreviewActivity : ComponentActivity() {
         setContent {
             QannasTheme(darkTheme = dark) {
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-                    QannasShell(showHeader = screen !in setOf("login", "welcome", "welcome-example", "welcome-ready", "disclosure", "intro"), themeMode = if (dark) ThemeMode.DARK else ThemeMode.LIGHT,
+                    QannasShell(showHeader = screen !in setOf("login", "login-trial", "welcome", "welcome-example", "welcome-ready", "disclosure", "intro"), themeMode = if (dark) ThemeMode.DARK else ThemeMode.LIGHT,
                         onThemeChange = {}, onLogout = { finish() }) {
                         if (screen == "intro") QannasLaunchIntro(onFinished = {}, staticFrame = true)
                         else if (screen == "login") LoginScreen(onLoginSuccess = { finish() })
+                        else if (screen == "login-trial") LoginScreen(onLoginSuccess = { finish() }, initialIntent = AccessIntent.Trial)
                         else if (screen == "welcome") OnboardingScreen(onContinue = { finish() })
                         else if (screen == "welcome-example") OnboardingScreen(onContinue = { finish() }, initialPage = 1)
                         else if (screen == "welcome-ready") OnboardingScreen(onContinue = { finish() }, initialPage = 2)

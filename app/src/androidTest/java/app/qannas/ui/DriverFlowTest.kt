@@ -126,12 +126,15 @@ class DriverFlowTest {
     }
 
     @Test
-    fun sign_in_choice_reframes_the_sign_in_card() {
+    fun sign_in_choice_opens_its_own_sign_in_page() {
         show { LoginScreen(onLoginSuccess = {}) }
 
+        // Page 1 is only the choice; choosing opens the sign-in page shaped by it.
         waitForText("كيف تريد أن تبدأ؟")
         compose.onNodeWithText("اشترك الآن").performScrollTo().performClick()
-        waitForText("سجّل الدخول لإتمام اشتراكك")
+        waitForText("سجّل الدخول أو أنشئ حسابك")
+        compose.onNodeWithText("تغيير اختيارك").performScrollTo().performClick()
+        waitForText("كيف تريد أن تبدأ؟")
         compose.onNodeWithText("لدي اشتراك").performScrollTo().performClick()
         waitForText("تسجيل الدخول")
     }

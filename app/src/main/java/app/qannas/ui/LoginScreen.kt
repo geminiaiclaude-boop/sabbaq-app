@@ -1,6 +1,7 @@
 package app.qannas.ui
 
 import android.content.Intent
+import androidx.activity.compose.BackHandler
 import android.net.Uri
 import android.os.SystemClock
 import android.provider.Settings as AndroidSettings
@@ -22,6 +23,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Autorenew
 import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Login
@@ -65,6 +67,7 @@ import app.qannas.network.LicenseState
 import app.qannas.network.LicenseStateException
 import app.qannas.network.PublicOffer
 import app.qannas.network.SupabaseClient
+import app.qannas.service.KeeperService
 import app.qannas.ui.theme.LocalQannasBrand
 import app.qannas.ui.theme.QannasDepthContent
 import app.qannas.ui.theme.qannasEntrance
@@ -90,7 +93,7 @@ private enum class AuthJourney {
 private const val OTP_COOLDOWN_MILLIS = 60_000L
 
 @Composable
-fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
+fun LoginScreen(onLoginSuccess: (Boolean) -> Unit, initialIntent: AccessIntent = AccessIntent.None) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
@@ -124,7 +127,7 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
     var activationValidationRequested by remember { mutableStateOf(false) }
     var activationError by remember { mutableStateOf<String?>(null) }
     // The driver's choice before signing in (trial / subscribe / existing subscription).
-    var accessIntent by rememberSaveable { mutableStateOf(AccessIntent.None) }
+    var accessIntent by rememberSaveable { mutableStateOf(initialIntent) }
     val knownSubscriber = remember { Settings.knownSubscriber }
 
     // Device move: kept only for the signed-in session that hit «مرتبط بجهاز آخر».
@@ -138,6 +141,11 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
         journey != AuthJourney.DeviceTransfer
     val awaitingAccess = journey == AuthJourney.AwaitingAccess ||
         journey == AuthJourney.StartingTrial || journey == AuthJourney.ActivatingCode
+    // A returning subscriber goes straight to sign-in; everyone else chooses first.
+    val choosing = accessIntent == AccessIntent.None && !knownSubscriber
+    BackHandler(enabled = !choosing && !knownSubscriber && !awaitingAccess && journey != AuthJourney.DeviceTransfer) {
+        accessIntent = AccessIntent.None
+    }
 
     LaunchedEffect(otpCooldownEndsAt) {
         while (true) {
@@ -195,7 +203,10 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
             journey = AuthJourney.Idle
             return
         }
-        Settings.isActive = false
+        // A fresh sign-in never starts monitoring by itself; a driver who left it on gets it
+        // back through the service, which re-checks the license before re-opening the gate.
+        if (!Settings.monitoringWanted) Settings.isActive = false
+        KeeperService.resumeIfWanted(context)
         // A paid subscription on this device hides the free-trial choice on later sign-ins.
         if (SupabaseClient.subscriptionSnapshot()?.state == LicenseState.ACTIVE) Settings.knownSubscriber = true
         activationCode = ""
@@ -229,6 +240,18 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
 
     // The public offer (trial length, price) feeds the choice cards before sign-in.
     LaunchedEffect(Unit) { if (offer == null) refreshPublicOffer() }
+
+    // A saved session (from an earlier sign-in on this device) resumes without asking again.
+    LaunchedEffect(Unit) {
+        if (journey != AuthJourney.Idle || !SupabaseClient.hasSavedSession()) return@LaunchedEffect
+        journey = AuthJourney.CheckingLicense
+        val restored = runCatching { SupabaseClient.restoreSession().getOrNull() == true }.getOrDefault(false)
+        if (restored && SupabaseClient.hasValidLicense()) {
+            completeLogin(admin = false)
+        } else if (journey == AuthJourney.CheckingLicense) {
+            journey = AuthJourney.Idle
+        }
+    }
 
     fun checkRoleAndLicense(token: String) {
         journey = AuthJourney.CheckingRole
@@ -552,17 +575,36 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
                             onOpenSupport = { url -> runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } },
                             onCancel = ::abandonAccess,
                         )
-                    } else Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                    } else QannasDepthContent(
+                        // Two pages: first the choice, then a sign-in / sign-up page shaped by it.
+                        target = choosing,
+                        order = { if (it) 0 else 1 },
+                        label = "access-step",
+                    ) { onChoicePage ->
+                    if (onChoicePage) Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
                         AccessChoiceCard(
                             offer = offer,
                             knownSubscriber = knownSubscriber,
                             selected = accessIntent,
                             onSelect = { accessIntent = it },
                         )
+                    } else Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        if (!knownSubscriber) {
+                            TextButton(
+                                onClick = { accessIntent = AccessIntent.None; resetMessages() },
+                                enabled = !isBusy,
+                                modifier = Modifier.heightIn(min = 48.dp),
+                            ) {
+                                Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.size(6.dp))
+                                Text("تغيير اختيارك")
+                            }
+                        }
+                        AccessIntentBanner(accessIntent, offer)
                         AuthenticationCard(
                             title = when (accessIntent) {
-                                AccessIntent.Trial -> "سجّل الدخول لبدء تجربتك"
-                                AccessIntent.Subscribe -> "سجّل الدخول لإتمام اشتراكك"
+                                AccessIntent.Trial -> "أنشئ حسابك وابدأ تجربتك"
+                                AccessIntent.Subscribe -> "سجّل الدخول أو أنشئ حسابك"
                                 else -> "تسجيل الدخول"
                             },
                             phone = phone,
@@ -599,6 +641,7 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
                             onVerifyOtp = ::verifyOtp
                         )
                     }
+                    }
                 }
                 Text(
                     "بالمتابعة توافق على معالجة بياناتك كما توضح سياسة الخصوصية.",
@@ -622,6 +665,19 @@ private fun AuthBrandHero() {
             color = brand.onHeroMuted,
         )
     }
+}
+
+/** Reminds the driver what they chose on the previous page, and what happens after signing in. */
+@Composable
+private fun AccessIntentBanner(intent: AccessIntent, offer: PublicOffer?) {
+    val text = when (intent) {
+        AccessIntent.Trial -> offer?.takeIf { it.trialEnabled && it.trialDays > 0 }
+            ?.let { "اخترت التجربة المجانية (${ArabicCount.days(it.trialDays)}). بعد الدخول تبدأها بضغطة." }
+            ?: "اخترت التجربة المجانية. بعد الدخول نتحقق من أهلية حسابك."
+        AccessIntent.Subscribe -> "اخترت الاشتراك. بعد الدخول ترى طريقة الدفع وتفعّل اشتراكك."
+        else -> null
+    } ?: return
+    QannasMessage(text, tone = QannasTone.Info)
 }
 
 @Composable
@@ -658,7 +714,7 @@ private fun AuthenticationCard(
 ) {
     QannasCard(
         title = title,
-        subtitle = "اختر الطريقة الأنسب لتأكيد هويتك وحماية الوصول إلى حسابك.",
+        subtitle = "حساب واحد للدخول والتسجيل: إن لم يكن لديك حساب يُنشأ تلقائيًا عند أول دخول.",
         icon = Icons.Outlined.Login
     ) {
         QannasButton(

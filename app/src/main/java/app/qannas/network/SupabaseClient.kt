@@ -100,6 +100,19 @@ object SupabaseClient {
     private val json = Json { isLenient = false }
     private val sessions = AuthSessionStore(MonotonicClock { SystemClock.elapsedRealtime() })
 
+    // Session renewal. Supabase access tokens live about an hour; without renewal monitoring
+    // stopped itself an hour after sign-in. The refresh token rotates on every renewal.
+    @Volatile private var refreshToken: String? = null
+    @Volatile private var accessIssuedAt: Long = 0L
+    @Volatile private var appContext: Context? = null
+    private val renewLock = kotlinx.coroutines.sync.Mutex()
+    private const val RENEW_AFTER_MILLIS = 40L * 60L * 1000L
+
+    /** Called once from Application so the client can keep the session across process restarts. */
+    fun init(context: Context) {
+        appContext = context.applicationContext
+    }
+
     /**
      * توافق مؤقت مع مستهلكي الواجهة الحاليين. القيمة تُقرأ من الذاكرة ولا يمكن تعديلها
      * من خارج العميل؛ يجب أن تهاجر الواجهة إلى [hasRedeemableSession] بدلًا من قراءة الرمز.
@@ -119,8 +132,73 @@ object SupabaseClient {
     fun hasValidLicense(): Boolean = sessions.hasValidLicense()
 
     /** يمكّن مسار تسجيل خروج مستقبلي من إبطال الجلسة الذاكرية صراحةً. */
-    fun clearSession() {
+    fun clearSession(forget: Boolean = true) {
         sessions.clear()
+        refreshToken = null
+        if (forget) appContext?.let(SessionVault::clear)
+    }
+
+    /** True when a saved session exists that [restoreSession] can try to resume. */
+    fun hasSavedSession(): Boolean = appContext?.let(SessionVault::exists) == true
+
+    /**
+     * Resumes the saved session after a restart: renews the access token with the stored
+     * refresh token, rebinds the stored device and checks the license. A refused refresh
+     * token (signed out elsewhere, account deleted) wipes the vault.
+     */
+    suspend fun restoreSession(): Result<Boolean> {
+        if (sessions.hasValidLicense()) return Result.success(true)
+        val context = appContext ?: return invalidInput("التطبيق لم يجهز بعد")
+        return renewMutex {
+            // Re-check under the lock: the screen and the service may both try to resume, and a
+            // second exchange of an already-rotated refresh token would be refused.
+            if (sessions.hasValidLicense()) return@renewMutex Result.success(true)
+            val saved = SessionVault.load(context) ?: return@renewMutex Result.success(false)
+            val pair = exchangeRefreshToken(saved.refreshToken)
+            if (pair == null) {
+                SessionVault.clear(context)
+                return@renewMutex Result.success(false)
+            }
+            val attempt = sessions.beginAuthentication()
+            if (!sessions.activate(attempt, pair.first)) return@renewMutex staleSessionFailure()
+            refreshToken = pair.second
+            accessIssuedAt = SystemClock.elapsedRealtime()
+            checkLicenseAndBindDevice(pair.first, saved.deviceId)
+        }
+    }
+
+    private suspend fun <T> renewMutex(block: suspend () -> T): T = renewLock.lock().let {
+        try { block() } finally { renewLock.unlock() }
+    }
+
+    /** Renews the in-memory access token; the device binding and license lease are kept. */
+    private suspend fun renewAccessToken(): Boolean = renewMutex {
+        val current = sessions.snapshot() ?: return@renewMutex false
+        val stored = refreshToken ?: return@renewMutex false
+        val pair = exchangeRefreshToken(stored) ?: return@renewMutex false
+        if (!sessions.replaceToken(current.token, pair.first)) return@renewMutex false
+        refreshToken = pair.second
+        accessIssuedAt = SystemClock.elapsedRealtime()
+        current.deviceId?.let { device -> appContext?.let { SessionVault.save(it, pair.second, device) } }
+        true
+    }
+
+    private suspend fun exchangeRefreshToken(token: String): Pair<String, String>? = networkCall {
+        val url = endpoint("auth/v1/token").newBuilder().addQueryParameter("grant_type", "refresh_token").build()
+        val request = requestBuilder(url)
+            .post(buildJsonObject { put("refresh_token", token) }.toString().toRequestBody(jsonMediaType))
+            .build()
+        val response = execute(request)
+        if (!response.isSuccessful) return@networkCall Result.failure(ClientRequestException("تعذر تجديد الجلسة"))
+        tokenPairFrom(response.body)?.let { Result.success(it) }
+            ?: Result.failure(ClientRequestException("تعذر تجديد الجلسة"))
+    }.getOrNull()
+
+    /** Saves the session for automatic resume once a device is bound and the license is valid. */
+    private fun persistSession(deviceId: String) {
+        val context = appContext ?: return
+        val token = refreshToken ?: return
+        SessionVault.save(context, token, deviceId)
     }
 
     /** Only the trusted, local admin WebView may consume this short-lived token. */
@@ -199,6 +277,8 @@ object SupabaseClient {
                 return@networkCall Result.failure(profile.exceptionOrNull()!!)
             }
             if (!sessions.activate(attempt, token)) return@networkCall staleSessionFailure()
+            refreshToken = tokenPairFrom(response.body)?.second
+            accessIssuedAt = SystemClock.elapsedRealtime()
             Result.success(token)
         }
     }
@@ -255,6 +335,8 @@ object SupabaseClient {
                 return@networkCall Result.failure(profile.exceptionOrNull()!!)
             }
             if (!sessions.activate(attempt, token)) return@networkCall staleSessionFailure()
+            refreshToken = tokenPairFrom(response.body)?.second
+            accessIssuedAt = SystemClock.elapsedRealtime()
             Result.success(token)
         }
     }
@@ -438,7 +520,7 @@ object SupabaseClient {
                 candidateDeviceId = safeDeviceId,
                 body = response.body,
                 requestStartedAt = requestStartedAt
-            )
+            ).also { if (it.getOrNull() == true) persistSession(safeDeviceId) }
         }
     }
 
@@ -483,6 +565,14 @@ object SupabaseClient {
      * لا يستدعي [hasValidLicense] هذه الدالة مطلقًا.
      */
     suspend fun revalidateLicense(): Result<Boolean> {
+        // Renew before the access token ages out, and once more if the server already refused it.
+        if (refreshToken != null && SystemClock.elapsedRealtime() - accessIssuedAt > RENEW_AFTER_MILLIS) renewAccessToken()
+        val first = revalidateOnce()
+        if (first.exceptionOrNull() is SessionExpiredException && renewAccessToken()) return revalidateOnce()
+        return first
+    }
+
+    private suspend fun revalidateOnce(): Result<Boolean> {
         val session = sessions.snapshot()
             ?: return Result.failure(ClientRequestException("انتهت الجلسة؛ سجّل الدخول من جديد"))
         val deviceId = session.deviceId
@@ -499,7 +589,11 @@ object SupabaseClient {
                 }.toString().toRequestBody(jsonMediaType)
             )
             val response = execute(request)
-            if (response.code == 401) sessions.clearIfMatches(session.token)
+            if (response.code == 401) {
+                // Renewable: keep the session for one refresh attempt; drop it only if that fails.
+                if (refreshToken != null) return@networkCall Result.failure(SessionExpiredException())
+                sessions.clearIfMatches(session.token)
+            }
             if (!response.isSuccessful) {
                 return@networkCall httpFailure("إعادة التحقق من الترخيص", response)
             }
@@ -508,7 +602,7 @@ object SupabaseClient {
                 candidateDeviceId = deviceId,
                 body = response.body,
                 requestStartedAt = requestStartedAt
-            )
+            ).also { if (it.getOrNull() == true) persistSession(deviceId) }
         }
     }
 
@@ -619,6 +713,17 @@ object SupabaseClient {
 
     private fun apiKey(): String = NetworkInputValidator.headerSecret(BuildConfig.SUPABASE_ANON_KEY, MAX_ANON_KEY_LENGTH)
         ?: throw ClientRequestException("إعداد مفتاح الخدمة غير صالح")
+
+    private fun tokenPairFrom(body: String): Pair<String, String>? = try {
+        val response = responseObject(body)
+        val source = response["session"]?.jsonObject ?: response
+        val access = source["access_token"]?.jsonPrimitive?.contentOrNull?.let(NetworkInputValidator::token)
+        val refresh = source["refresh_token"]?.jsonPrimitive?.contentOrNull
+            ?.takeIf { it.length in 8..512 && it.none(Char::isWhitespace) }
+        if (access != null && refresh != null) access to refresh else null
+    } catch (_: Exception) {
+        null
+    }
 
     private fun accessTokenFrom(body: String): String? {
         val response = try {
@@ -813,6 +918,7 @@ object SupabaseClient {
     }
 
     private class ClientRequestException(message: String) : Exception(message)
+    private class SessionExpiredException : Exception("انتهت الجلسة؛ جارٍ تجديدها")
     private class ResponseTooLargeException : IOException()
 }
 
@@ -1062,6 +1168,14 @@ internal class AuthSessionStore(
     fun invalidateLicenseIfMatches(token: String): Boolean = synchronized(lock) {
         if (session?.token != token) return@synchronized false
         licenseLease.invalidate()
+        true
+    }
+
+    /** Renewed access token for the same session: device binding and license lease are kept. */
+    fun replaceToken(oldToken: String, newToken: String): Boolean = synchronized(lock) {
+        val current = session ?: return false
+        if (current.token != oldToken) return false
+        session = current.copy(token = newToken)
         true
     }
 

@@ -46,6 +46,20 @@ object Settings {
             prefs().edit().putBoolean(KEY_IS_ACTIVE, value).apply()
         }
 
+    /**
+     * The driver's own choice to keep monitoring on, kept across restarts. [isActive] is the
+     * runtime gate the accessibility service reads; it is only re-opened after the license is
+     * confirmed again, while this flag survives so monitoring resumes on its own.
+     */
+    var monitoringWanted: Boolean
+        get() = runCatching { prefs().getBoolean(KEY_MONITORING_WANTED, false) }.getOrDefault(false)
+        set(value) { runCatching { prefs().edit().putBoolean(KEY_MONITORING_WANTED, value).apply() } }
+
+    /** The driver confirmed the phone maker's auto-start setting (it cannot be read back). */
+    var autostartConfirmed: Boolean
+        get() = runCatching { prefs().getBoolean(KEY_AUTOSTART_CONFIRMED, false) }.getOrDefault(false)
+        set(value) { runCatching { prefs().edit().putBoolean(KEY_AUTOSTART_CONFIRMED, value).apply() } }
+
     /** Consent is independent from licensing and never grants account access. */
     var a11yDisclosureAccepted: Boolean
         get() = prefs().getInt(KEY_A11Y_DISCLOSURE_VERSION, 0) == A11Y_DISCLOSURE_VERSION
@@ -72,6 +86,7 @@ object Settings {
             .putBoolean(KEY_IS_ACTIVE, false)
             .remove(KEY_A11Y_DISCLOSURE_VERSION)
             .remove(KEY_KNOWN_SUBSCRIBER)
+            .remove(KEY_MONITORING_WANTED)
             .commit()
     }.getOrDefault(false)
 
@@ -93,6 +108,8 @@ object Settings {
     private const val KEY_IS_ACTIVE = "is_active"
     private const val KEY_A11Y_DISCLOSURE_VERSION = "a11y_disclosure_version"
     private const val KEY_KNOWN_SUBSCRIBER = "known_subscriber"
+    private const val KEY_MONITORING_WANTED = "monitoring_wanted"
+    private const val KEY_AUTOSTART_CONFIRMED = "autostart_confirmed"
     private const val A11Y_DISCLOSURE_VERSION = 1
 }
 

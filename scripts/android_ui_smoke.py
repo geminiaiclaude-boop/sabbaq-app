@@ -72,6 +72,7 @@ cases = [
     ('welcome-example', 'welcome-example', False, 1.0, None),
     ('welcome-ready', 'welcome-ready', False, 1.0, None),
     ('login', 'login', False, 1.0, None),
+    ('login-trial', 'login-trial', False, 1.0, None),
     ('dashboard', 'dashboard', False, 1.0, None),
     ('filters', 'filters', False, 1.0, None),
     ('simulator', 'simulator', False, 1.0, None),

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Direct distribution only: lets the app ask Android, in one tap, to exempt it from battery
+     optimization so monitoring keeps running. Google Play restricts this permission, so the
+     Play build opens the battery settings list instead (see PowerSetup). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+</manifest>
