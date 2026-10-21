@@ -472,15 +472,18 @@ internal fun QannasHowItWorksScene(modifier: Modifier = Modifier) {
         label = "pipeline-clock",
     )
     val density = LocalDensity.current.density
+    // Stages read in the layout direction (right to left in Arabic); the light follows them.
+    val rtl = androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl
     Box(modifier.fillMaxWidth().height(196.dp)) {
-        // The path the light travels along, drawn behind the cards.
+        // The track runs beneath the cards so the moving light never crosses their text.
         Canvas(Modifier.matchParentSize()) {
-            val y = size.height * 0.46f
+            val y = size.height * 0.94f
             val start = size.width * 0.14f
             val end = size.width * 0.86f
             drawLine(brand.onHero.copy(alpha = 0.18f), Offset(start, y), Offset(end, y), strokeWidth = 3f * density, cap = StrokeCap.Round)
             val t = clock?.value ?: 2f
-            val x = start + (end - start) * (t / 3f).coerceIn(0f, 1f)
+            val progress = (t / 3f).coerceIn(0f, 1f)
+            val x = if (rtl) end - (end - start) * progress else start + (end - start) * progress
             drawCircle(Brush.radialGradient(listOf(brand.heroAccent, Color.Transparent), center = Offset(x, y), radius = 22f * density),
                 radius = 22f * density, center = Offset(x, y))
             drawCircle(brand.heroAccent, radius = 4f * density, center = Offset(x, y))
