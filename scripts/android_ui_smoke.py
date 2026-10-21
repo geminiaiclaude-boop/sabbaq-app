@@ -157,23 +157,33 @@ apply_environment(None)
 adb('shell', 'settings', 'put', 'global', 'animator_duration_scale', '1')
 motion = {}
 
+def content_digest(raw):
+    """Digest of the app's content rows only: status/navigation bars (clock, network icons)
+    change on their own and must not count as app motion. raw = `screencap` without -p."""
+    width = int.from_bytes(raw[0:4], 'little')
+    height = int.from_bytes(raw[4:8], 'little')
+    header = len(raw) - width * height * 4
+    top, bottom = int(height * 0.08), int(height * 0.92)
+    return hashlib.sha256(raw[header + top * width * 4: header + bottom * width * 4]).hexdigest()
+
+
 def capture_motion(tag, extras, delays):
     activity = 'MainActivity' if extras is None else 'DesignPreviewActivity'
     adb('shell', 'am', 'force-stop', args.package)
-    adb('shell', 'am', 'start', '-n', f'{args.package}/app.qannas.ui.{activity}', *(extras or []), timeout=60)
+    # -W returns once the app has drawn its first frame, so the system splash is not measured.
+    adb('shell', 'am', 'start', '-W', '-n', f'{args.package}/app.qannas.ui.{activity}', *(extras or []), timeout=60)
     digests = []
     for index, delay in enumerate(delays):
         time.sleep(delay)
-        frame = adb('exec-out', 'screencap', '-p', binary=True)
-        (out / f'motion-{tag}-{index}.png').write_bytes(frame)
-        digests.append(hashlib.sha256(frame).hexdigest())
+        (out / f'motion-{tag}-{index}.png').write_bytes(adb('exec-out', 'screencap', '-p', binary=True))
+        digests.append(content_digest(adb('exec-out', 'screencap', binary=True)))
     motion[tag] = {'frames': len(digests), 'distinct': len(set(digests))}
     print(f'motion {tag}: {motion[tag]}', flush=True)
     assert len(set(digests)) > 1, f'No motion captured: {tag}'
 
-capture_motion('intro', None, [0.3, 0.4, 0.4, 0.5])
-capture_motion('welcome', ['--es', 'screen', 'welcome', '--ez', 'dark', 'false'], [2.5, 0.6, 0.6, 0.6])
-capture_motion('dashboard', ['--es', 'screen', 'dashboard', '--ez', 'dark', 'false'], [2.0, 0.5, 0.5])
+capture_motion('intro', None, [0.1, 0.3, 0.3, 0.3])
+capture_motion('welcome', ['--es', 'screen', 'welcome', '--ez', 'dark', 'false'], [1.5, 0.5, 0.5, 0.5])
+capture_motion('dashboard', ['--es', 'screen', 'dashboard', '--ez', 'dark', 'false'], [1.0, 0.5, 0.5, 0.5])
 adb('shell', 'settings', 'put', 'global', 'animator_duration_scale', '0')
 (out / 'motion.json').write_text(json.dumps(motion, indent=2))
 adb('shell', 'am', 'force-stop', args.package)
