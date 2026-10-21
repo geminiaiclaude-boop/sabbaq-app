@@ -81,10 +81,27 @@ for name, screen, dark, font_scale, env in cases:
     window = adb('shell', 'dumpsys', 'window', 'windows')
     activity_state = adb('shell', 'dumpsys', 'activity', 'activities')
     assert args.package in window + activity_state, f'Package is not visible: {name}'
-    adb('shell', 'uiautomator', 'dump', '/sdcard/qannas-ui.xml', timeout=60)
-    xml = adb('shell', 'cat', '/sdcard/qannas-ui.xml')
-    (out / f'{name}.xml').write_text(xml)
-    nodes = ET.fromstring(xml).findall('.//node')
+    # On a freshly booted emulator a system window (launcher, "not responding" prompt) can
+    # still sit above the app on the first case; bring the app back to front and dump again.
+    for attempt in range(6):
+        adb('shell', 'uiautomator', 'dump', '/sdcard/qannas-ui.xml', timeout=60)
+        xml = adb('shell', 'cat', '/sdcard/qannas-ui.xml')
+        (out / f'{name}.xml').write_text(xml)
+        nodes = ET.fromstring(xml).findall('.//node')
+        if any(node.get('package') == args.package for node in nodes):
+            break
+        print(f'{name}: app tree not on top (attempt {attempt + 1}), relaunching', flush=True)
+        # The emulator's own launcher often raises "isn't responding" right after boot.
+        # Close that system dialog; it belongs to another package, never to the app under test.
+        for node in nodes:
+            if node.get('resource-id') in ('android:id/aerr_close', 'android:id/aerr_wait') and node.get('package') != args.package:
+                x1, y1, x2, y2 = map(int, re.findall(r'\d+', node.get('bounds', '')))
+                print(f'{name}: dismissing system dialog {node.get("resource-id")}', flush=True)
+                adb('shell', 'input', 'tap', str((x1 + x2) // 2), str((y1 + y2) // 2))
+                time.sleep(2)
+                break
+        adb(*command, timeout=60)
+        time.sleep(5)
     assert any(node.get('package') == args.package for node in nodes), f'No app accessibility tree: {name}'
     visible = ' '.join(node.get('text', '') + ' ' + node.get('content-desc', '') for node in nodes)
     for jargon in ('GOOGLE_WEB_CLIENT_ID', 'RPC', 'JSON', 'تعرض هذه المعلومات للقراءة فقط', 'تجربة محلية للتعلّم'):
