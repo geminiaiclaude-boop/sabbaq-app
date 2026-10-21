@@ -56,8 +56,9 @@ def reachable_by_scrolling(text, visible):
     """True when [text] is on screen now or appears after scrolling the page down."""
     if text in visible:
         return True
-    for _ in range(8):
-        adb('shell', 'input', 'swipe', '540', '1700', '540', '500', '250')
+    # Short, slow drags so no section in the middle of the page is flung past.
+    for _ in range(16):
+        adb('shell', 'input', 'swipe', '540', '1500', '540', '1000', '700')
         time.sleep(1)
         adb('shell', 'uiautomator', 'dump', '/sdcard/qannas-ui.xml', timeout=60)
         scrolled = ET.fromstring(adb('shell', 'cat', '/sdcard/qannas-ui.xml')).findall('.//node')
@@ -72,6 +73,7 @@ cases = [
     ('welcome-example', 'welcome-example', False, 1.0, None),
     ('welcome-ready', 'welcome-ready', False, 1.0, None),
     ('login', 'login', False, 1.0, None),
+    ('login-trial', 'login-trial', False, 1.0, None),
     ('dashboard', 'dashboard', False, 1.0, None),
     ('filters', 'filters', False, 1.0, None),
     ('simulator', 'simulator', False, 1.0, None),
@@ -138,7 +140,8 @@ for name, screen, dark, font_scale, env in cases:
     for jargon in ('GOOGLE_WEB_CLIENT_ID', 'RPC', 'JSON', 'تعرض هذه المعلومات للقراءة فقط', 'تجربة محلية للتعلّم'):
         assert jargon not in visible, f'Developer-facing copy in customer screen {name}: {jargon}'
     if screen == 'welcome-example':
-        assert '٢٫٥ ر.س قبل التكاليف' in visible, f'Concrete fare/distance example missing: {name}'
+        # The pipeline scene leads the page; the worked example sits below it.
+        assert reachable_by_scrolling('٢٫٥ ر.س قبل التكاليف', visible), f'Concrete fare/distance example missing: {name}'
     if env == 'offline':
         # The app-wide offline banner must tell the driver what needs a connection.
         assert 'لا يوجد اتصال بالإنترنت' in visible, f'Offline banner missing: {name}'

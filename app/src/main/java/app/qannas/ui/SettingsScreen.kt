@@ -64,6 +64,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccessibilityNew
+import androidx.compose.material.icons.outlined.Autorenew
+import androidx.compose.material.icons.outlined.BatteryChargingFull
+import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.FilterAlt
@@ -206,6 +210,8 @@ fun SettingsScreen(
     var isActive by remember { mutableStateOf(Settings.isActive) }
     var accessibilityEnabled by remember(context) { mutableStateOf(context.isQannasAccessibilityEnabled()) }
     var notificationsEnabled by remember(context) { mutableStateOf(context.hasNotificationPermission()) }
+    var batteryUnrestricted by remember(context) { mutableStateOf(PowerSetup.isBatteryUnrestricted(context)) }
+    var autostartDone by remember { mutableStateOf(!PowerSetup.needsAutostart() || Settings.autostartConfirmed) }
     var licenseInMemory by remember { mutableStateOf(SupabaseClient.hasValidLicense()) }
     var checkingActivation by remember { mutableStateOf(false) }
     var showActivationConsent by remember { mutableStateOf(false) }
@@ -241,6 +247,8 @@ fun SettingsScreen(
         val licensed = SupabaseClient.hasValidLicense() // لقطة ذاكرية فقط؛ لا شبكة في النبض الدوري.
         accessibilityEnabled = a11y
         notificationsEnabled = notifications
+        batteryUnrestricted = PowerSetup.isBatteryUnrestricted(context)
+        autostartDone = !PowerSetup.needsAutostart() || Settings.autostartConfirmed
         licenseInMemory = licensed
         val persistedActive = Settings.isActive
         if (persistedActive != isActive) isActive = persistedActive
@@ -515,6 +523,19 @@ fun SettingsScreen(
                 onOpenFilters = { navigateTo(DriverDestination.Filters) },
                 onOpenAccount = { navigateTo(DriverDestination.Account) },
                 onOpenSetupGuide = { navigateTo(DriverDestination.Setup) },
+                batteryUnrestricted = batteryUnrestricted,
+                autostartNeeded = PowerSetup.needsAutostart(),
+                autostartDone = autostartDone,
+                onOpenBattery = {
+                    runCatching { context.startActivity(PowerSetup.batteryIntent(context)) }
+                        .recoverCatching { context.startActivity(PowerSetup.appDetailsIntent(context)) }
+                },
+                onOpenAutostart = {
+                    runCatching { context.startActivity(PowerSetup.autostartIntent(context)) }
+                    // The setting cannot be read back; opening it is taken as done, and the row explains what to switch on.
+                    Settings.autostartConfirmed = true
+                    autostartDone = true
+                },
             )
 
             DriverDestination.Setup -> DriverPage {
@@ -558,6 +579,18 @@ fun SettingsScreen(
                             actionLabel = "السماح بالتنبيهات",
                             done = notificationsEnabled,
                             onAction = onRequestNotificationPermission,
+                        ),
+                        SetupStep(
+                            icon = Icons.Outlined.BatteryChargingFull,
+                            title = "اسمح له بالعمل دون قيود البطارية",
+                            why = "بدون هذا قد يوقف أندرويد قناص عند قفل الشاشة أو بعد فترة. يستهلك قناص القليل من البطارية لأنه ينتظر فقط ظهور الطلبات.",
+                            doneText = "لن يوقفه توفير الطاقة",
+                            actionLabel = "السماح",
+                            done = batteryUnrestricted,
+                            onAction = {
+                                runCatching { context.startActivity(PowerSetup.batteryIntent(context)) }
+                                    .recoverCatching { context.startActivity(PowerSetup.appDetailsIntent(context)) }
+                            },
                         ),
                         SetupStep(
                             icon = Icons.Outlined.VerifiedUser,
@@ -688,6 +721,11 @@ private fun DashboardPage(
     onOpenFilters: () -> Unit,
     onOpenAccount: () -> Unit,
     onOpenSetupGuide: () -> Unit,
+    batteryUnrestricted: Boolean = true,
+    autostartNeeded: Boolean = false,
+    autostartDone: Boolean = true,
+    onOpenBattery: () -> Unit = {},
+    onOpenAutostart: () -> Unit = {},
 ) = DriverPage {
     val readiness = listOf(
         ReadinessItem(Icons.Outlined.FilterAlt, "شروط الطلبات", activeFilterCount > 0,
@@ -699,12 +737,21 @@ private fun DashboardPage(
         ReadinessItem(Icons.Outlined.VerifiedUser, "حالة الاشتراك", licenseInMemory,
             "جاهز للعمل", "تحتاج إلى تحقق", "فتح حسابي", onOpenAccount),
     )
+    // What keeps it running when the screen locks, the phone sleeps or restarts.
+    val power = buildList {
+        add(ReadinessItem(Icons.Outlined.BatteryChargingFull, "العمل دون قيود البطارية", batteryUnrestricted,
+            "لن يوقفه توفير الطاقة", "قد يوقفه أندرويد عند قفل الشاشة", "السماح", onOpenBattery))
+        if (autostartNeeded) add(ReadinessItem(Icons.Outlined.RestartAlt, "التشغيل التلقائي في جوالك", autostartDone,
+            "مفعّل لقناص", "فعّل «التشغيل التلقائي» لقناص", "فتح الإعداد", onOpenAutostart))
+    }
     val readyCount = readiness.count { it.ready }
+    val allCount = readiness.size + power.size
+    val allReady = readyCount + power.count { it.ready }
     OperationHero(
         isActive = isActive,
         isChecking = isCheckingActivation,
-        readyCount = readyCount,
-        totalCount = readiness.size,
+        readyCount = allReady,
+        totalCount = allCount,
         onToggle = onToggle,
         modifier = Modifier.qannasEntrance(0),
     )
@@ -738,7 +785,24 @@ private fun DashboardPage(
         )
     }
 
-    QannasCard(title = "أثناء وقت العمل", icon = Icons.Outlined.Info, modifier = Modifier.qannasEntrance(2)) {
+    val powerReady = power.all { it.ready }
+    QannasCard(
+        title = if (powerReady) "يعمل بكامل طاقته" else "ليعمل بكامل طاقته",
+        subtitle = if (powerReady) "يستمر مع قفل الشاشة، ويعود تلقائيًا بعد إعادة تشغيل الجوال."
+            else "حتى لا يوقفه أندرويد أثناء قفل الشاشة أو بعد إعادة التشغيل.",
+        icon = Icons.Outlined.Bolt,
+        modifier = Modifier.qannasEntrance(2),
+    ) {
+        power.forEachIndexed { index, item ->
+            if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            ReadinessRow(item)
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        ReadinessRow(ReadinessItem(Icons.Outlined.Autorenew, "الاستئناف بعد إعادة التشغيل", true,
+            "تلقائي إذا تركت المتابعة تعمل", "", "", {}))
+    }
+
+    QannasCard(title = "أثناء وقت العمل", icon = Icons.Outlined.Info, modifier = Modifier.qannasEntrance(3)) {
         Text(
             "يتابع قناص الطلبات الظاهرة وفق سعر الطلب والعائد لكل كم ومسافة الوصول وأوقات العمل التي حددتها. " +
                 "عند ظهور طلب مطابق، يمكنه النقر عليه تلقائيًا. يمكنك إيقاف المتابعة في أي وقت.",
@@ -775,7 +839,9 @@ private fun OperationHero(
     val brand = LocalQannasBrand.current
     QannasHeroSurface(modifier, sceneActive = isActive) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            LiveStatusMark(isActive = isActive)
+            if (isActive) LiveStatusMark(isActive = true)
+            else QannasProgressCoin(done = readyCount, total = totalCount,
+                modifier = Modifier.semantics { stateDescription = "جاهزية $readyCount من $totalCount" })
             Column(modifier = Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite }) {
                 AnimatedContent(
                     targetState = isActive,
@@ -786,8 +852,8 @@ private fun OperationHero(
                         Text(if (active) "متابعة الطلبات تعمل" else "متابعة الطلبات متوقفة", style = MaterialTheme.typography.titleLarge)
                         Text(
                             if (active) "تُطبّق شروطك المحفوظة وأوقات عملك."
-                            else if (readyCount < totalCount) "اكتمل $readyCount من $totalCount متطلبات. أكمل البقية أدناه."
-                            else "كل المتطلبات جاهزة. ابدأ عندما تكون مستعدًا.",
+                            else if (readyCount < totalCount) "جاهزية $readyCount من $totalCount. أكمل البقية أدناه ليعمل بكامل طاقته."
+                            else "كل شيء جاهز ليعمل بكامل طاقته. ابدأ عندما تكون مستعدًا.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = brand.onHeroMuted,
                         )

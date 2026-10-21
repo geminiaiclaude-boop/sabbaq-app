@@ -76,6 +76,8 @@ class MainActivity : ComponentActivity() {
                 notificationsGranted = it
             }
             val endSession = {
+                // Signing out ends automatic resume too; clearSession() also wipes the saved session.
+                Settings.monitoringWanted = false
                 Settings.isActive = false
                 Settings.a11yDisclosureAccepted = false
                 stopService(Intent(this@MainActivity, KeeperService::class.java))
@@ -128,14 +130,16 @@ class MainActivity : ComponentActivity() {
                                             error("راجع طريقة عمل القبول التلقائي ووافق عليها قبل التشغيل")
                                         }
                                         check(SupabaseClient.hasValidLicense()) { "يلزم اشتراك صالح قبل التشغيل" }
+                                        Settings.monitoringWanted = true
                                         Settings.isActive = true
                                         startForegroundService(intent)
                                     } else {
+                                        Settings.monitoringWanted = false
                                         Settings.isActive = false
                                         stopService(intent)
                                     }
                                     Unit
-                                }.onFailure { if (start) Settings.isActive = false } },
+                                }.onFailure { if (start) { Settings.isActive = false; Settings.monitoringWanted = false } } },
                                 onUnsavedFiltersChanged = { unsavedFilters = it },
                                 onAccountDeleted = {
                                     val wiped = Settings.clearAccountData()

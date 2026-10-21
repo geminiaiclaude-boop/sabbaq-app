@@ -8,7 +8,7 @@ object OnboardingPreferences {
     private const val KEY_COMPLETE = "complete"
     private const val KEY_VERSION = "completed_version"
     // 3: the redesigned introduction is shown once to drivers who saw the previous one.
-    private const val CURRENT_VERSION = 3
+    private const val CURRENT_VERSION = 4
 
     fun isComplete(context: Context): Boolean = runCatching {
         preferences(context).getBoolean(KEY_COMPLETE, false) &&

@@ -125,16 +125,10 @@ fun OnboardingScreen(onContinue: () -> Unit, initialPage: Int = 0) {
                         page = page,
                         onSkip = onContinue
                     )
-                    val progress by animateFloatAsState(
-                        targetValue = (page + 1).toFloat() / ONBOARDING_PAGES,
-                        animationSpec = tween(QannasMotion.LONG, easing = QannasMotion.Emphasized),
-                        label = "onboarding-progress",
-                    )
-                    LinearProgressIndicator(
-                        progress = { progress },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .semantics { stateDescription = "الصفحة ${page + 1} من $ONBOARDING_PAGES" }
+                    QannasPageDots(
+                        page = page,
+                        count = ONBOARDING_PAGES,
+                        modifier = Modifier.semantics { stateDescription = "الصفحة ${page + 1} من $ONBOARDING_PAGES" },
                     )
 
                     QannasDepthContent(target = page, order = { it }, label = "onboarding-page") { shown ->
@@ -284,10 +278,14 @@ private fun DriverValue(title: String, detail: String, icon: ImageVector? = null
 
 @Composable
 private fun ReadyPage(canShowTrialJourney: Boolean) {
+    QannasHeroSurface(Modifier.qannasEntrance(0), sceneActive = true) {
+        Text("جاهز ليوم عمل أذكى؟", style = MaterialTheme.typography.headlineSmall)
+        Text("ثلاث خطوات وتكون مستعدًا، ونرافقك بعد الدخول خطوة بخطوة.", style = MaterialTheme.typography.bodyMedium,
+            color = LocalQannasBrand.current.onHeroMuted)
+    }
     QannasCard(
-        title = "جاهز ليوم عمل أذكى؟",
-        subtitle = "ثلاث خطوات وتكون مستعدًا.",
-        modifier = Modifier.qannasEntrance(0),
+        title = "خطواتك الثلاث",
+        modifier = Modifier.qannasEntrance(1),
     ) {
         DriverValue(
             icon = Icons.AutoMirrored.Outlined.Login,
@@ -317,7 +315,7 @@ private fun ReadyPage(canShowTrialJourney: Boolean) {
     QannasCard(
         title = "صلاحياتك بقرارك",
         icon = Icons.Outlined.PrivacyTip,
-        modifier = Modifier.qannasEntrance(1),
+        modifier = Modifier.qannasEntrance(2),
     ) {
         Text(
             "سنوضح لك ما يقرأه قناص وكيف يستخدمه قبل طلب الإذن. لا تُشغّل الميزة إلا بموافقتك.",
@@ -331,9 +329,16 @@ private fun DecisionPreviewPage(
     selectedSignals: Set<DecisionSignal>,
     onSignalChange: (DecisionSignal) -> Unit
 ) {
+    QannasHeroSurface(Modifier.qannasEntrance(0), scene = false) {
+        Text("كيف يعمل قناص؟", style = MaterialTheme.typography.headlineSmall)
+        Text("ثلاث لحظات في كل طلب، وأنت تحدد القرار مسبقًا.", style = MaterialTheme.typography.bodyMedium,
+            color = LocalQannasBrand.current.onHeroMuted)
+        QannasHowItWorksScene()
+    }
     QannasCard(
         title = "هل يستحق هذا المشوار؟",
-        subtitle = "مثال توضيحي: أجرة ٤٥ ر.س لمشوار ١٥ كم."
+        subtitle = "مثال توضيحي: أجرة ٤٥ ر.س لمشوار ١٥ كم.",
+        modifier = Modifier.qannasEntrance(1),
     ) {
         QannasSectionTitle(
             title = "اختر ما يهمك",
@@ -351,7 +356,8 @@ private fun DecisionPreviewPage(
 
     QannasCard(
         title = "تفاصيل المثال",
-        subtitle = "أرقام للتوضيح فقط، وليست طلبًا فعليًا."
+        subtitle = "أرقام للتوضيح فقط، وليست طلبًا فعليًا.",
+        modifier = Modifier.qannasEntrance(2),
     ) {
         Text(localDecisionPreview(selectedSignals), style = MaterialTheme.typography.bodyLarge)
         Text("أجرة الطلب ليست ربحًا صافيًا؛ التكاليف تختلف حسب مشوارك.",

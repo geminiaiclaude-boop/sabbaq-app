@@ -22,6 +22,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material.icons.outlined.FilterAlt
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CheckCircle
@@ -443,5 +446,96 @@ internal fun QannasProgressCoin(done: Int, total: Int, modifier: Modifier = Modi
             )
         }
         Text("$done/$total", style = MaterialTheme.typography.titleLarge, color = brand.onHero, modifier = Modifier.padding(bottom = 8.dp))
+    }
+}
+
+private data class PipelineStage(val icon: androidx.compose.ui.graphics.vector.ImageVector, val title: String, val detail: String)
+
+/**
+ * How Qannas works, as three cards standing in depth: an offer appears, it is compared with
+ * the driver's conditions, the matching one is accepted. A light travels along the path and
+ * lifts each card in turn; with reduced motion the third (the outcome) stays highlighted.
+ */
+@Composable
+internal fun QannasHowItWorksScene(modifier: Modifier = Modifier) {
+    val brand = LocalQannasBrand.current
+    val reduced = LocalReducedMotion.current
+    val stages = listOf(
+        PipelineStage(Icons.Outlined.NearMe, "يظهر طلب", "في تطبيق الرحلات"),
+        PipelineStage(Icons.Outlined.FilterAlt, "يقارنه بشروطك", "الأجرة والمسافة والوقت"),
+        PipelineStage(Icons.Outlined.CheckCircle, "يقبل المطابق", "بنقرة واحدة"),
+    )
+    val clock = if (reduced) null else rememberInfiniteTransition(label = "pipeline").animateFloat(
+        initialValue = 0f,
+        targetValue = 3f,
+        animationSpec = infiniteRepeatable(tween(4_200, easing = LinearEasing)),
+        label = "pipeline-clock",
+    )
+    val density = LocalDensity.current.density
+    // Stages read in the layout direction (right to left in Arabic); the light follows them.
+    val rtl = androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl
+    Box(modifier.fillMaxWidth().height(196.dp)) {
+        // The track runs beneath the cards so the moving light never crosses their text.
+        Canvas(Modifier.matchParentSize()) {
+            val y = size.height * 0.94f
+            val start = size.width * 0.14f
+            val end = size.width * 0.86f
+            drawLine(brand.onHero.copy(alpha = 0.18f), Offset(start, y), Offset(end, y), strokeWidth = 3f * density, cap = StrokeCap.Round)
+            val t = clock?.value ?: 2f
+            val progress = (t / 3f).coerceIn(0f, 1f)
+            val x = if (rtl) end - (end - start) * progress else start + (end - start) * progress
+            drawCircle(Brush.radialGradient(listOf(brand.heroAccent, Color.Transparent), center = Offset(x, y), radius = 22f * density),
+                radius = 22f * density, center = Offset(x, y))
+            drawCircle(brand.heroAccent, radius = 4f * density, center = Offset(x, y))
+        }
+        Row(Modifier.matchParentSize(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+            stages.forEachIndexed { index, stage ->
+                val focus = clock?.let { (1f - kotlin.math.abs(it.value - (index + 0.5f))).coerceIn(0f, 1f) } ?: if (index == 2) 1f else 0f
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    color = if (focus > 0.5f) brand.onHero else brand.onHero.copy(alpha = 0.12f),
+                    contentColor = if (focus > 0.5f) brand.heroStart else brand.onHero,
+                    shadowElevation = (4f + 14f * focus).dp,
+                    modifier = Modifier
+                        .width(98.dp)
+                        .graphicsLayer {
+                            // Each card turns slightly toward the middle and rises as the light reaches it.
+                            rotationY = (1 - index) * -14f
+                            rotationX = 8f
+                            translationY = -10f * density * focus
+                            scaleX = 0.94f + 0.08f * focus
+                            scaleY = 0.94f + 0.08f * focus
+                            cameraDistance = 10f * density
+                        },
+                ) {
+                    Column(Modifier.padding(vertical = 14.dp, horizontal = 8.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Icon(stage.icon, contentDescription = null, modifier = Modifier.size(26.dp))
+                        Text(stage.title, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center)
+                        Text(stage.detail, style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center,
+                            color = LocalContentColor.current.copy(alpha = 0.75f))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Page dots for a short tour: the current page stretches into a pill. */
+@Composable
+internal fun QannasPageDots(page: Int, count: Int, modifier: Modifier = Modifier) {
+    val colors = MaterialTheme.colorScheme
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        repeat(count) { index ->
+            val width by androidx.compose.animation.core.animateDpAsState(
+                if (index == page) 28.dp else 8.dp, tween(QannasMotion.MEDIUM, easing = QannasMotion.Emphasized), label = "dot-$index")
+            Box(
+                Modifier
+                    .height(8.dp)
+                    .width(width)
+                    .clip(RoundedCornerShape(50))
+                    .background(if (index <= page) colors.primary else colors.outlineVariant),
+            )
+        }
     }
 }
