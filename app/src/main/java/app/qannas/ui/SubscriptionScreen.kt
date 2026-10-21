@@ -341,7 +341,7 @@ internal fun SubscriptionScreen(
 
         CrashReportCard()
 
-        QannasCard(title = "حذف الحساب", icon = Icons.Outlined.DeleteForever, modifier = Modifier.qannasEntrance(4)) {
+        QannasCard(title = "حذف الحساب", icon = Icons.Outlined.DeleteForever, modifier = Modifier.qannasEntrance(4), destructive = true) {
             Text(
                 "يحذف حسابك واشتراكك وشروطك وبيانات الجهاز المرتبطة نهائيًا. لا يمكن التراجع عن الحذف، ولا تُستعاد مدة اشتراك متبقية.",
                 style = MaterialTheme.typography.bodyMedium,

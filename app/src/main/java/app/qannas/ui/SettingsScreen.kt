@@ -111,6 +111,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -548,7 +549,16 @@ private fun DriverNavigationShell(
                             selected = destination == item.destination,
                             onClick = { onDestinationSelected(item.destination) },
                             icon = { Icon(item.icon, contentDescription = item.label) },
-                            label = { Text(item.label) },
+                            // The rail item is a fixed 80dp; two centred lines keep labels like
+                            // «طلبات تناسبك» whole instead of clipping at the screen edge.
+                            label = {
+                                Text(
+                                    item.label,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 2,
+                                )
+                            },
                         )
                     }
                 }

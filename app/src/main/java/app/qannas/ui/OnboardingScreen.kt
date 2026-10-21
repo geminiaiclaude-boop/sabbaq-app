@@ -54,6 +54,7 @@ import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.PrivacyTip
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.Verified
 import androidx.compose.ui.graphics.vector.ImageVector
 
 private const val ONBOARDING_PAGES = 3
@@ -301,6 +302,7 @@ private fun ReadyPage(canShowTrialJourney: Boolean) {
             detail = "بعد منح الإذن، يمكنه قبول الطلب المطابق تلقائيًا. الإيقاف دائمًا بيدك."
         )
         DriverValue(
+            icon = Icons.Outlined.Verified,
             title = if (canShowTrialJourney) "جرّبه قبل الاشتراك" else "اكتشف خيارات حسابك",
             detail = if (canShowTrialJourney) {
                 "سجّل الدخول لنتحقق من أهليتك. تبدأ التجربة عندما تؤكدها، وليس أثناء هذه الجولة."
@@ -331,8 +333,8 @@ private fun DecisionPreviewPage(
         subtitle = "مثال توضيحي: أجرة ٤٥ ر.س لمشوار ١٥ كم."
     ) {
         QannasSectionTitle(
-            title = "اعرض التفاصيل التي تهمك",
-            subtitle = "اضغط لإظهار أو إخفاء التفاصيل التي تهمك."
+            title = "اختر ما يهمك",
+            subtitle = "اضغط على أي تفصيل لإظهاره في المثال أو إخفائه."
         )
         DecisionSignal.entries.forEach { signal ->
             FilterChip(
