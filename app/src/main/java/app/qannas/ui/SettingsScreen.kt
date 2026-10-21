@@ -180,10 +180,10 @@ fun SettingsScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     var destination by rememberSaveable {
+        // First open after sign-in always starts with the guide; afterwards it is one tap away
+        // from the dashboard.
         val needsSetup = autoSetupGuide && initialDestination == DriverDestination.Dashboard &&
-            !SetupGuidePreferences.isDone(context) &&
-            !(Settings.filters.anyActive() && context.isQannasAccessibilityEnabled() &&
-                context.hasNotificationPermission() && SupabaseClient.hasValidLicense())
+            !SetupGuidePreferences.isDone(context)
         mutableStateOf(if (needsSetup) DriverDestination.Setup else initialDestination)
     }
     var savedFilters by remember { mutableStateOf(Settings.filters) }
@@ -727,9 +727,12 @@ private fun DashboardPage(
             if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             ReadinessRow(item)
         }
-        if (readyCount < readiness.size) {
-            QannasButton("دليل الإعداد خطوة بخطوة", onClick = onOpenSetupGuide, style = QannasButtonStyle.Secondary, icon = Icons.Outlined.Tune)
-        }
+        QannasButton(
+            if (readyCount < readiness.size) "أكمل الإعداد خطوة بخطوة" else "دليل الإعداد",
+            onClick = onOpenSetupGuide,
+            style = if (readyCount < readiness.size) QannasButtonStyle.Secondary else QannasButtonStyle.Text,
+            icon = Icons.Outlined.Tune,
+        )
     }
 
     QannasCard(title = "أثناء وقت العمل", icon = Icons.Outlined.Info, modifier = Modifier.qannasEntrance(2)) {
