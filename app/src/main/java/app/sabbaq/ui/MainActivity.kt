@@ -170,6 +170,9 @@ class MainActivity : ComponentActivity() {
                         confirmButton = { TextButton(onClick = { permissionMessage = null }) { Text("حسنًا") } }
                     ) }
                     if (showIntro) SabbaqLaunchIntro(onFinished = { showIntro = false })
+                    // Access just granted (code or trial): celebrate over everything, once.
+                    val celebration by Celebrations.current.collectAsState()
+                    celebration?.let { ActivationCelebration(it, onDone = Celebrations::dismiss) }
                 }
             }
         }
