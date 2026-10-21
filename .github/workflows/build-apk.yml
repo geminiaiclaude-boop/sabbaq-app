@@ -54,16 +54,24 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO_ID: ${{ github.repository_id }}
+          WORKFLOW_PATH: .github/workflows/build-apk.yml
         run: |
           set -euo pipefail
           tree="$(git rev-parse 'HEAD^{tree}')"
           echo "tree=${tree}" >> "$GITHUB_OUTPUT"
           verified=false
           if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
-            # Only markers produced by this repository's own runs count (never a fork's).
-            count="$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?name=sabbaq-verified-${tree}&per_page=20" \
-              --jq "[.artifacts[] | select(.expired == false and .workflow_run.head_repository_id == ${REPO_ID})] | length")"
-            if [[ "${count:-0}" -ge 1 ]]; then verified=true; fi
+            # A marker is only a pointer to a run; the run itself must prove the tree passed:
+            # this repository (never a fork), this workflow file, a pull_request run, finished
+            # successfully. Its workflow definition is part of this same tree, so it is exactly
+            # the definition now merged into main (a run cannot vouch with a different one).
+            runs="$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?name=sabbaq-verified-${tree}&per_page=20" \
+              --jq "[.artifacts[] | select(.expired == false and .workflow_run.head_repository_id == ${REPO_ID}) | .workflow_run.id] | unique | .[]")"
+            for run in ${runs}; do
+              ok="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run}" \
+                --jq "(.path == \"${WORKFLOW_PATH}\") and (.event == \"pull_request\") and (.status == \"completed\") and (.conclusion == \"success\") and (.head_repository.id == ${REPO_ID})")"
+              if [[ "${ok}" == "true" ]]; then verified=true; echo "Verified by run ${run}"; break; fi
+            done
           fi
           echo "verified=${verified}" >> "$GITHUB_OUTPUT"
           echo "Tree ${tree}: already verified = ${verified}"
