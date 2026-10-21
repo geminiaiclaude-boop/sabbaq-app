@@ -452,6 +452,7 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit, initialIntent: AccessIntent =
             try {
                 val result = SupabaseClient.startTrial()
                 if (result.getOrNull() == true && SupabaseClient.hasValidLicense()) {
+                    Celebrations.accessGranted(SupabaseClient.subscriptionSnapshot())
                     completeLogin(isAdmin)
                 } else {
                     activationError = trialErrorMessage(result.exceptionOrNull())
@@ -484,6 +485,7 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit, initialIntent: AccessIntent =
                 }
                 val revalidated = SupabaseClient.revalidateLicense()
                 if (revalidated.getOrNull() == true && SupabaseClient.hasValidLicense()) {
+                    Celebrations.accessGranted(SupabaseClient.subscriptionSnapshot())
                     completeLogin(isAdmin)
                 } else {
                     activationError = licenseErrorMessage(revalidated.exceptionOrNull())

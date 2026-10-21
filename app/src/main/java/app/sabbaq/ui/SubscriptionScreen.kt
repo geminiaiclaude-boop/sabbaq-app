@@ -51,6 +51,18 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import app.sabbaq.BuildConfig
+import app.sabbaq.Settings
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material.icons.outlined.WorkspacePremium
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.heading
+import app.sabbaq.ui.theme.LocalSabbaqBrand
+import app.sabbaq.ui.theme.tilt3D
 import app.sabbaq.network.LicenseState
 import app.sabbaq.network.PublicOffer
 import app.sabbaq.network.SubscriptionSnapshot
@@ -147,6 +159,7 @@ internal fun SubscriptionScreen(
             val result = SupabaseClient.revalidateLicense()
             snapshot = SupabaseClient.subscriptionSnapshot()
             onLicenseChanged(SupabaseClient.hasValidLicense())
+            if (snapshot?.state == LicenseState.ACTIVE) Settings.knownSubscriber = true
             if (showResult) {
                 when (result.getOrNull()) {
                     true -> onMessage("تم تحديث حالة الوصول إلى حسابك.", false)
@@ -191,7 +204,10 @@ internal fun SubscriptionScreen(
                 snapshot = SupabaseClient.subscriptionSnapshot()
                 onLicenseChanged(SupabaseClient.hasValidLicense())
                 when (result.getOrNull()) {
-                    true -> onMessage("بدأت التجربة. يمكنك الآن استكشاف أدوات سبّاق حتى موعد انتهائها الظاهر في حالة الوصول.", false)
+                    true -> {
+                        onMessage("بدأت التجربة. يمكنك الآن استكشاف أدوات سبّاق حتى موعد انتهائها الظاهر في حالة الوصول.", false)
+                        if (SupabaseClient.hasValidLicense()) Celebrations.accessGranted(snapshot)
+                    }
                     false -> onMessage("تغيّرت حالة التجربة، لكنها غير متاحة للاستخدام الآن.", true)
                     null -> onMessage(subscriptionRequestError(result.exceptionOrNull()), true)
                 }
@@ -240,6 +256,8 @@ internal fun SubscriptionScreen(
                 if (revalidation.getOrNull() == true && SupabaseClient.hasValidLicense()) {
                     activationCode = ""
                     onMessage("تم تفعيل الوصول إلى حسابك.", false)
+                    if (snapshot?.state == LicenseState.ACTIVE) Settings.knownSubscriber = true
+                    Celebrations.accessGranted(snapshot)
                 } else {
                     onMessage(
                         if (revalidation.isFailure) subscriptionRequestError(revalidation.exceptionOrNull())
@@ -287,8 +305,10 @@ internal fun SubscriptionScreen(
             onRefresh = { scope.launch { refreshLicense(showResult = true) } },
         )
 
-        // A paying subscriber is never shown trial options.
-        val subscribed = snapshot?.state == LicenseState.ACTIVE
+        // A paying subscriber is never sold to: no trial, no purchase steps. Until the server
+        // answers, a device that already saw this account subscribed is treated as subscribed.
+        val subscribed = snapshot?.state == LicenseState.ACTIVE ||
+            (snapshot == null && Settings.knownSubscriber)
         if (!subscribed) TrialCard(
             snapshot = snapshot,
             isStarting = isStartingTrial,
@@ -301,6 +321,7 @@ internal fun SubscriptionScreen(
             DirectDistributionCard(
                 offer = offer,
                 subscribed = subscribed,
+                subscribedUntil = snapshot?.proUntil ?: snapshot?.validUntil,
                 isLoadingOffer = isLoadingOffer,
                 isBusy = isRefreshingLicense || isStartingTrial || isRedeemingCode,
                 activationCode = activationCode,
@@ -544,6 +565,7 @@ private fun TrialCard(
 private fun DirectDistributionCard(
     offer: PublicOffer?,
     subscribed: Boolean,
+    subscribedUntil: Instant?,
     isLoadingOffer: Boolean,
     isBusy: Boolean,
     activationCode: String,
@@ -552,6 +574,15 @@ private fun DirectDistributionCard(
     onRetryOffer: () -> Unit,
     onOpenContact: (String) -> Unit,
 ) {
+    // Subscribers see their membership, not an offer. Renewal stays one tap away, and opens
+    // by itself in the last days so access never lapses by surprise.
+    val daysLeft = subscribedUntil?.let { CelebrationCopy.daysLeft(it, Instant.now()) }
+    var renewOpen by rememberSaveable { mutableStateOf(false) }
+    val showRenewal = !subscribed || renewOpen || (daysLeft != null && daysLeft <= RENEWAL_WINDOW_DAYS)
+    if (subscribed) MembershipCard(until = subscribedUntil, daysLeft = daysLeft, renewalVisible = showRenewal,
+        onRenewEarly = { renewOpen = true })
+    if (!showRenewal) return
+
     SabbaqCard(
         title = if (subscribed) "تجديد اشتراكك" else "اشتراك سبّاق",
         subtitle = "شروطك للأجرة والعائد لكل كم ومسافة الوصول وأوقات العمل، مع قبول تلقائي للطلب المطابق.",
@@ -599,6 +630,48 @@ private fun DirectDistributionCard(
             onClick = onRedeem,
             enabled = activationCode.isNotBlank() && !isBusy,
         )
+    }
+}
+
+private const val RENEWAL_WINDOW_DAYS = 5L
+
+/** The subscriber's pride card: a gold membership badge, the end date and days left. */
+@Composable
+private fun MembershipCard(until: Instant?, daysLeft: Long?, renewalVisible: Boolean, onRenewEarly: () -> Unit) {
+    val brand = LocalSabbaqBrand.current
+    val gold = Color(0xFFF2C14E)
+    Surface(
+        shape = MaterialTheme.shapes.extraLarge,
+        color = Color.Transparent,
+        shadowElevation = 10.dp,
+        modifier = Modifier.fillMaxWidth().sabbaqEntrance(1).tilt3D(maxDegrees = 6f, idle = false, restX = 4f),
+    ) {
+        Column(
+            Modifier
+                .background(Brush.linearGradient(listOf(brand.heroStart, brand.heroEnd)))
+                .padding(22.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Icon(Icons.Outlined.WorkspacePremium, contentDescription = null, tint = gold, modifier = Modifier.size(30.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("عضوية سبّاق المميّزة", style = MaterialTheme.typography.titleLarge, color = brand.onHero,
+                        modifier = Modifier.semantics { heading() })
+                    Text("اشتراكك فعّال، وسبّاق يعمل لك بكل مزاياه.", style = MaterialTheme.typography.bodyMedium, color = brand.onHeroMuted)
+                }
+            }
+            CelebrationCopy.validity(until, Instant.now())?.let {
+                Text(it, style = MaterialTheme.typography.titleMedium, color = gold)
+            }
+            if (!renewalVisible) {
+                TextButton(onClick = onRenewEarly, modifier = Modifier.heightIn(min = 48.dp)) {
+                    Text("جدّد مبكرًا", color = brand.onHero)
+                }
+            } else if (daysLeft != null && daysLeft <= RENEWAL_WINDOW_DAYS) {
+                Text("اقترب موعد التجديد، جدّد الآن لتستمر المتابعة دون انقطاع.", style = MaterialTheme.typography.bodyMedium,
+                    color = brand.onHero)
+            }
+        }
     }
 }
 

@@ -148,3 +148,31 @@ test('التحقق من إعداد Supabase وتحييد CSV يعملان بال
     assert.equal(toCsvField(' \t@SUM(A1:A2)'), `"' \t@SUM(A1:A2)"`);
     assert.equal(toCsvField('a"b'), '"a""b"');
 });
+
+test('على الجوال لا تتحرك اللوحة أفقيًا: صفوف الجداول بطاقات تحمل أسماء أعمدتها', () => {
+    const css = read(sourceAdmin, 'styles.css');
+    const app = read(sourceAdmin, 'app.js');
+    // The page itself never scrolls sideways.
+    assert.match(css, /html,\s*body\s*{[^}]*overflow-x:\s*hidden/);
+    // Below phone width the tables stop being wide grids: no 780px minimum, rows as cards.
+    const phone = css.slice(css.indexOf('@media (max-width: 700px)'));
+    assert.ok(phone.length > 0, 'phone layout block missing');
+    assert.match(phone, /table,\s*tbody,\s*tr,\s*td\s*{[^}]*display:\s*block[^}]*min-width:\s*0/);
+    assert.match(phone, /content:\s*attr\(data-label\)/);
+    // Every rendered table labels its cells for the card layout.
+    for (const render of ['renderDrivers', 'renderCodes']) {
+        const start = app.indexOf(`function ${render}(`);
+        const body = app.slice(start, app.indexOf('\n    }\n', start));
+        assert.match(body, /labelCells\(/, `${render} must label its cells`);
+    }
+    const labelCells = extractFunction(app, 'labelCells', 'appendEmptyRow');
+    const th = (text) => ({ textContent: ` ${text} ` });
+    const cells = [{ dataset: {} }, { dataset: {} }];
+    labelCells({
+        closest: () => ({ querySelectorAll: () => [th('الاسم'), th('الهاتف')] }),
+        rows: [{ cells }]
+    });
+    assert.deepEqual(cells.map((cell) => cell.dataset.label), ['الاسم', 'الهاتف']);
+    // Tabs wrap instead of scrolling sideways.
+    assert.doesNotMatch(css.slice(css.indexOf('/* ── Phone layout')), /overflow-x:\s*auto/);
+});

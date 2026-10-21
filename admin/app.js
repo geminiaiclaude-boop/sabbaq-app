@@ -834,7 +834,7 @@
         rows.forEach((driver) => {
             const row = document.createElement('tr');
             appendCell(row, displayValue(driver.full_name));
-            appendCell(row, displayValue(driver.phone));
+            appendCell(row, displayValue(driver.phone), 'ltr-cell');
             appendCell(row, displayValue(driver.status));
             appendCell(row, formatDate(driver.pro_until), 'ltr-cell');
             appendCell(row, displayValue(driver.device_id, 'غير مرتبط'), 'small-cell');
@@ -848,6 +848,7 @@
             row.append(actionCell);
             el.driversList.append(row);
         });
+        labelCells(el.driversList);
     }
 
     async function resetDevice(id, button) {
@@ -966,6 +967,7 @@
             appendCell(row, displayValue(code.redeemed_by, '-'), 'small-cell');
             el.codesList.append(row);
         });
+        labelCells(el.codesList);
     }
 
     async function exportCodes() {
@@ -1068,6 +1070,16 @@
         if (className) cell.className = className;
         cell.textContent = value;
         row.append(cell);
+    }
+
+    // On phones each row is shown as a card: every cell carries its column name.
+    function labelCells(tbody) {
+        const headers = Array.from(tbody.closest('table').querySelectorAll('thead th'), (th) => th.textContent.trim());
+        Array.from(tbody.rows).forEach((row) => {
+            Array.from(row.cells).forEach((cell, index) => {
+                if (headers[index]) cell.dataset.label = headers[index];
+            });
+        });
     }
 
     function appendEmptyRow(tbody, columns, message) {
