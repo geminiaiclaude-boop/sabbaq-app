@@ -1014,5 +1014,6 @@ private fun authProgressLabel(journey: AuthJourney): String = when (journey) {
     AuthJourney.StartingTrial -> "جارٍ تأكيد التجربة…"
     AuthJourney.ActivatingCode -> "جارٍ تفعيل الاشتراك…"
     AuthJourney.AwaitingAccess -> "بانتظار التفعيل"
+    AuthJourney.DeviceTransfer -> "جارٍ نقل الحساب…"
     AuthJourney.Idle -> "متابعة"
 }
