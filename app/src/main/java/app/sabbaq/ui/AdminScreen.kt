@@ -153,6 +153,13 @@ private fun createHardenedAdminWebView(
         mediaPlaybackRequiresUserGesture = true
         mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
         cacheMode = WebSettings.LOAD_NO_CACHE
+        // Lay the panel out at the phone's width (its viewport meta), never as a zoomed-out
+        // desktop page that has to be panned sideways.
+        useWideViewPort = true
+        loadWithOverviewMode = true
+        setSupportZoom(false)
+        builtInZoomControls = false
+        displayZoomControls = false
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) safeBrowsingEnabled = true
     }
     CookieManager.getInstance().setAcceptThirdPartyCookies(this, false)
