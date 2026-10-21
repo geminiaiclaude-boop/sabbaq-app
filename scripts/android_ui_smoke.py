@@ -21,6 +21,18 @@ out.mkdir(parents=True, exist_ok=True)
 def adb(*params, binary=False, timeout=45):
     return subprocess.check_output(['adb', *params], timeout=timeout, text=not binary, stderr=subprocess.STDOUT)
 
+
+def screencap(png=True):
+    """Screen capture with retries: on a loaded CI emulator adb occasionally drops the
+    connection (exit 255) for one call; a single dropped capture is not an app failure."""
+    for attempt in range(4):
+        try:
+            return adb('exec-out', 'screencap', *(['-p'] if png else []), binary=True)
+        except subprocess.CalledProcessError:
+            if attempt == 3:
+                raise
+            time.sleep(2)
+
 assert adb('shell', 'getprop', 'sys.boot_completed').strip() == '1', 'Emulator has not completed boot'
 print(adb('install', '-r', args.apk), flush=True)
 adb('shell', 'settings', 'put', 'global', 'window_animation_scale', '0')
@@ -142,7 +154,7 @@ for name, screen, dark, font_scale, env in cases:
         visible = ' '.join(node.get('text', '') + ' ' + node.get('content-desc', '') for node in nodes)
         for forbidden in ('كود التفعيل', 'شراء كود', 'شراء الاشتراك من الإدارة', 'واتساب', '18.75'):
             assert forbidden not in visible, f'External code-selling surface in Play screen {name}: {forbidden}'
-    image = adb('exec-out', 'screencap', '-p', binary=True)
+    image = screencap()
     assert image.startswith(b'\x89PNG\r\n\x1a\n'), f'Invalid screenshot: {name}'
     (out / f'{name}.png').write_bytes(image)
     results.append({'screen': name, 'package': args.package, 'distribution': args.distribution, 'fontScale': font_scale,
@@ -175,8 +187,8 @@ def capture_motion(tag, extras, delays):
     digests = []
     for index, delay in enumerate(delays):
         time.sleep(delay)
-        (out / f'motion-{tag}-{index}.png').write_bytes(adb('exec-out', 'screencap', '-p', binary=True))
-        digests.append(content_digest(adb('exec-out', 'screencap', binary=True)))
+        (out / f'motion-{tag}-{index}.png').write_bytes(screencap())
+        digests.append(content_digest(screencap(png=False)))
     motion[tag] = {'frames': len(digests), 'distinct': len(set(digests))}
     print(f'motion {tag}: {motion[tag]}', flush=True)
     assert len(set(digests)) > 1, f'No motion captured: {tag}'

@@ -754,6 +754,126 @@ tbody tr:hover { background: var(--primary-soft); }
     td { padding: 13px 14px; }
 }
 
+/* ── Depth & motion (1.4.x): the same language as the Android app ─────────────
+   Soft drifting light behind the page, a perspective road + radar in the hero,
+   cards that unfold from their bottom edge, raised marks and pressable buttons.
+   Every animation is stopped by the prefers-reduced-motion block below. */
+
+body {
+    position: relative;
+    isolation: isolate;
+}
+
+body::before {
+    position: fixed;
+    z-index: -1;
+    inset: -20vmax;
+    background:
+        radial-gradient(40vmax 40vmax at 85% 8%, rgb(0 107 88 / 12%), transparent 70%),
+        radial-gradient(36vmax 36vmax at 10% 55%, rgb(130 223 195 / 10%), transparent 70%),
+        radial-gradient(34vmax 34vmax at 70% 98%, rgb(121 89 0 / 7%), transparent 70%);
+    animation: qannas-drift 26s ease-in-out infinite alternate;
+    content: "";
+    pointer-events: none;
+}
+
+@keyframes qannas-drift {
+    from { transform: translate3d(-2%, -1%, 0) rotate(0deg); }
+    to { transform: translate3d(2%, 2%, 0) rotate(6deg); }
+}
+
+.app-hero {
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+    box-shadow: 0 24px 48px rgb(0 89 74 / 28%), 0 2px 0 rgb(255 255 255 / 10%) inset;
+    animation: qannas-unfold 620ms cubic-bezier(0.05, 0.7, 0.1, 1) both;
+    transform-origin: 50% 100%;
+}
+
+/* Road running to the horizon: a grid laid on a tilted plane, moving toward the viewer. */
+.app-hero::before {
+    position: absolute;
+    z-index: -1;
+    inset: 35% -40% -60%;
+    background:
+        repeating-linear-gradient(90deg, rgb(130 223 195 / 16%) 0 1px, transparent 1px 64px),
+        repeating-linear-gradient(0deg, rgb(130 223 195 / 18%) 0 1px, transparent 1px 48px);
+    animation: qannas-road 3.2s linear infinite;
+    content: "";
+    mask-image: linear-gradient(to bottom, transparent, #000 45%);
+    transform: perspective(420px) rotateX(64deg);
+    transform-origin: 50% 0;
+}
+
+@keyframes qannas-road {
+    from { background-position: 0 0, 0 0; }
+    to { background-position: 0 0, 0 48px; }
+}
+
+/* Radar sweep lying on the ground. */
+.app-hero::after {
+    position: absolute;
+    z-index: -1;
+    inset-block-end: -38%;
+    inset-inline-start: 8%;
+    width: 46%;
+    aspect-ratio: 1;
+    border: 1px solid rgb(130 223 195 / 30%);
+    border-radius: 50%;
+    background: conic-gradient(from 0deg, rgb(130 223 195 / 45%), transparent 16%, transparent);
+    animation: qannas-sweep 4s linear infinite;
+    content: "";
+    transform: perspective(500px) rotateX(70deg);
+}
+
+@keyframes qannas-sweep {
+    to { transform: perspective(500px) rotateX(70deg) rotate(360deg); }
+}
+
+.brand-mark {
+    background: linear-gradient(160deg, #1d8f77, var(--primary) 55%, #004a3d);
+    box-shadow: 0 10px 22px rgb(0 0 0 / 28%), 0 1px 0 rgb(255 255 255 / 35%) inset;
+    animation: qannas-mark-turn 900ms cubic-bezier(0.2, 0, 0, 1) 120ms both;
+}
+
+@keyframes qannas-mark-turn {
+    from { opacity: 0; transform: perspective(400px) rotateY(90deg) rotateX(20deg); }
+    to { opacity: 1; transform: perspective(400px) rotateY(0) rotateX(0); }
+}
+
+.card {
+    box-shadow: 0 14px 34px rgb(0 107 88 / 10%), 0 2px 6px rgb(20 44 55 / 6%);
+    background-image: linear-gradient(to bottom, rgb(0 107 88 / 3.5%), transparent 220px);
+    animation: qannas-unfold 560ms cubic-bezier(0.05, 0.7, 0.1, 1) both;
+    transform-origin: 50% 100%;
+}
+
+.card .card { animation-delay: 90ms; }
+
+@keyframes qannas-unfold {
+    from { opacity: 0; transform: perspective(900px) translateY(28px) rotateX(32deg) scale(0.96); }
+    to { opacity: 1; transform: none; }
+}
+
+.tab[aria-selected="true"] {
+    box-shadow: 0 8px 18px rgb(0 107 88 / 22%);
+}
+
+button:not(:disabled) {
+    box-shadow: 0 6px 14px rgb(0 107 88 / 14%);
+}
+
+button:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 10px 20px rgb(0 107 88 / 20%);
+}
+
+button:active:not(:disabled) {
+    transform: perspective(300px) rotateX(10deg) scale(0.97);
+    box-shadow: 0 3px 8px rgb(0 107 88 / 14%);
+}
+
 @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
