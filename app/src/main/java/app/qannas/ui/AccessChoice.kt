@@ -40,6 +40,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDirection
@@ -208,4 +209,41 @@ internal fun ActivationCodeField(
         keyboardActions = KeyboardActions(onDone = { onDone() }),
         modifier = Modifier.fillMaxWidth(),
     )
+}
+
+/** Ways to get access once signed in; the driver can switch between them freely. */
+internal enum class AccessTab(val label: String) { Trial("تجربة مجانية"), Subscribe("اشتراك"), Code("لدي رمز") }
+
+internal fun AccessIntent.toTab(): AccessTab = when (this) {
+    AccessIntent.Subscribe -> AccessTab.Subscribe
+    AccessIntent.SignIn -> AccessTab.Code
+    else -> AccessTab.Trial
+}
+
+/** A row of equal tabs; the chosen one is filled and lifted. */
+@Composable
+internal fun QannasTabs(tabs: List<AccessTab>, selected: AccessTab, onSelect: (AccessTab) -> Unit, modifier: Modifier = Modifier) {
+    val colors = MaterialTheme.colorScheme
+    Surface(shape = RoundedCornerShape(50), color = colors.surfaceContainerHigh, modifier = modifier.fillMaxWidth().selectableGroup()) {
+        Row(Modifier.padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            tabs.forEach { tab ->
+                val chosen = tab == selected
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = if (chosen) colors.primary else androidx.compose.ui.graphics.Color.Transparent,
+                    contentColor = if (chosen) colors.onPrimary else colors.onSurfaceVariant,
+                    shadowElevation = if (chosen) 4.dp else 0.dp,
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 44.dp)
+                        .selectable(selected = chosen, role = Role.Tab, onClick = { onSelect(tab) }),
+                ) {
+                    Row(horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp)) {
+                        Text(tab.label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                    }
+                }
+            }
+        }
+    }
 }

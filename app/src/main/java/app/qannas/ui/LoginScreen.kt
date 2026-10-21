@@ -860,15 +860,15 @@ private fun PendingAccessCard(
     onOpenPurchaseContact: (String) -> Unit,
     onCancel: () -> Unit
 ) {
+    // Every way in is one tap away; the first page's choice only decides which tab opens first.
+    val tabs = if (BuildConfig.DIRECT_DISTRIBUTION) AccessTab.entries.toList() else listOf(AccessTab.Trial)
+    var tab by rememberSaveable { mutableStateOf(intent.toTab().takeIf { it in tabs } ?: tabs.first()) }
     QannasCard(
-        title = "ابدأ مع قناص",
-        subtitle = "رتّب الفرص بما يناسبك عبر المرشحات والشروط، وراجع العائد المعروض ووقت العرض قبل اتخاذ قرارك.",
+        title = "اختر طريقة البدء",
+        subtitle = "حسابك جاهز. اختر ما يناسبك، ويمكنك التبديل بين الخيارات في أي وقت.",
         icon = Icons.Outlined.Key
     ) {
-        QannasStatusPill(text = "بانتظار تفعيل الوصول", ready = false)
-        if (loadingOffer) {
-            QannasStatusPill(text = "جارٍ تجهيز تفاصيل التجربة…", ready = false)
-        }
+        if (tabs.size > 1) QannasTabs(tabs = tabs, selected = tab, onSelect = { tab = it })
         offerError?.let {
             QannasMessage(message = it, isError = true)
             TextButton(
@@ -878,10 +878,37 @@ private fun PendingAccessCard(
             ) { Text("إعادة المحاولة") }
         }
 
-        // Subscribing drivers see the purchase path first; everyone else sees the trial first.
-        val purchaseFirst = intent == AccessIntent.Subscribe && BuildConfig.DIRECT_DISTRIBUTION
-        if (purchaseFirst) {
-            DirectAccessOptions(
+        when (tab) {
+            AccessTab.Trial -> when {
+                loadingOffer -> QannasStatusPill(text = "جارٍ تجهيز تفاصيل التجربة…", ready = false)
+                showTrial -> {
+                    QannasSectionTitle(
+                        title = "تجربة مجانية لحسابك",
+                        subtitle = "جرّب الشروط والقبول التلقائي لمدة ${ArabicCount.days(offer?.trialDays)} دون دفع. تبدأ فقط عند ضغطك على الزر."
+                    )
+                    QannasButton(
+                        text = "ابدأ التجربة المجانية",
+                        onClick = onStartTrial,
+                        enabled = !isBusy,
+                        busy = journey == AuthJourney.StartingTrial,
+                        busyText = "جارٍ تأكيد التجربة…",
+                    )
+                    actionError?.let { QannasMessage(message = it, isError = true) }
+                }
+                else -> {
+                    // Never a silent dead end: say why, and offer the next step.
+                    QannasMessage(
+                        if (offer?.trialEnabled == false) "التجربة المجانية غير متاحة حاليًا."
+                        else "استُخدمت التجربة المجانية من قبل على هذا الحساب أو هذا الجهاز، فلا يمكن بدؤها مرة أخرى."
+                    )
+                    if (BuildConfig.DIRECT_DISTRIBUTION) {
+                        QannasButton("عرض الاشتراك", onClick = { tab = AccessTab.Subscribe }, style = QannasButtonStyle.Secondary)
+                    } else {
+                        QannasMessage("لا تتوفر طريقة شراء داخل التطبيق حاليًا.")
+                    }
+                }
+            }
+            AccessTab.Subscribe -> DirectAccessOptions(
                 offer = offer,
                 isBusy = isBusy,
                 journey = journey,
@@ -892,49 +919,34 @@ private fun PendingAccessCard(
                 onActivateCode = onActivateCode,
                 onOpenPurchaseContact = onOpenPurchaseContact
             )
-        }
-        if (showTrial) {
-            QannasSectionTitle(
-                title = "تجربة متاحة لحسابك",
-                subtitle = "جرّب أدوات الفرز والشروط، وراجع العائد ووقت العرض. التجربة لمدة ${ArabicCount.days(offer?.trialDays)} وتبدأ فقط بعد ضغطك على الزر."
-            )
-            QannasButton(
-                text = "ابدأ التجربة",
-                onClick = onStartTrial,
-                enabled = !isBusy,
-                busy = journey == AuthJourney.StartingTrial,
-                busyText = "جارٍ تأكيد التجربة…",
-            )
-        }
-
-        // العزل بالثابت التركيبي: مسار الكود وقناة الإدارة لا يُضمّنان في play.
-        if (purchaseFirst) {
-            // Already shown above.
-        } else if (BuildConfig.DIRECT_DISTRIBUTION) {
-            DirectAccessOptions(
-                offer = offer,
-                isBusy = isBusy,
-                journey = journey,
-                activationCode = activationCode,
-                activationCodeError = activationCodeError,
-                actionError = actionError,
-                onActivationCodeChange = onActivationCodeChange,
-                onActivateCode = onActivateCode,
-                onOpenPurchaseContact = onOpenPurchaseContact
-            )
-        } else {
-            // لا سعر خادمي ولا كود ولا رابط/CTA خارجي قبل تكامل Play Billing والتحقق الخادمي.
-            QannasMessage(
-                message = "لا تتوفر طريقة شراء داخل التطبيق حاليًا. لن نطلب رمز تفعيل أو نحيلك إلى دفع خارج التطبيق هنا."
-            )
-            actionError?.let { QannasMessage(message = it, isError = true) }
+            AccessTab.Code -> {
+                QannasSectionTitle(
+                    title = "تفعيل برمز",
+                    subtitle = "الصق رمز التفعيل الذي وصلك من الإدارة واضغط «تفعيل الوصول»."
+                )
+                ActivationCodeField(
+                    value = activationCode,
+                    onValueChange = onActivationCodeChange,
+                    enabled = !isBusy,
+                    error = activationCodeError,
+                    onDone = onActivateCode,
+                )
+                QannasAnimatedMessage(actionError, QannasTone.Error)
+                QannasButton(
+                    text = "تفعيل الوصول",
+                    onClick = onActivateCode,
+                    enabled = !isBusy,
+                    busy = journey == AuthJourney.ActivatingCode,
+                    busyText = "جارٍ التحقق…",
+                )
+            }
         }
 
         TextButton(
             onClick = onCancel,
             enabled = !isBusy,
             modifier = Modifier.align(Alignment.CenterHorizontally).heightIn(min = 48.dp)
-        ) { Text("تسجيل الخروج والعودة") }
+        ) { Text("الدخول بحساب آخر") }
     }
 }
 
