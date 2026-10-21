@@ -499,6 +499,12 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
                         )
                     }
                 }
+                Text(
+                    "بالمتابعة توافق على معالجة بياناتك كما توضح سياسة الخصوصية.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                QannasLegalLinks(showDeletion = false)
             }
         }
     }

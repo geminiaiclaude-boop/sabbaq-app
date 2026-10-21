@@ -69,6 +69,9 @@ for name, screen, dark, font_scale in cases:
         assert jargon not in visible, f'Developer-facing copy in customer screen {name}: {jargon}'
     if screen == 'welcome-example':
         assert '٢٫٥ ر.س قبل التكاليف' in visible, f'Concrete fare/distance example missing: {name}'
+    if screen == 'login':
+        # Play requires the privacy policy to be reachable inside the app before sign-in.
+        assert 'سياسة الخصوصية' in visible, f'Privacy policy link missing: {name}'
     if screen == 'account':
         # Google Play requires an in-app path to delete the account in every distribution.
         # It sits at the end of the page, below the first screen, so scroll before reading.
