@@ -209,6 +209,13 @@ private fun WelcomePage(
         QannasOrderShowcase()
     }
     QannasCard(
+        title = "يعمل مع تطبيقات الرحلات التي تستخدمها",
+        subtitle = "قناص يتابع الطلبات داخل هذه التطبيقات ويقبل ما يطابق شروطك.",
+        modifier = Modifier.qannasEntrance(1),
+    ) {
+        SupportedPlatformsRow()
+    }
+    QannasCard(
         title = "أنت تحدد، وقناص يتابع",
         subtitle = "يشغّل القبول التلقائي للطلبات التي تطابق شروطك في التطبيقات المدعومة.",
         modifier = Modifier.qannasEntrance(1),

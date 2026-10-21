@@ -588,6 +588,9 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit, initialIntent: AccessIntent =
                             selected = accessIntent,
                             onSelect = { accessIntent = it },
                         )
+                        Text("يعمل مع", style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        SupportedPlatformsRow()
                     } else Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                         if (!knownSubscriber) {
                             TextButton(

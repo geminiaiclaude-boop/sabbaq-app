@@ -11,6 +11,11 @@
 
     <!-- Phone makers' auto-start screens that PowerSetup opens (package visibility, Android 11+). -->
     <queries>
+        <!-- Supported driver apps: shown as «مثبت» when present (SupportedPlatforms). -->
+        <package android:name="ee.mtakso.driver" />
+        <package android:name="me.com.easytaxista" />
+        <package android:name="com.PetraRide_Captain" />
+        <package android:name="com.petraride_captain" />
         <package android:name="com.miui.securitycenter" />
         <package android:name="com.huawei.systemmanager" />
         <package android:name="com.hihonor.systemmanager" />
