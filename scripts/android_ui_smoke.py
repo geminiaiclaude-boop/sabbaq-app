@@ -60,8 +60,8 @@ def reachable_by_scrolling(text, visible):
     for _ in range(16):
         adb('shell', 'input', 'swipe', '540', '1500', '540', '1000', '700')
         time.sleep(1)
-        adb('shell', 'uiautomator', 'dump', '/sdcard/qannas-ui.xml', timeout=60)
-        scrolled = ET.fromstring(adb('shell', 'cat', '/sdcard/qannas-ui.xml')).findall('.//node')
+        adb('shell', 'uiautomator', 'dump', '/sdcard/sabbaq-ui.xml', timeout=60)
+        scrolled = ET.fromstring(adb('shell', 'cat', '/sdcard/sabbaq-ui.xml')).findall('.//node')
         if any(text in (n.get('text', '') + n.get('content-desc', '')) for n in scrolled):
             return True
     return False
@@ -98,7 +98,7 @@ for name, screen, dark, font_scale, env in cases:
     adb('shell', 'settings', 'put', 'system', 'font_scale', str(font_scale))
     adb('logcat', '-c')
     activity = 'MainActivity' if screen is None else 'DesignPreviewActivity'
-    command = ['shell', 'am', 'start', '-W', '-n', f'{args.package}/app.qannas.ui.{activity}']
+    command = ['shell', 'am', 'start', '-W', '-n', f'{args.package}/app.sabbaq.ui.{activity}']
     if screen is not None:
         command += ['--es', 'screen', screen, '--ez', 'dark', str(dark).lower()]
     launch = adb(*command, timeout=60)
@@ -117,8 +117,8 @@ for name, screen, dark, font_scale, env in cases:
     # On a freshly booted emulator a system window (launcher, "not responding" prompt) can
     # still sit above the app on the first case; bring the app back to front and dump again.
     for attempt in range(6):
-        adb('shell', 'uiautomator', 'dump', '/sdcard/qannas-ui.xml', timeout=60)
-        xml = adb('shell', 'cat', '/sdcard/qannas-ui.xml')
+        adb('shell', 'uiautomator', 'dump', '/sdcard/sabbaq-ui.xml', timeout=60)
+        xml = adb('shell', 'cat', '/sdcard/sabbaq-ui.xml')
         (out / f'{name}.xml').write_text(xml)
         nodes = ET.fromstring(xml).findall('.//node')
         if any(node.get('package') == args.package for node in nodes):
@@ -172,8 +172,8 @@ for name, screen, dark, font_scale, env in cases:
         for index in range(14):
             adb('shell', 'input', 'swipe', '540', '1500', '540', '1000', '700')
             time.sleep(1)
-            adb('shell', 'uiautomator', 'dump', '/sdcard/qannas-ui.xml', timeout=60)
-            scrolled_xml = adb('shell', 'cat', '/sdcard/qannas-ui.xml')
+            adb('shell', 'uiautomator', 'dump', '/sdcard/sabbaq-ui.xml', timeout=60)
+            scrolled_xml = adb('shell', 'cat', '/sdcard/sabbaq-ui.xml')
             (out / f'{name}-scroll-{index}.xml').write_text(scrolled_xml)
             (out / f'{name}-scroll-{index}.png').write_bytes(screencap())
             labels |= node_labels(ET.fromstring(scrolled_xml).findall('.//node'))
@@ -219,7 +219,7 @@ def capture_motion(tag, extras, delays):
     activity = 'MainActivity' if extras is None else 'DesignPreviewActivity'
     adb('shell', 'am', 'force-stop', args.package)
     # -W returns once the app has drawn its first frame, so the system splash is not measured.
-    adb('shell', 'am', 'start', '-W', '-n', f'{args.package}/app.qannas.ui.{activity}', *(extras or []), timeout=60)
+    adb('shell', 'am', 'start', '-W', '-n', f'{args.package}/app.sabbaq.ui.{activity}', *(extras or []), timeout=60)
     digests = []
     for index, delay in enumerate(delays):
         time.sleep(delay)

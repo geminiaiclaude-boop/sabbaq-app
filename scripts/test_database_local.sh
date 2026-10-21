@@ -2,7 +2,7 @@
 # Linux sandbox/local development only; does not connect to Supabase or remote databases.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-database="qannas_local_test_${BASHPID}"
+database="sabbaq_local_test_${BASHPID}"
 local_pg=(--host=/var/run/postgresql --port=5432)
 sudo -u postgres createdb "${local_pg[@]}" "$database"
 trap 'sudo -u postgres dropdb "${local_pg[@]}" "$database"' EXIT

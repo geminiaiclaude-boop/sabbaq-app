@@ -25,7 +25,7 @@ def adb(*params, timeout=600):
 print(adb('install', '-r', '-t', args.apk), flush=True)
 print(adb('install', '-r', '-t', args.test_apk), flush=True)
 result = adb('shell', 'am', 'instrument', '-w', '-r',
-             'app.qannas.driver.debug.test/androidx.test.runner.AndroidJUnitRunner')
+             'app.sabbaq.driver.debug.test/androidx.test.runner.AndroidJUnitRunner')
 (out / 'instrumentation.txt').write_text(result)
 print(result[-4000:], flush=True)
 

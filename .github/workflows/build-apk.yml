@@ -1,4 +1,4 @@
-name: Qannas CI
+name: Sabbaq CI
 
 on:
   pull_request:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: qannas-ci-${{ github.workflow }}-${{ github.ref }}
+  group: sabbaq-ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -56,7 +56,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
-          name: qannas-validation-${{ github.sha }}
+          name: sabbaq-validation-${{ github.sha }}
           path: |
             app/build/outputs/apk/*/debug/*.apk
             app/build/outputs/apk/androidTest/direct/debug/*.apk
@@ -81,7 +81,7 @@ jobs:
       - name: Download verified debug APKs
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: qannas-validation-${{ github.sha }}
+          name: sabbaq-validation-${{ github.sha }}
           path: ci-input
       - name: Enable hardware acceleration in the ephemeral test runner
         run: |
@@ -101,14 +101,14 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
           script: |
-            python3 scripts/android_ui_smoke.py --apk ci-input/app/build/outputs/apk/direct/debug/app-direct-debug.apk --package app.qannas.driver.debug --distribution direct --out ui-screenshots/direct
+            python3 scripts/android_ui_smoke.py --apk ci-input/app/build/outputs/apk/direct/debug/app-direct-debug.apk --package app.sabbaq.driver.debug --distribution direct --out ui-screenshots/direct
             python3 scripts/android_flow_tests.py --apk ci-input/app/build/outputs/apk/direct/debug/app-direct-debug.apk --test-apk ci-input/app/build/outputs/apk/androidTest/direct/debug/app-direct-debug-androidTest.apk --out ui-screenshots/flow-tests
-            python3 scripts/android_ui_smoke.py --apk ci-input/app/build/outputs/apk/play/debug/app-play-debug.apk --package app.qannas.driver.debug --distribution play --out ui-screenshots/play
+            python3 scripts/android_ui_smoke.py --apk ci-input/app/build/outputs/apk/play/debug/app-play-debug.apk --package app.sabbaq.driver.debug --distribution play --out ui-screenshots/play
       - name: Preserve native screenshots and launch evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: qannas-native-ui-${{ github.sha }}
+          name: sabbaq-native-ui-${{ github.sha }}
           path: ui-screenshots/
           if-no-files-found: warn
           retention-days: 14
@@ -179,9 +179,9 @@ jobs:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
       GOOGLE_WEB_CLIENT_ID: ${{ secrets.GOOGLE_WEB_CLIENT_ID || '1020844982029-08j86skm4iroolntbu3guhda1m9km4lt.apps.googleusercontent.com' }}
-      QANNAS_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-      QANNAS_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-      QANNAS_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+      SABBAQ_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+      SABBAQ_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      SABBAQ_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -204,18 +204,18 @@ jobs:
           if [[ -z "${GOOGLE_WEB_CLIENT_ID:-}" ]]; then
             GOOGLE_WEB_CLIENT_ID="1020844982029-08j86skm4iroolntbu3guhda1m9km4lt.apps.googleusercontent.com"
           fi
-          for required in KEYSTORE_BASE64 SUPABASE_URL SUPABASE_ANON_KEY GOOGLE_WEB_CLIENT_ID QANNAS_KEYSTORE_PASSWORD QANNAS_KEY_ALIAS QANNAS_KEY_PASSWORD; do
+          for required in KEYSTORE_BASE64 SUPABASE_URL SUPABASE_ANON_KEY GOOGLE_WEB_CLIENT_ID SABBAQ_KEYSTORE_PASSWORD SABBAQ_KEY_ALIAS SABBAQ_KEY_PASSWORD; do
             if [[ -z "${!required:-}" ]]; then
               echo "::error title=Missing release configuration::${required} is required for a signed release."
               exit 1
             fi
           done
           umask 077
-          keystore_path="${RUNNER_TEMP}/qannas-release.jks"
+          keystore_path="${RUNNER_TEMP}/sabbaq-release.jks"
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$keystore_path"
           test -s "$keystore_path"
-          keytool -list -keystore "$keystore_path" -storepass "$QANNAS_KEYSTORE_PASSWORD" -alias "$QANNAS_KEY_ALIAS" >/dev/null
-          printf 'QANNAS_KEYSTORE=%s\n' "$keystore_path" >> "$GITHUB_ENV"
+          keytool -list -keystore "$keystore_path" -storepass "$SABBAQ_KEYSTORE_PASSWORD" -alias "$SABBAQ_KEY_ALIAS" >/dev/null
+          printf 'SABBAQ_KEYSTORE=%s\n' "$keystore_path" >> "$GITHUB_ENV"
       - name: Run release configuration preflight
         run: ./gradlew --no-daemon :app:verifyReleaseConfiguration
       - name: Build signed release artifacts
@@ -223,14 +223,14 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: qannas-release-apk-${{ github.sha }}
+          name: sabbaq-release-apk-${{ github.sha }}
           path: app/build/outputs/apk/*/release/*.apk
           if-no-files-found: error
           retention-days: 14
       - name: Upload AAB
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: qannas-release-aab-${{ github.sha }}
+          name: sabbaq-release-aab-${{ github.sha }}
           path: app/build/outputs/bundle/*Release/*.aab
           if-no-files-found: error
           retention-days: 14

@@ -6,8 +6,8 @@
     kotlinx.serialization.KSerializer serializer(...);
 }
 -keepclasseswithmembers class **$$serializer { *; }
--keep,includedescriptorclasses class app.qannas.**$$serializer { *; }
--keepclassmembers class app.qannas.** {
+-keep,includedescriptorclasses class app.sabbaq.**$$serializer { *; }
+-keepclassmembers class app.sabbaq.** {
     *** Companion;
 }
 
