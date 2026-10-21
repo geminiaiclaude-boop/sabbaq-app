@@ -160,8 +160,10 @@ for name, screen, dark, font_scale, env in cases:
             # into the button node, which may expose it through either attribute.
             return {value.strip() for n in found for value in (n.get('text', ''), n.get('content-desc', '')) if value.strip()}
         labels = node_labels(nodes)
-        for index in range(8):
-            adb('shell', 'input', 'swipe', '540', '1700', '540', '500', '250')
+        # Short, slow drags: a fast swipe flings past the middle of the page, which is
+        # exactly where the purchase steps and their button sit.
+        for index in range(14):
+            adb('shell', 'input', 'swipe', '540', '1500', '540', '1000', '700')
             time.sleep(1)
             adb('shell', 'uiautomator', 'dump', '/sdcard/qannas-ui.xml', timeout=60)
             scrolled_xml = adb('shell', 'cat', '/sdcard/qannas-ui.xml')
