@@ -139,13 +139,17 @@ private fun ChoiceTile(icon: ImageVector, title: String, detail: String, selecte
  */
 @Composable
 internal fun PurchaseSteps(offer: PublicOffer?, enabled: Boolean, onOpenPurchase: (String) -> Unit) {
+    val url = offer?.purchaseContactUrl
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (url == null) {
+            // No payment link configured on the server: never point to a button that is not there.
+            QannasMessage("الاشتراك يتم عبر الإدارة حاليًا. إذا استلمت رمز تفعيل، الصقه أدناه واضغط «تفعيل الوصول».")
+            return@Column
+        }
         PurchaseStep("١", "اضغط «اشترك الآن» وأكمل الدفع.")
         PurchaseStep("٢", "يصلك رمز التفعيل بعد تأكيد الدفع.")
         PurchaseStep("٣", "الصق الرمز أدناه واضغط «تفعيل الوصول».")
-        offer?.purchaseContactUrl?.let { url ->
-            QannasButton(text = "اشترك الآن", onClick = { onOpenPurchase(url) }, enabled = enabled, icon = Icons.Outlined.WorkspacePremium)
-        }
+        QannasButton(text = "اشترك الآن", onClick = { onOpenPurchase(url) }, enabled = enabled, icon = Icons.Outlined.WorkspacePremium)
     }
 }
 
