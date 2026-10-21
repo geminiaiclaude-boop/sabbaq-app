@@ -60,7 +60,7 @@ class DriverFlowTest {
         waitForText("تفاصيل المثال")
         compose.onNodeWithText("رجوع").performScrollTo().performClick()
         waitForText("طلبات على مقاس شروطك")
-        compose.onNodeWithText("تخطي الجولة").performClick()
+        compose.onNodeWithText("تخطي الجولة").performScrollTo().performClick()
         compose.runOnIdle { assertTrue(continued) }
     }
 
