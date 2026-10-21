@@ -154,9 +154,11 @@ object SupabaseClient {
             // second exchange of an already-rotated refresh token would be refused.
             if (sessions.hasValidLicense()) return@renewMutex Result.success(true)
             val saved = SessionVault.load(context) ?: return@renewMutex Result.success(false)
-            val pair = exchangeRefreshToken(saved.refreshToken)
+            val exchanged = exchangeRefreshToken(saved.refreshToken)
+            val pair = exchanged.getOrNull()
             if (pair == null) {
-                SessionVault.clear(context)
+                // Refused: the saved session is dead. Offline: keep it for the next try.
+                if (exchanged.exceptionOrNull() is RefreshRefusedException) SessionVault.clear(context)
                 return@renewMutex Result.success(false)
             }
             val attempt = sessions.beginAuthentication()
@@ -175,7 +177,17 @@ object SupabaseClient {
     private suspend fun renewAccessToken(): Boolean = renewMutex {
         val current = sessions.snapshot() ?: return@renewMutex false
         val stored = refreshToken ?: return@renewMutex false
-        val pair = exchangeRefreshToken(stored) ?: return@renewMutex false
+        val exchanged = exchangeRefreshToken(stored)
+        val pair = exchanged.getOrNull()
+        if (pair == null) {
+            // Refused by the server: revoke everywhere so nothing keeps running on a dead session.
+            if (exchanged.exceptionOrNull() is RefreshRefusedException) {
+                sessions.clearIfMatches(current.token)
+                refreshToken = null
+                appContext?.let(SessionVault::clear)
+            }
+            return@renewMutex false
+        }
         if (!sessions.replaceToken(current.token, pair.first)) return@renewMutex false
         refreshToken = pair.second
         accessIssuedAt = SystemClock.elapsedRealtime()
@@ -183,16 +195,18 @@ object SupabaseClient {
         true
     }
 
-    private suspend fun exchangeRefreshToken(token: String): Pair<String, String>? = networkCall {
+    private suspend fun exchangeRefreshToken(token: String): Result<Pair<String, String>> = networkCall {
         val url = endpoint("auth/v1/token").newBuilder().addQueryParameter("grant_type", "refresh_token").build()
         val request = requestBuilder(url)
             .post(buildJsonObject { put("refresh_token", token) }.toString().toRequestBody(jsonMediaType))
             .build()
         val response = execute(request)
+        // 4xx = the server refused this refresh token (signed out, revoked, account removed).
+        if (response.code in 400..499) return@networkCall Result.failure(RefreshRefusedException())
         if (!response.isSuccessful) return@networkCall Result.failure(ClientRequestException("تعذر تجديد الجلسة"))
         tokenPairFrom(response.body)?.let { Result.success(it) }
             ?: Result.failure(ClientRequestException("تعذر تجديد الجلسة"))
-    }.getOrNull()
+    }
 
     /** Saves the session for automatic resume once a device is bound and the license is valid. */
     private fun persistSession(deviceId: String) {
@@ -568,7 +582,11 @@ object SupabaseClient {
         // Renew before the access token ages out, and once more if the server already refused it.
         if (refreshToken != null && SystemClock.elapsedRealtime() - accessIssuedAt > RENEW_AFTER_MILLIS) renewAccessToken()
         val first = revalidateOnce()
-        if (first.exceptionOrNull() is SessionExpiredException && renewAccessToken()) return revalidateOnce()
+        if (first.exceptionOrNull() is SessionExpiredException) {
+            if (renewAccessToken()) return revalidateOnce()
+            // The server rejected the access token and it could not be renewed: fail closed.
+            sessions.snapshot()?.let { sessions.clearIfMatches(it.token) }
+        }
         return first
     }
 
@@ -919,6 +937,7 @@ object SupabaseClient {
 
     private class ClientRequestException(message: String) : Exception(message)
     private class SessionExpiredException : Exception("انتهت الجلسة؛ جارٍ تجديدها")
+    private class RefreshRefusedException : Exception("رفض الخادم تجديد الجلسة")
     private class ResponseTooLargeException : IOException()
 }
 
