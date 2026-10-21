@@ -52,7 +52,7 @@ internal data class LicenseStatus(
     val trialDays: Int? = null
 )
 
-/** خطأ حالة قابل للمعالجة ولا يتضمن رموزاً أو تفاصيل خادم غير موثوقة. */
+/** خطأ حالة قابل للمعالجة ولا يتضمن رموزًا أو تفاصيل خادم غير موثوقة. */
 class LicenseStateException(
     val state: LicenseState,
     message: String
@@ -67,9 +67,9 @@ internal class LicenseLease(private val clock: MonotonicClock) {
     private var lease: LeaseSnapshot? = null
 
     /**
-     * يستبدل المهلة بالحالة المستلمة. يُرجع true فقط إن كان الترخيص صالحاً الآن.
+     * يستبدل المهلة بالحالة المستلمة. يُرجع true فقط إن كان الترخيص صالحًا الآن.
      * تبدأ المهلة عند بداية طلب الشبكة، لا وقت وصول الرد، كي لا تصبح مهلة النقل
-     * سماحاً بعد وقت انتهاء الاشتراك الذي حدده الخادم.
+     * سماحًا بعد وقت انتهاء الاشتراك الذي حدده الخادم.
      */
     fun replace(
         status: LicenseStatus,
@@ -118,7 +118,7 @@ internal class LicenseLease(private val clock: MonotonicClock) {
         val validMillis = validUntil.toEpochMilli()
         if (validMillis <= serverMillis) null else Math.subtractExact(validMillis, serverMillis)
     } catch (_: ArithmeticException) {
-        // تاريخ خارج المجال لا يكوّن ترخيصاً محلياً صالحاً.
+        // تاريخ خارج المجال لا يكوّن ترخيصًا محليًا صالحًا.
         null
     }
 

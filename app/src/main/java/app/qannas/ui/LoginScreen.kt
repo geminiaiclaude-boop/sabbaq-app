@@ -68,7 +68,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/** مراحل محلية للعرض فقط؛ الجلسة والـ lease يظلان حصراً داخل SupabaseClient. */
+/** مراحل محلية للعرض فقط؛ الجلسة والـ lease يظلان حصرًا داخل SupabaseClient. */
 private enum class AuthJourney {
     Idle,
     Authenticating,
@@ -168,7 +168,7 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
         // لا تقبل نتيجة RPC وحدها؛ لا انتقال قبل أن تكون المهلة الذاكرية صالحة الآن.
         if (!SupabaseClient.hasValidLicense()) {
             SupabaseClient.clearSession()
-            errorMessage = "تعذر تأكيد صلاحية الوصول لحسابك. سجّل الدخول مجدداً ثم حاول."
+            errorMessage = "تعذر تأكيد صلاحية الوصول لحسابك. سجّل الدخول مجددًا ثم حاول."
             journey = AuthJourney.Idle
             return
         }
@@ -176,7 +176,7 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
         activationCode = ""
         clearPhoneInput()
         journey = AuthJourney.Idle
-        // حتى لو بلغ حساب إداري lease صالحاً في play، يظل انتقاله انتقال عميل.
+        // حتى لو بلغ حساب إداري lease صالحًا في play، يظل انتقاله انتقال عميل.
         onLoginSuccess(admin && BuildConfig.DIRECT_DISTRIBUTION)
     }
 
@@ -304,7 +304,7 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
                 otpRequested = true
                 otpValidationRequested = false
                 otpCooldownEndsAt = SystemClock.elapsedRealtime() + OTP_COOLDOWN_MILLIS
-                infoMessage = "أرسلنا رمزاً من 6 أرقام إلى جوالك."
+                infoMessage = "أرسلنا رمزًا من 6 أرقام إلى جوالك."
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
@@ -327,7 +327,7 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
         scope.launch {
             try {
                 val result = SupabaseClient.verifyPhoneOtp(phone, SaudiLoginInput.normalizeOtp(otp))
-                // لا يبقى الرمز في الذاكرة بعد إرسال طلب التحقق، ناجحاً كان أو فاشلاً.
+                // لا يبقى الرمز في الذاكرة بعد إرسال طلب التحقق، ناجحًا كان أو فاشلًا.
                 otp = ""
                 if (result.isFailure) {
                     errorMessage = otpVerificationErrorMessage(result.exceptionOrNull())
@@ -339,7 +339,7 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
                 throw cancelled
             } catch (_: Exception) {
                 SupabaseClient.clearSession()
-                errorMessage = "تعذر تأكيد الرمز. اطلب رمزاً جديداً ثم أعد المحاولة."
+                errorMessage = "تعذر تأكيد الرمز. اطلب رمزًا جديدًا ثم أعد المحاولة."
             } finally {
                 if (journey == AuthJourney.Authenticating) journey = AuthJourney.Idle
             }
@@ -576,7 +576,7 @@ private fun AuthenticationCard(
         OrDivider()
         QannasSectionTitle(
             title = "رقم الجوال السعودي",
-            subtitle = if (otpRequested) "أدخل الرمز المكوّن من 6 أرقام الذي وصلك." else "نرسل رمزاً لمرة واحدة إلى جوالك. رقم الجوال محفوظ بأمان في حسابك لتأكيد هويتك والوصول إليه عند الحاجة."
+            subtitle = if (otpRequested) "أدخل الرمز المكوّن من 6 أرقام الذي وصلك." else "نرسل رمزًا لمرة واحدة إلى جوالك. رقم الجوال محفوظ بأمان في حسابك لتأكيد هويتك والوصول إليه عند الحاجة."
         )
         OutlinedTextField(
             value = phone,
@@ -714,7 +714,7 @@ private fun PendingAccessCard(
         } else {
             // لا سعر خادمي ولا كود ولا رابط/CTA خارجي قبل تكامل Play Billing والتحقق الخادمي.
             QannasMessage(
-                message = "لا تتوفر طريقة شراء داخل التطبيق حالياً. لن نطلب رمز تفعيل أو نحيلك إلى دفع خارج التطبيق هنا."
+                message = "لا تتوفر طريقة شراء داخل التطبيق حاليًا. لن نطلب رمز تفعيل أو نحيلك إلى دفع خارج التطبيق هنا."
             )
             actionError?.let { QannasMessage(message = it, isError = true) }
         }
@@ -833,15 +833,15 @@ private fun googleErrorMessage(error: Throwable?): String {
 
 private fun otpRequestErrorMessage(error: Throwable?): String = when (error?.message) {
     "تم تجاوز حد المحاولات؛ يرجى الانتظار" -> "تم تجاوز حد طلب الرموز. انتظر ثم أعد المحاولة."
-    "أدخل رقم جوال سعودي بصيغة +9665XXXXXXXX" -> "أدخل رقم جوال سعودي صالحاً."
+    "أدخل رقم جوال سعودي بصيغة +9665XXXXXXXX" -> "أدخل رقم جوال سعودي صالحًا."
     else -> "تعذر إرسال رمز التحقق. تحقق من الرقم والاتصال ثم أعد المحاولة."
 }
 
 private fun otpVerificationErrorMessage(error: Throwable?): String = when (error?.message) {
     "رمز التحقق يجب أن يتكون من 6 أرقام" -> "أدخل رمز التحقق المكوّن من 6 أرقام."
-    "اطلب رمز تحقق جديداً قبل التحقق" -> "اطلب رمز تحقق جديداً أولاً."
-    "تم تجاوز حد المحاولات؛ يرجى الانتظار" -> "تم تجاوز حد المحاولات. انتظر ثم اطلب رمزاً جديداً."
-    else -> "تعذر التحقق من الرمز. تأكد من الرمز أو اطلب رمزاً جديداً."
+    "اطلب رمز تحقق جديدًا قبل التحقق" -> "اطلب رمز تحقق جديدًا أولًا."
+    "تم تجاوز حد المحاولات؛ يرجى الانتظار" -> "تم تجاوز حد المحاولات. انتظر ثم اطلب رمزًا جديدًا."
+    else -> "تعذر التحقق من الرمز. تأكد من الرمز أو اطلب رمزًا جديدًا."
 }
 
 private fun licenseErrorMessage(error: Throwable?): String = when (error?.message) {
@@ -855,13 +855,13 @@ private fun licenseErrorMessage(error: Throwable?): String = when (error?.messag
 
 private fun trialErrorMessage(error: Throwable?): String = when (error?.message) {
     "تعذر بدء التجربة" -> "لا يمكن بدء التجربة لحسابك الآن."
-    "تحقق من الترخيص والجهاز قبل بدء التجربة" -> "سجّل الدخول مجدداً ثم أعد محاولة بدء التجربة."
+    "تحقق من الترخيص والجهاز قبل بدء التجربة" -> "سجّل الدخول مجددًا ثم أعد محاولة بدء التجربة."
     "تم تجاوز حد المحاولات؛ يرجى الانتظار" -> "تم تجاوز حد المحاولات. انتظر قبل إعادة المحاولة."
     else -> "تعذر بدء التجربة الآن. تحقق من الاتصال ثم أعد المحاولة."
 }
 
 private fun activationErrorMessage(error: Throwable?): String = when (error?.message) {
-    "كود التفعيل غير صالح", "الكود غير صحيح أو استُخدم مسبقاً" -> "رمز التفعيل غير صالح. راجعه ثم أعد المحاولة."
+    "رمز التفعيل غير صالح", "الرمز غير صحيح أو استُخدم مسبقًا" -> "رمز التفعيل غير صالح. راجعه ثم أعد المحاولة."
     "انتهت الجلسة؛ سجّل الدخول من جديد" -> "انتهت جلسة الدخول. سجّل الدخول من جديد."
     else -> "تعذر قبول رمز التفعيل. راجع الرمز والاتصال ثم أعد المحاولة."
 }

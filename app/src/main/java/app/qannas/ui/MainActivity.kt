@@ -136,7 +136,7 @@ class MainActivity : ComponentActivity() {
                                 onAccountDeleted = {
                                     val wiped = Settings.clearAccountData()
                                     endSession()
-                                    permissionMessage = if (wiped) "حُذف حسابك وبياناته المرتبطة. شكراً لاستخدامك قناص."
+                                    permissionMessage = if (wiped) "حُذف حسابك وبياناته المرتبطة. شكرًا لاستخدامك قناص."
                                         else "حُذف حسابك من الخادم، لكن تعذّر مسح بعض الإعدادات المحلية. احذف بيانات التطبيق من إعدادات الجهاز لإكمال المسح."
                                 },
                             )
@@ -218,11 +218,11 @@ internal fun QannasShell(
         onDismissRequest = { confirmLogout = false },
         title = { Text("تسجيل الخروج؟") },
         text = { Text(
-            if (hasUnsavedChanges) "لديك تعديلات على شروطك لم تُحفظ وستُفقد عند الخروج. سيتوقف القبول التلقائي أيضاً."
+            if (hasUnsavedChanges) "لديك تعديلات على شروطك لم تُحفظ وستُفقد عند الخروج. سيتوقف القبول التلقائي أيضًا."
             else "سيتوقف القبول التلقائي بقناص. شروطك المحفوظة تبقى على هذا الجهاز."
         ) },
         confirmButton = { TextButton(onClick = { confirmLogout = false; onLogout() }) {
-            Text(if (hasUnsavedChanges) "تجاهل التعديلات والخروج" else "إيقاف القناص والخروج")
+            Text(if (hasUnsavedChanges) "تجاهل التعديلات والخروج" else "إيقاف قناص والخروج")
         } },
         dismissButton = { TextButton(onClick = { confirmLogout = false }) { Text("البقاء") } }
     )

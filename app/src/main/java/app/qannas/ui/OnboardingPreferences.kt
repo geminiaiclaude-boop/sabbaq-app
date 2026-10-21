@@ -2,7 +2,7 @@ package app.qannas.ui
 
 import android.content.Context
 
-/** حالة إتمام التعريف فقط؛ لا تحمل جلسة ولا تجربة ولا ترخيصاً. */
+/** حالة إتمام التعريف فقط؛ لا تحمل جلسة ولا تجربة ولا ترخيصًا. */
 object OnboardingPreferences {
     private const val FILE_NAME = "qannas_onboarding"
     private const val KEY_COMPLETE = "complete"
@@ -15,7 +15,7 @@ object OnboardingPreferences {
     }.getOrDefault(false)
 
     /**
-     * يستعمل commit كي يعرف المستدعي، قبل تغيير المسار، إن حُفظت الحالة فعلاً.
+     * يستعمل commit كي يعرف المستدعي، قبل تغيير المسار، إن حُفظت الحالة فعلًا.
      * لا تستدعيه شاشة التعريف؛ مالك التنقل يستدعيه بعد [OnboardingScreen] onContinue.
      */
     fun markComplete(context: Context): Boolean = runCatching {

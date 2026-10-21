@@ -76,7 +76,7 @@ fun OnboardingScreen(onContinue: () -> Unit, initialPage: Int = 0) {
             return
         }
         loadingOffer = true
-        // لا نُبقي سعراً أو مدةً قديمين عند فشل إعادة المحاولة.
+        // لا نُبقي سعرًا أو مدةً قديمين عند فشل إعادة المحاولة.
         offer = null
         val response = runCatching { SupabaseClient.fetchPublicOffer() }.getOrNull()
         offer = response?.getOrNull()?.let {
@@ -206,8 +206,8 @@ private fun WelcomePage(
 ) {
     val brand = LocalQannasBrand.current
     QannasHeroSurface(Modifier.qannasEntrance(0)) {
-        Text("خلّ طلباتك على مقاسك", style = MaterialTheme.typography.headlineMedium)
-        Text("وقت أقل في متابعة الشاشة. شروط أوضح ليوم شغلك.",
+        Text("طلبات على مقاس شروطك", style = MaterialTheme.typography.headlineMedium)
+        Text("وقت أقل أمام الشاشة، وشروط واضحة ليوم عملك.",
             style = MaterialTheme.typography.bodyLarge, color = brand.onHeroMuted)
     }
     QannasCard(
@@ -222,12 +222,12 @@ private fun WelcomePage(
         )
         DriverValue(
             icon = Icons.Outlined.NearMe,
-            title = "مسافة الوصول تفرق",
+            title = "مسافة الوصول محسوبة",
             detail = "اختر حدًا لمسافة الوصول للراكب وطول المشوار."
         )
         DriverValue(
             icon = Icons.Outlined.Schedule,
-            title = "شغلك، على وقتك",
+            title = "عملك في الوقت الذي تختاره",
             detail = "حدد أوقات العمل، وشغّل القبول أو أوقفه متى أردت."
         )
     }
@@ -243,7 +243,7 @@ private fun WelcomePage(
             ) {
                 CircularProgressIndicator(modifier = Modifier.padding(4.dp), strokeWidth = 2.dp)
                 Text(
-                    "لحظات ونظهر لك الخيارات المتاحة.",
+                    "لحظات ونعرض لك الخيارات المتاحة.",
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
@@ -292,7 +292,7 @@ private fun ReadyPage(canShowTrialJourney: Boolean) {
         )
         DriverValue(
             icon = Icons.Outlined.Tune,
-            title = "٢. اضبط الطلب اللي يناسبك",
+            title = "٢. اضبط شروط الطلب المناسب",
             detail = "حدد الأجرة والمسافة وأوقات العمل."
         )
         DriverValue(
@@ -301,7 +301,7 @@ private fun ReadyPage(canShowTrialJourney: Boolean) {
             detail = "بعد منح الإذن، يمكنه قبول الطلب المطابق تلقائيًا. الإيقاف دائمًا بيدك."
         )
         DriverValue(
-            title = if (canShowTrialJourney) "جرّبه قبل ما تشترك" else "اكتشف خيارات حسابك",
+            title = if (canShowTrialJourney) "جرّبه قبل الاشتراك" else "اكتشف خيارات حسابك",
             detail = if (canShowTrialJourney) {
                 "سجّل الدخول لنتحقق من أهليتك. تبدأ التجربة عندما تؤكدها، وليس أثناء هذه الجولة."
             } else {
@@ -327,11 +327,11 @@ private fun DecisionPreviewPage(
     onSignalChange: (DecisionSignal) -> Unit
 ) {
     QannasCard(
-        title = "هل يستاهل هذا المشوار؟",
+        title = "هل يستحق هذا المشوار؟",
         subtitle = "مثال توضيحي: أجرة ٤٥ ر.س لمشوار ١٥ كم."
     ) {
         QannasSectionTitle(
-            title = "شوف الصورة كاملة",
+            title = "اعرض التفاصيل التي تهمك",
             subtitle = "اضغط لإظهار أو إخفاء التفاصيل التي تهمك."
         )
         DecisionSignal.entries.forEach { signal ->
@@ -378,7 +378,7 @@ private fun OnboardingNavigation(
         }
         QannasButton(
             text = if (page == ONBOARDING_PAGES - 1) onboardingFinalCta(canShowTrialJourney)
-                else if (page == 0) "ورّني كيف" else "أضبط طلباتي",
+                else if (page == 0) "كيف يعمل؟" else "متابعة",
             onClick = onNext,
             modifier = Modifier.weight(1f),
             fillWidth = false,

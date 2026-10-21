@@ -5,7 +5,7 @@ import app.qannas.core.Bounds
 
 /**
  * قرارات حارسة لا تعتمد على حالة واجهة المستخدم. أي مدخل غير مكتمل أو غير
- * متوقع يرفض بدلاً من تنفيذ إيماءة أو إبقاء خدمة أمامية غير مرئية للمستخدم.
+ * متوقع يرفض بدلًا من تنفيذ إيماءة أو إبقاء خدمة أمامية غير مرئية للمستخدم.
  */
 internal object ServicesSafetyPolicy {
     private const val POST_NOTIFICATIONS_API = 33

@@ -67,7 +67,7 @@ import kotlinx.coroutines.launch
  * `license_status` للخادم، وكل منح تجربة/كود يعاد فحصه عبر العميل الشبكي.
  *
  * يفصل شرط [BuildConfig.DIRECT_DISTRIBUTION] مسار APK المباشر عن Play عند البناء؛
- * نسخة Play لا تركّب حقول الأكواد أو رابطاً خارجياً أو سعراً من خادم APK.
+ * نسخة Play لا تركّب حقول الأكواد أو رابطًا خارجيًا أو سعرًا من خادم APK.
  */
 @Composable
 internal fun SubscriptionScreen(
@@ -95,7 +95,7 @@ internal fun SubscriptionScreen(
                         showDeleteDialog = false
                         onAccountDeleted()
                     },
-                    onFailure = { deleteError = it.message ?: "تعذر حذف الحساب الآن. حاول مجدداً بعد قليل." },
+                    onFailure = { deleteError = it.message ?: "تعذر حذف الحساب الآن. حاول مجددًا بعد قليل." },
                 )
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -137,7 +137,7 @@ internal fun SubscriptionScreen(
             snapshot = SupabaseClient.subscriptionSnapshot()
             onLicenseChanged(SupabaseClient.hasValidLicense())
             if (showResult) {
-                onMessage("سجّل الدخول مجدداً ثم حدّث حالة الوصول.", true)
+                onMessage("سجّل الدخول مجددًا ثم حدّث حالة الوصول.", true)
             }
             return
         }
@@ -168,7 +168,7 @@ internal fun SubscriptionScreen(
     suspend fun loadOffer() {
         if (!isDirectDistribution || isLoadingOffer) return
         isLoadingOffer = true
-        offer = null // لا نُبقي سعراً أو مدة قديمين عند فشل طلب الخادم.
+        offer = null // لا نُبقي سعرًا أو مدة قديمين عند فشل طلب الخادم.
         try {
             offer = SupabaseClient.fetchPublicOffer().getOrNull()
         } catch (cancelled: CancellationException) {
@@ -216,7 +216,7 @@ internal fun SubscriptionScreen(
                 return
             }
             !SupabaseClient.hasRedeemableSession() -> {
-                onMessage("سجّل الدخول مجدداً ثم أرسل رمز التفعيل.", true)
+                onMessage("سجّل الدخول مجددًا ثم أرسل رمز التفعيل.", true)
                 return
             }
         }
@@ -277,7 +277,7 @@ internal fun SubscriptionScreen(
     ) {
         QannasSectionTitle(
             title = "اشتراكك في قناص",
-            subtitle = "خلّ شروطك تعمل لصالحك. تابع تجربتك ومدة اشتراكك من هنا.",
+            subtitle = "تابع تجربتك ومدة اشتراكك من مكان واحد.",
         )
 
         LicenseStatusCard(
@@ -343,7 +343,7 @@ internal fun SubscriptionScreen(
 
         QannasCard(title = "حذف الحساب", icon = Icons.Outlined.DeleteForever, modifier = Modifier.qannasEntrance(4)) {
             Text(
-                "يحذف حسابك واشتراكك وشروطك وبيانات الجهاز المرتبطة نهائياً. لا يمكن التراجع عن الحذف، ولا تُستعاد مدة اشتراك متبقية.",
+                "يحذف حسابك واشتراكك وشروطك وبيانات الجهاز المرتبطة نهائيًا. لا يمكن التراجع عن الحذف، ولا تُستعاد مدة اشتراك متبقية.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -404,10 +404,10 @@ private fun DeleteAccountDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = { Icon(Icons.Outlined.DeleteForever, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
-        title = { Text("حذف الحساب نهائياً؟") },
+        title = { Text("حذف الحساب نهائيًا؟") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("سيُحذف حسابك واشتراكك وكل البيانات المرتبطة به، وسيتوقف قناص فوراً. إذا استخدمت التجربة سابقاً فلن تتاح لك تجربة جديدة بنفس الرقم أو الجهاز.")
+                Text("سيُحذف حسابك واشتراكك وكل البيانات المرتبطة به، وسيتوقف قناص فورًا. إذا استخدمت التجربة سابقًا فلن تتاح لك تجربة جديدة بنفس الرقم أو الجهاز.")
                 OutlinedTextField(
                     value = typed,
                     onValueChange = { typed = it.take(32) },
@@ -575,7 +575,7 @@ private fun DirectDistributionCard(
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Text(
-                    "راجع السعر والمدة مع الإدارة قبل الدفع. لا يبدأ الاشتراك أو التجربة تلقائياً.",
+                    "راجع السعر والمدة مع الإدارة قبل الدفع. لا يبدأ الاشتراك أو التجربة تلقائيًا.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -588,7 +588,7 @@ private fun DirectDistributionCard(
 
     QannasCard(
         title = "لديك رمز تفعيل؟",
-        subtitle = "أدخل الكود الذي استلمته لتفعيل اشتراكك.",
+        subtitle = "أدخل الرمز الذي استلمته لتفعيل اشتراكك.",
         icon = Icons.Outlined.VerifiedUser,
     ) {
         OutlinedTextField(
@@ -657,7 +657,7 @@ internal object CustomerCommerceCopy {
             canStart = false,
         )
         snapshot.trialEnabled == false -> CustomerTrialPresentation(
-            detail = "لا تتوفر تجربة لحسابك حالياً.",
+            detail = "لا تتوفر تجربة لحسابك حاليًا.",
             canStart = false,
         )
         snapshot.trialEligible == false -> CustomerTrialPresentation(
@@ -670,7 +670,7 @@ internal object CustomerCommerceCopy {
                 canStart = false,
             )
         else -> CustomerTrialPresentation(
-            detail = "تجربة لمدة ${snapshot.trialDays} يومًا. تبدأ فقط عند ضغط «ابدأ التجربة»، ولا تبدأ تلقائياً.",
+            detail = "تجربة لمدة ${snapshot.trialDays} يومًا. تبدأ فقط عند ضغط «ابدأ التجربة»، ولا تبدأ تلقائيًا.",
             canStart = true,
         )
     }
@@ -684,8 +684,8 @@ private fun licenseStatePresentation(state: LicenseState): LicenseStatePresentat
     LicenseState.PENDING -> LicenseStatePresentation("بانتظار تفعيل الوصول", false)
     LicenseState.EXPIRED -> LicenseStatePresentation("انتهى الوصول", false)
     LicenseState.DEVICE_MISMATCH -> LicenseStatePresentation("الحساب مرتبط بجهاز آخر", false)
-    LicenseState.BANNED -> LicenseStatePresentation("لا يمكن استخدام الحساب حالياً", false)
-    LicenseState.REJECTED -> LicenseStatePresentation("لا يمكن استخدام الحساب حالياً", false)
+    LicenseState.BANNED -> LicenseStatePresentation("لا يمكن استخدام الحساب حاليًا", false)
+    LicenseState.REJECTED -> LicenseStatePresentation("لا يمكن استخدام الحساب حاليًا", false)
     LicenseState.UNREGISTERED -> LicenseStatePresentation("أكمل بيانات حسابك", false)
 }
 
@@ -704,8 +704,8 @@ private fun subscriptionRequestError(error: Throwable?): String = when (error?.m
 }
 
 private fun directCodeError(error: Throwable?): String = when (error?.message) {
-    "الكود غير صحيح أو استُخدم مسبقاً" -> "رمز التفعيل غير صحيح أو استُخدم مسبقاً. راجعه ثم أعد المحاولة."
-    "محاولات كثيرة؛ يرجى الانتظار قبل المحاولة مجدداً" -> "محاولات كثيرة؛ انتظر قليلاً ثم أعد المحاولة."
+    "الرمز غير صحيح أو استُخدم مسبقًا" -> "رمز التفعيل غير صحيح أو استُخدم مسبقًا. راجعه ثم أعد المحاولة."
+    "محاولات كثيرة؛ يرجى الانتظار قبل المحاولة مجددًا" -> "محاولات كثيرة؛ انتظر قليلًا ثم أعد المحاولة."
     "هذا الحساب مرتبط بجهاز آخر" -> "هذا الحساب مرتبط بجهاز آخر."
     "انتهت الجلسة؛ سجّل الدخول من جديد" -> "انتهت الجلسة؛ سجّل الدخول من جديد ثم أعد إرسال رمز التفعيل."
     else -> "تعذر إرسال رمز التفعيل. تحقق من الرمز والاتصال ثم أعد المحاولة."

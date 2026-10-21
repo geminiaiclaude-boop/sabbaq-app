@@ -50,7 +50,7 @@ private const val ADMIN_BASE_URL = "$ADMIN_ORIGIN/admin/"
 fun AdminScreen() {
     if (!hasValidAdminConfiguration()) {
         AdminErrorState(
-            message = "إعداد لوحة الإدارة غير مكتمل في هذه النسخة. ثبّت إصداراً مهيأً من مصدر موثوق ثم حاول مجدداً.",
+            message = "إعداد لوحة الإدارة غير مكتمل في هذه النسخة. ثبّت إصدارًا مهيأً من مصدر موثوق ثم حاول مجددًا.",
             onRetry = null
         )
         return
@@ -237,7 +237,7 @@ private fun WebView.loadLocalAdminPage(onError: (String) -> Unit) {
         val html = context.assets.open("admin/index.html").bufferedReader().use { it.readText() }
         loadDataWithBaseURL(ADMIN_BASE_URL, html, "text/html", "UTF-8", null)
     } catch (_: IOException) {
-        onError("تعذر فتح لوحة الإدارة المضمنة. أعد تثبيت التطبيق من مصدر موثوق ثم حاول مجدداً.")
+        onError("تعذر فتح لوحة الإدارة المضمنة. أعد تثبيت التطبيق من مصدر موثوق ثم حاول مجددًا.")
     }
 }
 

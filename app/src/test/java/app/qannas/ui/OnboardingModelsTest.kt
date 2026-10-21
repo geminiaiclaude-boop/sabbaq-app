@@ -70,7 +70,7 @@ class OnboardingModelsTest {
             setOf(DecisionSignal.PICKUP_DISTANCE, DecisionSignal.DISPLAYED_FARE)
         )
 
-        assertTrue(empty.contains("اختر تفصيلاً"))
+        assertTrue(empty.contains("اختر تفصيلًا"))
         assertTrue(selected.contains("مسافة الوصول"))
         assertTrue(selected.contains("السعر الظاهر"))
         assertTrue(selected.contains("هذا المثال"))

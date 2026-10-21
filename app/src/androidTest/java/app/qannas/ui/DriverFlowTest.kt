@@ -56,10 +56,10 @@ class DriverFlowTest {
         var continued = false
         show { OnboardingScreen(onContinue = { continued = true }) }
 
-        compose.onNodeWithText("ورّني كيف").performScrollTo().performClick()
+        compose.onNodeWithText("كيف يعمل؟").performScrollTo().performClick()
         waitForText("تفاصيل المثال")
         compose.onNodeWithText("رجوع").performScrollTo().performClick()
-        waitForText("خلّ طلباتك على مقاسك")
+        waitForText("طلبات على مقاس شروطك")
         compose.onNodeWithText("تخطي الجولة").performClick()
         compose.runOnIdle { assertTrue(continued) }
     }
@@ -102,7 +102,7 @@ class DriverFlowTest {
         compose.onNodeWithText("سعر الطلب").performScrollTo().performTextInput("30")
         compose.onNodeWithText("اعرف هل يناسبك").performScrollTo().assertIsEnabled().performClick()
         waitForText("نتيجة التجربة: لا يناسبك")
-        waitForText("• لم تحدد شرطاً لاختيار الطلبات.")
+        waitForText("• لم تحدد شرطًا لاختيار الطلبات.")
     }
 
     @Test
@@ -118,7 +118,7 @@ class DriverFlowTest {
         }
 
         compose.onNodeWithText("حذف حسابي").performScrollTo().performClick()
-        waitForText("حذف الحساب نهائياً؟")
+        waitForText("حذف الحساب نهائيًا؟")
         compose.onNodeWithText("حذف نهائي").assertIsNotEnabled()
         compose.onNodeWithText("اكتب «حذف» للتأكيد").performTextInput("حذف")
         compose.onNodeWithText("حذف نهائي").assertIsEnabled().performClick()

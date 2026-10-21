@@ -218,7 +218,7 @@ fun SettingsScreen(
                 isError = true,
             )
             message != null -> DriverStatus(message)
-            else -> DriverStatus("تم إيقاف متابعة الطلبات. عدّل شروطك أو ابدأ مجدداً عندما تكون جاهزاً.")
+            else -> DriverStatus("تم إيقاف متابعة الطلبات. عدّل شروطك أو ابدأ مجددًا عندما تكون جاهزًا.")
         }
     }
 
@@ -234,8 +234,8 @@ fun SettingsScreen(
         if (persistedActive && (!a11y || !notifications || !licensed)) {
             stopKeeper(
                 when {
-                    !a11y -> "توقفت متابعة الطلبات لأن إذن إمكانية الوصول لم يعد مفعّلاً."
-                    !notifications -> "توقفت متابعة الطلبات لأن إذن الإشعارات لم يعد مفعّلاً."
+                    !a11y -> "توقفت متابعة الطلبات لأن إذن إمكانية الوصول لم يعد مفعّلًا."
+                    !notifications -> "توقفت متابعة الطلبات لأن إذن الإشعارات لم يعد مفعّلًا."
                     else -> "توقفت متابعة الطلبات لأن حالة اشتراكك تحتاج إلى تحقق."
                 }
             )
@@ -322,7 +322,7 @@ fun SettingsScreen(
             return
         }
         if (!savedFilters.anyActive()) {
-            runtimeMessage = DriverStatus("أضف شرطاً واحداً محفوظاً على الأقل لاختيار الطلبات قبل بدء العمل.", isError = true)
+            runtimeMessage = DriverStatus("أضف شرطًا واحدًا محفوظًا على الأقل لاختيار الطلبات قبل بدء العمل.", isError = true)
             return
         }
         refreshRuntimePrerequisites()
@@ -345,7 +345,7 @@ fun SettingsScreen(
                     showActivationConsent = true
                 } else {
                     runtimeMessage = DriverStatus(
-                        "لم نتمكن من التحقق من اشتراكك. جدّده أو سجّل الدخول مجدداً ثم حاول مرة أخرى.",
+                        "لم نتمكن من التحقق من اشتراكك. جدّده أو سجّل الدخول مجددًا ثم حاول مرة أخرى.",
                         isError = true,
                     )
                 }
@@ -394,7 +394,7 @@ fun SettingsScreen(
                 TextButton(onClick = {
                     showAccessibilityRequired = false
                     if (onOpenA11y().isFailure) {
-                        runtimeMessage = DriverStatus("لم نتمكن من فتح إعدادات إمكانية الوصول. افتحها يدوياً من إعدادات الجهاز.", true)
+                        runtimeMessage = DriverStatus("لم نتمكن من فتح إعدادات إمكانية الوصول. افتحها يدويًا من إعدادات الجهاز.", true)
                     }
                 }) { Text("فتح إعدادات الجهاز") }
             },
@@ -423,7 +423,7 @@ fun SettingsScreen(
             title = { Text("بدء متابعة الطلبات") },
             text = {
                 Text(
-                    "عند البدء، يقرأ قناص تفاصيل الطلبات الظاهرة وفق شروطك المحفوظة، ويمكنه النقر تلقائياً على طلب يطابقها. " +
+                    "عند البدء، يقرأ قناص تفاصيل الطلبات الظاهرة وفق شروطك المحفوظة، ويمكنه النقر تلقائيًا على طلب يطابقها. " +
                         "يمكنك إيقاف المتابعة في أي وقت."
                 )
             },
@@ -495,7 +495,7 @@ fun SettingsScreen(
                 onToggle = { enabled -> if (enabled) requestActivation() else stopKeeper() },
                 onOpenA11y = {
                     if (onOpenA11y().isFailure) {
-                        runtimeMessage = DriverStatus("تعذر فتح إعدادات إمكانية الوصول. افتحها يدوياً من إعدادات الجهاز.", true)
+                        runtimeMessage = DriverStatus("تعذر فتح إعدادات إمكانية الوصول. افتحها يدويًا من إعدادات الجهاز.", true)
                     }
                 },
                 onRequestNotifications = onRequestNotificationPermission,
@@ -609,7 +609,7 @@ private fun DashboardPage(
 ) = DriverPage {
     val readiness = listOf(
         ReadinessItem(Icons.Outlined.FilterAlt, "شروط الطلبات", activeFilterCount > 0,
-            "$activeFilterCount شرط محفوظ", "اختر ما يناسبك أولاً", "تعديل الشروط", onOpenFilters),
+            "محفوظ لديك: ${ArabicCount.conditions(activeFilterCount)}", "اختر ما يناسبك أولًا", "تعديل الشروط", onOpenFilters),
         ReadinessItem(Icons.Outlined.AccessibilityNew, "إذن متابعة الطلبات", accessibilityEnabled,
             "مفعّل", "يحتاج إلى تفعيل", "تفعيل الإذن", onOpenA11y),
         ReadinessItem(Icons.Outlined.Notifications, "تنبيهات حالة العمل", notificationsEnabled,
@@ -631,7 +631,7 @@ private fun DashboardPage(
     QannasCard(
         title = if (readyCount == readiness.size) "كل شيء جاهز" else "قبل بدء العمل",
         subtitle = if (readyCount == readiness.size) "يمكنك بدء المتابعة في أي وقت."
-            else "متبقٍ ${readiness.size - readyCount} من ${readiness.size} خطوات قبل البدء.",
+            else "تبقّت ${ArabicCount.steps(readiness.size - readyCount)} قبل البدء.",
         icon = Icons.Outlined.VerifiedUser,
         modifier = Modifier.qannasEntrance(1),
     ) {
@@ -653,7 +653,7 @@ private fun DashboardPage(
     QannasCard(title = "أثناء وقت العمل", icon = Icons.Outlined.Info, modifier = Modifier.qannasEntrance(2)) {
         Text(
             "يتابع قناص الطلبات الظاهرة وفق سعر الطلب والعائد لكل كم ومسافة الوصول وأوقات العمل التي حددتها. " +
-                "عند ظهور طلب مطابق، يمكنه النقر عليه تلقائياً. يمكنك إيقاف المتابعة في أي وقت.",
+                "عند ظهور طلب مطابق، يمكنه النقر عليه تلقائيًا. يمكنك إيقاف المتابعة في أي وقت.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -698,8 +698,8 @@ private fun OperationHero(
                         Text(if (active) "متابعة الطلبات تعمل" else "متابعة الطلبات متوقفة", style = MaterialTheme.typography.titleLarge)
                         Text(
                             if (active) "تُطبّق شروطك المحفوظة وأوقات عملك."
-                            else if (readyCount < totalCount) "جاهز $readyCount من $totalCount. أكمل المتطلبات أدناه."
-                            else "كل المتطلبات جاهزة. ابدأ عندما تكون مستعداً.",
+                            else if (readyCount < totalCount) "اكتمل $readyCount من $totalCount متطلبات. أكمل البقية أدناه."
+                            else "كل المتطلبات جاهزة. ابدأ عندما تكون مستعدًا.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = brand.onHeroMuted,
                         )
@@ -900,7 +900,7 @@ private fun SimulatorPage(savedFilters: Filters) {
         if (invalid) {
             result = PreviewResult(
                 verdict = OfferEvaluator.evaluate(emptyPreviewOffer(), savedFilters, currentMinuteOfDay()),
-                error = "أدخل رقماً غير سالب، أو اترك الحقل فارغاً إذا لم تتوفر هذه المعلومة.",
+                error = "أدخل رقمًا غير سالب، أو اترك الحقل فارغًا إذا لم تتوفر هذه المعلومة.",
             )
             return
         }
@@ -984,7 +984,7 @@ private fun PreviewVerdictCard(result: PreviewResult) {
         icon = if (verdict.accept) Icons.Outlined.CheckCircle else Icons.Outlined.WarningAmber,
     ) {
         QannasMessage(
-            if (verdict.accept) "يطابق شروطك المحفوظة." else "لا يطابق ${verdict.reasons.size} من شروطك.",
+            if (verdict.accept) "يطابق شروطك المحفوظة." else "لا يطابق ${ArabicCount.conditionsObject(verdict.reasons.size)} من شروطك.",
             tone = if (verdict.accept) QannasTone.Success else QannasTone.Error,
         )
         verdict.reasons.forEach { reason ->
@@ -1060,7 +1060,7 @@ private fun emptyPreviewOffer(): Offer = Offer(
 private fun currentMinuteOfDay(): Int = Calendar.getInstance().let { it.get(Calendar.HOUR_OF_DAY) * 60 + it.get(Calendar.MINUTE) }
 
 private fun reasonArabic(code: ReasonCode): String = when (code) {
-    ReasonCode.NO_FILTERS -> "لم تحدد شرطاً لاختيار الطلبات."
+    ReasonCode.NO_FILTERS -> "لم تحدد شرطًا لاختيار الطلبات."
     ReasonCode.OUTSIDE_SCHEDULE -> "الوقت خارج أوقات العمل التي حددتها."
     ReasonCode.INVALID_FILTER -> "أحد شروط الطلبات غير صالح."
     ReasonCode.FARE_MISSING -> "سعر الطلب غير ظاهر."
@@ -1081,10 +1081,10 @@ private fun reasonArabic(code: ReasonCode): String = when (code) {
 }
 
 private fun redeemErrorMessage(error: Throwable?): String = when (error?.message) {
-    "الكود غير صحيح أو استُخدم مسبقاً",
-    "محاولات كثيرة؛ يرجى الانتظار قبل المحاولة مجدداً",
+    "الرمز غير صحيح أو استُخدم مسبقًا",
+    "محاولات كثيرة؛ يرجى الانتظار قبل المحاولة مجددًا",
     "هذا الحساب مرتبط بجهاز آخر" -> error.message.orEmpty()
-    else -> "تعذر تفعيل الكود. تحقق من الكود واتصال الإنترنت ثم أعد المحاولة."
+    else -> "تعذر تفعيل الرمز. تحقق من الرمز واتصال الإنترنت ثم أعد المحاولة."
 }
 
 private fun Context.isQannasAccessibilityEnabled(): Boolean {
