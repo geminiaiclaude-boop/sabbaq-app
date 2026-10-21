@@ -40,6 +40,7 @@ import app.qannas.ui.theme.LocalQannasBrand
 import app.qannas.ui.theme.LocalReducedMotion
 import app.qannas.ui.theme.QannasDepthContent
 import app.qannas.ui.theme.QannasMotion
+import app.qannas.ui.theme.flipWhenSelected
 import app.qannas.ui.theme.qannasEntrance
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -136,7 +137,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 /** وجهات لوحة السائق؛ يمكن استدعاء الشاشة مباشرة إلى أي منها في معاينات/اختبارات الواجهة. */
-enum class DriverDestination { Dashboard, Filters, Simulator, Account }
+enum class DriverDestination { Dashboard, Filters, Simulator, Account, Setup }
 
 private data class DriverStatus(val message: String, val isError: Boolean = false, val success: Boolean = false) {
     val tone: QannasTone get() = when {
@@ -172,11 +173,19 @@ fun SettingsScreen(
     initialDestination: DriverDestination = DriverDestination.Dashboard,
     onUnsavedFiltersChanged: (Boolean) -> Unit = {},
     onAccountDeleted: () -> Unit = {},
+    /** Opens the setup guide first for a driver who has not finished or dismissed it. */
+    autoSetupGuide: Boolean = true,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
-    var destination by rememberSaveable { mutableStateOf(initialDestination) }
+    var destination by rememberSaveable {
+        // First open after sign-in always starts with the guide; afterwards it is one tap away
+        // from the dashboard.
+        val needsSetup = autoSetupGuide && initialDestination == DriverDestination.Dashboard &&
+            !SetupGuidePreferences.isDone(context)
+        mutableStateOf(if (needsSetup) DriverDestination.Setup else initialDestination)
+    }
     var savedFilters by remember { mutableStateOf(Settings.filters) }
     val draftSaver = remember {
         Saver<FilterDraft, String>(
@@ -382,7 +391,7 @@ fun SettingsScreen(
         }
     }
 
-    BackHandler(enabled = destination == DriverDestination.Filters) {
+    BackHandler(enabled = destination == DriverDestination.Filters || destination == DriverDestination.Setup) {
         navigateTo(DriverDestination.Dashboard)
     }
 
@@ -502,7 +511,66 @@ fun SettingsScreen(
                 onRequestNotifications = onRequestNotificationPermission,
                 onOpenFilters = { navigateTo(DriverDestination.Filters) },
                 onOpenAccount = { navigateTo(DriverDestination.Account) },
+                onOpenSetupGuide = { navigateTo(DriverDestination.Setup) },
             )
+
+            DriverDestination.Setup -> DriverPage {
+                val leaveGuide = {
+                    SetupGuidePreferences.markDone(context)
+                    navigateTo(DriverDestination.Dashboard)
+                }
+                SetupGuidePage(
+                    steps = listOf(
+                        SetupStep(
+                            icon = Icons.Outlined.FilterAlt,
+                            title = "اختر الطلبات التي تناسبك",
+                            why = "ابدأ بقالب جاهز ثم احفظه. يمكنك ضبط الأجرة والمسافة والأوقات بدقة لاحقًا.",
+                            doneText = "محفوظ لديك: ${ArabicCount.conditions(activeFilterCount(savedFilters))}",
+                            actionLabel = if (filtersDirty) "حفظ الشروط" else "ضبط متقدم للشروط",
+                            done = savedFilters.anyActive(),
+                            onAction = { if (filtersDirty) saveDraft() else navigateTo(DriverDestination.Filters) },
+                            extra = {
+                                FilterPresetChips(draft = draft, enabled = !isSavingFilters, onDraftChange = ::updateDraft)
+                                QannasAnimatedMessage(filtersMessage?.message, filtersMessage?.tone ?: QannasTone.Info)
+                            },
+                        ),
+                        SetupStep(
+                            icon = Icons.Outlined.AccessibilityNew,
+                            title = "اسمح لقناص بمتابعة الطلبات",
+                            why = "يقرأ قناص شاشة الطلب في التطبيقات المدعومة فقط ليقارنها بشروطك، ويعالجها على جهازك. سنشرح لك التفاصيل قبل فتح الإعدادات.",
+                            doneText = "الإذن مفعّل",
+                            actionLabel = "تفعيل الإذن",
+                            done = accessibilityEnabled,
+                            onAction = {
+                                if (onOpenA11y().isFailure) {
+                                    runtimeMessage = DriverStatus("تعذر فتح إعدادات إمكانية الوصول. افتحها يدويًا من إعدادات الجهاز.", true)
+                                }
+                            },
+                        ),
+                        SetupStep(
+                            icon = Icons.Outlined.Notifications,
+                            title = "فعّل تنبيهات حالة العمل",
+                            why = "تنبيه ثابت يُظهر لك أن المتابعة تعمل، فتعرف دائمًا متى يعمل قناص ومتى يتوقف.",
+                            doneText = "التنبيهات مفعّلة",
+                            actionLabel = "السماح بالتنبيهات",
+                            done = notificationsEnabled,
+                            onAction = onRequestNotificationPermission,
+                        ),
+                        SetupStep(
+                            icon = Icons.Outlined.VerifiedUser,
+                            title = "تأكد من اشتراكك",
+                            why = "ابدأ تجربتك أو فعّل اشتراكك من صفحة حسابي.",
+                            doneText = "اشتراكك جاهز للعمل",
+                            actionLabel = "فتح حسابي",
+                            done = licenseInMemory,
+                            onAction = { navigateTo(DriverDestination.Account) },
+                        ),
+                    ),
+                    onTryExample = { SetupGuidePreferences.markDone(context); navigateTo(DriverDestination.Simulator) },
+                    onFinish = leaveGuide,
+                    onLater = leaveGuide,
+                )
+            }
 
             DriverDestination.Filters -> FiltersPage(
                 draft = draft,
@@ -548,7 +616,7 @@ private fun DriverNavigationShell(
                         NavigationRailItem(
                             selected = destination == item.destination,
                             onClick = { onDestinationSelected(item.destination) },
-                            icon = { Icon(item.icon, contentDescription = item.label) },
+                            icon = { Icon(item.icon, contentDescription = item.label, modifier = Modifier.flipWhenSelected(destination == item.destination)) },
                             // The rail item is a fixed 80dp; two centred lines keep labels like
                             // «طلبات تناسبك» whole instead of clipping at the screen edge.
                             label = {
@@ -574,7 +642,7 @@ private fun DriverNavigationShell(
                             NavigationBarItem(
                                 selected = destination == item.destination,
                                 onClick = { onDestinationSelected(item.destination) },
-                                icon = { Icon(item.icon, contentDescription = item.label) },
+                                icon = { Icon(item.icon, contentDescription = item.label, modifier = Modifier.flipWhenSelected(destination == item.destination)) },
                                 label = { Text(item.label) },
                             )
                         }
@@ -616,6 +684,7 @@ private fun DashboardPage(
     onRequestNotifications: () -> Unit,
     onOpenFilters: () -> Unit,
     onOpenAccount: () -> Unit,
+    onOpenSetupGuide: () -> Unit,
 ) = DriverPage {
     val readiness = listOf(
         ReadinessItem(Icons.Outlined.FilterAlt, "شروط الطلبات", activeFilterCount > 0,
@@ -658,6 +727,12 @@ private fun DashboardPage(
             if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             ReadinessRow(item)
         }
+        QannasButton(
+            if (readyCount < readiness.size) "أكمل الإعداد خطوة بخطوة" else "دليل الإعداد",
+            onClick = onOpenSetupGuide,
+            style = if (readyCount < readiness.size) QannasButtonStyle.Secondary else QannasButtonStyle.Text,
+            icon = Icons.Outlined.Tune,
+        )
     }
 
     QannasCard(title = "أثناء وقت العمل", icon = Icons.Outlined.Info, modifier = Modifier.qannasEntrance(2)) {
@@ -695,7 +770,7 @@ private fun OperationHero(
     modifier: Modifier = Modifier,
 ) {
     val brand = LocalQannasBrand.current
-    QannasHeroSurface(modifier) {
+    QannasHeroSurface(modifier, sceneActive = isActive) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             LiveStatusMark(isActive = isActive)
             Column(modifier = Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite }) {
@@ -866,6 +941,15 @@ private fun FilterPresetsCard(draft: FilterDraft, enabled: Boolean, onDraftChang
         subtitle = selected?.description ?: "يضبط المسافة والوقت فقط. راجع القيم ثم احفظ.",
         icon = Icons.Outlined.Tune,
     ) {
+        FilterPresetChips(draft, enabled, onDraftChange)
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FilterPresetChips(draft: FilterDraft, enabled: Boolean, onDraftChange: (FilterDraft) -> Unit) {
+    val selected = FilterPreset.entries.firstOrNull { it.matches(draft) }
+    run {
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterPreset.entries.forEach { preset ->
                 FilterChip(

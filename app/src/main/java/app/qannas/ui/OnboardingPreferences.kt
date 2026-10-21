@@ -7,7 +7,8 @@ object OnboardingPreferences {
     private const val FILE_NAME = "qannas_onboarding"
     private const val KEY_COMPLETE = "complete"
     private const val KEY_VERSION = "completed_version"
-    private const val CURRENT_VERSION = 2
+    // 3: the redesigned introduction is shown once to drivers who saw the previous one.
+    private const val CURRENT_VERSION = 3
 
     fun isComplete(context: Context): Boolean = runCatching {
         preferences(context).getBoolean(KEY_COMPLETE, false) &&

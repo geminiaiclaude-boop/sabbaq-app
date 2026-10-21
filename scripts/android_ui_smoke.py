@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Native Android launch/screenshot smoke test; never signs in or starts KeeperService."""
 import argparse
+import hashlib
 import json
 import pathlib
 import re
@@ -39,8 +40,23 @@ def apply_environment(env):
         time.sleep(4)
 
 
+def reachable_by_scrolling(text, visible):
+    """True when [text] is on screen now or appears after scrolling the page down."""
+    if text in visible:
+        return True
+    for _ in range(8):
+        adb('shell', 'input', 'swipe', '540', '1700', '540', '500', '250')
+        time.sleep(1)
+        adb('shell', 'uiautomator', 'dump', '/sdcard/qannas-ui.xml', timeout=60)
+        scrolled = ET.fromstring(adb('shell', 'cat', '/sdcard/qannas-ui.xml')).findall('.//node')
+        if any(text in (n.get('text', '') + n.get('content-desc', '')) for n in scrolled):
+            return True
+    return False
+
+
 cases = [
     ('first-launch', None, False, 1.0, None),
+    ('intro', 'intro', False, 1.0, None),
     ('welcome-example', 'welcome-example', False, 1.0, None),
     ('welcome-ready', 'welcome-ready', False, 1.0, None),
     ('login', 'login', False, 1.0, None),
@@ -48,6 +64,9 @@ cases = [
     ('filters', 'filters', False, 1.0, None),
     ('simulator', 'simulator', False, 1.0, None),
     ('account', 'account', False, 1.0, None),
+    ('setup', 'setup', False, 1.0, None),
+    ('setup-dark', 'setup', True, 1.0, None),
+    ('login-dark', 'login', True, 1.0, None),
     ('disclosure', 'disclosure', False, 1.0, None),
     ('dashboard-dark', 'dashboard', True, 1.0, None),
     ('login-large-font', 'login', False, 1.6, None),
@@ -113,20 +132,12 @@ for name, screen, dark, font_scale, env in cases:
         assert 'لا يوجد اتصال بالإنترنت' in visible, f'Offline banner missing: {name}'
     if screen == 'login':
         # Play requires the privacy policy to be reachable inside the app before sign-in.
-        assert 'سياسة الخصوصية' in visible, f'Privacy policy link missing: {name}'
+        # It sits at the end of the sign-in page, below the first screen.
+        assert reachable_by_scrolling('سياسة الخصوصية', visible), f'Privacy policy link missing: {name}'
     if screen == 'account':
         # Google Play requires an in-app path to delete the account in every distribution.
         # It sits at the end of the page, below the first screen, so scroll before reading.
-        deletion_visible = 'حذف حسابي' in visible
-        for _ in range(6):
-            if deletion_visible:
-                break
-            adb('shell', 'input', 'swipe', '540', '1700', '540', '500', '250')
-            time.sleep(1)
-            adb('shell', 'uiautomator', 'dump', '/sdcard/qannas-ui.xml', timeout=60)
-            scrolled = ET.fromstring(adb('shell', 'cat', '/sdcard/qannas-ui.xml')).findall('.//node')
-            deletion_visible = any('حذف حسابي' in (n.get('text', '') + n.get('content-desc', '')) for n in scrolled)
-        assert deletion_visible, f'Account deletion entry point missing: {name}'
+        assert reachable_by_scrolling('حذف حسابي', visible), f'Account deletion entry point missing: {name}'
     if args.distribution == 'play' and screen in ('login', 'account'):
         visible = ' '.join(node.get('text', '') + ' ' + node.get('content-desc', '') for node in nodes)
         for forbidden in ('كود التفعيل', 'شراء كود', 'شراء الاشتراك من الإدارة', 'واتساب', '18.75'):
@@ -140,6 +151,41 @@ for name, screen, dark, font_scale, env in cases:
 
 adb('shell', 'settings', 'put', 'system', 'font_scale', '1.0')
 apply_environment(None)
+
+# Motion evidence: with system animations on, the logo intro and the live 3D scenes must
+# actually move. Frames are kept for review; identical frames mean the motion is broken.
+adb('shell', 'settings', 'put', 'global', 'animator_duration_scale', '1')
+motion = {}
+
+def content_digest(raw):
+    """Digest of the app's content rows only: status/navigation bars (clock, network icons)
+    change on their own and must not count as app motion. raw = `screencap` without -p."""
+    width = int.from_bytes(raw[0:4], 'little')
+    height = int.from_bytes(raw[4:8], 'little')
+    header = len(raw) - width * height * 4
+    top, bottom = int(height * 0.08), int(height * 0.92)
+    return hashlib.sha256(raw[header + top * width * 4: header + bottom * width * 4]).hexdigest()
+
+
+def capture_motion(tag, extras, delays):
+    activity = 'MainActivity' if extras is None else 'DesignPreviewActivity'
+    adb('shell', 'am', 'force-stop', args.package)
+    # -W returns once the app has drawn its first frame, so the system splash is not measured.
+    adb('shell', 'am', 'start', '-W', '-n', f'{args.package}/app.qannas.ui.{activity}', *(extras or []), timeout=60)
+    digests = []
+    for index, delay in enumerate(delays):
+        time.sleep(delay)
+        (out / f'motion-{tag}-{index}.png').write_bytes(adb('exec-out', 'screencap', '-p', binary=True))
+        digests.append(content_digest(adb('exec-out', 'screencap', binary=True)))
+    motion[tag] = {'frames': len(digests), 'distinct': len(set(digests))}
+    print(f'motion {tag}: {motion[tag]}', flush=True)
+    assert len(set(digests)) > 1, f'No motion captured: {tag}'
+
+capture_motion('intro', None, [0.1, 0.3, 0.3, 0.3])
+capture_motion('welcome', ['--es', 'screen', 'welcome', '--ez', 'dark', 'false'], [1.5, 0.5, 0.5, 0.5])
+capture_motion('dashboard', ['--es', 'screen', 'dashboard', '--ez', 'dark', 'false'], [1.0, 0.5, 0.5, 0.5])
+adb('shell', 'settings', 'put', 'global', 'animator_duration_scale', '0')
+(out / 'motion.json').write_text(json.dumps(motion, indent=2))
 adb('shell', 'am', 'force-stop', args.package)
 (out / 'results.json').write_text(json.dumps(results, indent=2))
 print(json.dumps(results, indent=2), flush=True)

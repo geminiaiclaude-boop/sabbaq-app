@@ -35,7 +35,7 @@ class CustomerCommerceCopyTest {
         )
 
         assertTrue(presentation.canStart)
-        assertTrue(presentation.detail.contains("7 يومًا"))
+        assertTrue(presentation.detail.contains("7 أيام"))
         assertTrue(presentation.detail.contains("تبدأ فقط عند ضغط"))
         assertTrue(presentation.detail.contains("لا تبدأ تلقائيًا"))
     }

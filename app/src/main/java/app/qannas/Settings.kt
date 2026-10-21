@@ -71,8 +71,14 @@ object Settings {
             .remove(KEY_FILTERS)
             .putBoolean(KEY_IS_ACTIVE, false)
             .remove(KEY_A11Y_DISCLOSURE_VERSION)
+            .remove(KEY_KNOWN_SUBSCRIBER)
             .commit()
     }.getOrDefault(false)
+
+    /** A paid subscription was confirmed on this device; only hides the trial offer, grants nothing. */
+    var knownSubscriber: Boolean
+        get() = runCatching { prefs().getBoolean(KEY_KNOWN_SUBSCRIBER, false) }.getOrDefault(false)
+        set(value) { runCatching { prefs().edit().putBoolean(KEY_KNOWN_SUBSCRIBER, value).apply() } }
 
     var themeMode: ThemeMode
         get() = runCatching { ThemeMode.valueOf(prefs().getString("theme_mode", "SYSTEM") ?: "SYSTEM") }
@@ -86,6 +92,7 @@ object Settings {
     private const val KEY_FILTERS = "filters"
     private const val KEY_IS_ACTIVE = "is_active"
     private const val KEY_A11Y_DISCLOSURE_VERSION = "a11y_disclosure_version"
+    private const val KEY_KNOWN_SUBSCRIBER = "known_subscriber"
     private const val A11Y_DISCLOSURE_VERSION = 1
 }
 

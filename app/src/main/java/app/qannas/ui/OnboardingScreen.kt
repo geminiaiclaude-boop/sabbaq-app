@@ -206,10 +206,13 @@ private fun WelcomePage(
     onRetryOffer: () -> Unit
 ) {
     val brand = LocalQannasBrand.current
-    QannasHeroSurface(Modifier.qannasEntrance(0)) {
+    QannasHeroSurface(Modifier.qannasEntrance(0), scene = false) {
+        Text("تعرّف على قناص", style = MaterialTheme.typography.labelLarge, color = brand.heroAccent)
         Text("طلبات على مقاس شروطك", style = MaterialTheme.typography.headlineMedium)
-        Text("وقت أقل أمام الشاشة، وشروط واضحة ليوم عملك.",
+        Text("تحدد شروطك مرة واحدة، ويتابع قناص الطلبات ويقبل ما يطابقها. وقت أقل أمام الشاشة.",
             style = MaterialTheme.typography.bodyLarge, color = brand.onHeroMuted)
+        // The product, shown rather than described: example requests and Qannas' verdict.
+        QannasOrderShowcase()
     }
     QannasCard(
         title = "أنت تحدد، وقناص يتابع",

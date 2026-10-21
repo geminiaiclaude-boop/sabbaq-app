@@ -106,6 +106,37 @@ class DriverFlowTest {
     }
 
     @Test
+    fun setup_guide_advances_when_conditions_are_saved() {
+        show {
+            SettingsScreen(
+                notificationPermissionGranted = false,
+                onRequestNotificationPermission = {},
+                onOpenA11y = { Result.success(Unit) },
+                onToggleKeeper = { Result.success(Unit) },
+                initialDestination = DriverDestination.Setup,
+            )
+        }
+
+        waitForText("لنجهّز قناص معًا")
+        compose.onNodeWithText("قريب وسريع").performScrollTo().performClick()
+        compose.onNodeWithText("حفظ الشروط").performScrollTo().performClick()
+        // Step 1 is done, so the guide moves on to the permission step by itself.
+        waitForText("تفعيل الإذن")
+        compose.runOnIdle { assertTrue(Settings.filters.anyActive()) }
+    }
+
+    @Test
+    fun sign_in_choice_reframes_the_sign_in_card() {
+        show { LoginScreen(onLoginSuccess = {}) }
+
+        waitForText("كيف تريد أن تبدأ؟")
+        compose.onNodeWithText("اشترك الآن").performScrollTo().performClick()
+        waitForText("سجّل الدخول لإتمام اشتراكك")
+        compose.onNodeWithText("لدي اشتراك").performScrollTo().performClick()
+        waitForText("تسجيل الدخول")
+    }
+
+    @Test
     fun account_deletion_needs_typed_confirmation_and_fails_safely_without_session() {
         show {
             SubscriptionScreen(

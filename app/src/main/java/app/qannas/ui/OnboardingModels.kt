@@ -63,13 +63,13 @@ internal fun onboardingOfferCopy(
         maximumFractionDigits = 2
     }.format(validOffer.priceMinor / 100.0)
     val trial = if (validOffer.trialEnabled) {
-        "جرّب قناص ${validOffer.trialDays} يومًا دون رسوم للحسابات المؤهلة. تبدأ بعد تأكيدك عقب تسجيل الدخول."
+        "جرّب قناص ${ArabicCount.days(validOffer.trialDays)} دون رسوم للحسابات المؤهلة. تبدأ بعد تأكيدك عقب تسجيل الدخول."
     } else {
         "التجربة غير متاحة حاليًا."
     }
     return OnboardingOfferCopy(
         headline = if (validOffer.trialEnabled) "جرّبه قبل الاشتراك" else "اختر ما يناسب عملك",
-        detail = "$trial سعر الاشتراك الحالي $price ر.س لمدة ${validOffer.subscriptionDays} يومًا.",
+        detail = "$trial سعر الاشتراك الحالي $price ر.س لمدة ${ArabicCount.days(validOffer.subscriptionDays)}.",
         hasServerOffer = true,
         canShowTrialJourney = validOffer.trialEnabled
     )

@@ -55,8 +55,10 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.saveable.rememberSaveable
 import app.qannas.BuildConfig
 import app.qannas.Settings
+import app.qannas.network.LicenseState
 import app.qannas.network.PublicOffer
 import app.qannas.network.SupabaseClient
 import app.qannas.ui.theme.LocalQannasBrand
@@ -115,6 +117,9 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
     var activationCode by remember { mutableStateOf("") }
     var activationValidationRequested by remember { mutableStateOf(false) }
     var activationError by remember { mutableStateOf<String?>(null) }
+    // The driver's choice before signing in (trial / subscribe / existing subscription).
+    var accessIntent by rememberSaveable { mutableStateOf(AccessIntent.None) }
+    val knownSubscriber = remember { Settings.knownSubscriber }
 
     val isBusy = journey != AuthJourney.Idle && journey != AuthJourney.AwaitingAccess
     val awaitingAccess = journey == AuthJourney.AwaitingAccess ||
@@ -173,6 +178,8 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
             return
         }
         Settings.isActive = false
+        // A paid subscription on this device hides the free-trial choice on later sign-ins.
+        if (SupabaseClient.subscriptionSnapshot()?.state == LicenseState.ACTIVE) Settings.knownSubscriber = true
         activationCode = ""
         clearPhoneInput()
         journey = AuthJourney.Idle
@@ -201,6 +208,9 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
         )
         loadingOffer = false
     }
+
+    // The public offer (trial length, price) feeds the choice cards before sign-in.
+    LaunchedEffect(Unit) { if (offer == null) refreshPublicOffer() }
 
     fun checkRoleAndLicense(token: String) {
         journey = AuthJourney.CheckingRole
@@ -449,6 +459,7 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
                                 null
                             },
                             showTrial = canStartTrial(SupabaseClient.subscriptionSnapshot(), offer),
+                            intent = accessIntent,
                             onRetryOffer = {
                                 if (!loadingOffer && journey == AuthJourney.AwaitingAccess) {
                                     scope.launch { refreshPublicOffer() }
@@ -468,8 +479,19 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit) {
                             },
                             onCancel = ::abandonAccess
                         )
-                    } else {
+                    } else Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                        AccessChoiceCard(
+                            offer = offer,
+                            knownSubscriber = knownSubscriber,
+                            selected = accessIntent,
+                            onSelect = { accessIntent = it },
+                        )
                         AuthenticationCard(
+                            title = when (accessIntent) {
+                                AccessIntent.Trial -> "سجّل الدخول لبدء تجربتك"
+                                AccessIntent.Subscribe -> "سجّل الدخول لإتمام اشتراكك"
+                                else -> "تسجيل الدخول"
+                            },
                             phone = phone,
                             otp = otp,
                             otpRequested = otpRequested,
@@ -540,6 +562,7 @@ private fun OrDivider() {
 
 @Composable
 private fun AuthenticationCard(
+    title: String,
     phone: String,
     otp: String,
     otpRequested: Boolean,
@@ -561,7 +584,7 @@ private fun AuthenticationCard(
     onVerifyOtp: () -> Unit
 ) {
     QannasCard(
-        title = "تسجيل الدخول",
+        title = title,
         subtitle = "اختر الطريقة الأنسب لتأكيد هويتك وحماية الوصول إلى حسابك.",
         icon = Icons.Outlined.Login
     ) {
@@ -659,6 +682,7 @@ private fun PendingAccessCard(
     activationCode: String,
     activationCodeError: String?,
     showTrial: Boolean,
+    intent: AccessIntent,
     onRetryOffer: () -> Unit,
     onStartTrial: () -> Unit,
     onActivationCodeChange: (String) -> Unit,
@@ -684,10 +708,25 @@ private fun PendingAccessCard(
             ) { Text("إعادة المحاولة") }
         }
 
+        // Subscribing drivers see the purchase path first; everyone else sees the trial first.
+        val purchaseFirst = intent == AccessIntent.Subscribe && BuildConfig.DIRECT_DISTRIBUTION
+        if (purchaseFirst) {
+            DirectAccessOptions(
+                offer = offer,
+                isBusy = isBusy,
+                journey = journey,
+                activationCode = activationCode,
+                activationCodeError = activationCodeError,
+                actionError = actionError,
+                onActivationCodeChange = onActivationCodeChange,
+                onActivateCode = onActivateCode,
+                onOpenPurchaseContact = onOpenPurchaseContact
+            )
+        }
         if (showTrial) {
             QannasSectionTitle(
                 title = "تجربة متاحة لحسابك",
-                subtitle = "جرّب أدوات الفرز والشروط، وراجع العائد ووقت العرض. التجربة لمدة ${offer?.trialDays} يومًا وتبدأ فقط بعد ضغطك على الزر."
+                subtitle = "جرّب أدوات الفرز والشروط، وراجع العائد ووقت العرض. التجربة لمدة ${ArabicCount.days(offer?.trialDays)} وتبدأ فقط بعد ضغطك على الزر."
             )
             QannasButton(
                 text = "ابدأ التجربة",
@@ -699,7 +738,9 @@ private fun PendingAccessCard(
         }
 
         // العزل بالثابت التركيبي: مسار الكود وقناة الإدارة لا يُضمّنان في play.
-        if (BuildConfig.DIRECT_DISTRIBUTION) {
+        if (purchaseFirst) {
+            // Already shown above.
+        } else if (BuildConfig.DIRECT_DISTRIBUTION) {
             DirectAccessOptions(
                 offer = offer,
                 isBusy = isBusy,
@@ -742,30 +783,16 @@ private fun DirectAccessOptions(
     QannasSectionTitle(
         title = "اشتراك قناص",
         subtitle = offer?.let {
-            "السعر ${formatOfferPrice(it.priceMinor, it.currency)} لمدة ${it.subscriptionDays} يومًا. قبل الدفع، راجع السعر والمدة مع الإدارة."
+            "السعر ${formatOfferPrice(it.priceMinor, it.currency)} لمدة ${ArabicCount.days(it.subscriptionDays)}."
         } ?: "لا نستطيع عرض السعر أو المدة الآن. أعد المحاولة قبل اتخاذ قرار الاشتراك."
     )
-    offer?.purchaseContactUrl?.let { url ->
-        TextButton(
-            onClick = { onOpenPurchaseContact(url) },
-            enabled = !isBusy,
-            modifier = Modifier.heightIn(min = 48.dp)
-        ) { Text("التواصل مع الإدارة") }
-    }
-    OutlinedTextField(
+    PurchaseSteps(offer = offer, enabled = !isBusy, onOpenPurchase = onOpenPurchaseContact)
+    ActivationCodeField(
         value = activationCode,
         onValueChange = onActivationCodeChange,
         enabled = !isBusy,
-        singleLine = true,
-        label = { Text("رمز التفعيل") },
-        placeholder = { Text("XXXX-XXXX-XXXX-XXXX") },
-        leadingIcon = { Icon(Icons.Outlined.Key, contentDescription = null) },
-        isError = activationCodeError != null,
-        supportingText = activationCodeError?.let { { Text(it) } },
-        textStyle = LocalTextStyle.current.copy(textDirection = TextDirection.Ltr),
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Done),
-        keyboardActions = KeyboardActions(onDone = { onActivateCode() }),
-        modifier = Modifier.fillMaxWidth()
+        error = activationCodeError,
+        onDone = onActivateCode,
     )
     QannasAnimatedMessage(actionError, QannasTone.Error)
     QannasButton(
