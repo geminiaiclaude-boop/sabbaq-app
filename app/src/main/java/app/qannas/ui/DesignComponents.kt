@@ -28,7 +28,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
@@ -41,7 +44,9 @@ import app.qannas.R
 import app.qannas.ui.theme.LocalQannasBrand
 import app.qannas.ui.theme.LocalReducedMotion
 import app.qannas.ui.theme.QannasMotion
+import app.qannas.ui.theme.glint
 import app.qannas.ui.theme.pressDepth
+import app.qannas.ui.theme.tilt3D
 
 /** Message tone; drives colour, icon and the screen-reader announcement together. */
 enum class QannasTone { Info, Success, Error }
@@ -78,10 +83,16 @@ internal fun QannasCard(
     destructive: Boolean = false,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    Card(modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    val colors = MaterialTheme.colorScheme
+    val shape = MaterialTheme.shapes.large
+    // Depth: a tinted shadow under the card and light falling on its top edge.
+    Card(modifier.fillMaxWidth().shadow(14.dp, shape, ambientColor = colors.primary.copy(alpha = 0.10f), spotColor = colors.primary.copy(alpha = 0.22f)),
+        shape = shape,
+        colors = CardDefaults.cardColors(containerColor = colors.surface),
+        border = BorderStroke(1.dp, colors.outlineVariant)) {
+        Column(Modifier
+            .background(Brush.verticalGradient(listOf(colors.primary.copy(alpha = 0.035f), Color.Transparent), endY = 260f))
+            .padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (title != null) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (icon != null) QannasIconBadge(icon, destructive = destructive)
                 Column(Modifier.weight(1f)) {
@@ -97,27 +108,46 @@ internal fun QannasCard(
 @Composable
 internal fun QannasIconBadge(icon: ImageVector, modifier: Modifier = Modifier, destructive: Boolean = false) {
     val colors = MaterialTheme.colorScheme
-    Box(modifier.size(40.dp).clip(MaterialTheme.shapes.small)
-        .background(if (destructive) colors.errorContainer else colors.primaryContainer), contentAlignment = Alignment.Center) {
+    val base = if (destructive) colors.errorContainer else colors.primaryContainer
+    val edge = if (destructive) colors.error else colors.primary
+    // A small raised tile: lit from above, darker at the base, with its own shadow.
+    Box(modifier.size(40.dp).shadow(6.dp, MaterialTheme.shapes.small, spotColor = edge.copy(alpha = 0.35f)).clip(MaterialTheme.shapes.small)
+        .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.55f).compositeOver(base), base, edge.copy(alpha = 0.18f).compositeOver(base)))),
+        contentAlignment = Alignment.Center) {
         Icon(icon, null, tint = if (destructive) colors.onErrorContainer else colors.onPrimaryContainer, modifier = Modifier.size(22.dp))
     }
 }
 
 /**
  * The deep brand surface for the one most important area of a screen (status hero,
- * sign-in welcome). Use at most once per screen so it keeps its weight.
+ * sign-in welcome). Use at most once per screen so it keeps its weight. It floats on a
+ * glowing shadow, leans toward the finger, and can carry the live radar [scene] behind
+ * its content ([sceneActive] speeds it up while monitoring runs).
  */
 @Composable
-internal fun QannasHeroSurface(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+internal fun QannasHeroSurface(
+    modifier: Modifier = Modifier,
+    scene: Boolean = true,
+    sceneActive: Boolean = false,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     val brand = LocalQannasBrand.current
-    Surface(modifier.fillMaxWidth(), shape = MaterialTheme.shapes.extraLarge, color = brand.heroStart, contentColor = brand.onHero) {
-        Column(
-            Modifier
-                .background(Brush.linearGradient(listOf(brand.heroStart, brand.heroEnd)))
-                .padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            content = content,
-        )
+    val shape = MaterialTheme.shapes.extraLarge
+    Surface(
+        modifier
+            .fillMaxWidth()
+            .tilt3D(maxDegrees = 5f, idle = true)
+            .shadow(24.dp, shape, ambientColor = brand.heroEnd, spotColor = brand.heroEnd),
+        shape = shape, color = brand.heroStart, contentColor = brand.onHero,
+    ) {
+        Box(Modifier.background(Brush.linearGradient(listOf(brand.heroStart, brand.heroEnd)))) {
+            if (scene) QannasRadarScene(active = sceneActive, modifier = Modifier.matchParentSize().graphicsLayer { alpha = 0.55f })
+            Column(
+                Modifier.padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                content = content,
+            )
+        }
     }
 }
 
@@ -235,7 +265,7 @@ internal fun QannasButton(
     }
     val active = enabled && !busy
     when (style) {
-        QannasButtonStyle.Primary -> Button(onClick, sized, active, interactionSource = interaction,
+        QannasButtonStyle.Primary -> Button(onClick, sized.clip(ButtonDefaults.shape).glint(enabled = active), active, interactionSource = interaction,
             colors = colors ?: ButtonDefaults.buttonColors(), content = label)
         QannasButtonStyle.Destructive -> Button(onClick, sized, active, interactionSource = interaction,
             colors = colors ?: ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error,

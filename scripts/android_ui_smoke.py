@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Native Android launch/screenshot smoke test; never signs in or starts KeeperService."""
 import argparse
+import hashlib
 import json
 import pathlib
 import re
@@ -41,6 +42,7 @@ def apply_environment(env):
 
 cases = [
     ('first-launch', None, False, 1.0, None),
+    ('intro', 'intro', False, 1.0, None),
     ('welcome-example', 'welcome-example', False, 1.0, None),
     ('welcome-ready', 'welcome-ready', False, 1.0, None),
     ('login', 'login', False, 1.0, None),
@@ -48,6 +50,9 @@ cases = [
     ('filters', 'filters', False, 1.0, None),
     ('simulator', 'simulator', False, 1.0, None),
     ('account', 'account', False, 1.0, None),
+    ('setup', 'setup', False, 1.0, None),
+    ('setup-dark', 'setup', True, 1.0, None),
+    ('login-dark', 'login', True, 1.0, None),
     ('disclosure', 'disclosure', False, 1.0, None),
     ('dashboard-dark', 'dashboard', True, 1.0, None),
     ('login-large-font', 'login', False, 1.6, None),
@@ -140,6 +145,31 @@ for name, screen, dark, font_scale, env in cases:
 
 adb('shell', 'settings', 'put', 'system', 'font_scale', '1.0')
 apply_environment(None)
+
+# Motion evidence: with system animations on, the logo intro and the live 3D scenes must
+# actually move. Frames are kept for review; identical frames mean the motion is broken.
+adb('shell', 'settings', 'put', 'global', 'animator_duration_scale', '1')
+motion = {}
+
+def capture_motion(tag, extras, delays):
+    activity = 'MainActivity' if extras is None else 'DesignPreviewActivity'
+    adb('shell', 'am', 'force-stop', args.package)
+    adb('shell', 'am', 'start', '-n', f'{args.package}/app.qannas.ui.{activity}', *(extras or []), timeout=60)
+    digests = []
+    for index, delay in enumerate(delays):
+        time.sleep(delay)
+        frame = adb('exec-out', 'screencap', '-p', binary=True)
+        (out / f'motion-{tag}-{index}.png').write_bytes(frame)
+        digests.append(hashlib.sha256(frame).hexdigest())
+    motion[tag] = {'frames': len(digests), 'distinct': len(set(digests))}
+    print(f'motion {tag}: {motion[tag]}', flush=True)
+    assert len(set(digests)) > 1, f'No motion captured: {tag}'
+
+capture_motion('intro', None, [0.3, 0.4, 0.4, 0.5])
+capture_motion('welcome', ['--es', 'screen', 'welcome', '--ez', 'dark', 'false'], [2.5, 0.6, 0.6, 0.6])
+capture_motion('dashboard', ['--es', 'screen', 'dashboard', '--ez', 'dark', 'false'], [2.0, 0.5, 0.5])
+adb('shell', 'settings', 'put', 'global', 'animator_duration_scale', '0')
+(out / 'motion.json').write_text(json.dumps(motion, indent=2))
 adb('shell', 'am', 'force-stop', args.package)
 (out / 'results.json').write_text(json.dumps(results, indent=2))
 print(json.dumps(results, indent=2), flush=True)

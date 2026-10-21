@@ -46,11 +46,11 @@ val keystorePath = setting("QANNAS_KEYSTORE")
 val releaseStoreFile = keystorePath
     ?.takeIf { it.isNotBlank() }
     ?.let { rootProject.file(it) }
-val versionCodeValue = setting("QANNAS_VERSION_CODE") ?: "6"
+val versionCodeValue = setting("QANNAS_VERSION_CODE") ?: "7"
 val configuredVersionCode = versionCodeValue.toIntOrNull()
     ?: throw GradleException("QANNAS_VERSION_CODE يجب أن يكون عدداً صحيحاً موجباً")
 require(configuredVersionCode > 0) { "QANNAS_VERSION_CODE يجب أن يكون عدداً صحيحاً موجباً" }
-val configuredVersionName = setting("QANNAS_VERSION_NAME") ?: "1.3.2"
+val configuredVersionName = setting("QANNAS_VERSION_NAME") ?: "1.4.0"
 require(configuredVersionName.isNotBlank()) { "QANNAS_VERSION_NAME لا يمكن أن يكون فارغاً" }
 
 android {

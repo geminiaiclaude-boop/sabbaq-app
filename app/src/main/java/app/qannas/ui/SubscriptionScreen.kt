@@ -287,7 +287,9 @@ internal fun SubscriptionScreen(
             onRefresh = { scope.launch { refreshLicense(showResult = true) } },
         )
 
-        TrialCard(
+        // A paying subscriber is never shown trial options.
+        val subscribed = snapshot?.state == LicenseState.ACTIVE
+        if (!subscribed) TrialCard(
             snapshot = snapshot,
             isStarting = isStartingTrial,
             isBusy = isRefreshingLicense || isRedeemingCode,
@@ -298,6 +300,7 @@ internal fun SubscriptionScreen(
         if (isDirectDistribution) {
             DirectDistributionCard(
                 offer = offer,
+                subscribed = subscribed,
                 isLoadingOffer = isLoadingOffer,
                 isBusy = isRefreshingLicense || isStartingTrial || isRedeemingCode,
                 activationCode = activationCode,
@@ -540,6 +543,7 @@ private fun TrialCard(
 @Composable
 private fun DirectDistributionCard(
     offer: PublicOffer?,
+    subscribed: Boolean,
     isLoadingOffer: Boolean,
     isBusy: Boolean,
     activationCode: String,
@@ -549,7 +553,7 @@ private fun DirectDistributionCard(
     onOpenContact: (String) -> Unit,
 ) {
     QannasCard(
-        title = "اشتراك قناص",
+        title = if (subscribed) "تجديد اشتراكك" else "اشتراك قناص",
         subtitle = "شروطك للأجرة والعائد لكل كم ومسافة الوصول وأوقات العمل، مع قبول تلقائي للطلب المطابق.",
         icon = Icons.Outlined.Info,
     ) {
@@ -569,19 +573,11 @@ private fun DirectDistributionCard(
                     CustomerCommerceCopy.offerSummary(offer),
                     style = MaterialTheme.typography.titleMedium,
                 )
-                Text(
-                    if (offer.trialEnabled && offer.trialDays > 0) "قد تتوفر تجربة لمدة ${offer.trialDays} يومًا للحسابات المؤهلة. راجع بطاقة التجربة لتأكيد أهلية حسابك."
-                    else "لا تتوفر تجربة ضمن العرض الحالي.",
+                if (!subscribed && offer.trialEnabled && offer.trialDays > 0) Text(
+                    "قد تتوفر تجربة لمدة ${offer.trialDays} يومًا للحسابات المؤهلة. راجع بطاقة التجربة لتأكيد أهلية حسابك.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
-                Text(
-                    "راجع السعر والمدة مع الإدارة قبل الدفع. لا يبدأ الاشتراك أو التجربة تلقائيًا.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                offer.purchaseContactUrl?.let { contactUrl ->
-                    QannasButton(text = "التواصل مع الإدارة", onClick = { onOpenContact(contactUrl) }, style = QannasButtonStyle.Secondary)
-                }
+                PurchaseSteps(offer = offer, enabled = !isBusy, onOpenPurchase = onOpenContact)
             }
         }
     }
@@ -591,17 +587,12 @@ private fun DirectDistributionCard(
         subtitle = "أدخل الرمز الذي استلمته لتفعيل اشتراكك.",
         icon = Icons.Outlined.VerifiedUser,
     ) {
-        OutlinedTextField(
+        ActivationCodeField(
             value = activationCode,
             onValueChange = onCodeChange,
             enabled = !isBusy,
-            singleLine = true,
-            label = { Text("رمز التفعيل") },
-            placeholder = { Text("XXXX-XXXX-XXXX-XXXX") },
-            textStyle = LocalTextStyle.current.copy(textDirection = TextDirection.Ltr),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { onRedeem() }),
-            modifier = Modifier.fillMaxWidth(),
+            error = null,
+            onDone = onRedeem,
         )
         QannasButton(
             text = "تفعيل اشتراكي",

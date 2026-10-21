@@ -24,14 +24,16 @@ class DesignPreviewActivity : ComponentActivity() {
             "filters" -> DriverDestination.Filters
             "simulator" -> DriverDestination.Simulator
             "account" -> DriverDestination.Account
+            "setup" -> DriverDestination.Setup
             else -> DriverDestination.Dashboard
         }
         setContent {
             QannasTheme(darkTheme = dark) {
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-                    QannasShell(showHeader = screen !in setOf("login", "welcome", "welcome-example", "welcome-ready", "disclosure"), themeMode = if (dark) ThemeMode.DARK else ThemeMode.LIGHT,
+                    QannasShell(showHeader = screen !in setOf("login", "welcome", "welcome-example", "welcome-ready", "disclosure", "intro"), themeMode = if (dark) ThemeMode.DARK else ThemeMode.LIGHT,
                         onThemeChange = {}, onLogout = { finish() }) {
-                        if (screen == "login") LoginScreen(onLoginSuccess = { finish() })
+                        if (screen == "intro") QannasLaunchIntro(onFinished = {}, staticFrame = true)
+                        else if (screen == "login") LoginScreen(onLoginSuccess = { finish() })
                         else if (screen == "welcome") OnboardingScreen(onContinue = { finish() })
                         else if (screen == "welcome-example") OnboardingScreen(onContinue = { finish() }, initialPage = 1)
                         else if (screen == "welcome-ready") OnboardingScreen(onContinue = { finish() }, initialPage = 2)
@@ -41,7 +43,8 @@ class DesignPreviewActivity : ComponentActivity() {
                             onRequestNotificationPermission = {},
                             onOpenA11y = { Result.failure(IllegalStateException("المعاينة لا تمنح الأذونات")) },
                             onToggleKeeper = { Result.failure(IllegalStateException("المعاينة لا تشغّل الخدمات")) },
-                            initialDestination = destination
+                            initialDestination = destination,
+                            autoSetupGuide = false,
                         )
                     }
                 }

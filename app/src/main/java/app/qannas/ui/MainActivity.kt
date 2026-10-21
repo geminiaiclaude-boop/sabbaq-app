@@ -21,7 +21,9 @@ import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.SettingsBrightness
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.lifecycle.ViewModel
@@ -68,6 +70,8 @@ class MainActivity : ComponentActivity() {
             val dark = when (mode) { ThemeMode.SYSTEM -> systemDark; ThemeMode.DARK -> true; ThemeMode.LIGHT -> false }
             var notificationsGranted by remember { mutableStateOf(hasNotificationPermission()) }
             var unsavedFilters by remember { mutableStateOf(false) }
+            // The logo intro plays once per cold start, not again on rotation.
+            var showIntro by rememberSaveable { mutableStateOf(savedInstanceState == null) }
             val permissionRequest = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
                 notificationsGranted = it
             }
@@ -161,6 +165,7 @@ class MainActivity : ComponentActivity() {
                         title = { Text("تنبيه") }, text = { Text(message) },
                         confirmButton = { TextButton(onClick = { permissionMessage = null }) { Text("حسنًا") } }
                     ) }
+                    if (showIntro) QannasLaunchIntro(onFinished = { showIntro = false })
                 }
             }
         }
@@ -187,7 +192,7 @@ internal fun QannasShell(
         topBar = {
             if (showHeader) TopAppBar(
                 title = { QannasBrand(compact = true) },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
                 actions = {
                     Box {
                         IconButton(onClick = { showThemeMenu = true }) {
@@ -209,9 +214,12 @@ internal fun QannasShell(
             )
         }
     ) { insets ->
-        Column(Modifier.fillMaxSize().padding(insets).consumeWindowInsets(insets)) {
-            OfflineBanner(online = rememberIsOnline())
-            Box(Modifier.weight(1f).fillMaxWidth()) { content() }
+        Box(Modifier.fillMaxSize()) {
+            QannasAmbientBackground(Modifier.matchParentSize())
+            Column(Modifier.fillMaxSize().padding(insets).consumeWindowInsets(insets)) {
+                OfflineBanner(online = rememberIsOnline())
+                Box(Modifier.weight(1f).fillMaxWidth()) { content() }
+            }
         }
     }
     if (confirmLogout) AlertDialog(
