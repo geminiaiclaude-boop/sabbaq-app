@@ -156,7 +156,7 @@ select pg_temp.expect(
 );
 select pg_temp.expect(
     public.public_offer() =
-    '{"currency":"SAR","trial_days":7,"price_minor":2500,"trial_enabled":true,"subscription_days":31,"purchase_contact_url":"https://example.test/contact"}'::jsonb,
+    '{"currency":"SAR","trial_days":7,"price_minor":2500,"trial_enabled":true,"subscription_days":31,"purchase_contact_url":"https://example.test/contact","admin_whatsapp":null}'::jsonb,
     'public offer observes all fields from one policy update'
 );
 do $$ begin
