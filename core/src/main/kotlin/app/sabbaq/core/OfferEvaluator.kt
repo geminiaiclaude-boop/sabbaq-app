@@ -35,6 +35,7 @@ data class Filters(
 
 internal fun String?.toDecimalOrNull(): BigDecimal? = this?.let { Text.parseNumber(Text.normalize(it)) }
 
+@Serializable
 enum class ReasonCode {
     NO_FILTERS, OUTSIDE_SCHEDULE,
     INVALID_FILTER,
