@@ -10,6 +10,8 @@ import java.math.RoundingMode
  */
 class OfferParser(private val profile: RideProfile) {
 
+    val profileId: String get() = profile.id
+
     private val acceptLabels = profile.acceptLabels.map(Text::normalize).filter { it.isNotEmpty() }
     private val confirmLabels = profile.confirmLabels.map(Text::normalize).filter { it.isNotEmpty() }
     private val acceptIds = profile.acceptViewIds.toSet()

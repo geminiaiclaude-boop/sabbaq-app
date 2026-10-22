@@ -11,11 +11,15 @@ import android.view.accessibility.AccessibilityNodeInfo
 import app.sabbaq.Settings
 import app.sabbaq.core.*
 import app.sabbaq.network.SupabaseClient
+import app.sabbaq.voice.OfferEvents
+import java.math.BigDecimal
 import java.util.Calendar
 
 class SabbaqA11yService : AccessibilityService() {
 
     private val clickGate = ClickGate(perOfferSuppressMs = 20000, minIntervalMs = 500)
+    private val acceptTracker = AcceptTracker(confirmWindowMs = 5000)
+    private var pendingVoiceDetails: Pair<BigDecimal?, BigDecimal?>? = null
     private var parsersByPackage: Map<String, List<OfferParser>> = emptyMap()
 
     override fun onServiceConnected() {
@@ -63,6 +67,21 @@ class SabbaqA11yService : AccessibilityService() {
             val screenNode = rootNode.toScreenNode()
             for (parser in parsers) {
                 val parsed = parser.parse(screenNode)
+                val nowMs = SystemClock.elapsedRealtime()
+                when (val outcome = acceptTracker.observe(
+                    confirmedScreenForProfile = parser.profileId.takeIf { parsed.confirmed },
+                    nowMs = nowMs,
+                )) {
+                    is AcceptTracker.Outcome.Confirmed -> {
+                        pendingVoiceDetails?.let { (fare, pickupKm) -> OfferEvents.accepted(fare, pickupKm) }
+                        pendingVoiceDetails = null
+                    }
+                    is AcceptTracker.Outcome.NotConfirmed -> {
+                        Log.i(TAG, "لم تظهر شاشة التأكيد بعد إرسال الإيماءة")
+                        pendingVoiceDetails = null
+                    }
+                    null -> Unit
+                }
                 if (parsed.confirmed) continue
 
                 parsed.offer?.let { offer ->
@@ -79,10 +98,13 @@ class SabbaqA11yService : AccessibilityService() {
                             display.widthPixels,
                             display.heightPixels,
                         ) &&
-                        clickGate.tryAcquire(offer.fingerprint, SystemClock.elapsedRealtime())
+                        clickGate.tryAcquire(offer.fingerprint, nowMs)
                     ) {
                         if (!performClick(acceptNode.bounds)) {
                             Log.w(TAG, "رفض النظام تنفيذ إيماءة القبول")
+                        } else {
+                            acceptTracker.tapped(offer.fingerprint, offer.profileId, SystemClock.elapsedRealtime())
+                            pendingVoiceDetails = offer.fare to offer.pickupKm
                         }
                     }
                     return
