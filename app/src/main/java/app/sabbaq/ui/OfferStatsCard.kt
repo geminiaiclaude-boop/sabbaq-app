@@ -6,9 +6,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -50,15 +51,15 @@ internal fun OfferStatsCard(modifier: Modifier = Modifier) {
     SabbaqCard(
         title = "إحصاءات سبّاق",
         subtitle = "ملخص نشاط المتابعة على هذا الجهاز فقط؛ قد يُحتسب العرض مرة أخرى بعد إعادة تشغيل التطبيق لأن معرّفات العروض لا تُحفظ.",
-        icon = Icons.Outlined.Info,
+        icon = Icons.Outlined.BarChart,
         modifier = modifier,
     ) {
         Text("تاريخ اليوم: $displayDate", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-        PeriodStatsRow("اليوم", snapshot.today, numberFormat)
+        PeriodStatsPanel("اليوم", snapshot.today, numberFormat)
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        PeriodStatsRow("هذا الأسبوع · من الاثنين", snapshot.week, numberFormat)
+        PeriodStatsPanel("هذا الأسبوع · من الاثنين", snapshot.week, numberFormat)
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        PeriodStatsRow("هذا الشهر", snapshot.month, numberFormat)
+        PeriodStatsPanel("هذا الشهر", snapshot.month, numberFormat)
 
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Text("أكثر أسباب الرفض اليوم", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
@@ -85,20 +86,26 @@ internal fun OfferStatsCard(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun PeriodStatsRow(label: String, totals: OfferStatsTotals, numberFormat: NumberFormat) {
-    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            StatValue("مرئي", totals.visibleOffers, numberFormat)
-            StatValue("مرفوض", totals.rejectedOffers, numberFormat)
-            StatValue("مقبول", totals.acceptedOffers, numberFormat)
+private fun PeriodStatsPanel(label: String, totals: OfferStatsTotals, numberFormat: NumberFormat) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+    ) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                StatValue("مرئي", totals.visibleOffers, numberFormat, Modifier.weight(1f))
+                StatValue("مرفوض", totals.rejectedOffers, numberFormat, Modifier.weight(1f))
+                StatValue("مقبول", totals.acceptedOffers, numberFormat, Modifier.weight(1f))
+            }
         }
     }
 }
 
 @Composable
-private fun StatValue(label: String, count: Long, numberFormat: NumberFormat) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+private fun StatValue(label: String, count: Long, numberFormat: NumberFormat, modifier: Modifier = Modifier) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(numberFormat.format(count), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
