@@ -36,6 +36,9 @@ jobs:
   # of tests; anything untested (a direct push, a moved base) is tested in full.
   tested-tree:
     name: Reuse pull request verification
+    if: >-
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     # This is only a cache/skip optimization. If its runner or lookup fails, an empty
@@ -83,7 +86,7 @@ jobs:
   verify:
     name: Android unit tests and lint
     needs: tested-tree
-    if: needs.tested-tree.outputs.verified != 'true'
+    if: always() && needs.tested-tree.outputs.verified != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -119,7 +122,9 @@ jobs:
   ui-smoke:
     name: Native Android screens (${{ matrix.suite }})
     needs: [tested-tree, verify]
-    if: needs.tested-tree.outputs.verified != 'true'
+    if: >-
+      always() && needs.tested-tree.outputs.verified != 'true' &&
+      needs.verify.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -202,20 +207,31 @@ jobs:
   verified-marker:
     name: Record verified tree
     needs: [tested-tree, verify, ui-smoke, database-tests]
-    if: github.event_name == 'pull_request' && needs.tested-tree.outputs.verified != 'true'
+    if: >-
+      always() && github.event_name == 'pull_request' &&
+      needs.tested-tree.outputs.verified != 'true' &&
+      needs.verify.result == 'success' && needs.ui-smoke.result == 'success' &&
+      needs.database-tests.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     # This artifact only avoids re-running checks after merge; it is not a product check.
     # Runner or artifact-service outages must not turn passing app/database/UI checks red.
     continue-on-error: true
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - name: Write marker
-        env:
-          TREE: ${{ needs.tested-tree.outputs.tree }}
-        run: printf '%s\n' "$TREE" > verified-tree.txt
+        id: marker
+        shell: bash
+        run: |
+          set -euo pipefail
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          printf '%s\n' "$tree" > verified-tree.txt
+          echo "tree=${tree}" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: sabbaq-verified-${{ needs.tested-tree.outputs.tree }}
+          name: sabbaq-verified-${{ steps.marker.outputs.tree }}
           path: verified-tree.txt
           retention-days: 30
 
