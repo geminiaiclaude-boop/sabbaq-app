@@ -201,6 +201,9 @@ jobs:
     if: github.event_name == 'pull_request' && needs.tested-tree.outputs.verified != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # This artifact only avoids re-running checks after merge; it is not a product check.
+    # Runner or artifact-service outages must not turn passing app/database/UI checks red.
+    continue-on-error: true
     steps:
       - name: Write marker
         env:
