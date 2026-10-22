@@ -9,6 +9,7 @@ import app.sabbaq.core.Bounds
  */
 internal object ServicesSafetyPolicy {
     private const val POST_NOTIFICATIONS_API = 33
+    private const val CONTENT_CHANGE_MIN_INTERVAL_MS = 120L
 
     fun canProcessOffers(
         isExplicitlyEnabled: Boolean,
@@ -19,6 +20,13 @@ internal object ServicesSafetyPolicy {
     fun isRelevantAccessibilityEvent(eventType: Int): Boolean =
         eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
             eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+
+    fun shouldParse(eventType: Int, nowMs: Long, lastParseMs: Long?): Boolean {
+        if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return true
+        if (eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) return false
+        if (lastParseMs == null || nowMs < lastParseMs) return true
+        return nowMs - lastParseMs >= CONTENT_CHANGE_MIN_INTERVAL_MS
+    }
 
     fun isSupportedPackage(packageName: CharSequence?, supportedPackages: Set<String>): Boolean =
         packageName?.toString()?.let(supportedPackages::contains) == true
