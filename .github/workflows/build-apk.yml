@@ -19,7 +19,7 @@ jobs:
     name: Dependency review
     # للمستودعات الخاصة: فعّل هذا المتغير فقط عند توفر GitHub Code Security.
     if: github.event_name == 'pull_request' && vars.ENABLE_DEPENDENCY_REVIEW == 'true'
-    runs-on: [self-hosted, linux, x64, sabbaq-sandbox]
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -39,7 +39,7 @@ jobs:
     if: >-
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
       (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
-    runs-on: [self-hosted, linux, x64, sabbaq-sandbox]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     # This is only a cache/skip optimization. If its runner or lookup fails, an empty
     # `verified` output makes downstream jobs run the complete required validation.
@@ -87,7 +87,7 @@ jobs:
     name: Android unit tests and lint
     needs: tested-tree
     if: always() && needs.tested-tree.outputs.verified != 'true'
-    runs-on: [self-hosted, linux, x64, sabbaq-sandbox]
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -130,8 +130,8 @@ jobs:
     if: >-
       always() && needs.tested-tree.outputs.verified != 'true' &&
       needs.verify.result == 'success'
-    runs-on: [self-hosted, linux, x64, sabbaq-sandbox]
-    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       # Each suite has its own emulator, in parallel; one flaky suite can be re-run alone.
       fail-fast: false
@@ -222,7 +222,7 @@ jobs:
       needs.tested-tree.outputs.verified != 'true' &&
       needs.verify.result == 'success' && needs.ui-smoke.result == 'success' &&
       needs.database-tests.result == 'success'
-    runs-on: [self-hosted, linux, x64, sabbaq-sandbox]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     # This artifact only avoids re-running checks after merge; it is not a product check.
     # Runner or artifact-service outages must not turn passing app/database/UI checks red.
@@ -247,38 +247,30 @@ jobs:
 
   database-tests:
     name: PostgreSQL license tests
-    runs-on: [self-hosted, linux, x64, sabbaq-sandbox]
+    runs-on: ubuntu-latest
     timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
       PGDATABASE: postgres
-      PGHOST: 127.0.0.1
+      PGHOST: localhost
       PGUSER: postgres
       PGPASSWORD: postgres
-      PGPORT: 54321
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - name: Start isolated PostgreSQL 16 cluster
-        shell: bash
-        run: |
-          set -euo pipefail
-          pg_bin=/usr/lib/postgresql/16/bin
-          if [[ ! -x "$pg_bin/initdb" ]]; then
-            sudo apt-get update -qq
-            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y postgresql-16
-          fi
-          pg_data="$RUNNER_TEMP/sabbaq-postgres"
-          if [[ -e "$pg_data" ]]; then rm -rf -- "$pg_data"; fi
-          echo "PGDATA=${pg_data}" >> "$GITHUB_ENV"
-          "$pg_bin/initdb" -D "$pg_data" --username=postgres --auth=trust --no-locale --encoding=UTF8
-          "$pg_bin/pg_ctl" -D "$pg_data" -l "$RUNNER_TEMP/sabbaq-postgres.log" -o "-h 127.0.0.1 -p ${PGPORT} -k ${RUNNER_TEMP}" start
-          for _ in $(seq 1 30); do
-            pg_isready -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" && exit 0
-            sleep 1
-          done
-          cat "$RUNNER_TEMP/sabbaq-postgres.log"
-          exit 1
       - name: Run bootstrap
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/bootstrap.sql
       - name: Run migrations
@@ -304,16 +296,6 @@ jobs:
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/admin_whatsapp_test.sql
       - name: Run device transfer tests
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/device_transfer_test.sql
-      - name: Stop isolated PostgreSQL 16 cluster
-        if: always()
-        shell: bash
-        run: |
-          if [[ -n "${PGDATA:-}" && -s "${PGDATA}/postmaster.pid" ]]; then
-            /usr/lib/postgresql/16/bin/pg_ctl -D "$PGDATA" stop -m fast || true
-          fi
-          if [[ "${PGDATA:-}" == "$RUNNER_TEMP/sabbaq-postgres" ]]; then
-            rm -rf -- "$PGDATA"
-          fi
 
   build-release:
     name: Build signed release APK and AAB
@@ -329,7 +311,7 @@ jobs:
         (needs.tested-tree.outputs.verified == 'true' ||
         (needs.verify.result == 'success' && needs.ui-smoke.result == 'success'))
     environment: production
-    runs-on: [self-hosted, linux, x64, sabbaq-sandbox]
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
