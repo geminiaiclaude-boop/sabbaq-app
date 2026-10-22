@@ -14,10 +14,13 @@ import kotlinx.serialization.json.Json
 object Settings {
     @Volatile
     private var preferences: SharedPreferences? = null
+    @Volatile
+    private var cachedFilters: Filters? = null
 
     fun init(context: Context) {
         synchronized(this) {
             preferences = context.applicationContext.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+            cachedFilters = null
         }
     }
 
@@ -30,16 +33,21 @@ object Settings {
     }
 
     var filters: Filters
-        get() {
-            val stored = prefs().getString(KEY_FILTERS, null) ?: return Filters()
-            return try {
-                Json.decodeFromString(stored)
-            } catch (_: Exception) {
-                Filters()
+        get() = cachedFilters ?: synchronized(this) {
+            cachedFilters ?: run {
+                val stored = prefs().getString(KEY_FILTERS, null)
+                val value = try {
+                    stored?.let { Json.decodeFromString<Filters>(it) } ?: Filters()
+                } catch (_: Exception) {
+                    Filters()
+                }
+                cachedFilters = value
+                value
             }
         }
         set(value) {
             prefs().edit().putString(KEY_FILTERS, Json.encodeToString(value)).apply()
+            cachedFilters = null
         }
 
     var isActive: Boolean
@@ -73,24 +81,30 @@ object Settings {
 
     /** A validated draft is committed as one document, on IO, before the UI reports success. */
     suspend fun saveFilters(value: Filters): Boolean = withContext(Dispatchers.IO) {
-        runCatching {
+        val saved = runCatching {
             prefs().edit().putString(KEY_FILTERS, Json.encodeToString(value)).commit()
         }.getOrDefault(false)
+        if (saved) cachedFilters = null
+        saved
     }
 
     /**
      * After the account is deleted on the server nothing tied to it may stay on the
      * device. Display preferences (theme) are kept because they belong to the device.
      */
-    fun clearAccountData(): Boolean = runCatching {
-        prefs().edit()
-            .remove(KEY_FILTERS)
-            .putBoolean(KEY_IS_ACTIVE, false)
-            .remove(KEY_A11Y_DISCLOSURE_VERSION)
-            .remove(KEY_KNOWN_SUBSCRIBER)
-            .remove(KEY_MONITORING_WANTED)
-            .commit()
-    }.getOrDefault(false)
+    fun clearAccountData(): Boolean {
+        val cleared = runCatching {
+            prefs().edit()
+                .remove(KEY_FILTERS)
+                .putBoolean(KEY_IS_ACTIVE, false)
+                .remove(KEY_A11Y_DISCLOSURE_VERSION)
+                .remove(KEY_KNOWN_SUBSCRIBER)
+                .remove(KEY_MONITORING_WANTED)
+                .commit()
+        }.getOrDefault(false)
+        if (cleared) cachedFilters = null
+        return cleared
+    }
 
     /** A paid subscription was confirmed on this device; only hides the trial offer, grants nothing. */
     var knownSubscriber: Boolean

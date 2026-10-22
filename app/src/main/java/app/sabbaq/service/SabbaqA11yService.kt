@@ -21,6 +21,8 @@ class SabbaqA11yService : AccessibilityService() {
     private val acceptTracker = AcceptTracker(confirmWindowMs = 5000)
     private var pendingVoiceDetails: Pair<BigDecimal?, BigDecimal?>? = null
     private var parsersByPackage: Map<String, List<OfferParser>> = emptyMap()
+    private var lastParsedPackage: String? = null
+    private var lastParseTimeMs: Long? = null
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -59,10 +61,16 @@ class SabbaqA11yService : AccessibilityService() {
         if (!ServicesSafetyPolicy.isSupportedPackage(packageName, parsersByPackage.keys)) return
         val parsers = parsersByPackage[packageName] ?: return
 
+        val parseTimeMs = SystemClock.elapsedRealtime()
+        val previousParseMs = lastParseTimeMs.takeIf { lastParsedPackage == packageName }
+        if (!ServicesSafetyPolicy.shouldParse(event.eventType, parseTimeMs, previousParseMs)) return
+
         val rootNode = rootInActiveWindow ?: return
         try {
             // قد تتغير النافذة النشطة بعد تسليم الحدث؛ لا تنفذ إيماءة على نافذة أخرى.
             if (rootNode.packageName?.toString() != packageName) return
+            lastParsedPackage = packageName
+            lastParseTimeMs = parseTimeMs
 
             val screenNode = rootNode.toScreenNode()
             for (parser in parsers) {
