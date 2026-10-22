@@ -34,12 +34,12 @@ class OfferStatsTest {
             OfferStatsDay("2026-11-01", visibleOffers = 100, rejectedOffers = 90, acceptedOffers = 10),
         )
 
-        val weekly = OfferStatsTotals.from(days.filter { it.date in "2026-10-19".."2026-10-25" })
+        val weekly = OfferStatsTotals.from(days.filter { it.date in "2026-10-26".."2026-11-01" })
         val monthly = OfferStatsTotals.from(days.filter { it.date in "2026-10-01".."2026-10-31" })
 
-        assertEquals(8L, weekly.visibleOffers)
-        assertEquals(6L, weekly.rejectedOffers)
-        assertEquals(2L, weekly.acceptedOffers)
+        assertEquals(100L, weekly.visibleOffers)
+        assertEquals(90L, weekly.rejectedOffers)
+        assertEquals(10L, weekly.acceptedOffers)
         assertEquals(8L, monthly.visibleOffers)
         assertEquals(6L, monthly.rejectedOffers)
         assertEquals(2L, monthly.acceptedOffers)
