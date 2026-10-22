@@ -159,10 +159,10 @@ for name, screen, dark, font_scale, env in cases:
         current_visible = visible
         checkpoints = (
             ('التنبيهات الصوتية', None),
-            ('إحصاءات سبّاق', 'dashboard-stats'),
-            ('هذا الأسبوع', 'dashboard-stats-week'),
-            ('هذا الشهر', 'dashboard-stats-month'),
-            ('أكثر أسباب الرفض اليوم', 'dashboard-stats-reasons'),
+            ('إحصاءات سبّاق', 'stats'),
+            ('هذا الأسبوع', 'stats-week'),
+            ('هذا الشهر', 'stats-month'),
+            ('أكثر أسباب الرفض اليوم', 'stats-reasons'),
             ('يعمل مع تطبيقات الرحلات', None),
         )
         for label, capture_name in checkpoints:
@@ -177,6 +177,7 @@ for name, screen, dark, font_scale, env in cases:
             )
             assert label in current_visible, f'Dashboard stats label is not visible after scrolling: {label}: {name}'
             if capture_name:
+                capture_name = f'{name}-{capture_name}'
                 screenshot = screencap()
                 assert screenshot.startswith(b'\x89PNG\r\n\x1a\n'), f'Invalid stats screenshot: {capture_name}'
                 (out / f'{capture_name}.xml').write_text(checkpoint_xml)
