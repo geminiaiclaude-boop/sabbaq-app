@@ -11,6 +11,7 @@ import android.view.accessibility.AccessibilityNodeInfo
 import app.sabbaq.Settings
 import app.sabbaq.core.*
 import app.sabbaq.network.SupabaseClient
+import app.sabbaq.stats.OfferStatsStore
 import app.sabbaq.voice.OfferEvents
 import java.math.BigDecimal
 import java.util.Calendar
@@ -26,6 +27,8 @@ class SabbaqA11yService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        runCatching { OfferStatsStore.init(applicationContext) }
+            .onFailure { Log.w(TAG, "تعذر تهيئة الإحصاءات المحلية") }
         parsersByPackage = runCatching {
             Profiles.bundled()
                 .asSequence()
@@ -81,6 +84,8 @@ class SabbaqA11yService : AccessibilityService() {
                     nowMs = nowMs,
                 )) {
                     is AcceptTracker.Outcome.Confirmed -> {
+                        runCatching { OfferStatsStore.recordAcceptedConfirmed() }
+                            .onFailure { Log.w(TAG, "تعذر تحديث الإحصاءات المحلية") }
                         pendingVoiceDetails?.let { (fare, pickupKm) -> OfferEvents.accepted(fare, pickupKm) }
                         pendingVoiceDetails = null
                     }
@@ -96,6 +101,13 @@ class SabbaqA11yService : AccessibilityService() {
                     val cal = Calendar.getInstance()
                     val minuteOfDay = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
                     val verdict = OfferEvaluator.evaluate(offer, Settings.filters, minuteOfDay)
+                    runCatching { OfferStatsStore.recordVisible(offer.fingerprint) }
+                        .onFailure { Log.w(TAG, "تعذر تحديث الإحصاءات المحلية") }
+                    if (!verdict.accept) {
+                        runCatching {
+                            OfferStatsStore.recordRejected(offer.fingerprint, verdict.reasons.map { it.code })
+                        }.onFailure { Log.w(TAG, "تعذر تحديث الإحصاءات المحلية") }
+                    }
                     val acceptNode = parsed.acceptNode
                     val display = resources.displayMetrics
                     if (

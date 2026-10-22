@@ -871,9 +871,11 @@ private fun DashboardPage(
 
     VoiceAlertsCard(Modifier.sabbaqEntrance(3))
 
-    SupportedPlatformsCard(Modifier.sabbaqEntrance(4))
+    OfferStatsCard(Modifier.sabbaqEntrance(4))
 
-    SabbaqCard(title = "أثناء وقت العمل", icon = Icons.Outlined.Info, modifier = Modifier.sabbaqEntrance(5)) {
+    SupportedPlatformsCard(Modifier.sabbaqEntrance(5))
+
+    SabbaqCard(title = "أثناء وقت العمل", icon = Icons.Outlined.Info, modifier = Modifier.sabbaqEntrance(6)) {
         Text(
             "يتابع سبّاق الطلبات الظاهرة وفق سعر الطلب والعائد لكل كم ومسافة الوصول وأوقات العمل التي حددتها. " +
                 "عند ظهور طلب مطابق، يمكنه النقر عليه تلقائيًا. يمكنك إيقاف المتابعة في أي وقت.",

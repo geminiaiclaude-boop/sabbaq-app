@@ -46,11 +46,11 @@ val keystorePath = setting("SABBAQ_KEYSTORE")
 val releaseStoreFile = keystorePath
     ?.takeIf { it.isNotBlank() }
     ?.let { rootProject.file(it) }
-val versionCodeValue = setting("SABBAQ_VERSION_CODE") ?: "12"
+val versionCodeValue = setting("SABBAQ_VERSION_CODE") ?: "13"
 val configuredVersionCode = versionCodeValue.toIntOrNull()
     ?: throw GradleException("SABBAQ_VERSION_CODE يجب أن يكون عدداً صحيحاً موجباً")
 require(configuredVersionCode > 0) { "SABBAQ_VERSION_CODE يجب أن يكون عدداً صحيحاً موجباً" }
-val configuredVersionName = setting("SABBAQ_VERSION_NAME") ?: "2.0.1"
+val configuredVersionName = setting("SABBAQ_VERSION_NAME") ?: "2.0.2"
 require(configuredVersionName.isNotBlank()) { "SABBAQ_VERSION_NAME لا يمكن أن يكون فارغاً" }
 
 android {
