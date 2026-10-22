@@ -153,6 +153,34 @@ for name, screen, dark, font_scale, env in cases:
         # Google Play requires an in-app path to delete the account in every distribution.
         # It sits at the end of the page, below the first screen, so scroll before reading.
         assert reachable_by_scrolling('حذف حسابي', visible), f'Account deletion entry point missing: {name}'
+    if screen == 'dashboard':
+        # The stats card is intentionally below voice alerts; capture the real phone UI
+        # at each section instead of relying only on the dashboard's first viewport.
+        current_visible = visible
+        checkpoints = (
+            ('التنبيهات الصوتية', None),
+            ('إحصاءات سبّاق', 'dashboard-stats'),
+            ('هذا الأسبوع', 'dashboard-stats-week'),
+            ('هذا الشهر', 'dashboard-stats-month'),
+            ('أكثر أسباب الرفض اليوم', 'dashboard-stats-reasons'),
+            ('يعمل مع تطبيقات الرحلات', None),
+        )
+        for label, capture_name in checkpoints:
+            assert reachable_by_scrolling(label, current_visible), f'Dashboard stats section missing: {label}: {name}'
+            time.sleep(0.5)
+            adb('shell', 'uiautomator', 'dump', '/sdcard/sabbaq-ui.xml', timeout=60)
+            checkpoint_xml = adb('shell', 'cat', '/sdcard/sabbaq-ui.xml')
+            checkpoint_nodes = ET.fromstring(checkpoint_xml).findall('.//node')
+            current_visible = ' '.join(
+                node.get('text', '') + ' ' + node.get('content-desc', '')
+                for node in checkpoint_nodes if node.get('package') == args.package
+            )
+            assert label in current_visible, f'Dashboard stats label is not visible after scrolling: {label}: {name}'
+            if capture_name:
+                screenshot = screencap()
+                assert screenshot.startswith(b'\x89PNG\r\n\x1a\n'), f'Invalid stats screenshot: {capture_name}'
+                (out / f'{capture_name}.xml').write_text(checkpoint_xml)
+                (out / f'{capture_name}.png').write_bytes(screenshot)
     if args.distribution == 'direct' and screen == 'account':
         # No dead ends: a purchase step may only appear together with the button it tells
         # the driver to press, whatever channel the live offer configures. Labels are
