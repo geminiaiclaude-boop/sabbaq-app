@@ -38,6 +38,10 @@ jobs:
     name: Reuse pull request verification
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # This is only a cache/skip optimization. If its runner or lookup fails, an empty
+    # `verified` output makes downstream jobs run the complete required validation.
+    # Never let this optional shortcut fail the product checks or release gate.
+    continue-on-error: true
     permissions:
       contents: read
       actions: read
