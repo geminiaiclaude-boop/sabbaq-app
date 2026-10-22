@@ -100,6 +100,9 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: gradle
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
       - name: Run deterministic Android checks
@@ -114,10 +117,12 @@ jobs:
           path: |
             app/build/outputs/apk/*/debug/*.apk
             app/build/outputs/apk/androidTest/direct/debug/*.apk
-            app/build/reports/
-            core/build/reports/tests/
+            app/build/reports/lint-results-*.txt
+            app/build/reports/tests/*/index.html
+            core/build/reports/tests/*/index.html
           if-no-files-found: warn
           retention-days: 14
+          compression-level: 0
 
   ui-smoke:
     name: Native Android screens (${{ matrix.suite }})
