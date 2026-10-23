@@ -56,14 +56,57 @@ def reachable_by_scrolling(text, visible):
     """True when [text] is on screen now or appears after scrolling the page down."""
     if text in visible:
         return True
-    # Short, slow drags so no section in the middle of the page is flung past.
-    for _ in range(16):
-        adb('shell', 'input', 'swipe', '540', '1500', '540', '1000', '700')
-        time.sleep(1)
+    # Use the actual accessibility ScrollView bounds. Fixed coordinates can land on
+    # navigation chrome (or miss the content after a geometry change) and silently
+    # turn a healthy screen into a false-negative screenshot failure.
+    last_xml = ''
+    for attempt in range(24):
         adb('shell', 'uiautomator', 'dump', '/sdcard/sabbaq-ui.xml', timeout=60)
-        scrolled = ET.fromstring(adb('shell', 'cat', '/sdcard/sabbaq-ui.xml')).findall('.//node')
-        if any(text in (n.get('text', '') + n.get('content-desc', '')) for n in scrolled):
+        last_xml = adb('shell', 'cat', '/sdcard/sabbaq-ui.xml')
+        scrolled = ET.fromstring(last_xml).findall('.//node')
+        if any(
+            n.get('package') == args.package
+            and text in (n.get('text', '') + n.get('content-desc', ''))
+            for n in scrolled
+        ):
             return True
+        scroll_views = [
+            n for n in scrolled
+            if n.get('package') == args.package and n.get('scrollable') == 'true'
+        ]
+        bounds = None
+        if scroll_views:
+            def scroll_area(node):
+                coordinates = list(map(int, re.findall(r'\d+', node.get('bounds', ''))))
+                return (coordinates[2] - coordinates[0]) * (coordinates[3] - coordinates[1]) if len(coordinates) == 4 else 0
+
+            scroll_view = max(scroll_views, key=scroll_area)
+            values = list(map(int, re.findall(r'\d+', scroll_view.get('bounds', ''))))
+            if len(values) == 4:
+                bounds = values
+        if bounds is None:
+            dimensions = re.search(r'(?:Physical|Override) size:\s*(\d+)x(\d+)', adb('shell', 'wm', 'size'))
+            width, height = map(int, dimensions.groups()) if dimensions else (1080, 2400)
+            bounds = [0, 0, width, height]
+        left, top, right, bottom = bounds
+        inset = max(80, int((bottom - top) * 0.16))
+        x = (left + right) // 2
+        start_y = bottom - inset
+        end_y = top + inset
+        if start_y <= end_y:
+            break
+        if attempt % 6 == 0:
+            print(f'Scrolling toward {text!r} using app viewport {bounds} (attempt {attempt + 1}/24)', flush=True)
+        adb('shell', 'input', 'swipe', str(x), str(start_y), str(x), str(end_y), '700')
+        time.sleep(1.25)
+    # Preserve the last viewport when a section is genuinely absent or unreachable.
+    if last_xml:
+        slug = hashlib.sha1(text.encode('utf-8')).hexdigest()[:10]
+        (out / f'scroll-failure-{slug}.xml').write_text(last_xml)
+        try:
+            (out / f'scroll-failure-{slug}.png').write_bytes(screencap())
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            pass
     return False
 
 
