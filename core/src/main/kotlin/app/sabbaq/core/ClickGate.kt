@@ -38,6 +38,15 @@ class ClickGate(
         return true
     }
 
+    /** Release only the reservation created by this failed dispatch attempt. */
+    @Synchronized
+    fun release(fingerprint: String, acquiredAtMs: Long): Boolean {
+        if (fingerprint.isBlank() || acquiredAtMs < 0) return false
+        if (clicked[fingerprint] != acquiredAtMs) return false
+        clicked.remove(fingerprint)
+        return true
+    }
+
     @Synchronized
     fun reset() {
         clicked.clear()
