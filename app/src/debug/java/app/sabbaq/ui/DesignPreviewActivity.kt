@@ -46,6 +46,7 @@ class DesignPreviewActivity : ComponentActivity() {
                             onToggleKeeper = { Result.failure(IllegalStateException("المعاينة لا تشغّل الخدمات")) },
                             initialDestination = destination,
                             autoSetupGuide = false,
+                            previewMode = true,
                         )
                     }
                 }

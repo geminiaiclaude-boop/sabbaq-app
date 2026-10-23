@@ -189,6 +189,8 @@ fun SettingsScreen(
     onAccountDeleted: () -> Unit = {},
     /** Opens the setup guide first for a driver who has not finished or dismissed it. */
     autoSetupGuide: Boolean = true,
+    /** Debug screenshot previews avoid initializing device services such as text-to-speech. */
+    previewMode: Boolean = false,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -535,6 +537,7 @@ fun SettingsScreen(
                 notificationsEnabled = notificationsEnabled,
                 licenseInMemory = licenseInMemory,
                 filters = savedFilters,
+                previewMode = previewMode,
                 activeFilterCount = activeFilterCount(savedFilters),
                 message = runtimeMessage,
                 onToggle = { enabled -> if (enabled) requestActivation() else stopKeeper() },
@@ -765,6 +768,7 @@ private fun DashboardPage(
     notificationsEnabled: Boolean,
     licenseInMemory: Boolean,
     filters: Filters,
+    previewMode: Boolean,
     activeFilterCount: Int,
     message: DriverStatus?,
     onToggle: (Boolean) -> Unit,
@@ -857,7 +861,7 @@ private fun DashboardPage(
             "تلقائي إذا تركت المتابعة تعمل", "", "", {}))
     }
 
-    VoiceAlertsCard(Modifier.sabbaqEntrance(3))
+    VoiceAlertsCard(Modifier.sabbaqEntrance(3), probeOnComposition = !previewMode)
 
     OfferStatsCard(Modifier.sabbaqEntrance(4))
 

@@ -56,11 +56,10 @@ def reachable_by_scrolling(text, visible):
     """True when [text] is on screen now or appears after scrolling the page down."""
     if text in visible:
         return True
-    # Use the actual accessibility ScrollView bounds. Fixed coordinates can land on
-    # navigation chrome (or miss the content after a geometry change) and silently
-    # turn a healthy screen into a false-negative screenshot failure.
+    # Use the actual accessibility ScrollView bounds and keep the number of probes
+    # small: repeated full accessibility dumps can stall a loaded emulator.
     last_xml = ''
-    for attempt in range(24):
+    for attempt in range(8):
         adb('shell', 'uiautomator', 'dump', '/sdcard/sabbaq-ui.xml', timeout=60)
         last_xml = adb('shell', 'cat', '/sdcard/sabbaq-ui.xml')
         scrolled = ET.fromstring(last_xml).findall('.//node')
@@ -70,6 +69,10 @@ def reachable_by_scrolling(text, visible):
             for n in scrolled
         ):
             return True
+        visible_text = ' '.join(n.get('text', '') + ' ' + n.get('content-desc', '') for n in scrolled)
+        if "isn't responding" in visible_text.lower() or 'لا يستجيب' in visible_text:
+            print(f'Android ANR dialog detected while looking for {text!r}', flush=True)
+            break
         scroll_views = [
             n for n in scrolled
             if n.get('package') == args.package and n.get('scrollable') == 'true'
@@ -85,9 +88,8 @@ def reachable_by_scrolling(text, visible):
             if len(values) == 4:
                 bounds = values
         if bounds is None:
-            dimensions = re.search(r'(?:Physical|Override) size:\s*(\d+)x(\d+)', adb('shell', 'wm', 'size'))
-            width, height = map(int, dimensions.groups()) if dimensions else (1080, 2400)
-            bounds = [0, 0, width, height]
+            print(f'No app scroll container while looking for {text!r}', flush=True)
+            break
         left, top, right, bottom = bounds
         inset = max(80, int((bottom - top) * 0.16))
         x = (left + right) // 2
@@ -96,15 +98,20 @@ def reachable_by_scrolling(text, visible):
         if start_y <= end_y:
             break
         if attempt % 6 == 0:
-            print(f'Scrolling toward {text!r} using app viewport {bounds} (attempt {attempt + 1}/24)', flush=True)
+            print(f'Scrolling toward {text!r} using app viewport {bounds} (attempt {attempt + 1}/8)', flush=True)
         adb('shell', 'input', 'swipe', str(x), str(start_y), str(x), str(end_y), '700')
-        time.sleep(1.25)
+        time.sleep(1)
     # Preserve the last viewport when a section is genuinely absent or unreachable.
     if last_xml:
         slug = hashlib.sha1(text.encode('utf-8')).hexdigest()[:10]
         (out / f'scroll-failure-{slug}.xml').write_text(last_xml)
         try:
             (out / f'scroll-failure-{slug}.png').write_bytes(screencap())
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            pass
+        try:
+            logcat = adb('logcat', '-d', '-b', 'main', '-b', 'system', '-b', 'events', '-v', 'threadtime', '-t', '2000')
+            (out / f'scroll-failure-{slug}-logcat.txt').write_text(logcat)
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
             pass
     return False

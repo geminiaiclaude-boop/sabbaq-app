@@ -44,11 +44,16 @@ import kotlin.math.roundToInt
  * volume, a test button, and a clear way out when the phone has no Arabic voice.
  */
 @Composable
-internal fun VoiceAlertsCard(modifier: Modifier = Modifier) {
+internal fun VoiceAlertsCard(
+    modifier: Modifier = Modifier,
+    probeOnComposition: Boolean = true,
+) {
     val context = LocalContext.current
     var prefs by remember { mutableStateOf(Settings.voicePreferences) }
     val readiness by VoiceAnnouncer.readiness.collectAsState()
-    LaunchedEffect(Unit) { VoiceAnnouncer.probe() }
+    if (probeOnComposition) {
+        LaunchedEffect(Unit) { VoiceAnnouncer.probe() }
+    }
     fun update(next: VoicePreferences) {
         prefs = next
         Settings.voicePreferences = next
