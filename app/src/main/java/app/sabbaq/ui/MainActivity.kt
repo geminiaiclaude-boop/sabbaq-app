@@ -70,7 +70,8 @@ class MainActivity : ComponentActivity() {
             val systemDark = isSystemInDarkTheme()
             val dark = when (mode) { ThemeMode.SYSTEM -> systemDark; ThemeMode.DARK -> true; ThemeMode.LIGHT -> false }
             var notificationsGranted by remember { mutableStateOf(hasNotificationPermission()) }
-            var unsavedFilters by remember { mutableStateOf(false) }
+            var filterSavePending by remember { mutableStateOf(false) }
+            var hasUnpersistedFilterChanges by remember { mutableStateOf(false) }
             // The logo intro plays once per cold start, not again on rotation.
             var showIntro by rememberSaveable { mutableStateOf(savedInstanceState == null) }
             val permissionRequest = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
@@ -83,7 +84,8 @@ class MainActivity : ComponentActivity() {
                 Settings.a11yDisclosureAccepted = false
                 stopService(Intent(this@MainActivity, KeeperService::class.java))
                 SupabaseClient.clearSession()
-                unsavedFilters = false
+                filterSavePending = false
+                hasUnpersistedFilterChanges = false
                 navigation.signedOut()
             }
             SideEffect {
@@ -97,7 +99,8 @@ class MainActivity : ComponentActivity() {
                         showHeader = navigation.route == AppState.DRIVER_PANEL || navigation.route == AppState.ADMIN_PANEL,
                         themeMode = mode,
                         onThemeChange = { mode = it; Settings.themeMode = it },
-                        hasUnsavedChanges = unsavedFilters,
+                        isSavingFilters = filterSavePending,
+                        hasUnpersistedFilterChanges = hasUnpersistedFilterChanges,
                         onLogout = endSession,
                     ) {
                         SabbaqDepthContent(target = navigation.route, order = { it.ordinal }, label = "app-route") { route ->
@@ -141,7 +144,10 @@ class MainActivity : ComponentActivity() {
                                     }
                                     Unit
                                 }.onFailure { if (start) { Settings.isActive = false; Settings.monitoringWanted = false } } },
-                                onUnsavedFiltersChanged = { unsavedFilters = it },
+                                onFilterSaveStateChanged = { saving, unpersisted ->
+                                    filterSavePending = saving
+                                    hasUnpersistedFilterChanges = unpersisted
+                                },
                                 onAccountDeleted = {
                                     val wiped = Settings.clearAccountData()
                                     val statsWiped = OfferStatsStore.clear(this@MainActivity)
@@ -190,7 +196,8 @@ internal fun SabbaqShell(
     themeMode: ThemeMode,
     onThemeChange: (ThemeMode) -> Unit,
     onLogout: () -> Unit,
-    hasUnsavedChanges: Boolean = false,
+    isSavingFilters: Boolean = false,
+    hasUnpersistedFilterChanges: Boolean = false,
     content: @Composable () -> Unit
 ) {
     var showThemeMenu by remember { mutableStateOf(false) }
@@ -234,12 +241,20 @@ internal fun SabbaqShell(
     if (confirmLogout) AlertDialog(
         onDismissRequest = { confirmLogout = false },
         title = { Text("تسجيل الخروج؟") },
-        text = { Text(
-            if (hasUnsavedChanges) "لديك تعديلات على شروطك لم تُحفظ وستُفقد عند الخروج. سيتوقف القبول التلقائي أيضًا."
-            else "سيتوقف القبول التلقائي بسبّاق. شروطك المحفوظة تبقى على هذا الجهاز."
-        ) },
-        confirmButton = { TextButton(onClick = { confirmLogout = false; onLogout() }) {
-            Text(if (hasUnsavedChanges) "تجاهل التعديلات والخروج" else "إيقاف سبّاق والخروج")
+        text = { Text(when {
+            isSavingFilters -> "جارٍ حفظ آخر تعديل تلقائيًا. انتظر حتى يكتمل الحفظ قبل تسجيل الخروج."
+            hasUnpersistedFilterChanges -> "هناك تعديل على الشروط لم يُحفظ؛ سيبقى آخر إعداد محفوظ على هذا الجهاز إذا خرجت الآن."
+            else -> "سيتوقف القبول التلقائي بسبّاق. شروطك المحفوظة تبقى على هذا الجهاز."
+        }) },
+        confirmButton = { TextButton(
+            enabled = !isSavingFilters,
+            onClick = { confirmLogout = false; onLogout() },
+        ) {
+            Text(when {
+                isSavingFilters -> "جارٍ الحفظ…"
+                hasUnpersistedFilterChanges -> "الخروج دون حفظ التعديل"
+                else -> "إيقاف سبّاق والخروج"
+            })
         } },
         dismissButton = { TextButton(onClick = { confirmLogout = false }) { Text("البقاء") } }
     )

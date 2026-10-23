@@ -33,15 +33,27 @@ internal object UiFormValidation {
     fun normalizeActivationCode(value: String): String = value.trim().uppercase(Locale.ROOT)
 
     fun filtersError(filters: Filters): String? {
-        val values = listOf(filters.minFare, filters.maxFare, filters.minFarePerKm, filters.maxPickupKm, filters.minTripKm, filters.maxTripKm)
+        val values = buildList {
+            if (filters.isFareRangeEnabled) addAll(listOf(filters.minFare, filters.maxFare))
+            if (filters.isFarePerKmEnabled) add(filters.minFarePerKm)
+            if (filters.isPickupDistanceEnabled) add(filters.maxPickupKm)
+            if (filters.isTripDistanceEnabled) addAll(listOf(filters.minTripKm, filters.maxTripKm))
+            if (filters.highFareOverrideEnabled) add(filters.highFareOverrideAmount)
+        }
         if (values.any { !it.isNullOrBlank() && (Text.parseNumber(Text.normalize(it))?.signum() ?: -1) < 0 }) return "أدخل قيمة صحيحة أكبر من أو تساوي صفرًا."
+        if (filters.highFareOverrideEnabled && filters.highFareOverrideAmount.isBlank()) return "أدخل سعرًا صالحًا لتفعيل التجاوز."
         fun exceeds(min: String?, max: String?): Boolean {
             val low = min?.let { Text.parseNumber(Text.normalize(it)) } ?: return false
             val high = max?.let { Text.parseNumber(Text.normalize(it)) } ?: return false
             return low > high
         }
-        if (exceeds(filters.minFare, filters.maxFare) || exceeds(filters.minTripKm, filters.maxTripKm)) return "اجعل الحد الأقصى أكبر من أو مساويًا للحد الأدنى."
-        if (filters.maxPickupMinutes?.let { it < 0 } == true || filters.maxTripMinutes?.let { it < 0 } == true) return "مدة غير صالحة"
+        fun exceedsMinutes(min: Int?, max: Int?): Boolean = min != null && max != null && min > max
+        if ((filters.isFareRangeEnabled && exceeds(filters.minFare, filters.maxFare)) ||
+            (filters.isTripDistanceEnabled && exceeds(filters.minTripKm, filters.maxTripKm))) return "اجعل الحد الأقصى أكبر من أو مساويًا للحد الأدنى."
+        if ((filters.isPickupTimeEnabled && exceedsMinutes(filters.minPickupMinutes, filters.maxPickupMinutes)) ||
+            (filters.isTripTimeEnabled && exceedsMinutes(filters.minTripMinutes, filters.maxTripMinutes))) return "اجعل الوقت الأقصى أكبر من أو مساويًا للوقت الأدنى."
+        if ((filters.isPickupTimeEnabled && listOf(filters.minPickupMinutes, filters.maxPickupMinutes).any { it != null && it < 0 }) ||
+            (filters.isTripTimeEnabled && listOf(filters.minTripMinutes, filters.maxTripMinutes).any { it != null && it < 0 })) return "مدة غير صالحة"
         if (filters.scheduleEnabled && (filters.scheduleStartMinute !in 0..1439 || filters.scheduleEndMinute !in 0..1440)) return "وقت تشغيل غير صالح"
         return null
     }

@@ -15,12 +15,23 @@ import kotlinx.serialization.Serializable
 class FilterDraft private constructor(
     val minFare: String,
     val maxFare: String,
+    val fareRangeEnabled: Boolean,
     val minFarePerKm: String,
+    val farePerKmEnabled: Boolean,
     val maxPickupKm: String,
+    val pickupDistanceEnabled: Boolean,
+    val minPickupMinutes: String,
     val maxPickupMinutes: String,
+    val pickupTimeEnabled: Boolean,
     val minTripKm: String,
     val maxTripKm: String,
+    val tripDistanceEnabled: Boolean,
+    val minTripMinutes: String,
     val maxTripMinutes: String,
+    val tripTimeEnabled: Boolean,
+    val highFareOverrideEnabled: Boolean,
+    val highFareOverrideAmount: String,
+    val acceptNoDestination: Boolean,
     val excludeKeywords: String,
     val scheduleStart: String,
     val scheduleEnd: String,
@@ -35,12 +46,23 @@ class FilterDraft private constructor(
     fun copy(
         minFare: String = this.minFare,
         maxFare: String = this.maxFare,
+        fareRangeEnabled: Boolean = this.fareRangeEnabled,
         minFarePerKm: String = this.minFarePerKm,
+        farePerKmEnabled: Boolean = this.farePerKmEnabled,
         maxPickupKm: String = this.maxPickupKm,
+        pickupDistanceEnabled: Boolean = this.pickupDistanceEnabled,
+        minPickupMinutes: String = this.minPickupMinutes,
         maxPickupMinutes: String = this.maxPickupMinutes,
+        pickupTimeEnabled: Boolean = this.pickupTimeEnabled,
         minTripKm: String = this.minTripKm,
         maxTripKm: String = this.maxTripKm,
+        tripDistanceEnabled: Boolean = this.tripDistanceEnabled,
+        minTripMinutes: String = this.minTripMinutes,
         maxTripMinutes: String = this.maxTripMinutes,
+        tripTimeEnabled: Boolean = this.tripTimeEnabled,
+        highFareOverrideEnabled: Boolean = this.highFareOverrideEnabled,
+        highFareOverrideAmount: String = this.highFareOverrideAmount,
+        acceptNoDestination: Boolean = this.acceptNoDestination,
         excludeKeywords: String = this.excludeKeywords,
         scheduleStart: String = this.scheduleStart,
         scheduleEnd: String = this.scheduleEnd,
@@ -49,12 +71,23 @@ class FilterDraft private constructor(
     ): FilterDraft = FilterDraft(
         minFare = minFare,
         maxFare = maxFare,
+        fareRangeEnabled = fareRangeEnabled,
         minFarePerKm = minFarePerKm,
+        farePerKmEnabled = farePerKmEnabled,
         maxPickupKm = maxPickupKm,
+        pickupDistanceEnabled = pickupDistanceEnabled,
+        minPickupMinutes = minPickupMinutes,
         maxPickupMinutes = maxPickupMinutes,
+        pickupTimeEnabled = pickupTimeEnabled,
         minTripKm = minTripKm,
         maxTripKm = maxTripKm,
+        tripDistanceEnabled = tripDistanceEnabled,
+        minTripMinutes = minTripMinutes,
         maxTripMinutes = maxTripMinutes,
+        tripTimeEnabled = tripTimeEnabled,
+        highFareOverrideEnabled = highFareOverrideEnabled,
+        highFareOverrideAmount = highFareOverrideAmount,
+        acceptNoDestination = acceptNoDestination,
         excludeKeywords = excludeKeywords,
         scheduleStart = scheduleStart,
         scheduleEnd = scheduleEnd,
@@ -70,22 +103,40 @@ class FilterDraft private constructor(
      */
     fun validate(): DraftValidation {
         val errors = linkedMapOf<String, String>()
-        val minFareValue = decimal("minFare", minFare, errors)
-        val maxFareValue = decimal("maxFare", maxFare, errors)
-        decimal("minFarePerKm", minFarePerKm, errors)
-        decimal("maxPickupKm", maxPickupKm, errors)
-        val maxPickupMinutesValue = nonNegativeInt("maxPickupMinutes", maxPickupMinutes, errors)
-        val minTripKmValue = decimal("minTripKm", minTripKm, errors)
-        val maxTripKmValue = decimal("maxTripKm", maxTripKm, errors)
-        val maxTripMinutesValue = nonNegativeInt("maxTripMinutes", maxTripMinutes, errors)
+        val minFareValue = decimal("minFare", minFare, errors, fareRangeEnabled)
+        val maxFareValue = decimal("maxFare", maxFare, errors, fareRangeEnabled)
+        decimal("minFarePerKm", minFarePerKm, errors, farePerKmEnabled)
+        decimal("maxPickupKm", maxPickupKm, errors, pickupDistanceEnabled)
+        val highFareOverrideValue = decimal("highFareOverrideAmount", highFareOverrideAmount, errors, highFareOverrideEnabled)
+        if (highFareOverrideEnabled && highFareOverrideValue == null && highFareOverrideAmount.isBlank()) {
+            errors["highFareOverrideAmount"] = "أدخل سعرًا صالحًا لتفعيل التجاوز."
+        }
+        val minPickupMinutesValue = if (pickupTimeEnabled) nonNegativeInt("minPickupMinutes", minPickupMinutes, errors)
+            else inactiveInt(minPickupMinutes, original.minPickupMinutes)
+        val maxPickupMinutesValue = if (pickupTimeEnabled) nonNegativeInt("maxPickupMinutes", maxPickupMinutes, errors)
+            else inactiveInt(maxPickupMinutes, original.maxPickupMinutes)
+        val minTripKmValue = decimal("minTripKm", minTripKm, errors, tripDistanceEnabled)
+        val maxTripKmValue = decimal("maxTripKm", maxTripKm, errors, tripDistanceEnabled)
+        val minTripMinutesValue = if (tripTimeEnabled) nonNegativeInt("minTripMinutes", minTripMinutes, errors)
+            else inactiveInt(minTripMinutes, original.minTripMinutes)
+        val maxTripMinutesValue = if (tripTimeEnabled) nonNegativeInt("maxTripMinutes", maxTripMinutes, errors)
+            else inactiveInt(maxTripMinutes, original.maxTripMinutes)
 
-        if (minFareValue != null && maxFareValue != null && minFareValue > maxFareValue) {
+        if (fareRangeEnabled && minFareValue != null && maxFareValue != null && minFareValue > maxFareValue) {
             errors["minFare"] = RANGE_ERROR
             errors["maxFare"] = RANGE_ERROR
         }
-        if (minTripKmValue != null && maxTripKmValue != null && minTripKmValue > maxTripKmValue) {
+        if (tripDistanceEnabled && minTripKmValue != null && maxTripKmValue != null && minTripKmValue > maxTripKmValue) {
             errors["minTripKm"] = RANGE_ERROR
             errors["maxTripKm"] = RANGE_ERROR
+        }
+        if (pickupTimeEnabled && minPickupMinutesValue != null && maxPickupMinutesValue != null && minPickupMinutesValue > maxPickupMinutesValue) {
+            errors["minPickupMinutes"] = RANGE_ERROR
+            errors["maxPickupMinutes"] = RANGE_ERROR
+        }
+        if (tripTimeEnabled && minTripMinutesValue != null && maxTripMinutesValue != null && minTripMinutesValue > maxTripMinutesValue) {
+            errors["minTripMinutes"] = RANGE_ERROR
+            errors["maxTripMinutes"] = RANGE_ERROR
         }
         if (excludeKeywords.length > MAX_KEYWORDS_LENGTH) {
             errors["excludeKeywords"] = "الكلمات المستبعدة أطول من الحد المسموح."
@@ -106,13 +157,24 @@ class FilterDraft private constructor(
             filters = original.copy(
                 minFare = optional(minFare),
                 maxFare = optional(maxFare),
+                fareRangeEnabled = fareRangeEnabled,
                 minFarePerKm = optional(minFarePerKm),
+                farePerKmEnabled = farePerKmEnabled,
                 perKmBasis = perKmBasis,
                 maxPickupKm = optional(maxPickupKm),
+                pickupDistanceEnabled = pickupDistanceEnabled,
+                minPickupMinutes = minPickupMinutesValue,
                 maxPickupMinutes = maxPickupMinutesValue,
+                pickupTimeEnabled = pickupTimeEnabled,
                 minTripKm = optional(minTripKm),
                 maxTripKm = optional(maxTripKm),
+                tripDistanceEnabled = tripDistanceEnabled,
+                minTripMinutes = minTripMinutesValue,
                 maxTripMinutes = maxTripMinutesValue,
+                tripTimeEnabled = tripTimeEnabled,
+                highFareOverrideEnabled = highFareOverrideEnabled,
+                highFareOverrideAmount = highFareOverrideAmount,
+                acceptNoDestination = acceptNoDestination,
                 excludeKeywords = keywordsForFilters(),
                 scheduleEnabled = scheduleEnabled,
                 scheduleStartMinute = if (scheduleEnabled) schedule!!.start else original.scheduleStartMinute,
@@ -123,7 +185,16 @@ class FilterDraft private constructor(
     }
 
     /** تكون المسودة المعدلة أو غير الصالحة مختلفة عن Filters المرجعية. */
-    fun isDirtyComparedTo(filters: Filters): Boolean = validate().filters?.let { it != filters } ?: true
+    fun isDirtyComparedTo(filters: Filters): Boolean = validate().filters?.let { it != normalizeLegacySwitches(filters) } ?: true
+
+    private fun normalizeLegacySwitches(filters: Filters): Filters = filters.copy(
+        fareRangeEnabled = filters.isFareRangeEnabled,
+        farePerKmEnabled = filters.isFarePerKmEnabled,
+        pickupDistanceEnabled = filters.isPickupDistanceEnabled,
+        pickupTimeEnabled = filters.isPickupTimeEnabled,
+        tripDistanceEnabled = filters.isTripDistanceEnabled,
+        tripTimeEnabled = filters.isTripTimeEnabled,
+    )
 
     private fun keywordsForFilters(): List<String> {
         // إعادة فتح مسودة موجودة لا تفكك كلمة أصلية قد تحتوي فاصلة بالفعل.
@@ -134,7 +205,8 @@ class FilterDraft private constructor(
             .filter(String::isNotEmpty)
     }
 
-    private fun decimal(field: String, raw: String, errors: MutableMap<String, String>): BigDecimal? {
+    private fun decimal(field: String, raw: String, errors: MutableMap<String, String>, enabled: Boolean): BigDecimal? {
+        if (!enabled) return null
         val value = Text.normalize(raw)
         if (value.isEmpty()) return null
         if (raw.length > MAX_DECIMAL_LENGTH) {
@@ -151,6 +223,12 @@ class FilterDraft private constructor(
             return null
         }
         return parsed
+    }
+
+    private fun inactiveInt(raw: String, previous: Int?): Int? {
+        val value = Text.normalize(raw)
+        if (value.isEmpty()) return null
+        return value.toIntOrNull()?.takeIf { it >= 0 } ?: previous
     }
 
     private fun nonNegativeInt(field: String, raw: String, errors: MutableMap<String, String>): Int? {
@@ -222,12 +300,23 @@ class FilterDraft private constructor(
             return FilterDraft(
                 minFare = filters.minFare.orEmpty(),
                 maxFare = filters.maxFare.orEmpty(),
+                fareRangeEnabled = filters.isFareRangeEnabled,
                 minFarePerKm = filters.minFarePerKm.orEmpty(),
+                farePerKmEnabled = filters.isFarePerKmEnabled,
                 maxPickupKm = filters.maxPickupKm.orEmpty(),
+                pickupDistanceEnabled = filters.isPickupDistanceEnabled,
+                minPickupMinutes = filters.minPickupMinutes?.toString().orEmpty(),
                 maxPickupMinutes = filters.maxPickupMinutes?.toString().orEmpty(),
+                pickupTimeEnabled = filters.isPickupTimeEnabled,
                 minTripKm = filters.minTripKm.orEmpty(),
                 maxTripKm = filters.maxTripKm.orEmpty(),
+                tripDistanceEnabled = filters.isTripDistanceEnabled,
+                minTripMinutes = filters.minTripMinutes?.toString().orEmpty(),
                 maxTripMinutes = filters.maxTripMinutes?.toString().orEmpty(),
+                tripTimeEnabled = filters.isTripTimeEnabled,
+                highFareOverrideEnabled = filters.highFareOverrideEnabled,
+                highFareOverrideAmount = filters.highFareOverrideAmount,
+                acceptNoDestination = filters.acceptNoDestination,
                 excludeKeywords = keywordText,
                 scheduleStart = formatMinute(filters.scheduleStartMinute),
                 scheduleEnd = formatMinute(filters.scheduleEndMinute),

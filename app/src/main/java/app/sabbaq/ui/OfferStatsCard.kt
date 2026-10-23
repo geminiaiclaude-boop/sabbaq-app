@@ -124,10 +124,13 @@ private fun ReasonCode.displayName(): String = when (this) {
     ReasonCode.PICKUP_TOO_FAR -> "مسافة الوصول أبعد من الحد"
     ReasonCode.PICKUP_MIN_MISSING -> "وقت الوصول غير واضح"
     ReasonCode.PICKUP_TOO_LONG -> "وقت الوصول أطول من الحد"
+    ReasonCode.PICKUP_TOO_SHORT -> "وقت الوصول أقصر من الحد"
+    ReasonCode.DESTINATION_MISSING -> "الوجهة غير ظاهرة"
     ReasonCode.TRIP_KM_MISSING -> "مسافة الرحلة غير واضحة"
     ReasonCode.TRIP_TOO_SHORT -> "مسافة الرحلة أقصر من الحد"
     ReasonCode.TRIP_TOO_LONG -> "مسافة الرحلة أطول من الحد"
     ReasonCode.TRIP_MIN_MISSING -> "وقت الرحلة غير واضح"
+    ReasonCode.TRIP_MIN_TOO_SHORT -> "وقت الرحلة أقصر من الحد"
     ReasonCode.TRIP_MIN_TOO_LONG -> "وقت الرحلة أطول من الحد"
     ReasonCode.EXCLUDED_KEYWORD -> "كلمة مستبعدة"
 }

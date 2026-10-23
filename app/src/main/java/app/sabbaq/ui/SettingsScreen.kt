@@ -20,6 +20,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.CircleShape
@@ -144,6 +145,8 @@ import java.util.Calendar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
@@ -182,7 +185,7 @@ fun SettingsScreen(
     onOpenA11y: () -> Result<Unit>,
     onToggleKeeper: (Boolean) -> Result<Unit>,
     initialDestination: DriverDestination = DriverDestination.Dashboard,
-    onUnsavedFiltersChanged: (Boolean) -> Unit = {},
+    onFilterSaveStateChanged: (isSaving: Boolean, hasUnpersistedChanges: Boolean) -> Unit = { _, _ -> },
     onAccountDeleted: () -> Unit = {},
     /** Opens the setup guide first for a driver who has not finished or dismissed it. */
     autoSetupGuide: Boolean = true,
@@ -223,13 +226,15 @@ fun SettingsScreen(
     var showNotificationRequired by remember { mutableStateOf(false) }
     var showMissingPermissions by remember { mutableStateOf(false) }
     var showResetFilters by remember { mutableStateOf(false) }
-    var showUnsavedChanges by remember { mutableStateOf(false) }
-    var pendingDestination by remember { mutableStateOf<DriverDestination?>(null) }
+    val filterSaveMutex = remember { Mutex() }
+    var filterRevision by remember { mutableStateOf(0L) }
 
     val latestToggleKeeper by rememberUpdatedState(onToggleKeeper)
     val haptics = LocalHapticFeedback.current
-    val latestUnsavedChanged by rememberUpdatedState(onUnsavedFiltersChanged)
-    LaunchedEffect(filtersDirty) { latestUnsavedChanged(filtersDirty) }
+    val latestFilterSaveStateChanged by rememberUpdatedState(onFilterSaveStateChanged)
+    LaunchedEffect(filtersDirty, isSavingFilters) {
+        latestFilterSaveStateChanged(isSavingFilters, filtersDirty && !isSavingFilters)
+    }
 
     fun stopKeeper(message: String? = null) {
         val stopResult = latestToggleKeeper(false)
@@ -286,61 +291,72 @@ fun SettingsScreen(
     }
 
     fun updateDraft(next: FilterDraft) {
-        if (isSavingFilters) return
-        if (next == draft) return
+        if (next === draft) return
         if (isActive) {
-            stopKeeper("أوقفنا متابعة الطلبات قبل تعديل شروطك. احفظ الشروط ثم ابدأ العمل من جديد.")
+            stopKeeper("أوقفنا متابعة الطلبات قبل تعديل شروطك؛ سيُحفظ التغيير تلقائيًا.")
         }
         draft = next
         filtersMessage = null
-    }
-
-    fun saveDraft(onSaved: () -> Unit = {}) {
-        if (isSavingFilters) return
-        val filters = draftValidation.filters
+        val revision = filterRevision + 1
+        filterRevision = revision
+        val validation = next.validate()
+        val filters = validation.filters
         if (filters == null) {
-            filtersMessage = DriverStatus("صحح الحقول المعلَّمة قبل حفظ شروط الطلبات.", isError = true)
+            isSavingFilters = false
+            filtersMessage = DriverStatus("راجع القيم المعلّمة؛ لا تُحفظ الفلاتر غير الصالحة.", isError = true)
             return
         }
         isSavingFilters = true
-        filtersMessage = null
-        val submittedDraft = draft
+        filtersMessage = DriverStatus("جارٍ حفظ التعديلات تلقائيًا.")
         scope.launch {
-            try {
-                val saved = Settings.saveFilters(filters)
-                if (saved) {
-                    savedFilters = filters
-                    if (draft === submittedDraft) draft = FilterDraft.from(filters)
-                    filtersMessage = DriverStatus("حُفظت شروطك. ستُستخدم عند بدء متابعة الطلبات.", success = true)
-                    haptics.performHapticFeedback(HapticFeedbackType.Confirm)
-                    onSaved()
-                } else {
-                    filtersMessage = DriverStatus("لم نستطع حفظ شروطك على جهازك؛ ما زالت الشروط السابقة هي المستخدمة.", isError = true)
-                    haptics.performHapticFeedback(HapticFeedbackType.Reject)
+            delay(180)
+            filterSaveMutex.withLock {
+                if (revision != filterRevision) return@withLock
+                try {
+                    val saved = Settings.saveFilters(filters)
+                    if (revision != filterRevision) {
+                        // A later invalid edit has no save job of its own. Restore the last
+                        // durable filters so an older in-flight commit cannot replace them.
+                        if (saved && draft.validate().filters == null && !Settings.saveFilters(savedFilters)) {
+                            filtersMessage = DriverStatus("تعذر استرجاع الشروط المحفوظة بعد تعديل غير صالح.", isError = true)
+                        }
+                        return@withLock
+                    }
+                    if (saved) {
+                        savedFilters = filters
+                        draft = FilterDraft.from(filters)
+                        filtersMessage = DriverStatus("حُفظت التعديلات تلقائيًا.", success = true)
+                        haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+                    } else {
+                        filtersMessage = DriverStatus("تعذر حفظ التعديلات على الجهاز؛ ما زالت الشروط السابقة مستخدمة. أعد المحاولة.", isError = true)
+                        haptics.performHapticFeedback(HapticFeedbackType.Reject)
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    if (revision == filterRevision) {
+                        filtersMessage = DriverStatus("تعذر حفظ التعديلات على الجهاز؛ ما زالت الشروط السابقة مستخدمة. أعد المحاولة.", isError = true)
+                    }
+                } finally {
+                    if (revision == filterRevision) isSavingFilters = false
                 }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } finally {
-                isSavingFilters = false
             }
         }
     }
 
+    fun retrySaveDraft() {
+        updateDraft(draft.copy())
+    }
+
     fun navigateTo(next: DriverDestination) {
-        if (isSavingFilters) return
         if (next == destination) return
-        if (destination == DriverDestination.Filters && filtersDirty) {
-            pendingDestination = next
-            showUnsavedChanges = true
-        } else {
-            destination = next
-        }
+        destination = next
     }
 
     fun requestActivation() {
         if (checkingActivation || isSavingFilters || isActive) return
         if (filtersDirty) {
-            runtimeMessage = DriverStatus("احفظ تغييرات الشروط أو تراجع عنها قبل بدء العمل.", isError = true)
+            runtimeMessage = DriverStatus("تُحفظ التعديلات تلقائيًا؛ انتظر اكتمال الحفظ أو صحح القيم المعلّمة.", isError = true)
             return
         }
         if (!draftValidation.isValid || UiFormValidation.filtersError(savedFilters) != null) {
@@ -487,42 +503,11 @@ fun SettingsScreen(
         )
     }
 
-    if (showUnsavedChanges) {
-        AlertDialog(
-            onDismissRequest = { if (!isSavingFilters) { showUnsavedChanges = false; pendingDestination = null } },
-            title = { Text("تغييرات شروط الطلبات غير محفوظة") },
-            text = { Text("احفظها لتستخدمها في عملك، أو تجاهلها للرجوع إلى شروطك السابقة.") },
-            confirmButton = {
-                TextButton(
-                    enabled = !isSavingFilters,
-                    onClick = {
-                        saveDraft {
-                            showUnsavedChanges = false
-                            destination = pendingDestination ?: DriverDestination.Dashboard
-                            pendingDestination = null
-                        }
-                    },
-                ) { Text("حفظ") }
-            },
-            dismissButton = {
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    TextButton(onClick = {
-                        draft = FilterDraft.from(savedFilters)
-                        showUnsavedChanges = false
-                        destination = pendingDestination ?: DriverDestination.Dashboard
-                        pendingDestination = null
-                    }, enabled = !isSavingFilters) { Text("تجاهل") }
-                    TextButton(onClick = { showUnsavedChanges = false; pendingDestination = null }, enabled = !isSavingFilters) { Text("إلغاء") }
-                }
-            },
-        )
-    }
-
     if (showResetFilters) {
         AlertDialog(
             onDismissRequest = { showResetFilters = false },
-            title = { Text("مسح التعديلات؟") },
-            text = { Text("سيتم مسح القيم التي أدخلتها الآن. تبقى شروطك المحفوظة كما هي إلى أن تحفظ تعديلات جديدة.") },
+            title = { Text("استعادة الشروط الافتراضية؟") },
+            text = { Text("سيُعاد ضبط جميع الشروط المحفوظة فورًا، وستتوقف المتابعة أولًا إذا كانت تعمل. لا يمكن التراجع عن هذا إلا بإدخال الشروط من جديد.") },
             confirmButton = {
                 TextButton(onClick = {
                     showResetFilters = false
@@ -549,6 +534,7 @@ fun SettingsScreen(
                 accessibilityEnabled = accessibilityEnabled,
                 notificationsEnabled = notificationsEnabled,
                 licenseInMemory = licenseInMemory,
+                filters = savedFilters,
                 activeFilterCount = activeFilterCount(savedFilters),
                 message = runtimeMessage,
                 onToggle = { enabled -> if (enabled) requestActivation() else stopKeeper() },
@@ -586,13 +572,13 @@ fun SettingsScreen(
                         SetupStep(
                             icon = Icons.Outlined.FilterAlt,
                             title = "اختر الطلبات التي تناسبك",
-                            why = "ابدأ بقالب جاهز ثم احفظه. يمكنك ضبط الأجرة والمسافة والأوقات بدقة لاحقًا.",
+                            why = "اختر قالبًا أو اضبط الأجرة والمسافة والوقت؛ كل تغيير صالح يُحفظ تلقائيًا فورًا.",
                             doneText = "محفوظ لديك: ${ArabicCount.conditions(activeFilterCount(savedFilters))}",
-                            actionLabel = if (filtersDirty) "حفظ الشروط" else "ضبط متقدم للشروط",
+                            actionLabel = "ضبط الشروط",
                             done = savedFilters.anyActive(),
-                            onAction = { if (filtersDirty) saveDraft() else navigateTo(DriverDestination.Filters) },
+                            onAction = { navigateTo(DriverDestination.Filters) },
                             extra = {
-                                FilterPresetChips(draft = draft, enabled = !isSavingFilters, onDraftChange = ::updateDraft)
+                                FilterPresetChips(draft = draft, enabled = true, onDraftChange = ::updateDraft)
                                 SabbaqAnimatedMessage(filtersMessage?.message, filtersMessage?.tone ?: SabbaqTone.Info)
                             },
                         ),
@@ -668,8 +654,8 @@ fun SettingsScreen(
                 isSaving = isSavingFilters,
                 message = filtersMessage,
                 onDraftChange = ::updateDraft,
-                onSave = ::saveDraft,
-                onRevert = { draft = FilterDraft.from(savedFilters); filtersMessage = null },
+                onSave = ::retrySaveDraft,
+                onRevert = { updateDraft(FilterDraft.from(savedFilters)); filtersMessage = null },
                 onReset = { showResetFilters = true },
             )
 
@@ -778,6 +764,7 @@ private fun DashboardPage(
     accessibilityEnabled: Boolean,
     notificationsEnabled: Boolean,
     licenseInMemory: Boolean,
+    filters: Filters,
     activeFilterCount: Int,
     message: DriverStatus?,
     onToggle: (Boolean) -> Unit,
@@ -820,6 +807,7 @@ private fun DashboardPage(
         onToggle = onToggle,
         modifier = Modifier.sabbaqEntrance(0),
     )
+    ActiveConditionsCockpit(filters, activeFilterCount, onOpenFilters, Modifier.sabbaqEntrance(1))
     val missing = (readiness + power).filterNot { it.ready }
     if (missing.isNotEmpty()) MissingPermissionsCard(missing, Modifier.sabbaqEntrance(1))
     SabbaqAnimatedMessage(message?.message, message?.tone ?: SabbaqTone.Info)
@@ -882,6 +870,73 @@ private fun DashboardPage(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+@Composable
+private fun ActiveConditionsCockpit(
+    filters: Filters,
+    activeCount: Int,
+    onOpenFilters: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val fareRange = if (filters.isFareRangeEnabled && (!filters.minFare.isNullOrBlank() || !filters.maxFare.isNullOrBlank())) {
+        "${filters.minFare?.takeIf { it.isNotBlank() } ?: "بلا حد أدنى"} – ${filters.maxFare?.takeIf { it.isNotBlank() } ?: "بلا حد أعلى"}"
+    } else null
+    val pickupDistance = filters.maxPickupKm?.takeIf { filters.isPickupDistanceEnabled && it.isNotBlank() }
+    val pickupTimeActive = filters.isPickupTimeEnabled &&
+        ((filters.minPickupMinutes?.let { it > 0 } == true) || filters.maxPickupMinutes != null)
+    val pickupTime = if (pickupTimeActive) {
+        "${filters.minPickupMinutes?.toString() ?: "—"}–${filters.maxPickupMinutes?.toString() ?: "—"} دقيقة"
+    } else null
+    val override = filters.highFareOverrideAmount.takeIf { filters.highFareOverrideEnabled }
+
+    SabbaqCard(
+        title = "شروط القيادة",
+        subtitle = if (activeCount == 0) "لا توجد شروط اختيار فعالة بعد." else "${ArabicCount.conditions(activeCount)} فعالة؛ محفوظة على هذا الجهاز.",
+        icon = Icons.Outlined.Tune,
+        modifier = modifier,
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            CockpitMetric("نطاق السعر", fareRange ?: "غير مفعّل", fareRange != null, Modifier.weight(1f))
+            CockpitMetric("وقت الوصول", pickupTime ?: "غير مفعّل", pickupTimeActive, Modifier.weight(1f))
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            CockpitMetric("مسافة الوصول", pickupDistance?.let { "≤ $it كم" } ?: "غير مفعّل", pickupDistance != null, Modifier.weight(1f))
+            CockpitMetric("تجاوز عند السعر", override?.let { "من $it" } ?: "غير مفعّل", override != null, Modifier.weight(1f))
+        }
+        if (filters.acceptNoDestination) {
+            Text(
+                if (filters.isAcceptNoDestinationEffective) "الطلبات بلا وجهة: مفعّلة" else "الطلبات بلا وجهة: موقوفة مؤقتًا بسبب كلمات الاستثناء",
+                style = MaterialTheme.typography.bodySmall,
+                color = if (filters.isAcceptNoDestinationEffective) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+            )
+        }
+        SabbaqButton("تعديل شروط القيادة", onClick = onOpenFilters, style = SabbaqButtonStyle.Secondary, icon = Icons.Outlined.FilterAlt)
+    }
+}
+
+@Composable
+private fun CockpitMetric(label: String, value: String, active: Boolean, modifier: Modifier = Modifier) {
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        modifier = modifier,
+        shape = MaterialTheme.shapes.medium,
+        color = if (active) colors.primaryContainer.copy(alpha = 0.62f) else colors.surfaceVariant.copy(alpha = 0.5f),
+        border = BorderStroke(1.dp, if (active) colors.primary.copy(alpha = 0.18f) else colors.outlineVariant),
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 9.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            Text(label, style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant, maxLines = 1)
+            Text(
+                value,
+                style = MaterialTheme.typography.titleSmall,
+                color = if (active) colors.onPrimaryContainer else colors.onSurfaceVariant,
+                maxLines = 1,
+            )
+        }
     }
 }
 
@@ -1088,7 +1143,7 @@ private fun FiltersPage(
 ) = DriverPage {
     SabbaqSectionTitle(
         title = "طلبات تناسبك",
-        subtitle = if (dirty) "لديك تعديلات لم تحفظ بعد." else "حدّد ما يلائم وقتك ومسافة وصولك والعائد الذي تريده.",
+        subtitle = if (isSaving) "جارٍ تطبيق آخر تعديل وحفظه على هذا الجهاز…" else "حدّد ما يلائم وقتك ومسافة وصولك والعائد الذي تريده؛ تُحفظ التغييرات تلقائيًا.",
     )
     SabbaqAnimatedMessage(message?.message, message?.tone ?: SabbaqTone.Info)
     SabbaqAnimatedMessage(
@@ -1101,20 +1156,24 @@ private fun FiltersPage(
         errors = validationErrors,
         onDraftChange = onDraftChange,
     )
-    SabbaqCard(title = "احفظ شروطك", subtitle = "لا تصبح التعديلات جاهزة للعمل إلا بعد الحفظ.", icon = Icons.Outlined.Save) {
-        SabbaqButton(
-            text = "حفظ شروط الطلبات",
-            onClick = onSave,
-            enabled = dirty && validationErrors.isEmpty(),
-            busy = isSaving,
-            busyText = "جارٍ حفظ الشروط",
-            icon = Icons.Outlined.Save,
-        )
-        AnimatedVisibility(dirty && !isSaving) {
-            SabbaqButton(text = "التراجع عن التعديلات", onClick = onRevert, style = SabbaqButtonStyle.Secondary)
+    SabbaqCard(title = "الحفظ الفوري", subtitle = "يُطبّق كل شرط صالح ويحفظ محليًا دون خطوة إضافية.", icon = Icons.Outlined.Autorenew) {
+        if (isSaving) {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            Text("جارٍ حفظ آخر تعديل…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (dirty && !isSaving && message?.isError == true) {
+            SabbaqButton(
+                text = "إعادة محاولة الحفظ",
+                onClick = onSave,
+                enabled = validationErrors.isEmpty(),
+                icon = Icons.Outlined.Refresh,
+            )
+        }
+        AnimatedVisibility(dirty && !isSaving && validationErrors.isEmpty()) {
+            SabbaqButton(text = "استرجاع الشروط المحفوظة", onClick = onRevert, style = SabbaqButtonStyle.Secondary)
         }
         SabbaqButton(
-            text = "مسح التعديلات",
+            text = "استعادة الإعدادات الافتراضية",
             onClick = onReset,
             enabled = !isSaving,
             style = SabbaqButtonStyle.Text,
@@ -1123,14 +1182,14 @@ private fun FiltersPage(
     }
 }
 
-/** One-tap starting points for distance/time conditions; the result is still an unsaved draft. */
+/** One-tap starting points for distance/time conditions; the selected preset is auto-saved. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun FilterPresetsCard(draft: FilterDraft, enabled: Boolean, onDraftChange: (FilterDraft) -> Unit) {
     val selected = FilterPreset.entries.firstOrNull { it.matches(draft) }
     SabbaqCard(
         title = "ابدأ من قالب",
-        subtitle = selected?.description ?: "يضبط المسافة والوقت فقط. راجع القيم ثم احفظ.",
+        subtitle = selected?.description ?: "يضبط حدود الوصول والرحلة فقط، ثم يحفظها تلقائيًا.",
         icon = Icons.Outlined.Tune,
     ) {
         FilterPresetChips(draft, enabled, onDraftChange)
@@ -1162,13 +1221,14 @@ private fun FilterPresetChips(draft: FilterDraft, enabled: Boolean, onDraftChang
 @Composable
 private fun SimulatorPage(savedFilters: Filters) {
     var fare by rememberSaveable { mutableStateOf("") }
+    var hasDestination by rememberSaveable { mutableStateOf(true) }
     var pickupKm by rememberSaveable { mutableStateOf("") }
     var tripKm by rememberSaveable { mutableStateOf("") }
     var pickupMinutes by rememberSaveable { mutableStateOf("") }
     var tripMinutes by rememberSaveable { mutableStateOf("") }
     var offerText by rememberSaveable { mutableStateOf("") }
     var result by remember { mutableStateOf<PreviewResult?>(null) }
-    val hasInput = listOf(fare, pickupKm, tripKm, pickupMinutes, tripMinutes, offerText).any { it.isNotBlank() }
+    val hasInput = listOf(fare, pickupKm, tripKm, pickupMinutes, tripMinutes, offerText).any { it.isNotBlank() } || !hasDestination
 
     fun evaluate() {
         val fareValue = parsePreviewDecimal(fare)
@@ -1198,14 +1258,14 @@ private fun SimulatorPage(savedFilters: Filters) {
             tripKm = tripKmValue,
             pickupMinutes = pickupMinutesValue,
             tripMinutes = tripMinutesValue,
-            addresses = emptyList(),
+            addresses = if (hasDestination) listOf("عنوان الانطلاق", "الوجهة") else emptyList(),
             texts = offerText.takeIf { it.isNotBlank() }?.let(::listOf).orEmpty(),
         )
         result = PreviewResult(OfferEvaluator.evaluate(offer, savedFilters, currentMinuteOfDay()))
     }
 
     fun clearAll() {
-        fare = ""; pickupKm = ""; tripKm = ""; pickupMinutes = ""; tripMinutes = ""; offerText = ""
+        fare = ""; hasDestination = true; pickupKm = ""; tripKm = ""; pickupMinutes = ""; tripMinutes = ""; offerText = ""
         result = null
     }
 
@@ -1214,6 +1274,17 @@ private fun SimulatorPage(savedFilters: Filters) {
         SabbaqMessage("هذه تجربة فقط: لن تغيّر شروطك ولن تنقر على أي طلب.")
         SabbaqCard(title = "تفاصيل الطلب للتجربة", subtitle = "أدخل ما تعرفه من تفاصيل الطلب، واترك أي خانة فارغة إذا لم تظهر لك.", icon = Icons.Outlined.Visibility) {
             PreviewField(fare, "سعر الطلب", KeyboardType.Decimal) { fare = it; result = null }
+            Row(
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("الطلب يعرض وجهة", style = MaterialTheme.typography.bodyLarge)
+                    Text("أطفئه لمحاكاة طلب بلا وجهة.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Switch(checked = hasDestination, onCheckedChange = { hasDestination = it; result = null })
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 PreviewField(pickupKm, "مسافة الوصول (كم)", KeyboardType.Decimal, Modifier.weight(1f)) { pickupKm = it; result = null }
                 PreviewField(pickupMinutes, "وقت الوصول (دقائق)", KeyboardType.Number, Modifier.weight(1f)) { pickupMinutes = it; result = null }
@@ -1305,14 +1376,12 @@ private fun AccountPage(
 }
 
 private fun activeFilterCount(filters: Filters): Int = buildList {
-    if (!filters.minFare.isNullOrBlank()) add(Unit)
-    if (!filters.maxFare.isNullOrBlank()) add(Unit)
-    if (!filters.minFarePerKm.isNullOrBlank()) add(Unit)
-    if (!filters.maxPickupKm.isNullOrBlank()) add(Unit)
-    if (filters.maxPickupMinutes != null) add(Unit)
-    if (!filters.minTripKm.isNullOrBlank()) add(Unit)
-    if (!filters.maxTripKm.isNullOrBlank()) add(Unit)
-    if (filters.maxTripMinutes != null) add(Unit)
+    if (filters.isFareRangeEnabled && (!filters.minFare.isNullOrBlank() || !filters.maxFare.isNullOrBlank())) add(Unit)
+    if (filters.isFarePerKmEnabled && !filters.minFarePerKm.isNullOrBlank()) add(Unit)
+    if (filters.isPickupDistanceEnabled && !filters.maxPickupKm.isNullOrBlank()) add(Unit)
+    if (filters.isPickupTimeEnabled && ((filters.minPickupMinutes?.let { it > 0 } == true) || filters.maxPickupMinutes != null)) add(Unit)
+    if (filters.isTripDistanceEnabled && (!filters.minTripKm.isNullOrBlank() || !filters.maxTripKm.isNullOrBlank())) add(Unit)
+    if (filters.isTripTimeEnabled && ((filters.minTripMinutes?.let { it > 0 } == true) || filters.maxTripMinutes != null)) add(Unit)
     if (filters.excludeKeywords.any { it.isNotBlank() }) add(Unit)
     if (filters.scheduleEnabled) add(Unit)
 }.size
@@ -1340,7 +1409,7 @@ private fun emptyPreviewOffer(): Offer = Offer(
     tripKm = null,
     pickupMinutes = null,
     tripMinutes = null,
-    addresses = emptyList(),
+    addresses = listOf("عنوان الانطلاق", "الوجهة"),
     texts = emptyList(),
 )
 
@@ -1359,11 +1428,14 @@ private fun reasonArabic(code: ReasonCode): String = when (code) {
     ReasonCode.PICKUP_TOO_FAR -> "مسافة الوصول أبعد مما حددته."
     ReasonCode.PICKUP_MIN_MISSING -> "وقت الوصول غير ظاهر."
     ReasonCode.PICKUP_TOO_LONG -> "وقت الوصول أطول مما حددته."
+    ReasonCode.PICKUP_TOO_SHORT -> "وقت الوصول أقصر مما حددته."
+    ReasonCode.DESTINATION_MISSING -> "وجهة الطلب غير ظاهرة، وخيار الطلبات بلا وجهة متوقف."
     ReasonCode.TRIP_KM_MISSING -> "مسافة الرحلة غير ظاهرة."
     ReasonCode.TRIP_TOO_SHORT -> "مسافة الرحلة أقصر مما حددته."
     ReasonCode.TRIP_TOO_LONG -> "مسافة الرحلة أطول مما حددته."
     ReasonCode.TRIP_MIN_MISSING -> "مدة الرحلة غير ظاهرة."
     ReasonCode.TRIP_MIN_TOO_LONG -> "مدة الرحلة أطول مما حددته."
+    ReasonCode.TRIP_MIN_TOO_SHORT -> "مدة الرحلة أقصر مما حددته."
     ReasonCode.EXCLUDED_KEYWORD -> "وصف الطلب يحتوي كلمة لا تناسبك."
 }
 
