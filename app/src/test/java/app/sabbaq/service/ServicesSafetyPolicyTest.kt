@@ -20,8 +20,8 @@ class ServicesSafetyPolicyTest {
         val windowChanged = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
 
         assertTrue(ServicesSafetyPolicy.shouldParse(contentChanged, 1_000, null))
-        assertFalse(ServicesSafetyPolicy.shouldParse(contentChanged, 1_119, 1_000))
-        assertTrue(ServicesSafetyPolicy.shouldParse(contentChanged, 1_120, 1_000))
+        assertFalse(ServicesSafetyPolicy.shouldParse(contentChanged, 1_024, 1_000))
+        assertTrue(ServicesSafetyPolicy.shouldParse(contentChanged, 1_025, 1_000))
         assertTrue(ServicesSafetyPolicy.shouldParse(windowChanged, 1_001, 1_000))
         assertTrue(ServicesSafetyPolicy.shouldParse(windowChanged, 999, 1_000))
         assertFalse(ServicesSafetyPolicy.shouldParse(AccessibilityEvent.TYPE_VIEW_CLICKED, 2_000, null))

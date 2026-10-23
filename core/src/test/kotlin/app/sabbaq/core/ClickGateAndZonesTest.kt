@@ -48,6 +48,25 @@ class ClickGateAndZonesTest {
     }
 
     @Test
+    fun failedDispatchCanReleaseItsOfferReservationButStillRespectsGlobalInterval() {
+        val gate = ClickGate(perOfferSuppressMs = 20_000, minIntervalMs = 500)
+        assertTrue(gate.tryAcquire("a", 1_000))
+        assertTrue(gate.release("a", 1_000))
+        assertFalse(gate.tryAcquire("a", 1_499))
+        assertTrue(gate.tryAcquire("a", 1_500))
+    }
+
+    @Test
+    fun staleFailedDispatchCannotReleaseANewerReservation() {
+        val gate = ClickGate(perOfferSuppressMs = 20_000, minIntervalMs = 500)
+        assertTrue(gate.tryAcquire("a", 1_000))
+        assertTrue(gate.release("a", 1_000))
+        assertTrue(gate.tryAcquire("a", 1_500))
+        assertFalse(gate.release("a", 1_000))
+        assertFalse(gate.tryAcquire("a", 1_501))
+    }
+
+    @Test
     fun zoneHitUsesGreatCircleDistance() {
         val airport = ExcludeZone("1", "airport", 31.7226, 35.9932, 3_000)
         assertEquals("airport", Zones.firstHit(listOf(airport), 31.7300, 35.9900)?.name)

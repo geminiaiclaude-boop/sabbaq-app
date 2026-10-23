@@ -121,6 +121,9 @@ class SabbaqA11yService : AccessibilityService() {
                         clickGate.tryAcquire(offer.fingerprint, nowMs)
                     ) {
                         if (!performClick(acceptNode.bounds)) {
+                            // A rejected dispatch did not tap the target; release only this
+                            // offer so it can be reconsidered after the global safety interval.
+                            clickGate.release(offer.fingerprint, nowMs)
                             Log.w(TAG, "رفض النظام تنفيذ إيماءة القبول")
                         } else {
                             acceptTracker.tapped(offer.fingerprint, offer.profileId, SystemClock.elapsedRealtime())

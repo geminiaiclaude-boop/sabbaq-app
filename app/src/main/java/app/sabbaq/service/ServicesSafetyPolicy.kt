@@ -9,7 +9,7 @@ import app.sabbaq.core.Bounds
  */
 internal object ServicesSafetyPolicy {
     private const val POST_NOTIFICATIONS_API = 33
-    private const val CONTENT_CHANGE_MIN_INTERVAL_MS = 120L
+    private const val CONTENT_CHANGE_MIN_INTERVAL_MS = 25L
 
     fun canProcessOffers(
         isExplicitlyEnabled: Boolean,
