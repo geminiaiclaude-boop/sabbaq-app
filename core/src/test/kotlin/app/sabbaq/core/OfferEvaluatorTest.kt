@@ -15,7 +15,8 @@ class OfferEvaluatorTest {
         pickupMin: Int? = 3,
         tripMin: Int? = 20,
         texts: List<String> = listOf("mecca street"),
-    ) = Offer("bolt", fare?.let(::BigDecimal), "jd", pickupKm?.let(::BigDecimal), tripKm?.let(::BigDecimal), pickupMin, tripMin, emptyList(), texts)
+        addresses: List<String> = listOf("Pickup address", "Destination address"),
+    ) = Offer("bolt", fare?.let(::BigDecimal), "jd", pickupKm?.let(::BigDecimal), tripKm?.let(::BigDecimal), pickupMin, tripMin, addresses, texts)
 
     private fun codes(v: Verdict) = v.reasons.map { it.code }
 
@@ -34,6 +35,32 @@ class OfferEvaluatorTest {
             setOf(ReasonCode.FARE_TOO_LOW, ReasonCode.PER_KM_TOO_LOW, ReasonCode.PICKUP_TOO_FAR, ReasonCode.PICKUP_TOO_LONG, ReasonCode.TRIP_TOO_SHORT, ReasonCode.TRIP_MIN_TOO_LONG),
             codes(v).toSet(),
         )
+    }
+
+    @Test
+    fun minimumPickupAndTripDurationsRejectShorterOffers() {
+        val verdict = OfferEvaluator.evaluate(
+            offer(pickupMin = 3, tripMin = 9),
+            Filters(
+                minPickupMinutes = 5, maxPickupMinutes = 20, pickupTimeEnabled = true,
+                minTripMinutes = 10, maxTripMinutes = 60, tripTimeEnabled = true,
+            ),
+            600,
+        )
+        assertEquals(setOf(ReasonCode.PICKUP_TOO_SHORT, ReasonCode.TRIP_MIN_TOO_SHORT), codes(verdict).toSet())
+    }
+
+    @Test
+    fun reversedTimeRangesFailClosedWhenFiltersAreReadDirectly() {
+        val pickup = OfferEvaluator.evaluate(
+            offer(), Filters(minPickupMinutes = 15, maxPickupMinutes = 10, pickupTimeEnabled = true), 600,
+        )
+        assertTrue(ReasonCode.INVALID_FILTER in codes(pickup))
+
+        val trip = OfferEvaluator.evaluate(
+            offer(), Filters(minTripMinutes = 80, maxTripMinutes = 30, tripTimeEnabled = true), 600,
+        )
+        assertTrue(ReasonCode.INVALID_FILTER in codes(trip))
     }
 
     @Test
@@ -120,5 +147,167 @@ class OfferEvaluatorTest {
             codes(verdict).toSet(),
         )
         assertNull(OfferEvaluator.farePerKm(unsafe, PerKmBasis.TRIP))
+    }
+
+    @Test
+    fun highFareOverrideBypassesOnlyPickupDistanceAndTimeLimitsAtTheThreshold() {
+        val filters = Filters(
+            maxPickupKm = "2", pickupDistanceEnabled = true,
+            maxPickupMinutes = 10, pickupTimeEnabled = true,
+            maxTripMinutes = 30, tripTimeEnabled = true,
+            highFareOverrideEnabled = true, highFareOverrideAmount = "35",
+        )
+        val acceptedAtThreshold = OfferEvaluator.evaluate(
+            offer(fare = "35", pickupKm = "8", pickupMin = 45, tripMin = 90), filters, 600,
+        )
+        assertTrue(acceptedAtThreshold.accept)
+
+        val belowThreshold = OfferEvaluator.evaluate(
+            offer(fare = "34.99", pickupKm = "8", pickupMin = 45, tripMin = 90), filters, 600,
+        )
+        assertEquals(
+            setOf(ReasonCode.PICKUP_TOO_FAR, ReasonCode.PICKUP_TOO_LONG, ReasonCode.TRIP_MIN_TOO_LONG),
+            codes(belowThreshold).toSet(),
+        )
+
+        val disabled = OfferEvaluator.evaluate(
+            offer(fare = "40", pickupKm = "8", pickupMin = 45, tripMin = 90),
+            filters.copy(highFareOverrideEnabled = false),
+            600,
+        )
+        assertEquals(
+            setOf(ReasonCode.PICKUP_TOO_FAR, ReasonCode.PICKUP_TOO_LONG, ReasonCode.TRIP_MIN_TOO_LONG),
+            codes(disabled).toSet(),
+        )
+    }
+
+    @Test
+    fun highFareOverrideDoesNotBypassFarePerKmOrExcludedKeywords() {
+        val filters = Filters(
+            minFarePerKm = "2", farePerKmEnabled = true,
+            maxPickupKm = "1", pickupDistanceEnabled = true,
+            highFareOverrideEnabled = true, highFareOverrideAmount = "35",
+            excludeKeywords = listOf("airport"),
+        )
+        val verdict = OfferEvaluator.evaluate(
+            offer(fare = "35", pickupKm = "9", tripKm = "20", texts = listOf("airport road")),
+            filters,
+            600,
+        )
+        assertEquals(setOf(ReasonCode.PER_KM_TOO_LOW, ReasonCode.EXCLUDED_KEYWORD), codes(verdict).toSet())
+    }
+
+    @Test
+    fun highFareOverrideWithUnknownFareDoesNotBypassPickupLimits() {
+        val verdict = OfferEvaluator.evaluate(
+            offer(fare = null, pickupKm = "8"),
+            Filters(maxPickupKm = "2", pickupDistanceEnabled = true, highFareOverrideEnabled = true),
+            600,
+        )
+        assertEquals(listOf(ReasonCode.PICKUP_TOO_FAR), codes(verdict))
+    }
+
+    @Test
+    fun highFareOverrideDoesNotBypassMinimumTimeRequirements() {
+        val verdict = OfferEvaluator.evaluate(
+            offer(fare = "35", pickupMin = 3, tripMin = 5),
+            Filters(
+                minPickupMinutes = 5, maxPickupMinutes = 10, pickupTimeEnabled = true,
+                minTripMinutes = 10, maxTripMinutes = 20, tripTimeEnabled = true,
+                maxPickupKm = "1", pickupDistanceEnabled = true,
+                highFareOverrideEnabled = true, highFareOverrideAmount = "35",
+            ),
+            600,
+        )
+        assertEquals(setOf(ReasonCode.PICKUP_TOO_SHORT, ReasonCode.TRIP_MIN_TOO_SHORT), codes(verdict).toSet())
+    }
+
+    @Test
+    fun highFareOverrideWithDefaultZeroMinimumDoesNotRequireTheBypassedTimeFields() {
+        val verdict = OfferEvaluator.evaluate(
+            offer(fare = "35", pickupMin = null, tripMin = null, pickupKm = "8"),
+            Filters(
+                minPickupMinutes = 0, maxPickupMinutes = 10, pickupTimeEnabled = true,
+                minTripMinutes = 0, maxTripMinutes = 20, tripTimeEnabled = true,
+                maxPickupKm = "2", pickupDistanceEnabled = true,
+                highFareOverrideEnabled = true, highFareOverrideAmount = "35",
+            ),
+            600,
+        )
+        assertTrue(verdict.accept)
+    }
+
+    @Test
+    fun invalidEnabledOverrideThresholdFailsClosedButDisabledInvalidValueIsIgnored() {
+        val enabled = OfferEvaluator.evaluate(
+            offer(), Filters(maxPickupKm = "1", pickupDistanceEnabled = true,
+                highFareOverrideEnabled = true, highFareOverrideAmount = "not-a-number"), 600,
+        )
+        assertTrue(ReasonCode.INVALID_FILTER in codes(enabled))
+
+        val disabled = OfferEvaluator.evaluate(
+            offer(), Filters(minFare = "not-a-number", fareRangeEnabled = false,
+                maxPickupKm = "2", pickupDistanceEnabled = true,
+                highFareOverrideEnabled = false, highFareOverrideAmount = "not-a-number"), 600,
+        )
+        assertFalse(ReasonCode.INVALID_FILTER in codes(disabled))
+        assertTrue(disabled.accept)
+    }
+
+    @Test
+    fun disabledLimitsKeepTheirValuesWithoutBeingAppliedOrCountingAsActive() {
+        val filters = Filters(
+            minFare = "99", fareRangeEnabled = false,
+            maxPickupKm = "0.1", pickupDistanceEnabled = false,
+        )
+        val verdict = OfferEvaluator.evaluate(offer(fare = "5", pickupKm = "8"), filters, 600)
+        assertEquals(listOf(ReasonCode.NO_FILTERS), codes(verdict))
+        assertEquals("99", filters.minFare)
+        assertEquals("0.1", filters.maxPickupKm)
+    }
+
+    @Test
+    fun noDestinationIsRejectedUnlessExplicitlyAllowedAndThenTripOnlyRulesAreSkipped() {
+        val noDestinationOffer = offer(tripKm = null, tripMin = null, addresses = emptyList())
+        val filters = Filters(
+            minFare = "4", fareRangeEnabled = true,
+            maxPickupKm = "2", pickupDistanceEnabled = true,
+            maxTripKm = "10", tripDistanceEnabled = true,
+            maxTripMinutes = 20, tripTimeEnabled = true,
+        )
+        assertTrue(ReasonCode.DESTINATION_MISSING in codes(OfferEvaluator.evaluate(noDestinationOffer, filters, 600)))
+
+        val allowed = OfferEvaluator.evaluate(noDestinationOffer, filters.copy(acceptNoDestination = true), 600)
+        assertTrue(allowed.accept)
+    }
+
+    @Test
+    fun noDestinationPermissionAloneDoesNotDisableTheNoFiltersSafetyGate() {
+        val verdict = OfferEvaluator.evaluate(
+            offer(addresses = emptyList()), Filters(acceptNoDestination = true), 600,
+        )
+        assertEquals(listOf(ReasonCode.NO_FILTERS), codes(verdict))
+    }
+
+    @Test
+    fun excludedKeywordsTemporarilyDisableNoDestinationAcceptanceWithoutBypassingKeywordRule() {
+        val offer = offer(addresses = emptyList(), texts = listOf("airport pickup"))
+        val filters = Filters(
+            minFare = "4", fareRangeEnabled = true,
+            acceptNoDestination = true,
+            excludeKeywords = listOf("airport"),
+        )
+        val otherText = OfferEvaluator.evaluate(
+            offer(addresses = emptyList(), texts = listOf("regular offer")), filters, 600,
+        )
+        assertFalse(otherText.accept)
+        assertTrue(ReasonCode.DESTINATION_MISSING in codes(otherText))
+        assertFalse(ReasonCode.EXCLUDED_KEYWORD in codes(otherText))
+
+        val verdict = OfferEvaluator.evaluate(offer, filters, 600)
+        assertFalse(verdict.accept)
+        assertTrue(ReasonCode.DESTINATION_MISSING in codes(verdict))
+        assertTrue(ReasonCode.EXCLUDED_KEYWORD in codes(verdict))
+        assertTrue(filters.copy(excludeKeywords = emptyList()).isAcceptNoDestinationEffective)
     }
 }

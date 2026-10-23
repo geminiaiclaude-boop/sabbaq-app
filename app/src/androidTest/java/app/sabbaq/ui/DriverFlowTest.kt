@@ -5,11 +5,14 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -65,7 +68,7 @@ class DriverFlowTest {
     }
 
     @Test
-    fun preset_then_save_persists_the_filters() {
+    fun preset_auto_saves_the_filters() {
         show {
             SettingsScreen(
                 notificationPermissionGranted = false,
@@ -77,13 +80,97 @@ class DriverFlowTest {
         }
 
         compose.onNodeWithText("قريب وسريع").performScrollTo().performClick()
-        compose.onNodeWithText("حفظ شروط الطلبات").performScrollTo().assertIsEnabled().performClick()
-        waitForText("حُفظت شروطك. ستُستخدم عند بدء متابعة الطلبات.")
+        compose.waitUntil(timeoutMillis = 10_000) { Settings.filters.maxPickupKm == "3" }
         compose.runOnIdle {
             val saved = Settings.filters
             assertEquals(0, BigDecimal("3").compareTo(BigDecimal(saved.maxPickupKm)))
             assertEquals(0, BigDecimal("15").compareTo(BigDecimal(saved.maxTripKm)))
+            assertTrue(saved.isPickupDistanceEnabled)
+            assertTrue(saved.isPickupTimeEnabled)
+            assertTrue(saved.isTripDistanceEnabled)
         }
+    }
+
+    @Test
+    fun condition_switch_auto_saves_and_preserves_its_numeric_values_when_off() {
+        show {
+            SettingsScreen(
+                notificationPermissionGranted = false,
+                onRequestNotificationPermission = {},
+                onOpenA11y = { Result.success(Unit) },
+                onToggleKeeper = { Result.success(Unit) },
+                initialDestination = DriverDestination.Filters,
+            )
+        }
+
+        val fareSwitch = compose.onNodeWithTag("filter-switch-fare-range")
+        compose.onNodeWithTag("filter-stepper-min-fare-increment").performScrollTo().performClick()
+        compose.waitUntil(timeoutMillis = 10_000) { Settings.filters.minFare == "1" }
+        compose.runOnIdle { assertEquals(false, Settings.filters.isFareRangeEnabled) }
+
+        fareSwitch.performScrollTo().performClick()
+        compose.waitUntil(timeoutMillis = 10_000) { Settings.filters.isFareRangeEnabled }
+        compose.runOnIdle {
+            assertTrue(Settings.filters.isFareRangeEnabled)
+            assertEquals("1", Settings.filters.minFare)
+            assertEquals("100", Settings.filters.maxFare)
+        }
+
+        compose.onNodeWithTag("filter-switch-fare-range").performScrollTo().performClick()
+        compose.waitUntil(timeoutMillis = 10_000) { !Settings.filters.isFareRangeEnabled }
+        compose.runOnIdle {
+            assertEquals(false, Settings.filters.isFareRangeEnabled)
+            assertEquals("1", Settings.filters.minFare)
+            assertEquals("100", Settings.filters.maxFare)
+        }
+    }
+
+    @Test
+    fun filters_show_horizontal_minimum_and_maximum_time_controls() {
+        show {
+            SettingsScreen(
+                notificationPermissionGranted = false,
+                onRequestNotificationPermission = {},
+                onOpenA11y = { Result.success(Unit) },
+                onToggleKeeper = { Result.success(Unit) },
+                initialDestination = DriverDestination.Filters,
+            )
+        }
+
+        compose.onNodeWithText("أقل وقت").performScrollTo().assertExists()
+        compose.onNodeWithText("أقصى وقت").performScrollTo().assertExists()
+        compose.onNodeWithText("قنص الطلبات بدون وجهة").performScrollTo().assertExists()
+    }
+
+    @Test
+    fun no_destination_choice_is_retained_but_temporarily_disabled_by_exclusion_words() {
+        show {
+            SettingsScreen(
+                notificationPermissionGranted = false,
+                onRequestNotificationPermission = {},
+                onOpenA11y = { Result.success(Unit) },
+                onToggleKeeper = { Result.success(Unit) },
+                initialDestination = DriverDestination.Filters,
+            )
+        }
+
+        compose.onNodeWithText("قريب وسريع").performScrollTo().performClick()
+        compose.waitUntil(timeoutMillis = 10_000) { Settings.filters.maxPickupKm == "3" }
+        compose.onNodeWithTag("filter-switch-no-destination").performScrollTo().performClick()
+        compose.waitUntil(timeoutMillis = 10_000) { Settings.filters.acceptNoDestination }
+
+        compose.onNodeWithText("الكلمات المستثناة").performScrollTo().performClick()
+        compose.onNodeWithText("كلمات لا تناسبك").performScrollTo().performTextInput("airport")
+        compose.waitUntil(timeoutMillis = 10_000) { Settings.filters.excludeKeywords == listOf("airport") }
+        compose.onNodeWithTag("filter-switch-no-destination").performScrollTo().assertIsNotEnabled()
+        compose.runOnIdle {
+            assertTrue(Settings.filters.acceptNoDestination)
+            assertTrue(!Settings.filters.isAcceptNoDestinationEffective)
+        }
+        compose.onNodeWithText("كلمات لا تناسبك").performScrollTo().performTextClearance()
+        compose.waitUntil(timeoutMillis = 10_000) { Settings.filters.excludeKeywords.isEmpty() }
+        compose.onNodeWithTag("filter-switch-no-destination").performScrollTo().assertIsEnabled()
+        compose.runOnIdle { assertTrue(Settings.filters.isAcceptNoDestinationEffective) }
     }
 
     @Test
@@ -119,8 +206,7 @@ class DriverFlowTest {
 
         waitForText("لنجهّز سبّاق معًا")
         compose.onNodeWithText("قريب وسريع").performScrollTo().performClick()
-        compose.onNodeWithText("حفظ الشروط").performScrollTo().performClick()
-        // Step 1 is done, so the guide moves on to the permission step by itself.
+        // The preset is saved automatically; the guide advances as soon as it is durable.
         waitForText("تفعيل الإذن")
         compose.runOnIdle { assertTrue(Settings.filters.anyActive()) }
     }

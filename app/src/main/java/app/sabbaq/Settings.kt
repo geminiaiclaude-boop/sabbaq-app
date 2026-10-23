@@ -33,7 +33,7 @@ object Settings {
     }
 
     var filters: Filters
-        get() = cachedFilters ?: synchronized(this) {
+        get() = synchronized(this) {
             cachedFilters ?: run {
                 val stored = prefs().getString(KEY_FILTERS, null)
                 val value = try {
@@ -46,8 +46,10 @@ object Settings {
             }
         }
         set(value) {
-            prefs().edit().putString(KEY_FILTERS, Json.encodeToString(value)).apply()
-            cachedFilters = null
+            synchronized(this) {
+                prefs().edit().putString(KEY_FILTERS, Json.encodeToString(value)).apply()
+                cachedFilters = null
+            }
         }
 
     var isActive: Boolean
@@ -81,11 +83,13 @@ object Settings {
 
     /** A validated draft is committed as one document, on IO, before the UI reports success. */
     suspend fun saveFilters(value: Filters): Boolean = withContext(Dispatchers.IO) {
-        val saved = runCatching {
-            prefs().edit().putString(KEY_FILTERS, Json.encodeToString(value)).commit()
-        }.getOrDefault(false)
-        if (saved) cachedFilters = null
-        saved
+        synchronized(this@Settings) {
+            val saved = runCatching {
+                prefs().edit().putString(KEY_FILTERS, Json.encodeToString(value)).commit()
+            }.getOrDefault(false)
+            if (saved) cachedFilters = null
+            saved
+        }
     }
 
     /**
@@ -93,17 +97,19 @@ object Settings {
      * device. Display preferences (theme) are kept because they belong to the device.
      */
     fun clearAccountData(): Boolean {
-        val cleared = runCatching {
-            prefs().edit()
-                .remove(KEY_FILTERS)
-                .putBoolean(KEY_IS_ACTIVE, false)
-                .remove(KEY_A11Y_DISCLOSURE_VERSION)
-                .remove(KEY_KNOWN_SUBSCRIBER)
-                .remove(KEY_MONITORING_WANTED)
-                .commit()
-        }.getOrDefault(false)
-        if (cleared) cachedFilters = null
-        return cleared
+        return synchronized(this) {
+            val cleared = runCatching {
+                prefs().edit()
+                    .remove(KEY_FILTERS)
+                    .putBoolean(KEY_IS_ACTIVE, false)
+                    .remove(KEY_A11Y_DISCLOSURE_VERSION)
+                    .remove(KEY_KNOWN_SUBSCRIBER)
+                    .remove(KEY_MONITORING_WANTED)
+                    .commit()
+            }.getOrDefault(false)
+            if (cleared) cachedFilters = null
+            cleared
+        }
     }
 
     /** A paid subscription was confirmed on this device; only hides the trial offer, grants nothing. */

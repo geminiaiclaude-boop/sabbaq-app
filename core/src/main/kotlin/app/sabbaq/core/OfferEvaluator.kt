@@ -15,22 +15,50 @@ enum class PerKmBasis { TRIP, TOTAL }
 data class Filters(
     val minFare: String? = null,
     val maxFare: String? = null,
+    /** Null preserves the legacy rule: a stored value is active. */
+    val fareRangeEnabled: Boolean? = null,
     val minFarePerKm: String? = null,
+    val farePerKmEnabled: Boolean? = null,
     val perKmBasis: PerKmBasis = PerKmBasis.TRIP,
     val maxPickupKm: String? = null,
+    val pickupDistanceEnabled: Boolean? = null,
+    val minPickupMinutes: Int? = null,
     val maxPickupMinutes: Int? = null,
+    val pickupTimeEnabled: Boolean? = null,
     val minTripKm: String? = null,
     val maxTripKm: String? = null,
+    val tripDistanceEnabled: Boolean? = null,
+    val minTripMinutes: Int? = null,
     val maxTripMinutes: Int? = null,
+    val tripTimeEnabled: Boolean? = null,
+    val highFareOverrideEnabled: Boolean = false,
+    val highFareOverrideAmount: String = "35",
+    val acceptNoDestination: Boolean = false,
     val excludeKeywords: List<String> = emptyList(),
     val scheduleEnabled: Boolean = false,
     val scheduleStartMinute: Int = 0,
     val scheduleEndMinute: Int = 24 * 60,
     val acceptWhenNoFilters: Boolean = false,
 ) {
+    val isFareRangeEnabled: Boolean get() = fareRangeEnabled ?: (!minFare.isNullOrBlank() || !maxFare.isNullOrBlank())
+    val isFarePerKmEnabled: Boolean get() = farePerKmEnabled ?: !minFarePerKm.isNullOrBlank()
+    val isPickupDistanceEnabled: Boolean get() = pickupDistanceEnabled ?: !maxPickupKm.isNullOrBlank()
+    val isPickupTimeEnabled: Boolean get() = pickupTimeEnabled ?: (minPickupMinutes != null || maxPickupMinutes != null)
+    val isTripDistanceEnabled: Boolean get() = tripDistanceEnabled ?: (!minTripKm.isNullOrBlank() || !maxTripKm.isNullOrBlank())
+    val isTripTimeEnabled: Boolean get() = tripTimeEnabled ?: (minTripMinutes != null || maxTripMinutes != null)
+    /** Exclusion terms take precedence; retain the driver's stored choice while they are present. */
+    val isAcceptNoDestinationEffective: Boolean
+        get() = acceptNoDestination && excludeKeywords.none { it.isNotBlank() }
+
+    /** A relaxation toggle is not a selection rule; require at least one actual acceptance criterion. */
     fun anyActive(): Boolean =
-        listOf(minFare, maxFare, minFarePerKm, maxPickupKm, minTripKm, maxTripKm).any { !it.isNullOrBlank() } ||
-            maxPickupMinutes != null || maxTripMinutes != null || excludeKeywords.any { it.isNotBlank() } || scheduleEnabled
+        (isFareRangeEnabled && (!minFare.isNullOrBlank() || !maxFare.isNullOrBlank())) ||
+            (isFarePerKmEnabled && !minFarePerKm.isNullOrBlank()) ||
+            (isPickupDistanceEnabled && !maxPickupKm.isNullOrBlank()) ||
+            (isPickupTimeEnabled && ((minPickupMinutes != null && minPickupMinutes > 0) || maxPickupMinutes != null)) ||
+            (isTripDistanceEnabled && (!minTripKm.isNullOrBlank() || !maxTripKm.isNullOrBlank())) ||
+            (isTripTimeEnabled && ((minTripMinutes != null && minTripMinutes > 0) || maxTripMinutes != null)) ||
+            excludeKeywords.any { it.isNotBlank() } || scheduleEnabled
 }
 
 internal fun String?.toDecimalOrNull(): BigDecimal? = this?.let { Text.parseNumber(Text.normalize(it)) }
@@ -43,8 +71,10 @@ enum class ReasonCode {
     PER_KM_MISSING, PER_KM_TOO_LOW,
     PICKUP_KM_MISSING, PICKUP_TOO_FAR,
     PICKUP_MIN_MISSING, PICKUP_TOO_LONG,
+    PICKUP_TOO_SHORT,
+    DESTINATION_MISSING,
     TRIP_KM_MISSING, TRIP_TOO_SHORT, TRIP_TOO_LONG,
-    TRIP_MIN_MISSING, TRIP_MIN_TOO_LONG,
+    TRIP_MIN_MISSING, TRIP_MIN_TOO_SHORT, TRIP_MIN_TOO_LONG,
     EXCLUDED_KEYWORD,
 }
 
@@ -63,6 +93,10 @@ object OfferEvaluator {
         val reasons = ArrayList<Reason>()
         val limits = filters.validated()
         val perKm = farePerKm(offer, filters.perKmBasis)
+        val fareOverrideApplies = filters.highFareOverrideEnabled &&
+            limits.highFareOverrideAmount?.let { threshold -> offer.nonNegativeFare()?.let { it >= threshold } } == true
+        val noDestination = !offer.destinationAvailable
+        val allowNoDestination = filters.isAcceptNoDestinationEffective
 
         limits.invalid.firstOrNull()?.let { reasons += Reason(ReasonCode.INVALID_FILTER, it) }
         if (filters.scheduleEnabled && limits.scheduleIsValid && !inSchedule(minuteOfDay, filters.scheduleStartMinute, filters.scheduleEndMinute)) {
@@ -70,6 +104,9 @@ object OfferEvaluator {
         }
         if (!filters.anyActive() && !filters.acceptWhenNoFilters) {
             reasons += Reason(ReasonCode.NO_FILTERS)
+        }
+        if (noDestination && !allowNoDestination) {
+            reasons += Reason(ReasonCode.DESTINATION_MISSING)
         }
 
         limits.minFare?.let { min ->
@@ -86,30 +123,42 @@ object OfferEvaluator {
             if (perKm == null) reasons += Reason(ReasonCode.PER_KM_MISSING)
             else if (!meetsMinimumFarePerKm(offer, filters.perKmBasis, min)) reasons += Reason(ReasonCode.PER_KM_TOO_LOW, perKm.toPlainString())
         }
-        limits.maxPickupKm?.let { max ->
+        if (!fareOverrideApplies) limits.maxPickupKm?.let { max ->
             val v = offer.nonNegativePickupKm()
             if (v == null) reasons += Reason(ReasonCode.PICKUP_KM_MISSING)
             else if (v > max) reasons += Reason(ReasonCode.PICKUP_TOO_FAR, v.toPlainString())
         }
-        limits.maxPickupMinutes?.let { max ->
+        limits.minPickupMinutes?.takeIf { it > 0 }?.let { min ->
+            val v = offer.pickupMinutes?.takeIf { it >= 0 }
+            if (v == null) reasons += Reason(ReasonCode.PICKUP_MIN_MISSING)
+            else if (v < min) reasons += Reason(ReasonCode.PICKUP_TOO_SHORT, v.toString())
+        }
+        if (!fareOverrideApplies) limits.maxPickupMinutes?.let { max ->
             val v = offer.pickupMinutes?.takeIf { it >= 0 }
             if (v == null) reasons += Reason(ReasonCode.PICKUP_MIN_MISSING)
             else if (v > max) reasons += Reason(ReasonCode.PICKUP_TOO_LONG, v.toString())
         }
-        limits.minTripKm?.let { min ->
+        if (!noDestination || !allowNoDestination) limits.minTripKm?.let { min ->
             val v = offer.nonNegativeTripKm()
             if (v == null) reasons += Reason(ReasonCode.TRIP_KM_MISSING)
             else if (v < min) reasons += Reason(ReasonCode.TRIP_TOO_SHORT, v.toPlainString())
         }
-        limits.maxTripKm?.let { max ->
+        if (!noDestination || !allowNoDestination) limits.maxTripKm?.let { max ->
             val v = offer.nonNegativeTripKm()
             if (v == null) reasons += Reason(ReasonCode.TRIP_KM_MISSING)
             else if (v > max) reasons += Reason(ReasonCode.TRIP_TOO_LONG, v.toPlainString())
         }
-        limits.maxTripMinutes?.let { max ->
-            val v = offer.tripMinutes?.takeIf { it >= 0 }
-            if (v == null) reasons += Reason(ReasonCode.TRIP_MIN_MISSING)
-            else if (v > max) reasons += Reason(ReasonCode.TRIP_MIN_TOO_LONG, v.toString())
+        if (!noDestination || !allowNoDestination) {
+            limits.minTripMinutes?.takeIf { it > 0 }?.let { min ->
+                val v = offer.tripMinutes?.takeIf { it >= 0 }
+                if (v == null) reasons += Reason(ReasonCode.TRIP_MIN_MISSING)
+                else if (v < min) reasons += Reason(ReasonCode.TRIP_MIN_TOO_SHORT, v.toString())
+            }
+            if (!fareOverrideApplies) limits.maxTripMinutes?.let { max ->
+                val v = offer.tripMinutes?.takeIf { it >= 0 }
+                if (v == null) reasons += Reason(ReasonCode.TRIP_MIN_MISSING)
+                else if (v > max) reasons += Reason(ReasonCode.TRIP_MIN_TOO_LONG, v.toString())
+            }
         }
         val keywords = filters.excludeKeywords.map(Text::normalize).filter { it.isNotEmpty() }
         keywords.firstOrNull { kw -> offer.texts.any { Text.containsWord(it, kw) } }?.let {
@@ -161,7 +210,15 @@ object OfferEvaluator {
 
     private fun Filters.validated(): ValidatedFilters {
         val invalid = ArrayList<String>()
-        fun decimal(name: String, value: String?): BigDecimal? {
+        val fareRangeEnabled = isFareRangeEnabled
+        val farePerKmEnabled = isFarePerKmEnabled
+        val pickupDistanceEnabled = isPickupDistanceEnabled
+        val pickupTimeEnabled = isPickupTimeEnabled
+        val tripDistanceEnabled = isTripDistanceEnabled
+        val tripTimeEnabled = isTripTimeEnabled
+        val highFareOverrideEnabled = this.highFareOverrideEnabled
+        fun decimal(name: String, value: String?, enabled: Boolean = true): BigDecimal? {
+            if (!enabled) return null
             if (value.isNullOrBlank()) return null
             val parsed = value.toDecimalOrNull()
             if (parsed == null || parsed.signum() < 0) {
@@ -170,19 +227,29 @@ object OfferEvaluator {
             }
             return parsed
         }
-        fun minutes(name: String, value: Int?): Int? {
+        fun minutes(name: String, value: Int?, enabled: Boolean = true): Int? {
+            if (!enabled) return null
             if (value != null && value < 0) invalid += name
             return value?.takeIf { it >= 0 }
         }
 
-        val minFare = decimal("minFare", minFare)
-        val maxFare = decimal("maxFare", maxFare)
-        val minFarePerKm = decimal("minFarePerKm", minFarePerKm)
-        val maxPickupKm = decimal("maxPickupKm", maxPickupKm)
-        val minTripKm = decimal("minTripKm", minTripKm)
-        val maxTripKm = decimal("maxTripKm", maxTripKm)
+        val minFare = decimal("minFare", minFare, fareRangeEnabled)
+        val maxFare = decimal("maxFare", maxFare, fareRangeEnabled)
+        val minFarePerKm = decimal("minFarePerKm", minFarePerKm, farePerKmEnabled)
+        val maxPickupKm = decimal("maxPickupKm", maxPickupKm, pickupDistanceEnabled)
+        val minTripKm = decimal("minTripKm", minTripKm, tripDistanceEnabled)
+        val maxTripKm = decimal("maxTripKm", maxTripKm, tripDistanceEnabled)
+        val highFareOverrideAmount = decimal(
+            "highFareOverrideAmount", highFareOverrideAmount, highFareOverrideEnabled,
+        )
+        val minPickupMinutes = minutes("minPickupMinutes", this.minPickupMinutes, pickupTimeEnabled)
+        val maxPickupMinutes = minutes("maxPickupMinutes", this.maxPickupMinutes, pickupTimeEnabled)
+        val minTripMinutes = minutes("minTripMinutes", this.minTripMinutes, tripTimeEnabled)
+        val maxTripMinutes = minutes("maxTripMinutes", this.maxTripMinutes, tripTimeEnabled)
         if (minFare != null && maxFare != null && minFare > maxFare) invalid += "fareRange"
         if (minTripKm != null && maxTripKm != null && minTripKm > maxTripKm) invalid += "tripKmRange"
+        if (minPickupMinutes != null && maxPickupMinutes != null && minPickupMinutes > maxPickupMinutes) invalid += "pickupTimeRange"
+        if (minTripMinutes != null && maxTripMinutes != null && minTripMinutes > maxTripMinutes) invalid += "tripTimeRange"
         val scheduleIsValid = !scheduleEnabled || scheduleBoundsAreValid(scheduleStartMinute, scheduleEndMinute)
         if (!scheduleIsValid) invalid += "schedule"
 
@@ -191,10 +258,13 @@ object OfferEvaluator {
             maxFare = maxFare,
             minFarePerKm = minFarePerKm,
             maxPickupKm = maxPickupKm,
-            maxPickupMinutes = minutes("maxPickupMinutes", maxPickupMinutes),
+            minPickupMinutes = minPickupMinutes,
+            maxPickupMinutes = maxPickupMinutes,
             minTripKm = minTripKm,
             maxTripKm = maxTripKm,
-            maxTripMinutes = minutes("maxTripMinutes", maxTripMinutes),
+            minTripMinutes = minTripMinutes,
+            maxTripMinutes = maxTripMinutes,
+            highFareOverrideAmount = highFareOverrideAmount,
             scheduleIsValid = scheduleIsValid,
             invalid = invalid,
         )
@@ -205,10 +275,13 @@ object OfferEvaluator {
         val maxFare: BigDecimal?,
         val minFarePerKm: BigDecimal?,
         val maxPickupKm: BigDecimal?,
+        val minPickupMinutes: Int?,
         val maxPickupMinutes: Int?,
         val minTripKm: BigDecimal?,
         val maxTripKm: BigDecimal?,
+        val minTripMinutes: Int?,
         val maxTripMinutes: Int?,
+        val highFareOverrideAmount: BigDecimal?,
         val scheduleIsValid: Boolean,
         val invalid: List<String>,
     )

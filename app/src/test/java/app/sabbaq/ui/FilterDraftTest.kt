@@ -25,7 +25,9 @@ class FilterDraftTest {
         val validation = FilterDraft.from(Filters()).copy(
             minFare = "٣،٥",
             maxFare = "۱٬۲۵۰٫۵۰",
+            fareRangeEnabled = true,
             minFarePerKm = "٠٫٧٥",
+            farePerKmEnabled = true,
             maxPickupMinutes = "۲۱۴۷۴۸۳۶۴۷",
             maxTripMinutes = "٣٠",
         ).validate()
@@ -40,7 +42,7 @@ class FilterDraftTest {
     @Test
     fun `الصيغة الرقمية كاملة ولا تقبل exponent او NaN او جزءا صالحا`() {
         listOf("1e3", "NaN", "12km", "1,,23", "-1", "9".repeat(33)).forEach { input ->
-            val validation = FilterDraft.from(Filters()).copy(minFare = input).validate()
+            val validation = FilterDraft.from(Filters()).copy(minFare = input, fareRangeEnabled = true).validate()
 
             assertFalse("يجب رفض: $input", validation.isValid)
             assertTrue(validation.errors.containsKey("minFare"))
@@ -51,7 +53,7 @@ class FilterDraftTest {
     @Test
     fun `الدقائق ترفض الكسور والاسس والتجاوز فوق Int`() {
         listOf("1.5", "1e2", "2147483648", "00000000001").forEach { input ->
-            val validation = FilterDraft.from(Filters()).copy(maxPickupMinutes = input).validate()
+            val validation = FilterDraft.from(Filters()).copy(maxPickupMinutes = input, pickupTimeEnabled = true).validate()
 
             assertFalse("يجب رفض: $input", validation.isValid)
             assertTrue(validation.errors.containsKey("maxPickupMinutes"))
@@ -59,12 +61,31 @@ class FilterDraftTest {
     }
 
     @Test
+    fun `حدا الوقت الأدنى والأقصى متقابلان ويُرفضان عند عكس الترتيب`() {
+        val valid = FilterDraft.from(Filters()).copy(
+            minPickupMinutes = "5", maxPickupMinutes = "20", pickupTimeEnabled = true,
+            minTripMinutes = "10", maxTripMinutes = "90", tripTimeEnabled = true,
+        ).validate()
+        assertTrue(valid.isValid)
+        assertEquals(5, valid.filters!!.minPickupMinutes)
+        assertEquals(10, valid.filters!!.minTripMinutes)
+
+        val invalid = FilterDraft.from(Filters()).copy(
+            minPickupMinutes = "21", maxPickupMinutes = "20", pickupTimeEnabled = true,
+        ).validate()
+        assertTrue(invalid.errors.containsKey("minPickupMinutes"))
+        assertTrue(invalid.errors.containsKey("maxPickupMinutes"))
+    }
+
+    @Test
     fun `المدى المعكوس يعيد اخطاء مربوطة بالحقول لا باسم مدى عام`() {
         val validation = FilterDraft.from(Filters()).copy(
             minFare = "10",
             maxFare = "3",
+            fareRangeEnabled = true,
             minTripKm = "4",
             maxTripKm = "2",
+            tripDistanceEnabled = true,
         ).validate()
 
         assertFalse(validation.isValid)
@@ -137,5 +158,42 @@ class FilterDraftTest {
         assertEquals(source.scheduleStartMinute, changed.filters!!.scheduleStartMinute)
         assertEquals(source.scheduleEndMinute, changed.filters!!.scheduleEndMinute)
         assertTrue(changed.filters!!.acceptWhenNoFilters)
+    }
+
+    @Test
+    fun `الإعدادات القديمة ذات القيمة تتحول إلى مفاتيح مفعلة دون تغيير دلالتها`() {
+        val legacy = Filters(minFare = "4", maxPickupMinutes = 20)
+        val draft = FilterDraft.from(legacy)
+
+        assertTrue(draft.fareRangeEnabled)
+        assertTrue(draft.pickupTimeEnabled)
+        assertFalse(draft.isDirtyComparedTo(legacy))
+        val normalized = draft.validate().filters!!
+        assertTrue(normalized.isFareRangeEnabled)
+        assertTrue(normalized.isPickupTimeEnabled)
+    }
+
+    @Test
+    fun `قيمة legacy الطويلة المعطلة لا تمنع حفظ تعديل آخر`() {
+        val legacyValue = "9".repeat(80)
+        val source = Filters(minFare = legacyValue, fareRangeEnabled = false)
+        val validation = FilterDraft.from(source).copy(
+            minFarePerKm = "0.5",
+            farePerKmEnabled = true,
+        ).validate()
+
+        assertTrue(validation.isValid)
+        assertEquals(legacyValue, validation.filters!!.minFare)
+        assertEquals("0.5", validation.filters!!.minFarePerKm)
+    }
+
+    @Test
+    fun `إطفاء شرط يحتفظ برقم العداد ولا يطبقه`() {
+        val source = Filters(maxPickupKm = "8", pickupDistanceEnabled = true)
+        val stopped = FilterDraft.from(source).copy(pickupDistanceEnabled = false).validate().filters!!
+
+        assertEquals("8", stopped.maxPickupKm)
+        assertFalse(stopped.isPickupDistanceEnabled)
+        assertFalse(stopped.anyActive())
     }
 }

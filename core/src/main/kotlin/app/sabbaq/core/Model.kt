@@ -87,6 +87,9 @@ data class Offer(
     val addresses: List<String>,
     val texts: List<String>,
 ) {
+    /** Parser-provided address lines contain pickup and destination when both are visible. */
+    val destinationAvailable: Boolean get() = addresses.size >= 2
+
     /**
      * Identity that survives countdown timers ticking on screen, so one offer
      * is clicked once however many frames it is seen in.

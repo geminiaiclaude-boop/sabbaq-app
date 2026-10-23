@@ -21,9 +21,13 @@ class FilterPresetsTest {
     fun `preset rewrites only distance and time fields`() {
         val applied = FilterPreset.NearAndQuick.applyTo(base)
         assertEquals("3", applied.maxPickupKm)
+        assertTrue(applied.pickupDistanceEnabled)
         assertEquals("7", applied.maxPickupMinutes)
+        assertTrue(applied.pickupTimeEnabled)
         assertEquals("15", applied.maxTripKm)
+        assertTrue(applied.tripDistanceEnabled)
         assertEquals("", applied.maxTripMinutes)
+        assertFalse(applied.tripTimeEnabled)
         assertEquals("20", applied.minFare)
         assertEquals("1.5", applied.minFarePerKm)
         assertEquals("مطار", applied.excludeKeywords)
