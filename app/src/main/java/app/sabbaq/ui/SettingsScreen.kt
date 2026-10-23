@@ -1384,6 +1384,9 @@ private fun activeFilterCount(filters: Filters): Int = buildList {
     if (filters.isTripTimeEnabled && ((filters.minTripMinutes?.let { it > 0 } == true) || filters.maxTripMinutes != null)) add(Unit)
     if (filters.excludeKeywords.any { it.isNotBlank() }) add(Unit)
     if (filters.scheduleEnabled) add(Unit)
+    if (filters.destinationZones.any { it.enabled }) add(Unit)
+    if (filters.smartDestination != null) add(Unit)
+    if (filters.destinationCorridor != null) add(Unit)
 }.size
 
 internal fun parsePreviewDecimal(raw: String): BigDecimal? {
@@ -1437,6 +1440,11 @@ private fun reasonArabic(code: ReasonCode): String = when (code) {
     ReasonCode.TRIP_MIN_TOO_LONG -> "مدة الرحلة أطول مما حددته."
     ReasonCode.TRIP_MIN_TOO_SHORT -> "مدة الرحلة أقصر مما حددته."
     ReasonCode.EXCLUDED_KEYWORD -> "وصف الطلب يحتوي كلمة لا تناسبك."
+    ReasonCode.DESTINATION_GEO_UNKNOWN -> "تعذر تحديد إحداثيات الوجهة من الربط المحلي؛ لم يخمّن سبّاق موقعًا."
+    ReasonCode.DESTINATION_ZONE_EXCLUDED -> "الوجهة تقع داخل منطقة استبعاد محددة."
+    ReasonCode.DESTINATION_ZONE_NOT_MATCHED -> "الوجهة خارج جميع مناطق الإدراج المحددة."
+    ReasonCode.SMART_DESTINATION_MISMATCH -> "الوجهة أبعد من النطاق المحدد للوجهة المفضلة."
+    ReasonCode.DESTINATION_CORRIDOR_MISMATCH -> "الوجهة خارج ممر الرحلة المحدد."
 }
 
 private fun redeemErrorMessage(error: Throwable?): String = when (error?.message) {

@@ -42,6 +42,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import app.sabbaq.core.PerKmBasis
+import app.sabbaq.core.FilterCombination
 import app.sabbaq.core.Text as CoreText
 import app.sabbaq.ui.theme.LocalReducedMotion
 import app.sabbaq.ui.theme.SabbaqMotion
@@ -63,6 +64,27 @@ internal fun AdvancedFiltersEditor(
             title = "شروط الطلبات",
             subtitle = "تُحفظ التعديلات تلقائيًا. أطفئ الشرط لإيقافه مع الاحتفاظ بقيمته.",
         )
+
+        FilterGroup(
+            title = "منطق جمع الشروط",
+            subtitle = "في AND يجب تحقق كل شروط الاختيار؛ في OR يكفي تحقق شرط واحد. شروط الاستبعاد والسلامة تبقى إلزامية.",
+            filledCount = 1,
+        ) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                FilterChip(
+                    selected = draft.combination == FilterCombination.ALL,
+                    onClick = { onDraftChange(draft.copy(combination = FilterCombination.ALL)) },
+                    label = { Text("كل الشروط (AND)") },
+                    modifier = Modifier.heightIn(min = 44.dp),
+                )
+                FilterChip(
+                    selected = draft.combination == FilterCombination.ANY,
+                    onClick = { onDraftChange(draft.copy(combination = FilterCombination.ANY)) },
+                    label = { Text("أي شرط (OR)") },
+                    modifier = Modifier.heightIn(min = 44.dp),
+                )
+            }
+        }
 
         ProConditionCard(
             title = "نطاق السعر",
@@ -260,6 +282,49 @@ internal fun AdvancedFiltersEditor(
                 step = "1", keyboardType = KeyboardType.Decimal, error = errors["highFareOverrideAmount"],
                 testKey = "high-fare-amount",
                 onValueChange = { onDraftChange(draft.copy(highFareOverrideAmount = it)) },
+            )
+        }
+
+        FilterGroup(
+            title = "المناطق والوجهة الذكية والممر",
+            subtitle = "مطابقة جغرافية محلية بإحداثيات صريحة؛ لا تُرسل العناوين إلى خدمة خارجية.",
+            hasError = errors.keys.any { it in setOf("destinationZones", "destinationAliases", "smartDestination", "destinationCorridor") },
+            filledCount = listOf(draft.destinationZones, draft.destinationAliases, draft.smartDestination, draft.destinationCorridor).count(String::isNotBlank),
+        ) {
+            Text(
+                "سبّاق لا يستخرج إحداثيات من عرض جيني تلقائيًا. أضف ربطًا محليًا لعبارات الوجهة بإحداثياتها. عند تفعيل قاعدة جغرافية وعدم تطابق عبارة مع ربط واحد واضح، يُرفض العرض بسبب «وجهة جغرافية غير معروفة» لا بتخمين الموقع.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            DraftField(
+                value = draft.destinationZones,
+                label = "المناطق: include أو exclude|الاسم|latitude|longitude|radius بالمتر — سطر لكل منطقة",
+                error = errors["destinationZones"],
+                keyboardType = KeyboardType.Text,
+                singleLine = false,
+                onValueChange = { onDraftChange(draft.copy(destinationZones = it)) },
+            )
+            DraftField(
+                value = draft.destinationAliases,
+                label = "ربط عبارة الوجهة بالإحداثيات: العبارة|latitude|longitude — سطر لكل ربط",
+                error = errors["destinationAliases"],
+                keyboardType = KeyboardType.Text,
+                singleLine = false,
+                onValueChange = { onDraftChange(draft.copy(destinationAliases = it)) },
+            )
+            DraftField(
+                value = draft.smartDestination,
+                label = "وجهة مفضلة اختيارية: latitude,longitude|radius بالمتر",
+                error = errors["smartDestination"],
+                keyboardType = KeyboardType.Text,
+                onValueChange = { onDraftChange(draft.copy(smartDestination = it)) },
+            )
+            DraftField(
+                value = draft.destinationCorridor,
+                label = "ممر اختياري: العرض بالمتر|lat,lon;lat,lon;… (نقطتان فأكثر)",
+                error = errors["destinationCorridor"],
+                keyboardType = KeyboardType.Text,
+                onValueChange = { onDraftChange(draft.copy(destinationCorridor = it)) },
             )
         }
 

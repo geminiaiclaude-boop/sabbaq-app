@@ -7,6 +7,9 @@ import java.math.RoundingMode
 @Serializable
 enum class PerKmBasis { TRIP, TOTAL }
 
+@Serializable
+enum class FilterCombination { ALL, ANY }
+
 /**
  * Driver's acceptance rules. Money and distances are kept as decimal strings
  * so a stored threshold is never rounded through a binary float.
@@ -39,6 +42,11 @@ data class Filters(
     val scheduleStartMinute: Int = 0,
     val scheduleEndMinute: Int = 24 * 60,
     val acceptWhenNoFilters: Boolean = false,
+    val combination: FilterCombination = FilterCombination.ALL,
+    val destinationZones: List<DestinationZone> = emptyList(),
+    val smartDestination: DestinationTarget? = null,
+    val destinationCorridor: DestinationCorridor? = null,
+    val destinationAliases: List<DestinationAlias> = emptyList(),
 ) {
     val isFareRangeEnabled: Boolean get() = fareRangeEnabled ?: (!minFare.isNullOrBlank() || !maxFare.isNullOrBlank())
     val isFarePerKmEnabled: Boolean get() = farePerKmEnabled ?: !minFarePerKm.isNullOrBlank()
@@ -58,7 +66,8 @@ data class Filters(
             (isPickupTimeEnabled && ((minPickupMinutes != null && minPickupMinutes > 0) || maxPickupMinutes != null)) ||
             (isTripDistanceEnabled && (!minTripKm.isNullOrBlank() || !maxTripKm.isNullOrBlank())) ||
             (isTripTimeEnabled && ((minTripMinutes != null && minTripMinutes > 0) || maxTripMinutes != null)) ||
-            excludeKeywords.any { it.isNotBlank() } || scheduleEnabled
+            excludeKeywords.any { it.isNotBlank() } || scheduleEnabled ||
+            destinationZones.any { it.enabled } || smartDestination != null || destinationCorridor != null
 }
 
 internal fun String?.toDecimalOrNull(): BigDecimal? = this?.let { Text.parseNumber(Text.normalize(it)) }
@@ -76,6 +85,8 @@ enum class ReasonCode {
     TRIP_KM_MISSING, TRIP_TOO_SHORT, TRIP_TOO_LONG,
     TRIP_MIN_MISSING, TRIP_MIN_TOO_SHORT, TRIP_MIN_TOO_LONG,
     EXCLUDED_KEYWORD,
+    DESTINATION_GEO_UNKNOWN, DESTINATION_ZONE_EXCLUDED, DESTINATION_ZONE_NOT_MATCHED,
+    SMART_DESTINATION_MISMATCH, DESTINATION_CORRIDOR_MISMATCH,
 }
 
 data class Reason(val code: ReasonCode, val detail: String? = null)
@@ -97,8 +108,12 @@ object OfferEvaluator {
             limits.highFareOverrideAmount?.let { threshold -> offer.nonNegativeFare()?.let { it >= threshold } } == true
         val noDestination = !offer.destinationAvailable
         val allowNoDestination = filters.isAcceptNoDestinationEffective
+        val geoRulesActive = filters.destinationZones.any { it.enabled } ||
+            filters.smartDestination != null || filters.destinationCorridor != null
+        val destinationPoint = resolveDestinationPoint(offer, filters.destinationAliases)
 
         limits.invalid.firstOrNull()?.let { reasons += Reason(ReasonCode.INVALID_FILTER, it) }
+        validateDestinationRules(filters)?.let { reasons += Reason(ReasonCode.INVALID_FILTER, it) }
         if (filters.scheduleEnabled && limits.scheduleIsValid && !inSchedule(minuteOfDay, filters.scheduleStartMinute, filters.scheduleEndMinute)) {
             reasons += Reason(ReasonCode.OUTSIDE_SCHEDULE)
         }
@@ -107,6 +122,28 @@ object OfferEvaluator {
         }
         if (noDestination && !allowNoDestination) {
             reasons += Reason(ReasonCode.DESTINATION_MISSING)
+        }
+        if (geoRulesActive && destinationPoint == null) {
+            reasons += Reason(ReasonCode.DESTINATION_GEO_UNKNOWN)
+        }
+        if (destinationPoint != null) {
+            Zones.firstHit(filters.destinationZones, destinationPoint)?.let {
+                reasons += Reason(ReasonCode.DESTINATION_ZONE_EXCLUDED, it.name)
+            }
+            if (filters.destinationZones.any { it.enabled && it.mode == ZoneMode.INCLUDE } &&
+                !Zones.matchesIncludeZones(filters.destinationZones, destinationPoint)) {
+                reasons += Reason(ReasonCode.DESTINATION_ZONE_NOT_MATCHED)
+            }
+            filters.smartDestination?.let { target ->
+                if (Zones.isValidTarget(target) && !Zones.isNearTarget(destinationPoint, target)) {
+                    reasons += Reason(ReasonCode.SMART_DESTINATION_MISMATCH)
+                }
+            }
+            filters.destinationCorridor?.let { corridor ->
+                if (Zones.isValidCorridor(corridor) && !Zones.isInsideCorridor(destinationPoint, corridor)) {
+                    reasons += Reason(ReasonCode.DESTINATION_CORRIDOR_MISMATCH)
+                }
+            }
         }
 
         limits.minFare?.let { min ->
@@ -166,7 +203,87 @@ object OfferEvaluator {
         }
 
         val distinct = reasons.distinctBy { it.code }
+        val hardCodes = setOf(
+            ReasonCode.NO_FILTERS, ReasonCode.OUTSIDE_SCHEDULE, ReasonCode.INVALID_FILTER,
+            ReasonCode.DESTINATION_MISSING, ReasonCode.EXCLUDED_KEYWORD,
+            ReasonCode.DESTINATION_GEO_UNKNOWN, ReasonCode.DESTINATION_ZONE_EXCLUDED,
+        )
+        val hardFailures = distinct.filter { it.code in hardCodes }
+        val selectionGroups = activeSelectionGroups(filters, limits, minuteOfDay)
+        if (filters.combination == FilterCombination.ANY && hardFailures.isEmpty() && selectionGroups.isNotEmpty()) {
+            val failedCodes = distinct.mapTo(HashSet()) { it.code }
+            val passed = selectionGroups.any { group -> group.none { it in failedCodes } }
+            val finalReasons = if (passed) emptyList() else distinct
+            return Verdict(accept = passed, reasons = finalReasons, farePerKm = perKm)
+        }
         return Verdict(accept = distinct.isEmpty(), reasons = distinct, farePerKm = perKm)
+    }
+
+    private fun resolveDestinationPoint(offer: Offer, aliases: List<DestinationAlias>): GeoPoint? {
+        offer.destinationPoint?.takeIf { it.isValid }?.let { return it }
+        val destinationText = offer.addresses.lastOrNull()?.let(Text::normalize)?.takeIf(String::isNotEmpty) ?: return null
+        val matchingAliases = aliases.asSequence()
+            .filter { it.phrase.isNotBlank() && it.point.isValid && Text.normalize(it.phrase).isNotBlank() &&
+                Text.containsWord(destinationText, Text.normalize(it.phrase)) }
+            .toList()
+        val longest = matchingAliases.maxOfOrNull { Text.normalize(it.phrase).length } ?: return null
+        val matches = matchingAliases.asSequence()
+            .filter { Text.normalize(it.phrase).length == longest }
+            .map { it.point }
+            .distinct()
+            .take(2)
+            .toList()
+        return matches.singleOrNull()
+    }
+
+    private fun validateDestinationRules(filters: Filters): String? {
+        val enabledZones = filters.destinationZones.filter { it.enabled }
+        if (filters.destinationZones.size > Zones.MAX_ZONES || enabledZones.any { !Zones.isValidZone(it) }) return "destinationZones"
+        if (enabledZones.map { it.id }.distinct().size != enabledZones.size) return "duplicateDestinationZoneIds"
+        if (filters.destinationAliases.size > Zones.MAX_ZONES * 4 || filters.destinationAliases.any {
+                it.phrase.isBlank() || it.phrase.length > 120 || !it.point.isValid
+            }) return "destinationAliases"
+        if (filters.destinationAliases.groupBy { Text.normalize(it.phrase) }.values.any { same ->
+                same.map { it.point }.distinct().size > 1
+            }) return "ambiguousDestinationAliases"
+        if (filters.smartDestination?.let { !Zones.isValidTarget(it) } == true) return "smartDestination"
+        if (filters.destinationCorridor?.let { !Zones.isValidCorridor(it) } == true) return "destinationCorridor"
+        return null
+    }
+
+    /** Hard safety gates stay conjunctive; ANY combines only explicit selection groups. */
+    private fun activeSelectionGroups(
+        filters: Filters,
+        limits: ValidatedFilters,
+        minuteOfDay: Int,
+    ): List<Set<ReasonCode>> {
+        val groups = ArrayList<Set<ReasonCode>>()
+        if (limits.minFare != null || limits.maxFare != null) groups.add(setOf(
+            ReasonCode.FARE_MISSING, ReasonCode.FARE_TOO_LOW, ReasonCode.FARE_TOO_HIGH,
+        ))
+        if (limits.minFarePerKm != null) groups.add(setOf(ReasonCode.PER_KM_MISSING, ReasonCode.PER_KM_TOO_LOW))
+        if (limits.maxPickupKm != null) groups.add(setOf(ReasonCode.PICKUP_KM_MISSING, ReasonCode.PICKUP_TOO_FAR))
+        if (limits.minPickupMinutes != null || limits.maxPickupMinutes != null) groups.add(setOf(
+            ReasonCode.PICKUP_MIN_MISSING, ReasonCode.PICKUP_TOO_LONG, ReasonCode.PICKUP_TOO_SHORT,
+        ))
+        if (limits.minTripKm != null || limits.maxTripKm != null) groups.add(setOf(
+            ReasonCode.TRIP_KM_MISSING, ReasonCode.TRIP_TOO_SHORT, ReasonCode.TRIP_TOO_LONG,
+        ))
+        if (limits.minTripMinutes != null || limits.maxTripMinutes != null) groups.add(setOf(
+            ReasonCode.TRIP_MIN_MISSING, ReasonCode.TRIP_MIN_TOO_SHORT, ReasonCode.TRIP_MIN_TOO_LONG,
+        ))
+        if (filters.destinationZones.any { it.enabled && it.mode == ZoneMode.INCLUDE }) groups.add(setOf(ReasonCode.DESTINATION_ZONE_NOT_MATCHED))
+        if (filters.smartDestination != null) groups.add(setOf(ReasonCode.SMART_DESTINATION_MISMATCH))
+        if (filters.destinationCorridor != null) groups.add(setOf(ReasonCode.DESTINATION_CORRIDOR_MISMATCH))
+        // Schedule and exclusions are gates, never OR-success criteria when a
+        // positive selection rule exists. Preserve the established behavior
+        // for configurations that intentionally contain only these gates.
+        if (groups.isEmpty() && (
+                filters.scheduleEnabled && inSchedule(minuteOfDay, filters.scheduleStartMinute, filters.scheduleEndMinute) ||
+                    filters.excludeKeywords.any { it.isNotBlank() } ||
+                    filters.destinationZones.any { it.enabled && it.mode == ZoneMode.EXCLUDE }
+            )) groups.add(emptySet())
+        return groups
     }
 
     fun farePerKm(offer: Offer, basis: PerKmBasis): BigDecimal? {
