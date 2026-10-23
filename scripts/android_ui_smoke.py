@@ -56,17 +56,41 @@ def reachable_by_scrolling(text, visible):
     """True when [text] is on screen now or appears after scrolling the page down."""
     if text in visible:
         return True
-    # Short, slow drags so no section in the middle of the page is flung past.
-    # The dashboard can be substantially taller when several readiness cards are
-    # missing. Allow enough steps to reach its lower cards on the CI emulator while
-    # still asserting that every required section is actually visible.
-    for _ in range(32):
-        adb('shell', 'input', 'swipe', '540', '1500', '540', '1000', '700')
+    # Derive a gesture from the actual scroll viewport. Fixed phone coordinates
+    # land inside the tablet's rail or a card and can fail to scroll the content.
+    # Keep each drag long, slow and inside the viewport to avoid accidental taps.
+    for attempt in range(40):
+        adb('shell', 'uiautomator', 'dump', '/sdcard/sabbaq-ui.xml', timeout=60)
+        current_xml = adb('shell', 'cat', '/sdcard/sabbaq-ui.xml')
+        current_root = ET.fromstring(current_xml)
+        scroll_nodes = [n for n in current_root.iter('node') if n.get('scrollable') == 'true']
+        if scroll_nodes:
+            # The outermost scroll container is the page. Use its center, but
+            # clamp to a generous inset so a system bar or navigation rail is avoided.
+            bounds = re.findall(r'\d+', scroll_nodes[0].get('bounds', ''))
+            if len(bounds) == 4:
+                left, top, right, bottom = map(int, bounds)
+                x = (left + right) // 2
+                y_start = top + (bottom - top) * 4 // 5
+                y_end = top + (bottom - top) // 5
+            else:
+                x, y_start, y_end = 540, 1500, 1000
+        else:
+            x, y_start, y_end = 540, 1500, 1000
+        adb('shell', 'input', 'swipe', str(x), str(y_start), str(x), str(y_end), '700')
         time.sleep(1)
         adb('shell', 'uiautomator', 'dump', '/sdcard/sabbaq-ui.xml', timeout=60)
-        scrolled = ET.fromstring(adb('shell', 'cat', '/sdcard/sabbaq-ui.xml')).findall('.//node')
+        scrolled_xml = adb('shell', 'cat', '/sdcard/sabbaq-ui.xml')
+        scrolled = ET.fromstring(scrolled_xml).findall('.//node')
         if any(text in (n.get('text', '') + n.get('content-desc', '')) for n in scrolled):
             return True
+    # Preserve enough evidence to distinguish layout regression from a test gesture issue.
+    safe_name = re.sub(r'[^A-Za-z0-9_-]+', '-', text).strip('-')[:60] or 'missing-section'
+    (out / f'failed-scroll-{safe_name}.xml').write_text(scrolled_xml)
+    try:
+        (out / f'failed-scroll-{safe_name}.png').write_bytes(screencap())
+    except Exception as error:
+        (out / f'failed-scroll-{safe_name}-screencap-error.txt').write_text(str(error))
     return False
 
 

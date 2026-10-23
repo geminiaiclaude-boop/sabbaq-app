@@ -133,4 +133,9 @@ private fun ReasonCode.displayName(): String = when (this) {
     ReasonCode.TRIP_MIN_TOO_SHORT -> "وقت الرحلة أقصر من الحد"
     ReasonCode.TRIP_MIN_TOO_LONG -> "وقت الرحلة أطول من الحد"
     ReasonCode.EXCLUDED_KEYWORD -> "كلمة مستبعدة"
+    ReasonCode.DESTINATION_GEO_UNKNOWN -> "إحداثيات الوجهة غير معروفة"
+    ReasonCode.DESTINATION_ZONE_EXCLUDED -> "داخل منطقة مستبعدة"
+    ReasonCode.DESTINATION_ZONE_NOT_MATCHED -> "خارج مناطق الإدراج"
+    ReasonCode.SMART_DESTINATION_MISMATCH -> "خارج الوجهة المفضلة"
+    ReasonCode.DESTINATION_CORRIDOR_MISMATCH -> "خارج ممر الرحلة"
 }

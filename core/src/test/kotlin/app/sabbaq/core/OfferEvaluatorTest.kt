@@ -310,4 +310,132 @@ class OfferEvaluatorTest {
         assertTrue(ReasonCode.EXCLUDED_KEYWORD in codes(verdict))
         assertTrue(filters.copy(excludeKeywords = emptyList()).isAcceptNoDestinationEffective)
     }
+
+    @Test
+    fun andModeRequiresEveryDeclaredSelectionGroupToPass() {
+        val filters = Filters(
+            minFare = "6", fareRangeEnabled = true,
+            minTripKm = "8", tripDistanceEnabled = true,
+            combination = FilterCombination.ALL,
+        )
+        val verdict = OfferEvaluator.evaluate(offer(fare = "5", tripKm = "10"), filters, 600)
+        assertFalse(verdict.accept)
+        assertEquals(listOf(ReasonCode.FARE_TOO_LOW), codes(verdict))
+    }
+
+    @Test
+    fun orModeAcceptsEligibleOfferWhenAnySelectionGroupPasses() {
+        val filters = Filters(
+            minFare = "6", fareRangeEnabled = true,
+            minTripKm = "8", tripDistanceEnabled = true,
+            combination = FilterCombination.ANY,
+        )
+        val verdict = OfferEvaluator.evaluate(offer(fare = "5", tripKm = "10"), filters, 600)
+        assertTrue("a valid trip-distance match must not be lost because another OR group failed", verdict.accept)
+        assertTrue(verdict.reasons.isEmpty())
+    }
+
+    @Test
+    fun orModeNeverBypassesScheduleOrExplicitExclusions() {
+        val filters = Filters(
+            minFare = "100", fareRangeEnabled = true,
+            minTripKm = "1", tripDistanceEnabled = true,
+            scheduleEnabled = true, scheduleStartMinute = 8 * 60, scheduleEndMinute = 9 * 60,
+            excludeKeywords = listOf("airport"), combination = FilterCombination.ANY,
+        )
+        assertTrue(ReasonCode.OUTSIDE_SCHEDULE in codes(OfferEvaluator.evaluate(offer(), filters, 10 * 60)))
+        val blocked = OfferEvaluator.evaluate(offer(texts = listOf("airport")), filters, 8 * 60 + 30)
+        assertFalse(blocked.accept)
+        assertTrue(ReasonCode.EXCLUDED_KEYWORD in codes(blocked))
+    }
+
+    @Test
+    fun scheduleAndNonMatchingExclusionsAreGatesNotSuccessfulOrCriteria() {
+        val filters = Filters(
+            minFare = "6", fareRangeEnabled = true,
+            minTripKm = "20", tripDistanceEnabled = true,
+            scheduleEnabled = true, scheduleStartMinute = 8 * 60, scheduleEndMinute = 9 * 60,
+            excludeKeywords = listOf("airport"), combination = FilterCombination.ANY,
+        )
+        val verdict = OfferEvaluator.evaluate(offer(fare = "5", tripKm = "10"), filters, 8 * 60 + 30)
+        assertFalse("inside-hours and not-excluded are gates, not reasons to accept", verdict.accept)
+        assertTrue(ReasonCode.FARE_TOO_LOW in codes(verdict))
+        assertTrue(ReasonCode.TRIP_TOO_SHORT in codes(verdict))
+    }
+
+    @Test
+    fun destinationIncludeAndExcludeZonesUseExplicitAddressAliases() {
+        val center = GeoPoint(31.95, 35.91)
+        val aliases = listOf(DestinationAlias("Destination address", center))
+        val included = DestinationZone("home", "منطقة المنزل", center, 2_000, ZoneMode.INCLUDE)
+        val filters = Filters(
+            minFare = "4", fareRangeEnabled = true,
+            destinationZones = listOf(included), destinationAliases = aliases,
+        )
+        assertTrue(OfferEvaluator.evaluate(offer(), filters, 600).accept)
+
+        val excluded = included.copy(mode = ZoneMode.EXCLUDE)
+        val blocked = OfferEvaluator.evaluate(offer(), filters.copy(destinationZones = listOf(excluded)), 600)
+        assertFalse(blocked.accept)
+        assertEquals(listOf(ReasonCode.DESTINATION_ZONE_EXCLUDED), codes(blocked))
+    }
+
+    @Test
+    fun geographyFailsClosedAndReportsUnknownOrAmbiguousResolution() {
+        val zone = DestinationZone("id", "allow", GeoPoint(31.95, 35.91), 2_000, ZoneMode.INCLUDE)
+        val base = Filters(minFare = "4", fareRangeEnabled = true, destinationZones = listOf(zone))
+        assertEquals(listOf(ReasonCode.DESTINATION_GEO_UNKNOWN), codes(OfferEvaluator.evaluate(offer(), base, 600)))
+
+        val aliases = listOf(
+            DestinationAlias("Destination address", GeoPoint(31.95, 35.91)),
+            DestinationAlias("Destination address", GeoPoint(32.0, 36.0)),
+        )
+        val ambiguous = OfferEvaluator.evaluate(offer(), base.copy(destinationAliases = aliases), 600)
+        assertFalse(ambiguous.accept)
+        assertTrue(ReasonCode.INVALID_FILTER in codes(ambiguous))
+        assertTrue(ReasonCode.DESTINATION_GEO_UNKNOWN in codes(ambiguous))
+    }
+
+    @Test
+    fun mostSpecificDestinationAliasWinsOverItsBroaderParentPhrase() {
+        val center = GeoPoint(31.95, 35.91)
+        val zone = DestinationZone("home", "home", center, 500, ZoneMode.INCLUDE)
+        val filters = Filters(
+            minFare = "4", fareRangeEnabled = true,
+            destinationZones = listOf(zone),
+            destinationAliases = listOf(
+                DestinationAlias("Destination", GeoPoint(20.0, 20.0)),
+                DestinationAlias("Destination address", center),
+            ),
+        )
+        assertTrue("specific address mapping must resolve rather than cause a false rejection", OfferEvaluator.evaluate(offer(), filters, 600).accept)
+    }
+
+    @Test
+    fun preferredDestinationAndCorridorAcceptValidNearbyDestinations() {
+        val point = GeoPoint(31.0001, 35.05)
+        val direct = offer().copy(destinationPoint = point)
+        val target = DestinationTarget(GeoPoint(31.0, 35.05), 500)
+        val smart = Filters(minFare = "4", fareRangeEnabled = true, smartDestination = target)
+        assertTrue(OfferEvaluator.evaluate(direct, smart, 600).accept)
+
+        val corridor = DestinationCorridor(
+            points = listOf(GeoPoint(31.0, 35.0), GeoPoint(31.0, 35.1)),
+            halfWidthMeters = 500,
+        )
+        val routed = Filters(minFare = "4", fareRangeEnabled = true, destinationCorridor = corridor)
+        assertTrue(OfferEvaluator.evaluate(direct, routed, 600).accept)
+        assertTrue("eligible offer must not be rejected by corridor geometry", OfferEvaluator.evaluate(direct, routed.copy(combination = FilterCombination.ANY), 600).accept)
+    }
+
+    @Test
+    fun malformedEnabledGeographyNeverSilentlyPasses() {
+        val invalid = DestinationZone("", "", GeoPoint(200.0, 0.0), 0, ZoneMode.INCLUDE)
+        val verdict = OfferEvaluator.evaluate(
+            offer().copy(destinationPoint = GeoPoint(31.95, 35.91)),
+            Filters(minFare = "4", destinationZones = listOf(invalid)), 600,
+        )
+        assertFalse(verdict.accept)
+        assertTrue(ReasonCode.INVALID_FILTER in codes(verdict))
+    }
 }
