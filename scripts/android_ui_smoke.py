@@ -57,7 +57,10 @@ def reachable_by_scrolling(text, visible):
     if text in visible:
         return True
     # Short, slow drags so no section in the middle of the page is flung past.
-    for _ in range(16):
+    # The dashboard can be substantially taller when several readiness cards are
+    # missing. Allow enough steps to reach its lower cards on the CI emulator while
+    # still asserting that every required section is actually visible.
+    for _ in range(32):
         adb('shell', 'input', 'swipe', '540', '1500', '540', '1000', '700')
         time.sleep(1)
         adb('shell', 'uiautomator', 'dump', '/sdcard/sabbaq-ui.xml', timeout=60)
