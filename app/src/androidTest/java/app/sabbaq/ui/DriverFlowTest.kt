@@ -5,7 +5,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
-import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -137,9 +136,9 @@ class DriverFlowTest {
             )
         }
 
-        compose.onNodeWithText("أقل وقت").performScrollTo().assertExists()
-        compose.onNodeWithText("أقصى وقت").performScrollTo().assertExists()
-        compose.onNodeWithText("قنص الطلبات بدون وجهة").performScrollTo().assertExists()
+        compose.onNodeWithText("أقل وقت").performScrollTo()
+        compose.onNodeWithText("أقصى وقت").performScrollTo()
+        compose.onNodeWithText("قنص الطلبات بدون وجهة").performScrollTo()
     }
 
     @Test
