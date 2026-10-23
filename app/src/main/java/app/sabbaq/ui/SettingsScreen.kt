@@ -884,7 +884,7 @@ private fun ActiveConditionsCockpit(
     } else null
     val pickupDistance = filters.maxPickupKm?.takeIf { filters.isPickupDistanceEnabled && it.isNotBlank() }
     val pickupTimeActive = filters.isPickupTimeEnabled &&
-        ((filters.minPickupMinutes != null && filters.minPickupMinutes > 0) || filters.maxPickupMinutes != null)
+        ((filters.minPickupMinutes?.let { it > 0 } == true) || filters.maxPickupMinutes != null)
     val pickupTime = if (pickupTimeActive) {
         "${filters.minPickupMinutes?.toString() ?: "—"}–${filters.maxPickupMinutes?.toString() ?: "—"} دقيقة"
     } else null
@@ -1378,9 +1378,9 @@ private fun activeFilterCount(filters: Filters): Int = buildList {
     if (filters.isFareRangeEnabled && (!filters.minFare.isNullOrBlank() || !filters.maxFare.isNullOrBlank())) add(Unit)
     if (filters.isFarePerKmEnabled && !filters.minFarePerKm.isNullOrBlank()) add(Unit)
     if (filters.isPickupDistanceEnabled && !filters.maxPickupKm.isNullOrBlank()) add(Unit)
-    if (filters.isPickupTimeEnabled && ((filters.minPickupMinutes != null && filters.minPickupMinutes > 0) || filters.maxPickupMinutes != null)) add(Unit)
+    if (filters.isPickupTimeEnabled && ((filters.minPickupMinutes?.let { it > 0 } == true) || filters.maxPickupMinutes != null)) add(Unit)
     if (filters.isTripDistanceEnabled && (!filters.minTripKm.isNullOrBlank() || !filters.maxTripKm.isNullOrBlank())) add(Unit)
-    if (filters.isTripTimeEnabled && ((filters.minTripMinutes != null && filters.minTripMinutes > 0) || filters.maxTripMinutes != null)) add(Unit)
+    if (filters.isTripTimeEnabled && ((filters.minTripMinutes?.let { it > 0 } == true) || filters.maxTripMinutes != null)) add(Unit)
     if (filters.excludeKeywords.any { it.isNotBlank() }) add(Unit)
     if (filters.scheduleEnabled) add(Unit)
 }.size
