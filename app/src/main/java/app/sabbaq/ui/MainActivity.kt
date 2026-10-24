@@ -1,6 +1,7 @@
 ﻿package app.sabbaq.ui
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -24,14 +25,13 @@ import androidx.compose.material.icons.outlined.SettingsBrightness
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewModelScope
 import app.sabbaq.BuildConfig
 import app.sabbaq.Settings
 import app.sabbaq.ThemeMode
@@ -43,40 +43,84 @@ import app.sabbaq.stats.OfferStatsStore
 import app.sabbaq.ui.theme.SabbaqDepthContent
 import app.sabbaq.ui.theme.SabbaqTheme
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 
-enum class AppState { WELCOME, RESTORING_SESSION, SESSION_RESTORE_ERROR, LOGIN, DRIVER_PANEL, ADMIN_PANEL }
+enum class AppState { WELCOME, LOGIN, DRIVER_PANEL, ADMIN_PANEL }
+enum class SessionRestoreStatus { NONE, RESTORING, RETRYABLE_ERROR }
 
-/** Keeps navigation across rotation only. No credentials or authorization are persisted. */
+/** Keeps presentation/navigation state only; a known-session route never grants authorization. */
 class SessionNavigationViewModel : ViewModel() {
     var route by mutableStateOf(AppState.LOGIN)
         private set
+    var sessionRestoreStatus by mutableStateOf(SessionRestoreStatus.NONE)
+        private set
     private var initialized = false
+    private var restoreJob: Job? = null
     fun initialize(showWelcome: Boolean, hasSavedSession: Boolean = false) {
         if (!initialized) {
-            route = when {
-                showWelcome -> AppState.WELCOME
-                hasSavedSession -> AppState.RESTORING_SESSION
-                else -> AppState.LOGIN
-            }
+            route = when { showWelcome -> AppState.WELCOME; hasSavedSession -> AppState.DRIVER_PANEL; else -> AppState.LOGIN }
+            sessionRestoreStatus = if (!showWelcome && hasSavedSession) SessionRestoreStatus.RESTORING
+                else SessionRestoreStatus.NONE
             initialized = true
         }
     }
     fun welcomeFinished(hasSavedSession: Boolean = false) {
-        route = if (hasSavedSession) AppState.RESTORING_SESSION else AppState.LOGIN
+        route = if (hasSavedSession) AppState.DRIVER_PANEL else AppState.LOGIN
+        sessionRestoreStatus = if (hasSavedSession) SessionRestoreStatus.RESTORING else SessionRestoreStatus.NONE
     }
     fun sessionRestoreFinished(restored: Boolean) {
-        if (route == AppState.RESTORING_SESSION) route = if (restored) AppState.DRIVER_PANEL else AppState.LOGIN
+        if (sessionRestoreStatus != SessionRestoreStatus.RESTORING) return
+        sessionRestoreStatus = SessionRestoreStatus.NONE
+        if (!restored) route = AppState.LOGIN
     }
     fun sessionRestoreUnavailable() {
-        if (route == AppState.RESTORING_SESSION) route = AppState.SESSION_RESTORE_ERROR
+        if (sessionRestoreStatus == SessionRestoreStatus.RESTORING) {
+            sessionRestoreStatus = SessionRestoreStatus.RETRYABLE_ERROR
+        }
     }
     fun retrySessionRestore() {
-        if (route == AppState.SESSION_RESTORE_ERROR) route = AppState.RESTORING_SESSION
+        if (sessionRestoreStatus == SessionRestoreStatus.RETRYABLE_ERROR) {
+            sessionRestoreStatus = SessionRestoreStatus.RESTORING
+        }
+    }
+    fun startSessionRestore(context: Context) {
+        if (sessionRestoreStatus != SessionRestoreStatus.RESTORING || restoreJob?.isActive == true) return
+        val appContext = context.applicationContext
+        restoreJob = viewModelScope.launch {
+            try {
+                if (!SupabaseClient.hasSavedSession()) {
+                    sessionRestoreFinished(restored = false)
+                    return@launch
+                }
+                val result = SupabaseClient.restoreSession()
+                when {
+                    result.getOrNull() == true && SupabaseClient.hasValidLicense() -> {
+                        if (SupabaseClient.subscriptionSnapshot()?.state == LicenseState.ACTIVE) {
+                            Settings.knownSubscriber = true
+                        }
+                        KeeperService.resumeIfWanted(appContext)
+                        sessionRestoreFinished(restored = true)
+                    }
+                    result.isFailure && SupabaseClient.hasSavedSession() -> sessionRestoreUnavailable()
+                    else -> sessionRestoreFinished(restored = false)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                if (SupabaseClient.hasSavedSession()) sessionRestoreUnavailable()
+                else sessionRestoreFinished(restored = false)
+            } finally {
+                restoreJob = null
+                if (sessionRestoreStatus == SessionRestoreStatus.RESTORING) startSessionRestore(appContext)
+            }
+        }
     }
     fun authenticated(isAdmin: Boolean) {
+        sessionRestoreStatus = SessionRestoreStatus.NONE
         route = if (isAdmin && BuildConfig.DIRECT_DISTRIBUTION) AppState.ADMIN_PANEL else AppState.DRIVER_PANEL
     }
-    fun signedOut() { route = AppState.LOGIN }
+    fun signedOut() { sessionRestoreStatus = SessionRestoreStatus.NONE; route = AppState.LOGIN }
 }
 
 class MainActivity : ComponentActivity() {
@@ -127,32 +171,9 @@ class MainActivity : ComponentActivity() {
                 hasUnpersistedFilterChanges = false
                 navigation.signedOut()
             }
-            LaunchedEffect(navigation.route) {
-                if (navigation.route != AppState.RESTORING_SESSION) return@LaunchedEffect
-                if (!SupabaseClient.hasSavedSession()) {
-                    navigation.sessionRestoreFinished(restored = false)
-                    return@LaunchedEffect
-                }
-                try {
-                    val result = SupabaseClient.restoreSession()
-                    when {
-                        result.getOrNull() == true && SupabaseClient.hasValidLicense() -> {
-                            if (SupabaseClient.subscriptionSnapshot()?.state == LicenseState.ACTIVE) {
-                                Settings.knownSubscriber = true
-                            }
-                            KeeperService.resumeIfWanted(this@MainActivity)
-                            navigation.sessionRestoreFinished(restored = true)
-                        }
-                        result.isFailure && SupabaseClient.hasSavedSession() ->
-                            navigation.sessionRestoreUnavailable()
-                        else -> navigation.sessionRestoreFinished(restored = false)
-                    }
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (_: Exception) {
-                    if (SupabaseClient.hasSavedSession()) navigation.sessionRestoreUnavailable()
-                    else navigation.sessionRestoreFinished(restored = false)
-                }
+            LaunchedEffect(navigation.sessionRestoreStatus) {
+                if (navigation.sessionRestoreStatus == SessionRestoreStatus.RESTORING)
+                    navigation.startSessionRestore(this@MainActivity)
             }
             SideEffect {
                 val style = if (dark) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
@@ -168,6 +189,7 @@ class MainActivity : ComponentActivity() {
                         isSavingFilters = filterSavePending,
                         hasUnpersistedFilterChanges = hasUnpersistedFilterChanges,
                         onLogout = endSession,
+                        allowLogout = navigation.sessionRestoreStatus != SessionRestoreStatus.RESTORING,
                     ) {
                         SabbaqDepthContent(target = navigation.route, order = { it.ordinal }, label = "app-route") { route ->
                         when (route) {
@@ -177,11 +199,6 @@ class MainActivity : ComponentActivity() {
                                 }
                                 navigation.welcomeFinished(SupabaseClient.hasSavedSession())
                             })
-                            AppState.RESTORING_SESSION -> SessionRestoringScreen()
-                            AppState.SESSION_RESTORE_ERROR -> SessionRestoreErrorScreen(
-                                onRetry = navigation::retrySessionRestore,
-                                onUseAnotherAccount = endSession,
-                            )
                             AppState.LOGIN -> LoginScreen(onLoginSuccess = navigation::authenticated)
                             AppState.ADMIN_PANEL -> {
                                 if (BuildConfig.DIRECT_DISTRIBUTION) AdminScreen()
@@ -189,6 +206,10 @@ class MainActivity : ComponentActivity() {
                             }
                             AppState.DRIVER_PANEL -> SettingsScreen(
                                 notificationPermissionGranted = notificationsGranted,
+                                autoSetupGuide = navigation.sessionRestoreStatus == SessionRestoreStatus.NONE,
+                                isRestoringSession = navigation.sessionRestoreStatus == SessionRestoreStatus.RESTORING,
+                                sessionRestoreError = navigation.sessionRestoreStatus == SessionRestoreStatus.RETRYABLE_ERROR,
+                                onRetrySessionRestore = navigation::retrySessionRestore,
                                 onRequestNotificationPermission = {
                                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
                                         permissionRequest.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -271,40 +292,6 @@ class MainActivity : ComponentActivity() {
         checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 }
 
-@Composable
-private fun SessionRestoringScreen() {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Text("سبّاق", style = MaterialTheme.typography.headlineMedium)
-        Spacer(Modifier.height(20.dp))
-        CircularProgressIndicator()
-        Spacer(Modifier.height(16.dp))
-        Text("جارٍ استعادة جلسة الدخول المحفوظة…", style = MaterialTheme.typography.bodyLarge)
-    }
-}
-
-@Composable
-private fun SessionRestoreErrorScreen(onRetry: () -> Unit, onUseAnotherAccount: () -> Unit) {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Text("تعذر استعادة جلسة الدخول", style = MaterialTheme.typography.headlineSmall)
-        Spacer(Modifier.height(12.dp))
-        Text(
-            "لم تُمسح الجلسة المحفوظة. تعذر التحقق منها الآن؛ تحقق من الاتصال ثم أعد المحاولة، أو اختر تسجيل الدخول بحساب آخر.",
-            style = MaterialTheme.typography.bodyLarge,
-        )
-        Spacer(Modifier.height(24.dp))
-        Button(onClick = onRetry) { Text("إعادة المحاولة") }
-        TextButton(onClick = onUseAnotherAccount) { Text("تسجيل الدخول بحساب آخر") }
-    }
-}
-
 internal fun shouldRenderLogoIntro(showIntro: Boolean, showVideoOpening: Boolean): Boolean =
     showIntro && !showVideoOpening
 
@@ -315,6 +302,7 @@ internal fun SabbaqShell(
     themeMode: ThemeMode,
     onThemeChange: (ThemeMode) -> Unit,
     onLogout: () -> Unit,
+    allowLogout: Boolean = true,
     isSavingFilters: Boolean = false,
     hasUnpersistedFilterChanges: Boolean = false,
     content: @Composable () -> Unit
@@ -344,7 +332,9 @@ internal fun SabbaqShell(
                             }
                         }
                     }
-                    IconButton(onClick = { confirmLogout = true }) { Icon(Icons.AutoMirrored.Outlined.Logout, "تسجيل الخروج") }
+                    IconButton(onClick = { confirmLogout = true }, enabled = allowLogout) {
+                        Icon(Icons.AutoMirrored.Outlined.Logout, "تسجيل الخروج")
+                    }
                 }
             )
         }
