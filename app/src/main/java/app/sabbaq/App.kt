@@ -3,6 +3,7 @@ package app.sabbaq
 import android.app.Application
 import app.sabbaq.network.SupabaseClient
 import app.sabbaq.service.KeeperService
+import app.sabbaq.stats.OfferDecisionLogStore
 import app.sabbaq.voice.VoiceAnnouncer
 
 class App : Application() {
@@ -10,6 +11,7 @@ class App : Application() {
         super.onCreate()
         CrashLog.install(this)
         Settings.init(this)
+        runCatching { OfferDecisionLogStore.init(this) }
         SupabaseClient.init(this)
         VoiceAnnouncer.init(this)
         // A new process starts with no session in memory and the runtime gate closed. The

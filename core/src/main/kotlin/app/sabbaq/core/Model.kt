@@ -28,6 +28,8 @@ data class ScreenNode(
     val clickable: Boolean = false,
     val bounds: Bounds = Bounds.EMPTY,
     val children: List<ScreenNode> = emptyList(),
+    /** Child-index path in this immutable snapshot; never a platform-node identifier. */
+    val nodePath: List<Int> = emptyList(),
 ) {
     fun walk(visit: (ScreenNode) -> Unit) {
         val pending = java.util.ArrayDeque<ScreenNode>()

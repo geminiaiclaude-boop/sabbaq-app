@@ -151,7 +151,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 /** وجهات لوحة السائق؛ يمكن استدعاء الشاشة مباشرة إلى أي منها في معاينات/اختبارات الواجهة. */
-enum class DriverDestination { Dashboard, Filters, Simulator, Account, Setup }
+enum class DriverDestination { Dashboard, Filters, Simulator, Account, History, Setup }
 
 private data class DriverStatus(val message: String, val isError: Boolean = false, val success: Boolean = false) {
     val tone: SabbaqTone get() = when {
@@ -172,6 +172,7 @@ private val driverDestinations = listOf(
     DriverNavItem(DriverDestination.Filters, "طلبات تناسبك", Icons.Outlined.FilterAlt),
     DriverNavItem(DriverDestination.Simulator, "تجربة الطلب", Icons.Outlined.Visibility),
     DriverNavItem(DriverDestination.Account, "حسابي", Icons.Outlined.AccountCircle),
+    DriverNavItem(DriverDestination.History, "سجل القرارات", Icons.Outlined.Info),
 )
 
 /**
@@ -420,7 +421,7 @@ fun SettingsScreen(
         }
     }
 
-    BackHandler(enabled = destination == DriverDestination.Filters || destination == DriverDestination.Setup) {
+    BackHandler(enabled = destination == DriverDestination.Filters || destination == DriverDestination.History || destination == DriverDestination.Setup) {
         navigateTo(DriverDestination.Dashboard)
     }
 
@@ -660,6 +661,10 @@ fun SettingsScreen(
             )
 
             DriverDestination.Simulator -> SimulatorPage(savedFilters = savedFilters)
+
+            DriverDestination.History -> DriverPage {
+                OfferDecisionLogScreen(onBack = { navigateTo(DriverDestination.Dashboard) })
+            }
 
             DriverDestination.Account -> AccountPage(
                 licenseInMemory = licenseInMemory,
@@ -1418,7 +1423,7 @@ private fun emptyPreviewOffer(): Offer = Offer(
 
 private fun currentMinuteOfDay(): Int = Calendar.getInstance().let { it.get(Calendar.HOUR_OF_DAY) * 60 + it.get(Calendar.MINUTE) }
 
-private fun reasonArabic(code: ReasonCode): String = when (code) {
+internal fun reasonArabic(code: ReasonCode): String = when (code) {
     ReasonCode.NO_FILTERS -> "لم تحدد شرطًا لاختيار الطلبات."
     ReasonCode.OUTSIDE_SCHEDULE -> "الوقت خارج أوقات العمل التي حددتها."
     ReasonCode.INVALID_FILTER -> "أحد شروط الطلبات غير صالح."
