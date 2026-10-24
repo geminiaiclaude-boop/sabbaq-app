@@ -54,7 +54,7 @@ class DesignPreviewActivity : ComponentActivity() {
                         else if (screen == "login") LoginScreen(onLoginSuccess = { finish() })
                         else if (screen == "login-trial") LoginScreen(onLoginSuccess = { finish() }, initialIntent = AccessIntent.Trial)
                         else if (screen == "welcome") OnboardingScreen(onContinue = { finish() })
-                        else if (screen == "welcome-example") OnboardingScreen(onContinue = { finish() }, initialPage = 1)
+                        else if (screen == "welcome-example") OnboardingScreen(onContinue = { finish() }, initialPage = 2)
                         else if (screen == "welcome-ready") OnboardingScreen(onContinue = { finish() }, initialPage = 2)
                         else if (screen == "disclosure") AccessibilityDisclosureDialog(onAccept = { finish() }, onDismiss = { finish() })
                         else SettingsScreen(
