@@ -166,6 +166,10 @@ for name, screen, dark, font_scale, env in cases:
     visible = ' '.join(node.get('text', '') + ' ' + node.get('content-desc', '') for node in nodes)
     for jargon in ('GOOGLE_WEB_CLIENT_ID', 'RPC', 'JSON', 'تعرض هذه المعلومات للقراءة فقط', 'تجربة محلية للتعلّم'):
         assert jargon not in visible, f'Developer-facing copy in customer screen {name}: {jargon}'
+    if name == 'first-launch':
+        assert 'سبّاق' in visible, 'Brand-led cinematic opening did not expose the Sabbaq identity'
+        for player_control in ('تخطي الفيديو', 'تشغيل صوت الافتتاحية', 'كتم صوت الافتتاحية'):
+            assert player_control not in visible, f'Player/ad control leaked into launch opening: {player_control}'
     if screen == 'welcome-example':
         # The pipeline scene leads the page; the worked example sits below it.
         assert reachable_by_scrolling('٢٫٥ ر.س قبل التكاليف', visible), f'Concrete fare/distance example missing: {name}'

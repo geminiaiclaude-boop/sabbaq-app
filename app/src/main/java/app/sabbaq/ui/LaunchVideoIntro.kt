@@ -1,31 +1,23 @@
 package app.sabbaq.ui
 
 import android.content.Context
+import android.graphics.Matrix
+import android.graphics.RectF
+import android.graphics.SurfaceTexture
 import android.media.MediaPlayer
 import android.net.Uri
-import android.widget.VideoView
+import android.view.Surface
+import android.view.TextureView
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.VolumeOff
-import androidx.compose.material.icons.outlined.VolumeUp
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -35,9 +27,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
@@ -47,19 +40,16 @@ import app.sabbaq.R
 import app.sabbaq.ui.theme.LocalReducedMotion
 import kotlinx.coroutines.delay
 
-/** Plays the supplied local clip once on a fresh install/update, then lets the existing logo intro run. */
+/** Brand-led cinematic opening: the clip is only a visual layer behind the app identity. */
 @Composable
 internal fun SabbaqVideoOpening(onFinished: () -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val reducedMotion = LocalReducedMotion.current
     val finish by rememberUpdatedState(onFinished)
-    var soundEnabled by remember { mutableStateOf(false) }
-    var isPrepared by remember { mutableStateOf(false) }
     var hasFinished by remember { mutableStateOf(false) }
-    val mediaPlayer = remember { mutableStateOf<MediaPlayer?>(null) }
-    val latestSoundEnabled by rememberUpdatedState(soundEnabled)
-    val videoView = remember(context) { VideoView(context).apply { setBackgroundColor(android.graphics.Color.BLACK) } }
+    val textureView = remember(context) { TextureView(context).apply { isOpaque = false } }
+    val reveal = remember { Animatable(if (reducedMotion) 1f else 0f) }
 
     fun finishOnce() {
         if (!hasFinished) {
@@ -71,127 +61,172 @@ internal fun SabbaqVideoOpening(onFinished: () -> Unit) {
     LaunchedEffect(reducedMotion) {
         if (reducedMotion) finishOnce()
     }
+    LaunchedEffect(reducedMotion) {
+        if (!reducedMotion) reveal.animateTo(1f, tween(1_150, easing = FastOutSlowInEasing))
+    }
 
-    DisposableEffect(videoView, lifecycleOwner, reducedMotion) {
-        if (reducedMotion) return@DisposableEffect onDispose { videoView.stopPlayback() }
+    DisposableEffect(textureView, lifecycleOwner, reducedMotion) {
+        if (reducedMotion) return@DisposableEffect onDispose { }
 
-        videoView.setOnPreparedListener { player ->
-            player.isLooping = false
-            player.setVolume(if (latestSoundEnabled) 1f else 0f, if (latestSoundEnabled) 1f else 0f)
-            mediaPlayer.value = player
-            isPrepared = true
-            if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
-                videoView.start()
+        var player: MediaPlayer? = null
+        var surface: Surface? = null
+        var isPrepared = false
+        var ended = false
+
+        fun releasePlayer() {
+            player?.setOnPreparedListener(null)
+            player?.setOnCompletionListener(null)
+            player?.setOnErrorListener(null)
+            runCatching { player?.stop() }
+            player?.release()
+            player = null
+            surface?.release()
+            surface = null
+            isPrepared = false
+        }
+
+        fun fitVideoToView(view: TextureView, videoWidth: Int, videoHeight: Int) {
+            if (videoWidth <= 0 || videoHeight <= 0 || view.width <= 0 || view.height <= 0) return
+            val source = RectF(0f, 0f, videoWidth.toFloat(), videoHeight.toFloat())
+            val scale = maxOf(view.width.toFloat() / videoWidth, view.height.toFloat() / videoHeight)
+            val scaledWidth = videoWidth * scale
+            val scaledHeight = videoHeight * scale
+            val destination = RectF(
+                (view.width - scaledWidth) / 2f,
+                (view.height - scaledHeight) / 2f,
+                (view.width + scaledWidth) / 2f,
+                (view.height + scaledHeight) / 2f,
+            )
+            view.setTransform(Matrix().apply { setRectToRect(source, destination, Matrix.ScaleToFit.FILL) })
+        }
+
+        val textureListener = object : TextureView.SurfaceTextureListener {
+            override fun onSurfaceTextureAvailable(texture: SurfaceTexture, width: Int, height: Int) {
+                runCatching {
+                    val playbackSurface = Surface(texture)
+                    val media = MediaPlayer()
+                    surface = playbackSurface
+                    player = media
+                    media.setDataSource(context, Uri.parse("android.resource://${context.packageName}/${R.raw.sabbaq_cinematic_intro}"))
+                    media.setSurface(playbackSurface)
+                    media.isLooping = false
+                    media.setVolume(0f, 0f)
+                    media.setOnVideoSizeChangedListener { _, videoWidth, videoHeight ->
+                        fitVideoToView(textureView, videoWidth, videoHeight)
+                    }
+                    media.setOnPreparedListener { prepared ->
+                        isPrepared = true
+                        fitVideoToView(textureView, prepared.videoWidth, prepared.videoHeight)
+                        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) && !ended) {
+                            runCatching { prepared.start() }.onFailure { finishOnce() }
+                        }
+                    }
+                    media.setOnCompletionListener {
+                        ended = true
+                        finishOnce()
+                    }
+                    media.setOnErrorListener { _, _, _ ->
+                        ended = true
+                        finishOnce()
+                        true
+                    }
+                    media.prepareAsync()
+                }.onFailure {
+                    ended = true
+                    finishOnce()
+                }
             }
-        }
-        videoView.setOnCompletionListener { finishOnce() }
-        videoView.setOnErrorListener { _, _, _ ->
-            // Media failure must never block app entry; the existing logo intro follows.
-            finishOnce()
-            true
-        }
-        runCatching {
-            videoView.setVideoURI(Uri.parse("android.resource://${context.packageName}/${R.raw.sabbaq_cinematic_intro}"))
-        }.onFailure { finishOnce() }
 
-        val observer = LifecycleEventObserver { _, event ->
+            override fun onSurfaceTextureSizeChanged(texture: SurfaceTexture, width: Int, height: Int) {
+                player?.let { fitVideoToView(textureView, it.videoWidth, it.videoHeight) }
+            }
+
+            override fun onSurfaceTextureDestroyed(texture: SurfaceTexture): Boolean {
+                releasePlayer()
+                return true
+            }
+
+            override fun onSurfaceTextureUpdated(texture: SurfaceTexture) = Unit
+        }
+        textureView.surfaceTextureListener = textureListener
+        textureView.surfaceTexture?.let { textureListener.onSurfaceTextureAvailable(it, textureView.width, textureView.height) }
+
+        val lifecycleObserver = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_START -> if (isPrepared && !hasFinished) videoView.start()
-                Lifecycle.Event.ON_STOP -> if (videoView.isPlaying) videoView.pause()
+                Lifecycle.Event.ON_START -> if (isPrepared && !ended) runCatching { player?.start() }
+                Lifecycle.Event.ON_STOP -> if (player?.isPlaying == true) runCatching { player?.pause() }
                 else -> Unit
             }
         }
-        lifecycleOwner.lifecycle.addObserver(observer)
+        lifecycleOwner.lifecycle.addObserver(lifecycleObserver)
 
         onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-            videoView.setOnPreparedListener(null)
-            videoView.setOnCompletionListener(null)
-            videoView.setOnErrorListener(null)
-            videoView.stopPlayback()
-            mediaPlayer.value = null
+            lifecycleOwner.lifecycle.removeObserver(lifecycleObserver)
+            textureView.surfaceTextureListener = null
+            releasePlayer()
         }
     }
 
-    // Some devices can fail to report prepare/completion; fail open after a bounded interval.
-    LaunchedEffect(videoView, reducedMotion) {
+    // A decode failure, unsupported device, or stuck prepare must never hold up app entry.
+    LaunchedEffect(textureView, reducedMotion) {
         if (!reducedMotion) {
-            delay(15_000)
-            if (!isPrepared || !hasFinished) finishOnce()
+            delay(12_000)
+            finishOnce()
         }
     }
 
-    LaunchedEffect(soundEnabled, isPrepared) {
-        val volume = if (soundEnabled) 1f else 0f
-        mediaPlayer.value?.setVolume(volume, volume)
-    }
-
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
+    Box(
+        modifier = Modifier.fillMaxSize().background(Color.Black),
+        contentAlignment = Alignment.Center,
+    ) {
+        Image(
+            painter = painterResource(R.drawable.sabbaq_intro_poster),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize(),
+        )
         AndroidView(
-            factory = { videoView.apply { contentDescription = "افتتاحية مرئية لسبّاق" } },
-            modifier = Modifier.fillMaxSize().semantics { contentDescription = "فيديو افتتاحي لسبّاق" },
+            factory = { textureView },
+            modifier = Modifier.fillMaxSize(),
         )
         Box(
             Modifier.fillMaxSize().background(
                 Brush.verticalGradient(
-                    0f to Color.Black.copy(alpha = 0.42f),
-                    0.28f to Color.Transparent,
-                    0.56f to Color.Transparent,
-                    1f to Color.Black.copy(alpha = 0.88f),
+                    0f to Color.Black.copy(alpha = 0.48f),
+                    0.32f to Color.Black.copy(alpha = 0.08f),
+                    0.58f to Color.Black.copy(alpha = 0.12f),
+                    1f to Color.Black.copy(alpha = 0.58f),
                 ),
             ),
         )
-        Row(
-            modifier = Modifier.align(Alignment.TopStart).statusBarsPadding().padding(start = 12.dp, top = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = { soundEnabled = !soundEnabled }) {
-                Icon(
-                    imageVector = if (soundEnabled) Icons.Outlined.VolumeUp else Icons.Outlined.VolumeOff,
-                    contentDescription = if (soundEnabled) "كتم صوت الافتتاحية" else "تشغيل صوت الافتتاحية",
-                    tint = Color.White,
-                )
+        SabbaqRadarScene(
+            active = true,
+            pins = false,
+            modifier = Modifier.fillMaxSize().graphicsLayer { alpha = 0.22f },
+        )
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Box(
+                Modifier.graphicsLayer {
+                    alpha = reveal.value
+                    scaleX = 0.84f + reveal.value * 0.16f
+                    scaleY = 0.84f + reveal.value * 0.16f
+                    translationY = (1f - reveal.value) * 22.dp.toPx()
+                },
+            ) {
+                SabbaqBrand(compact = false, onHero = true)
             }
-        }
-        TextButton(
-            onClick = ::finishOnce,
-            modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(end = 16.dp, top = 8.dp),
-        ) {
-            Text("تخطي الفيديو", color = Color.White)
-        }
-        Column(
-            modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().navigationBarsPadding()
-                .padding(horizontal = 28.dp, vertical = 34.dp),
-            horizontalAlignment = Alignment.Start,
-        ) {
-            Text(
-                "سبّاق",
-                color = Color.White,
-                style = MaterialTheme.typography.displaySmall,
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "الطلب المناسب، على شروطك.",
-                color = Color.White.copy(alpha = 0.92f),
-                style = MaterialTheme.typography.titleLarge,
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "اختر شروطك، ودع سبّاق يتابع الطلبات المطابقة.",
-                color = Color.White.copy(alpha = 0.78f),
-                style = MaterialTheme.typography.bodyLarge,
-            )
         }
     }
 }
 
-/** Small private preference: do not replay the cinematic clip on every app start. */
+/** Private preference: the cinematic opening is not repeated on every app start. */
 internal object LaunchVideoPreferences {
     private const val PREFS = "sabbaq_launch_experience"
-    private const val KEY_VIDEO_SEEN = "cinematic_opening_seen_v1"
+    private const val KEY_VIDEO_SEEN = "cinematic_opening_seen_v2"
 
     fun shouldShow(context: Context): Boolean = runCatching {
-        !context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_VIDEO_SEEN, false)
+        !context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_VIDEO_SEEN, false)
     }.getOrDefault(false)
 
     fun markSeen(context: Context) {
