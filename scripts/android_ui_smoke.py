@@ -151,16 +151,27 @@ for name, screen, dark, font_scale, env in cases:
         nodes = ET.fromstring(xml).findall('.//node')
         if any(node.get('package') == args.package for node in nodes):
             break
-        print(f'{name}: app tree not on top (attempt {attempt + 1}), relaunching', flush=True)
-        # The emulator's own launcher often raises "isn't responding" right after boot.
-        # Close that system dialog; it belongs to another package, never to the app under test.
+        # Android may show a one-time "Viewing full screen" confirmation when an app first
+        # enters immersive mode. Dismiss it in place instead of relaunching over the app.
+        dismissed_system_prompt = False
         for node in nodes:
+            if node.get('resource-id') == 'android:id/ok' and node.get('package') == 'android':
+                x1, y1, x2, y2 = map(int, re.findall(r'\d+', node.get('bounds', '')))
+                print(f'{name}: dismissing Android immersive confirmation', flush=True)
+                adb('shell', 'input', 'tap', str((x1 + x2) // 2), str((y1 + y2) // 2))
+                time.sleep(2)
+                dismissed_system_prompt = True
+                break
+            # The emulator's own launcher can also raise "isn't responding" after boot.
             if node.get('resource-id') in ('android:id/aerr_close', 'android:id/aerr_wait') and node.get('package') != args.package:
                 x1, y1, x2, y2 = map(int, re.findall(r'\d+', node.get('bounds', '')))
                 print(f'{name}: dismissing system dialog {node.get("resource-id")}', flush=True)
                 adb('shell', 'input', 'tap', str((x1 + x2) // 2), str((y1 + y2) // 2))
                 time.sleep(2)
                 break
+        if dismissed_system_prompt:
+            continue
+        print(f'{name}: app tree not on top (attempt {attempt + 1}), relaunching', flush=True)
         adb(*command, timeout=60)
         time.sleep(5)
     assert any(node.get('package') == args.package for node in nodes), f'No app accessibility tree: {name}'
