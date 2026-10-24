@@ -195,7 +195,9 @@ class MainActivity : ComponentActivity() {
                         title = { Text("تنبيه") }, text = { Text(message) },
                         confirmButton = { TextButton(onClick = { permissionMessage = null }) { Text("حسنًا") } }
                     ) }
-                    if (showIntro) {
+                    // Do not compose the logo intro underneath the cinematic clip: its
+                    // 2.3s animation would finish while hidden instead of playing after it.
+                    if (shouldRenderLogoIntro(showIntro, showVideoOpening)) {
                         SabbaqLaunchIntro(onFinished = { showIntro = false })
                     }
                     // Access just granted (code or trial): celebrate over everything, once.
@@ -214,6 +216,9 @@ class MainActivity : ComponentActivity() {
     private fun hasNotificationPermission(): Boolean = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
         checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 }
+
+internal fun shouldRenderLogoIntro(showIntro: Boolean, showVideoOpening: Boolean): Boolean =
+    showIntro && !showVideoOpening
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
