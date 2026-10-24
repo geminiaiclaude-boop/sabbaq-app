@@ -306,7 +306,7 @@ def capture_motion(tag, extras, delays):
     assert len(set(digests)) > 1, f'No motion captured: {tag}'
 
 capture_motion('intro', None, [0.1, 0.3, 0.3, 0.3])
-capture_motion('cinematic-opening', ['--es', 'screen', 'cinematic-opening', '--ez', 'dark', 'false'], [0.5, 0.5, 0.5, 0.5])
+capture_motion('cinematic-opening', ['--es', 'screen', 'cinematic-opening', '--ez', 'dark', 'false'], [1.2, 0.5, 0.5, 0.5])
 capture_motion('welcome', ['--es', 'screen', 'welcome', '--ez', 'dark', 'false'], [1.5, 0.5, 0.5, 0.5])
 capture_motion('dashboard', ['--es', 'screen', 'dashboard', '--ez', 'dark', 'false'], [1.0, 0.5, 0.5, 0.5])
 adb('shell', 'settings', 'put', 'global', 'animator_duration_scale', '0')

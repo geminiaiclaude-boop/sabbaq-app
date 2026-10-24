@@ -12,6 +12,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -79,6 +81,16 @@ class MainActivity : ComponentActivity() {
             }
             // The existing logo intro plays once per cold start, not again on rotation.
             var showIntro by rememberSaveable { mutableStateOf(savedInstanceState == null) }
+            DisposableEffect(showVideoOpening) {
+                val bars = WindowInsetsControllerCompat(window, window.decorView)
+                if (showVideoOpening) {
+                    bars.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                    bars.hide(WindowInsetsCompat.Type.systemBars())
+                } else {
+                    bars.show(WindowInsetsCompat.Type.systemBars())
+                }
+                onDispose { bars.show(WindowInsetsCompat.Type.systemBars()) }
+            }
             val permissionRequest = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
                 notificationsGranted = it
             }

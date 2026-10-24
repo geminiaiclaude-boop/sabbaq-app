@@ -48,6 +48,7 @@ internal fun SabbaqVideoOpening(onFinished: () -> Unit) {
     val reducedMotion = LocalReducedMotion.current
     val finish by rememberUpdatedState(onFinished)
     var hasFinished by remember { mutableStateOf(false) }
+    var hasVideoFrame by remember { mutableStateOf(false) }
     val textureView = remember(context) { TextureView(context).apply { isOpaque = false } }
     val reveal = remember { Animatable(if (reducedMotion) 1f else 0f) }
 
@@ -146,7 +147,9 @@ internal fun SabbaqVideoOpening(onFinished: () -> Unit) {
                 return true
             }
 
-            override fun onSurfaceTextureUpdated(texture: SurfaceTexture) = Unit
+            override fun onSurfaceTextureUpdated(texture: SurfaceTexture) {
+                hasVideoFrame = true
+            }
         }
         textureView.surfaceTextureListener = textureListener
         textureView.surfaceTexture?.let { textureListener.onSurfaceTextureAvailable(it, textureView.width, textureView.height) }
@@ -187,22 +190,25 @@ internal fun SabbaqVideoOpening(onFinished: () -> Unit) {
         )
         AndroidView(
             factory = { textureView },
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().graphicsLayer {
+                // Keep the poster visible until MediaPlayer has submitted a real frame.
+                alpha = if (hasVideoFrame) 1f else 0f
+            },
         )
         Box(
             Modifier.fillMaxSize().background(
                 Brush.verticalGradient(
                     0f to Color.Black.copy(alpha = 0.48f),
-                    0.32f to Color.Black.copy(alpha = 0.08f),
-                    0.58f to Color.Black.copy(alpha = 0.12f),
-                    1f to Color.Black.copy(alpha = 0.58f),
+                    0.30f to Color.Black.copy(alpha = 0.28f),
+                    0.58f to Color.Black.copy(alpha = 0.34f),
+                    1f to Color.Black.copy(alpha = 0.66f),
                 ),
             ),
         )
         SabbaqRadarScene(
             active = true,
             pins = false,
-            modifier = Modifier.fillMaxSize().graphicsLayer { alpha = 0.22f },
+            modifier = Modifier.fillMaxSize().graphicsLayer { alpha = 0.30f },
         )
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Box(
