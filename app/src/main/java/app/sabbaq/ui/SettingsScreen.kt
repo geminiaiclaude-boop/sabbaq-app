@@ -190,6 +190,9 @@ fun SettingsScreen(
     onAccountDeleted: () -> Unit = {},
     /** Opens the setup guide first for a driver who has not finished or dismissed it. */
     autoSetupGuide: Boolean = true,
+    isRestoringSession: Boolean = false,
+    sessionRestoreError: Boolean = false,
+    onRetrySessionRestore: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -290,6 +293,9 @@ fun SettingsScreen(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
+    LaunchedEffect(isRestoringSession, sessionRestoreError) {
+        refreshRuntimePrerequisites()
+    }
 
     fun updateDraft(next: FilterDraft) {
         if (next === draft) return
@@ -356,6 +362,14 @@ fun SettingsScreen(
 
     fun requestActivation() {
         if (checkingActivation || isSavingFilters || isActive) return
+        if (isRestoringSession || sessionRestoreError) {
+            runtimeMessage = DriverStatus(
+                if (isRestoringSession) "جارٍ استعادة جلستك المحفوظة. ستتمكن من بدء المتابعة بعد اكتمال التحقق."
+                else "تعذر تحديث الجلسة؛ أعد المحاولة من إشعار الاستعادة قبل بدء المتابعة.",
+                isError = sessionRestoreError,
+            )
+            return
+        }
         if (filtersDirty) {
             runtimeMessage = DriverStatus("تُحفظ التعديلات تلقائيًا؛ انتظر اكتمال الحفظ أو صحح القيم المعلّمة.", isError = true)
             return
@@ -532,6 +546,9 @@ fun SettingsScreen(
             DriverDestination.Dashboard -> DashboardPage(
                 isActive = isActive,
                 isCheckingActivation = checkingActivation,
+                isRestoringSession = isRestoringSession,
+                sessionRestoreError = sessionRestoreError,
+                onRetrySessionRestore = onRetrySessionRestore,
                 accessibilityEnabled = accessibilityEnabled,
                 notificationsEnabled = notificationsEnabled,
                 licenseInMemory = licenseInMemory,
@@ -766,6 +783,9 @@ private fun DriverPage(content: @Composable () -> Unit) {
 private fun DashboardPage(
     isActive: Boolean,
     isCheckingActivation: Boolean,
+    isRestoringSession: Boolean,
+    sessionRestoreError: Boolean,
+    onRetrySessionRestore: () -> Unit,
     accessibilityEnabled: Boolean,
     notificationsEnabled: Boolean,
     licenseInMemory: Boolean,
@@ -804,12 +824,17 @@ private fun DashboardPage(
     val readyCount = readiness.count { it.ready }
     val allCount = readiness.size + power.size
     val allReady = readyCount + power.count { it.ready }
+    if (isRestoringSession || sessionRestoreError) {
+        SessionRestoreNotice(isRestoring = isRestoringSession, onRetry = onRetrySessionRestore)
+    }
     OperationHero(
         isActive = isActive,
-        isChecking = isCheckingActivation,
+        isChecking = isCheckingActivation || isRestoringSession,
         readyCount = allReady,
         totalCount = allCount,
         onToggle = onToggle,
+        canStart = !isRestoringSession && !sessionRestoreError,
+        busyText = if (isRestoringSession) "جارٍ استعادة الجلسة" else "جارٍ التحقق من الاشتراك",
         modifier = Modifier.sabbaqEntrance(0),
     )
     ActiveConditionsCockpit(filters, activeFilterCount, onOpenFilters, Modifier.sabbaqEntrance(1))
@@ -875,6 +900,37 @@ private fun DashboardPage(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+@Composable
+private fun SessionRestoreNotice(isRestoring: Boolean, onRetry: () -> Unit) {
+    val container = if (isRestoring) MaterialTheme.colorScheme.secondaryContainer
+        else MaterialTheme.colorScheme.errorContainer
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        color = container,
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    if (isRestoring) "أهلًا بعودتك" else "الحساب محفوظ لكن تعذر تحديث الجلسة",
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Text(
+                    if (isRestoring) "جارٍ التحقق من الجلسة والترخيص. ستبقى متابعة الطلبات متوقفة حتى يكتمل التحقق."
+                    else "لم تُمسح الجلسة. يمكنك استخدام إعداداتك المحلية؛ أعد المحاولة قبل تشغيل متابعة الطلبات.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                if (!isRestoring) TextButton(onClick = onRetry) { Text("إعادة المحاولة") }
+            }
+            if (isRestoring) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+        }
     }
 }
 
@@ -967,6 +1023,8 @@ private fun OperationHero(
     readyCount: Int,
     totalCount: Int,
     onToggle: (Boolean) -> Unit,
+    canStart: Boolean = true,
+    busyText: String = "جارٍ التحقق من الاشتراك",
     modifier: Modifier = Modifier,
 ) {
     val brand = LocalSabbaqBrand.current
@@ -997,8 +1055,9 @@ private fun OperationHero(
         SabbaqButton(
             text = if (isActive) "إيقاف متابعة الطلبات" else "ابدأ متابعة الطلبات",
             onClick = { onToggle(!isActive) },
+            enabled = isActive || canStart,
             busy = isChecking,
-            busyText = "جارٍ التحقق من الاشتراك",
+            busyText = busyText,
             icon = if (isActive) Icons.Outlined.Stop else Icons.Outlined.PlayArrow,
             colors = ButtonDefaults.buttonColors(
                 containerColor = if (isActive) brand.onHero.copy(alpha = 0.14f) else brand.onHero,

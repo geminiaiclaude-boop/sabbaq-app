@@ -46,6 +46,28 @@ def screencap(png=True):
                 raise
             time.sleep(2)
 
+
+def ui_xml(timeout=60):
+    """Dump and read the UI tree as one retriable operation.
+
+    On the CI emulator, uiautomator can finish its dump while the file is not
+    readable for a short moment. Keep the final error visible, but do not turn
+    that transient hand-off into an app failure.
+    """
+    last_error = None
+    for attempt in range(4):
+        try:
+            adb('shell', 'uiautomator', 'dump', '/sdcard/sabbaq-ui.xml',
+                timeout=timeout, transport_retries=2)
+            return adb('shell', 'cat', '/sdcard/sabbaq-ui.xml',
+                       transport_retries=2)
+        except subprocess.CalledProcessError as error:
+            last_error = error
+            if attempt == 3:
+                raise
+            time.sleep(2)
+    raise last_error
+
 assert adb('shell', 'getprop', 'sys.boot_completed', transport_retries=2).strip() == '1', 'Emulator has not completed boot'
 print(adb('install', '-r', args.apk), flush=True)
 adb('shell', 'settings', 'put', 'global', 'window_animation_scale', '0')
@@ -73,8 +95,7 @@ def reachable_by_scrolling(text, visible):
     # land inside the tablet's rail or a card and can fail to scroll the content.
     # Keep each drag long, slow and inside the viewport to avoid accidental taps.
     for attempt in range(40):
-        adb('shell', 'uiautomator', 'dump', '/sdcard/sabbaq-ui.xml', timeout=60)
-        current_xml = adb('shell', 'cat', '/sdcard/sabbaq-ui.xml')
+        current_xml = ui_xml()
         current_root = ET.fromstring(current_xml)
         scroll_nodes = [n for n in current_root.iter('node') if n.get('scrollable') == 'true']
         if scroll_nodes:
@@ -92,8 +113,7 @@ def reachable_by_scrolling(text, visible):
             x, y_start, y_end = 540, 1500, 1000
         adb('shell', 'input', 'swipe', str(x), str(y_start), str(x), str(y_end), '700')
         time.sleep(1)
-        adb('shell', 'uiautomator', 'dump', '/sdcard/sabbaq-ui.xml', timeout=60)
-        scrolled_xml = adb('shell', 'cat', '/sdcard/sabbaq-ui.xml')
+        scrolled_xml = ui_xml()
         scrolled = ET.fromstring(scrolled_xml).findall('.//node')
         if any(text in (n.get('text', '') + n.get('content-desc', '')) for n in scrolled):
             return True
@@ -160,8 +180,7 @@ for name, screen, dark, font_scale, env in cases:
     # On a freshly booted emulator a system window (launcher, "not responding" prompt) can
     # still sit above the app on the first case; bring the app back to front and dump again.
     for attempt in range(6):
-        adb('shell', 'uiautomator', 'dump', '/sdcard/sabbaq-ui.xml', timeout=60, transport_retries=2)
-        xml = adb('shell', 'cat', '/sdcard/sabbaq-ui.xml', transport_retries=2)
+        xml = ui_xml()
         (out / f'{name}.xml').write_text(xml)
         nodes = ET.fromstring(xml).findall('.//node')
         if any(node.get('package') == args.package for node in nodes):
@@ -228,8 +247,7 @@ for name, screen, dark, font_scale, env in cases:
         left, top, right, bottom = map(int, bounds)
         adb('shell', 'input', 'tap', str((left + right) // 2), str((top + bottom) // 2))
         time.sleep(1.5)
-        adb('shell', 'uiautomator', 'dump', '/sdcard/sabbaq-ui.xml', timeout=60, transport_retries=2)
-        history_xml = adb('shell', 'cat', '/sdcard/sabbaq-ui.xml', transport_retries=2)
+        history_xml = ui_xml()
         (out / 'decision-log-after-navigation.xml').write_text(history_xml)
         history_nodes = ET.fromstring(history_xml).findall('.//node')
         history_visible = ' '.join(

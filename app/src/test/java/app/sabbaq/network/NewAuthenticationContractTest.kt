@@ -40,6 +40,16 @@ class NewAuthenticationContractTest {
     }
 
     @Test
+    fun `مهلة الخادم وحد التجديد لا يبطلان refresh token المحفوظ`() {
+        assertTrue(SupabaseClient.isPermanentRefreshTokenRejection(400))
+        assertTrue(SupabaseClient.isPermanentRefreshTokenRejection(401))
+        assertFalse(SupabaseClient.isPermanentRefreshTokenRejection(408))
+        assertFalse(SupabaseClient.isPermanentRefreshTokenRejection(425))
+        assertFalse(SupabaseClient.isPermanentRefreshTokenRejection(429))
+        assertFalse(SupabaseClient.isPermanentRefreshTokenRejection(503))
+    }
+
+    @Test
     fun `OTP واللقطة يرتبطان بجيل الجلسة ويمسحان عند الالغاء`() {
         val store = AuthSessionStore()
         val attempt = store.beginAuthentication()

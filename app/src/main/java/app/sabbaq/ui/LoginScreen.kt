@@ -241,18 +241,6 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit, initialIntent: AccessIntent =
     // The public offer (trial length, price) feeds the choice cards before sign-in.
     LaunchedEffect(Unit) { if (offer == null) refreshPublicOffer() }
 
-    // A saved session (from an earlier sign-in on this device) resumes without asking again.
-    LaunchedEffect(Unit) {
-        if (journey != AuthJourney.Idle || !SupabaseClient.hasSavedSession()) return@LaunchedEffect
-        journey = AuthJourney.CheckingLicense
-        val restored = runCatching { SupabaseClient.restoreSession().getOrNull() == true }.getOrDefault(false)
-        if (restored && SupabaseClient.hasValidLicense()) {
-            completeLogin(admin = false)
-        } else if (journey == AuthJourney.CheckingLicense) {
-            journey = AuthJourney.Idle
-        }
-    }
-
     fun checkRoleAndLicense(token: String) {
         journey = AuthJourney.CheckingRole
         scope.launch {
