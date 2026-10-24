@@ -157,10 +157,25 @@ object SupabaseClient {
             val exchanged = exchangeRefreshToken(saved.refreshToken)
             val pair = exchanged.getOrNull()
             if (pair == null) {
-                // Refused: the saved session is dead. Offline: keep it for the next try.
-                if (exchanged.exceptionOrNull() is RefreshRefusedException) SessionVault.clear(context)
-                return@renewMutex Result.success(false)
+                val failure = exchanged.exceptionOrNull()
+                    ?: ClientRequestException("تعذر تجديد الجلسة")
+                // A server refusal means the refresh token is dead. Network/server failures
+                // are returned to the caller and leave the encrypted vault intact for retry.
+                if (failure is RefreshRefusedException) {
+                    SessionVault.clear(context)
+                    return@renewMutex Result.success(false)
+                }
+                return@renewMutex Result.failure(failure)
             }
+            // Supabase rotates refresh tokens. Persist the new token before the separate
+            // license request so a transient license/network failure cannot leave the vault
+            // holding an already-consumed refresh token.
+            val persisted = withContext(Dispatchers.IO) {
+                SessionVault.save(context, pair.second, saved.deviceId)
+            }
+            if (!persisted) return@renewMutex Result.failure(
+                ClientRequestException("تعذر حفظ جلسة الدخول بأمان على هذا الجهاز")
+            )
             val attempt = sessions.beginAuthentication()
             if (!sessions.activate(attempt, pair.first)) return@renewMutex staleSessionFailure()
             refreshToken = pair.second
@@ -201,12 +216,20 @@ object SupabaseClient {
             .post(buildJsonObject { put("refresh_token", token) }.toString().toRequestBody(jsonMediaType))
             .build()
         val response = execute(request)
-        // 4xx = the server refused this refresh token (signed out, revoked, account removed).
-        if (response.code in 400..499) return@networkCall Result.failure(RefreshRefusedException())
+        if (response.code in 400..499) {
+            return@networkCall if (isPermanentRefreshTokenRejection(response.code)) {
+                Result.failure(RefreshRefusedException())
+            } else {
+                Result.failure(ClientRequestException("تعذر تجديد الجلسة مؤقتًا"))
+            }
+        }
         if (!response.isSuccessful) return@networkCall Result.failure(ClientRequestException("تعذر تجديد الجلسة"))
         tokenPairFrom(response.body)?.let { Result.success(it) }
             ?: Result.failure(ClientRequestException("تعذر تجديد الجلسة"))
     }
+
+    internal fun isPermanentRefreshTokenRejection(statusCode: Int): Boolean =
+        statusCode in 400..499 && statusCode != 408 && statusCode != 425 && statusCode != 429
 
     /** Saves the session for automatic resume once a device is bound and the license is valid. */
     private fun persistSession(deviceId: String) {
