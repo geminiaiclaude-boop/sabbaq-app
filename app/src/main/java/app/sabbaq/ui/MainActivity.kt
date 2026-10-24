@@ -73,7 +73,11 @@ class MainActivity : ComponentActivity() {
             var notificationsGranted by remember { mutableStateOf(hasNotificationPermission()) }
             var filterSavePending by remember { mutableStateOf(false) }
             var hasUnpersistedFilterChanges by remember { mutableStateOf(false) }
-            // The logo intro plays once per cold start, not again on rotation.
+            // The cinematic clip precedes the existing logo intro once per install/update.
+            var showVideoOpening by rememberSaveable {
+                mutableStateOf(savedInstanceState == null && LaunchVideoPreferences.shouldShow(this@MainActivity))
+            }
+            // The existing logo intro plays once per cold start, not again on rotation.
             var showIntro by rememberSaveable { mutableStateOf(savedInstanceState == null) }
             val permissionRequest = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
                 notificationsGranted = it
@@ -179,7 +183,14 @@ class MainActivity : ComponentActivity() {
                         title = { Text("تنبيه") }, text = { Text(message) },
                         confirmButton = { TextButton(onClick = { permissionMessage = null }) { Text("حسنًا") } }
                     ) }
-                    if (showIntro) SabbaqLaunchIntro(onFinished = { showIntro = false })
+                    if (showVideoOpening) {
+                        SabbaqVideoOpening(onFinished = {
+                            LaunchVideoPreferences.markSeen(this@MainActivity)
+                            showVideoOpening = false
+                        })
+                    } else if (showIntro) {
+                        SabbaqLaunchIntro(onFinished = { showIntro = false })
+                    }
                     // Access just granted (code or trial): celebrate over everything, once.
                     val celebration by Celebrations.current.collectAsState()
                     celebration?.let { ActivationCelebration(it, onDone = Celebrations::dismiss) }
