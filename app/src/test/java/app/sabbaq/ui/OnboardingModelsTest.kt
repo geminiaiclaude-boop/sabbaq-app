@@ -14,6 +14,16 @@ class OnboardingModelsTest {
     )
 
     @Test
+    fun `onboarding destinations form a complete forward and backward chain`() {
+        assertTrue(OnboardingPage.INTRODUCTION.next() == OnboardingPage.FEATURES)
+        assertTrue(OnboardingPage.FEATURES.next() == OnboardingPage.HOW_IT_WORKS)
+        assertTrue(OnboardingPage.HOW_IT_WORKS.next() == null)
+        assertTrue(OnboardingPage.HOW_IT_WORKS.previous() == OnboardingPage.FEATURES)
+        assertTrue(OnboardingPage.FEATURES.previous() == OnboardingPage.INTRODUCTION)
+        assertTrue(OnboardingPage.INTRODUCTION.previous() == null)
+    }
+
+    @Test
     fun `direct copy uses the current offer rather than a built-in trial`() {
         val copy = onboardingOfferCopy(isDirectDistribution = true, offer = availableOffer)
 

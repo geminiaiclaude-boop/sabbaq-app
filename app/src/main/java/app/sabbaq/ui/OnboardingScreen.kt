@@ -47,25 +47,24 @@ import app.sabbaq.ui.theme.SabbaqMotion
 import app.sabbaq.ui.theme.LocalSabbaqBrand
 import app.sabbaq.ui.theme.sabbaqEntrance
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.Login
 import androidx.compose.material.icons.outlined.NearMe
 import androidx.compose.material.icons.outlined.Payments
-import androidx.compose.material.icons.outlined.PlayArrow
-import androidx.compose.material.icons.outlined.PrivacyTip
 import androidx.compose.material.icons.outlined.Schedule
-import androidx.compose.material.icons.outlined.Tune
-import androidx.compose.material.icons.outlined.Verified
 import androidx.compose.ui.graphics.vector.ImageVector
 
-private const val ONBOARDING_PAGES = 3
+private val ONBOARDING_PAGES = OnboardingPage.entries.size
 
 /**
  * تعريف عربي قصير قبل تسجيل الدخول. لا يغير الحساب أو الإعدادات أو الترخيص؛
  * مالك التنقل وحده يستدعي [OnboardingPreferences.markComplete] بعد [onContinue].
  */
 @Composable
-fun OnboardingScreen(onContinue: () -> Unit, initialPage: Int = 0) {
-    var page by rememberSaveable { mutableIntStateOf(initialPage.coerceIn(0, ONBOARDING_PAGES - 1)) }
+fun OnboardingScreen(
+    onContinue: () -> Unit,
+    initialPage: OnboardingPage = OnboardingPage.INTRODUCTION,
+) {
+    var pageIndex by rememberSaveable { mutableIntStateOf(initialPage.ordinal) }
+    val page = OnboardingPage.entries[pageIndex.coerceIn(0, ONBOARDING_PAGES - 1)]
     var selectedSignals by remember { mutableStateOf(DecisionSignal.entries.toSet()) }
     var offer by remember { mutableStateOf<OnboardingOffer?>(null) }
     var loadingOffer by remember { mutableStateOf(BuildConfig.DIRECT_DISTRIBUTION) }
@@ -126,27 +125,27 @@ fun OnboardingScreen(onContinue: () -> Unit, initialPage: Int = 0) {
                         onSkip = onContinue
                     )
                     SabbaqPageDots(
-                        page = page,
+                        page = page.ordinal,
                         count = ONBOARDING_PAGES,
-                        modifier = Modifier.semantics { stateDescription = "الصفحة ${page + 1} من $ONBOARDING_PAGES" },
+                        modifier = Modifier.semantics { stateDescription = "الصفحة ${page.ordinal + 1} من $ONBOARDING_PAGES" },
                     )
 
-                    SabbaqDepthContent(target = page, order = { it }, label = "onboarding-page") { shown ->
+                    SabbaqDepthContent(target = page, order = { it.ordinal }, label = "onboarding-page") { shown ->
                     Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
                     when (shown) {
-                        0 -> WelcomePage(
+                        OnboardingPage.INTRODUCTION -> WelcomePage(
                             loadingOffer = loadingOffer,
                             offerCopy = offerCopy,
                             isDirectDistribution = BuildConfig.DIRECT_DISTRIBUTION,
                             onRetryOffer = { scope.launch { loadPublicOffer() } }
                         )
-                        1 -> FeaturesSubscriptionPage(
+                        OnboardingPage.FEATURES -> FeaturesSubscriptionPage(
                             loadingOffer = loadingOffer,
                             offerCopy = offerCopy,
                             isDirectDistribution = BuildConfig.DIRECT_DISTRIBUTION,
                             onRetryOffer = { scope.launch { loadPublicOffer() } }
                         )
-                        2 -> DecisionPreviewPage(
+                        OnboardingPage.HOW_IT_WORKS -> DecisionPreviewPage(
                             selectedSignals = selectedSignals,
                             onSignalChange = { signal ->
                                 selectedSignals = if (signal in selectedSignals) {
@@ -156,7 +155,6 @@ fun OnboardingScreen(onContinue: () -> Unit, initialPage: Int = 0) {
                                 }
                             }
                         )
-                        else -> ReadyPage(canShowTrialJourney = offerCopy.canShowTrialJourney)
                     }
                     }
                     }
@@ -164,10 +162,9 @@ fun OnboardingScreen(onContinue: () -> Unit, initialPage: Int = 0) {
                     OnboardingNavigation(
                         page = page,
                         canShowTrialJourney = offerCopy.canShowTrialJourney,
-                        onBack = { page = (page - 1).coerceAtLeast(0) },
+                        onBack = { page.previous()?.let { pageIndex = it.ordinal } },
                         onNext = {
-                            if (page == ONBOARDING_PAGES - 1) onContinue()
-                            else page += 1
+                            page.next()?.let { pageIndex = it.ordinal } ?: onContinue()
                         }
                     )
                 }
@@ -177,7 +174,7 @@ fun OnboardingScreen(onContinue: () -> Unit, initialPage: Int = 0) {
 }
 
 @Composable
-private fun OnboardingTopBar(page: Int, onSkip: () -> Unit) {
+private fun OnboardingTopBar(page: OnboardingPage, onSkip: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -192,7 +189,7 @@ private fun OnboardingTopBar(page: Int, onSkip: () -> Unit) {
         }
     }
     Text(
-        text = "خطوة ${page + 1} من $ONBOARDING_PAGES",
+        text = "خطوة ${page.ordinal + 1} من $ONBOARDING_PAGES",
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
@@ -302,54 +299,6 @@ private fun DriverValue(title: String, detail: String, icon: ImageVector? = null
 }
 
 @Composable
-private fun ReadyPage(canShowTrialJourney: Boolean) {
-    SabbaqHeroSurface(Modifier.sabbaqEntrance(0), sceneActive = true) {
-        Text("جاهز ليوم عمل أذكى؟", style = MaterialTheme.typography.headlineSmall)
-        Text("ثلاث خطوات وتكون مستعدًا، ونرافقك بعد الدخول خطوة بخطوة.", style = MaterialTheme.typography.bodyMedium,
-            color = LocalSabbaqBrand.current.onHeroMuted)
-    }
-    SabbaqCard(
-        title = "خطواتك الثلاث",
-        modifier = Modifier.sabbaqEntrance(1),
-    ) {
-        DriverValue(
-            icon = Icons.AutoMirrored.Outlined.Login,
-            title = "١. ادخل بحسابك",
-            detail = "باستخدام Google أو رقم جوالك السعودي."
-        )
-        DriverValue(
-            icon = Icons.Outlined.Tune,
-            title = "٢. اضبط شروط الطلب المناسب",
-            detail = "حدد الأجرة والمسافة وأوقات العمل."
-        )
-        DriverValue(
-            icon = Icons.Outlined.PlayArrow,
-            title = "٣. شغّل سبّاق وأنت مستعد",
-            detail = "بعد منح الإذن، يمكنه قبول الطلب المطابق تلقائيًا. الإيقاف دائمًا بيدك."
-        )
-        DriverValue(
-            icon = Icons.Outlined.Verified,
-            title = if (canShowTrialJourney) "جرّبه قبل الاشتراك" else "اكتشف خيارات حسابك",
-            detail = if (canShowTrialJourney) {
-                "سجّل الدخول لنتحقق من أهليتك. تبدأ التجربة عندما تؤكدها، وليس أثناء هذه الجولة."
-            } else {
-                "سجّل الدخول لعرض مدة الاشتراك والخيارات المتاحة لك."
-            }
-        )
-    }
-    SabbaqCard(
-        title = "صلاحياتك بقرارك",
-        icon = Icons.Outlined.PrivacyTip,
-        modifier = Modifier.sabbaqEntrance(2),
-    ) {
-        Text(
-            "سنوضح لك ما يقرأه سبّاق وكيف يستخدمه قبل طلب الإذن. لا تُشغّل الميزة إلا بموافقتك.",
-            style = MaterialTheme.typography.bodyMedium
-        )
-    }
-}
-
-@Composable
 private fun DecisionPreviewPage(
     selectedSignals: Set<DecisionSignal>,
     onSignalChange: (DecisionSignal) -> Unit
@@ -392,7 +341,7 @@ private fun DecisionPreviewPage(
 
 @Composable
 private fun OnboardingNavigation(
-    page: Int,
+    page: OnboardingPage,
     canShowTrialJourney: Boolean,
     onBack: () -> Unit,
     onNext: () -> Unit
@@ -402,7 +351,7 @@ private fun OnboardingNavigation(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (page > 0) {
+        if (page.previous() != null) {
             TextButton(
                 onClick = onBack,
                 modifier = Modifier.heightIn(min = 52.dp)
@@ -412,9 +361,12 @@ private fun OnboardingNavigation(
         } else {
             Spacer(Modifier.weight(1f))
         }
-            SabbaqButton(
-            text = if (page == ONBOARDING_PAGES - 1) onboardingFinalCta(canShowTrialJourney)
-                else if (page == 0) "التالي" else "كيف يعمل؟",
+        SabbaqButton(
+            text = when (page) {
+                OnboardingPage.INTRODUCTION -> "التالي"
+                OnboardingPage.FEATURES -> "كيف يعمل؟"
+                OnboardingPage.HOW_IT_WORKS -> onboardingFinalCta(canShowTrialJourney)
+            },
             onClick = onNext,
             modifier = Modifier.weight(1f),
             fillWidth = false,

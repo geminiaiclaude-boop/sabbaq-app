@@ -48,14 +48,14 @@ class DesignPreviewActivity : ComponentActivity() {
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                     if (screen == "cinematic-opening") {
                         SabbaqVideoOpening(onFinished = {})
-                    } else SabbaqShell(showHeader = screen !in setOf("login", "login-trial", "welcome", "welcome-example", "welcome-ready", "disclosure", "intro"), themeMode = if (dark) ThemeMode.DARK else ThemeMode.LIGHT,
+                    } else SabbaqShell(showHeader = screen !in setOf("login", "login-trial", "welcome", "welcome-features", "welcome-example", "welcome-ready", "disclosure", "intro"), themeMode = if (dark) ThemeMode.DARK else ThemeMode.LIGHT,
                         onThemeChange = {}, onLogout = { finish() }) {
                         if (screen == "intro") SabbaqLaunchIntro(onFinished = {}, staticFrame = true)
                         else if (screen == "login") LoginScreen(onLoginSuccess = { finish() })
                         else if (screen == "login-trial") LoginScreen(onLoginSuccess = { finish() }, initialIntent = AccessIntent.Trial)
-                        else if (screen == "welcome") OnboardingScreen(onContinue = { finish() })
-                        else if (screen == "welcome-example") OnboardingScreen(onContinue = { finish() }, initialPage = 2)
-                        else if (screen == "welcome-ready") OnboardingScreen(onContinue = { finish() }, initialPage = 2)
+                        else if (screen == "welcome") OnboardingScreen(onContinue = { finish() }, initialPage = OnboardingPage.INTRODUCTION)
+                        else if (screen == "welcome-features" || screen == "welcome-ready") OnboardingScreen(onContinue = { finish() }, initialPage = OnboardingPage.FEATURES)
+                        else if (screen == "welcome-example") OnboardingScreen(onContinue = { finish() }, initialPage = OnboardingPage.HOW_IT_WORKS)
                         else if (screen == "disclosure") AccessibilityDisclosureDialog(onAccept = { finish() }, onDismiss = { finish() })
                         else SettingsScreen(
                             notificationPermissionGranted = false,
