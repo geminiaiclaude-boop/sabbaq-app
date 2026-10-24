@@ -30,9 +30,10 @@ class DesignPreviewActivity : ComponentActivity() {
         setContent {
             SabbaqTheme(darkTheme = dark) {
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-                    SabbaqShell(showHeader = screen !in setOf("login", "login-trial", "welcome", "welcome-example", "welcome-ready", "disclosure", "intro"), themeMode = if (dark) ThemeMode.DARK else ThemeMode.LIGHT,
+                    SabbaqShell(showHeader = screen !in setOf("login", "login-trial", "welcome", "welcome-example", "welcome-ready", "disclosure", "intro", "cinematic-opening"), themeMode = if (dark) ThemeMode.DARK else ThemeMode.LIGHT,
                         onThemeChange = {}, onLogout = { finish() }) {
-                        if (screen == "intro") SabbaqLaunchIntro(onFinished = {}, staticFrame = true)
+                        if (screen == "cinematic-opening") SabbaqVideoOpening(onFinished = {})
+                        else if (screen == "intro") SabbaqLaunchIntro(onFinished = {}, staticFrame = true)
                         else if (screen == "login") LoginScreen(onLoginSuccess = { finish() })
                         else if (screen == "login-trial") LoginScreen(onLoginSuccess = { finish() }, initialIntent = AccessIntent.Trial)
                         else if (screen == "welcome") OnboardingScreen(onContinue = { finish() })

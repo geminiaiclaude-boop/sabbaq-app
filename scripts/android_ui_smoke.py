@@ -96,6 +96,7 @@ def reachable_by_scrolling(text, visible):
 
 cases = [
     ('first-launch', None, False, 1.0, None),
+    ('cinematic-opening', 'cinematic-opening', False, 1.0, None),
     ('intro', 'intro', False, 1.0, None),
     ('welcome-example', 'welcome-example', False, 1.0, None),
     ('welcome-ready', 'welcome-ready', False, 1.0, None),
@@ -166,7 +167,7 @@ for name, screen, dark, font_scale, env in cases:
     visible = ' '.join(node.get('text', '') + ' ' + node.get('content-desc', '') for node in nodes)
     for jargon in ('GOOGLE_WEB_CLIENT_ID', 'RPC', 'JSON', 'تعرض هذه المعلومات للقراءة فقط', 'تجربة محلية للتعلّم'):
         assert jargon not in visible, f'Developer-facing copy in customer screen {name}: {jargon}'
-    if name == 'first-launch':
+    if name in ('first-launch', 'cinematic-opening'):
         assert 'سبّاق' in visible, 'Brand-led cinematic opening did not expose the Sabbaq identity'
         for player_control in ('تخطي الفيديو', 'تشغيل صوت الافتتاحية', 'كتم صوت الافتتاحية'):
             assert player_control not in visible, f'Player/ad control leaked into launch opening: {player_control}'
@@ -305,6 +306,7 @@ def capture_motion(tag, extras, delays):
     assert len(set(digests)) > 1, f'No motion captured: {tag}'
 
 capture_motion('intro', None, [0.1, 0.3, 0.3, 0.3])
+capture_motion('cinematic-opening', ['--es', 'screen', 'cinematic-opening', '--ez', 'dark', 'false'], [0.5, 0.5, 0.5, 0.5])
 capture_motion('welcome', ['--es', 'screen', 'welcome', '--ez', 'dark', 'false'], [1.5, 0.5, 0.5, 0.5])
 capture_motion('dashboard', ['--es', 'screen', 'dashboard', '--ez', 'dark', 'false'], [1.0, 0.5, 0.5, 0.5])
 adb('shell', 'settings', 'put', 'global', 'animator_duration_scale', '0')
