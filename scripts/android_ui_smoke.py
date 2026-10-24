@@ -18,8 +18,21 @@ args = parser.parse_args()
 out = pathlib.Path(args.out)
 out.mkdir(parents=True, exist_ok=True)
 
-def adb(*params, binary=False, timeout=45):
-    return subprocess.check_output(['adb', *params], timeout=timeout, text=not binary, stderr=subprocess.STDOUT)
+def adb(*params, binary=False, timeout=45, transport_retries=0):
+    for attempt in range(transport_retries + 1):
+        try:
+            return subprocess.check_output(
+                ['adb', *params], timeout=timeout, text=not binary, stderr=subprocess.STDOUT
+            )
+        except subprocess.CalledProcessError as error:
+            output = error.output.decode(errors='replace') if isinstance(error.output, bytes) else (error.output or '')
+            transient = any(marker in output.lower() for marker in ('device offline', 'device not found', 'no devices/emulators found'))
+            if not transient or attempt >= transport_retries:
+                raise
+            print(f'adb transport unavailable; waiting and retrying safe command ({attempt + 1}/{transport_retries})', flush=True)
+            subprocess.run(['adb', 'reconnect', 'offline'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
+            subprocess.run(['adb', 'wait-for-device'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60, check=True)
+            time.sleep(1)
 
 
 def screencap(png=True):
@@ -33,7 +46,7 @@ def screencap(png=True):
                 raise
             time.sleep(2)
 
-assert adb('shell', 'getprop', 'sys.boot_completed').strip() == '1', 'Emulator has not completed boot'
+assert adb('shell', 'getprop', 'sys.boot_completed', transport_retries=2).strip() == '1', 'Emulator has not completed boot'
 print(adb('install', '-r', args.apk), flush=True)
 adb('shell', 'settings', 'put', 'global', 'window_animation_scale', '0')
 adb('shell', 'settings', 'put', 'global', 'transition_animation_scale', '0')
@@ -139,14 +152,14 @@ for name, screen, dark, font_scale, env in cases:
     logs = adb('logcat', '-d', '-s', 'AndroidRuntime:E')
     (out / f'{name}-runtime.txt').write_text(logs)
     assert 'FATAL EXCEPTION' not in logs, f'Activity crashed: {name}\n{logs}'
-    window = adb('shell', 'dumpsys', 'window', 'windows')
-    activity_state = adb('shell', 'dumpsys', 'activity', 'activities')
+    window = adb('shell', 'dumpsys', 'window', 'windows', transport_retries=2)
+    activity_state = adb('shell', 'dumpsys', 'activity', 'activities', transport_retries=2)
     assert args.package in window + activity_state, f'Package is not visible: {name}'
     # On a freshly booted emulator a system window (launcher, "not responding" prompt) can
     # still sit above the app on the first case; bring the app back to front and dump again.
     for attempt in range(6):
-        adb('shell', 'uiautomator', 'dump', '/sdcard/sabbaq-ui.xml', timeout=60)
-        xml = adb('shell', 'cat', '/sdcard/sabbaq-ui.xml')
+        adb('shell', 'uiautomator', 'dump', '/sdcard/sabbaq-ui.xml', timeout=60, transport_retries=2)
+        xml = adb('shell', 'cat', '/sdcard/sabbaq-ui.xml', transport_retries=2)
         (out / f'{name}.xml').write_text(xml)
         nodes = ET.fromstring(xml).findall('.//node')
         if any(node.get('package') == args.package for node in nodes):
@@ -320,8 +333,17 @@ capture_motion('intro', None, [0.1, 0.3, 0.3, 0.3])
 capture_motion('cinematic-opening', ['--es', 'screen', 'cinematic-opening', '--ez', 'dark', 'false'], [1.2, 0.5, 0.5, 0.5])
 capture_motion('welcome', ['--es', 'screen', 'welcome', '--ez', 'dark', 'false'], [1.5, 0.5, 0.5, 0.5])
 capture_motion('dashboard', ['--es', 'screen', 'dashboard', '--ez', 'dark', 'false'], [1.0, 0.5, 0.5, 0.5])
-adb('shell', 'settings', 'put', 'global', 'animator_duration_scale', '0')
 (out / 'motion.json').write_text(json.dumps(motion, indent=2))
-adb('shell', 'am', 'force-stop', args.package)
 (out / 'results.json').write_text(json.dumps(results, indent=2))
 print(json.dumps(results, indent=2), flush=True)
+
+# These are teardown-only operations on an ephemeral CI emulator. Preserve successful
+# assertions and their artifacts if the emulator drops adb after the test has completed.
+for cleanup_command in (
+    ('shell', 'settings', 'put', 'global', 'animator_duration_scale', '0'),
+    ('shell', 'am', 'force-stop', args.package),
+):
+    try:
+        adb(*cleanup_command, timeout=5)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+        print(f'Non-blocking emulator teardown warning: {error}', flush=True)

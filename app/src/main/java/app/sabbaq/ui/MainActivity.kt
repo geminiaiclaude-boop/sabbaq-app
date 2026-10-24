@@ -195,17 +195,18 @@ class MainActivity : ComponentActivity() {
                         title = { Text("تنبيه") }, text = { Text(message) },
                         confirmButton = { TextButton(onClick = { permissionMessage = null }) { Text("حسنًا") } }
                     ) }
-                    if (showVideoOpening) {
-                        SabbaqVideoOpening(onFinished = {
-                            LaunchVideoPreferences.markSeen(this@MainActivity)
-                            showVideoOpening = false
-                        })
-                    } else if (showIntro) {
+                    if (showIntro) {
                         SabbaqLaunchIntro(onFinished = { showIntro = false })
                     }
                     // Access just granted (code or trial): celebrate over everything, once.
                     val celebration by Celebrations.current.collectAsState()
                     celebration?.let { ActivationCelebration(it, onDone = Celebrations::dismiss) }
+                }
+                if (showVideoOpening) {
+                    SabbaqVideoOpening(onFinished = {
+                        LaunchVideoPreferences.markSeen(this@MainActivity)
+                        showVideoOpening = false
+                    })
                 }
             }
         }
