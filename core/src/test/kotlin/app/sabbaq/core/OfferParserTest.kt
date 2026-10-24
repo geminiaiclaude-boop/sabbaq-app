@@ -46,6 +46,14 @@ class OfferParserTest {
     }
 
     @Test
+    fun acceptedControlRetainsItsLiveTreePath() {
+        val accept = ScreenNode(id = 3, text = "Accept", clickable = true, nodePath = listOf(2, 1))
+        val root = screen(node("JD 4"), node("8 km"), accept)
+        val parsed = OfferParser(profiles.getValue("bolt")).parse(root)
+        assertEquals(listOf(2, 1), parsed.acceptNode?.nodePath)
+    }
+
+    @Test
     fun arabicJeenyOfferWithIndicDigitsAndSplitCurrency() {
         val root = screen(
             node("٥٫٥٠"),

@@ -33,6 +33,7 @@ import app.sabbaq.Settings
 import app.sabbaq.ThemeMode
 import app.sabbaq.network.SupabaseClient
 import app.sabbaq.service.KeeperService
+import app.sabbaq.stats.OfferDecisionLogStore
 import app.sabbaq.stats.OfferStatsStore
 import app.sabbaq.ui.theme.SabbaqDepthContent
 import app.sabbaq.ui.theme.SabbaqTheme
@@ -151,8 +152,9 @@ class MainActivity : ComponentActivity() {
                                 onAccountDeleted = {
                                     val wiped = Settings.clearAccountData()
                                     val statsWiped = OfferStatsStore.clear(this@MainActivity)
+                                    val historyWiped = OfferDecisionLogStore.clear(this@MainActivity)
                                     endSession()
-                                    permissionMessage = if (wiped && statsWiped) "حُذف حسابك وبياناته المرتبطة. شكرًا لاستخدامك سبّاق."
+                                    permissionMessage = if (wiped && statsWiped && historyWiped) "حُذف حسابك وبياناته المرتبطة. شكرًا لاستخدامك سبّاق."
                                         else "حُذف حسابك من الخادم، لكن تعذّر مسح بعض الإعدادات المحلية. احذف بيانات التطبيق من إعدادات الجهاز لإكمال المسح."
                                 },
                             )
