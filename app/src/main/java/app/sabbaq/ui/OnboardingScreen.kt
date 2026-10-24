@@ -140,7 +140,13 @@ fun OnboardingScreen(onContinue: () -> Unit, initialPage: Int = 0) {
                             isDirectDistribution = BuildConfig.DIRECT_DISTRIBUTION,
                             onRetryOffer = { scope.launch { loadPublicOffer() } }
                         )
-                        1 -> DecisionPreviewPage(
+                        1 -> FeaturesSubscriptionPage(
+                            loadingOffer = loadingOffer,
+                            offerCopy = offerCopy,
+                            isDirectDistribution = BuildConfig.DIRECT_DISTRIBUTION,
+                            onRetryOffer = { scope.launch { loadPublicOffer() } }
+                        )
+                        2 -> DecisionPreviewPage(
                             selectedSignals = selectedSignals,
                             onSignalChange = { signal ->
                                 selectedSignals = if (signal in selectedSignals) {
@@ -215,10 +221,19 @@ private fun WelcomePage(
     ) {
         SupportedPlatformsRow()
     }
+}
+
+@Composable
+private fun FeaturesSubscriptionPage(
+    loadingOffer: Boolean,
+    offerCopy: OnboardingOfferCopy,
+    isDirectDistribution: Boolean,
+    onRetryOffer: () -> Unit,
+) {
     SabbaqCard(
         title = "أنت تحدد، وسبّاق يتابع",
         subtitle = "يشغّل القبول التلقائي للطلبات التي تطابق شروطك في التطبيقات المدعومة.",
-        modifier = Modifier.sabbaqEntrance(1),
+        modifier = Modifier.sabbaqEntrance(0),
     ) {
         DriverValue(
             icon = Icons.Outlined.Payments,
@@ -239,7 +254,7 @@ private fun WelcomePage(
 
     SabbaqCard(
         title = if (loadingOffer) "نجهّز لك تفاصيل التجربة" else offerCopy.headline,
-        modifier = Modifier.sabbaqEntrance(2),
+        modifier = Modifier.sabbaqEntrance(1),
     ) {
         if (loadingOffer) {
             Row(
@@ -264,8 +279,11 @@ private fun WelcomePage(
             }
         }
     }
-    Text("اكتشفه أولًا، ثم قرر إن كان يناسبك.", style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(
+        "اكتشفه أولًا، ثم قرر إن كان يناسبك.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
 }
 
 @Composable
@@ -394,9 +412,9 @@ private fun OnboardingNavigation(
         } else {
             Spacer(Modifier.weight(1f))
         }
-        SabbaqButton(
+            SabbaqButton(
             text = if (page == ONBOARDING_PAGES - 1) onboardingFinalCta(canShowTrialJourney)
-                else if (page == 0) "كيف يعمل؟" else "متابعة",
+                else if (page == 0) "التالي" else "كيف يعمل؟",
             onClick = onNext,
             modifier = Modifier.weight(1f),
             fillWidth = false,
