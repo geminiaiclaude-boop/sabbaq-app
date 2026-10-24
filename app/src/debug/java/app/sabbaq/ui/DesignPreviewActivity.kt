@@ -11,6 +11,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import app.sabbaq.ThemeMode
+import app.sabbaq.stats.DecisionLogOutcome
+import app.sabbaq.stats.OfferDecisionLogStore
 import app.sabbaq.ui.theme.SabbaqTheme
 
 /** Debug-source-set only. No auth grant, credentials, service start, or license bypass. */
@@ -19,6 +21,10 @@ class DesignPreviewActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val screen = intent.getStringExtra("screen") ?: "login"
         val dark = intent.getBooleanExtra("dark", false)
+        if (screen == "decision-log") {
+            check(OfferDecisionLogStore.clear(this)) { "Could not reset debug decision-log fixture" }
+            OfferDecisionLogStore.recordOutcome("ci-preview", DecisionLogOutcome.ACCEPTED_CONFIRMED)
+        }
         val style = if (dark) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
             else SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.argb(210, 20, 44, 55))
         enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
@@ -29,6 +35,7 @@ class DesignPreviewActivity : ComponentActivity() {
             }
         }
         val destination = when (screen) {
+            "decision-log" -> DriverDestination.Dashboard
             "filters" -> DriverDestination.Filters
             "simulator" -> DriverDestination.Simulator
             "account" -> DriverDestination.Account
