@@ -21,7 +21,7 @@ class DesignPreviewActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val screen = intent.getStringExtra("screen") ?: "login"
         val dark = intent.getBooleanExtra("dark", false)
-        if (screen == "decision-log") {
+        if (screen in setOf("history", "decision-log")) {
             check(OfferDecisionLogStore.clear(this)) { "Could not reset debug decision-log fixture" }
             OfferDecisionLogStore.recordOutcome("ci-preview", DecisionLogOutcome.ACCEPTED_CONFIRMED)
         }
@@ -35,6 +35,7 @@ class DesignPreviewActivity : ComponentActivity() {
             }
         }
         val destination = when (screen) {
+            "history" -> DriverDestination.History
             "decision-log" -> DriverDestination.Dashboard
             "filters" -> DriverDestination.Filters
             "simulator" -> DriverDestination.Simulator
