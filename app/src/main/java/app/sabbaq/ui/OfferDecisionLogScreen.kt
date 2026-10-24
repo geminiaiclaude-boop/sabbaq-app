@@ -5,8 +5,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -36,7 +34,8 @@ fun OfferDecisionLogScreen(onBack: () -> Unit) {
     var askClear by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     Column(
-        modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp),
+        // DriverPage owns the single vertical scroll container and page padding.
+        modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text("سجل قرارات الطلبات", style = MaterialTheme.typography.headlineSmall)
