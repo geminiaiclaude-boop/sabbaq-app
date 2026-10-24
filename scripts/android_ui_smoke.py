@@ -116,6 +116,8 @@ cases = [
     ('login', 'login', False, 1.0, None),
     ('login-trial', 'login-trial', False, 1.0, None),
     ('dashboard', 'dashboard', False, 1.0, None),
+    ('decision-log-screen', 'history', False, 1.0, None),
+    ('decision-log', 'decision-log', False, 1.0, None),
     ('filters', 'filters', False, 1.0, None),
     ('simulator', 'simulator', False, 1.0, None),
     ('account', 'account', False, 1.0, None),
@@ -195,6 +197,10 @@ for name, screen, dark, font_scale, env in cases:
         assert 'سبّاق' in visible, 'Brand-led cinematic opening did not expose the Sabbaq identity'
         for player_control in ('تخطي الفيديو', 'تشغيل صوت الافتتاحية', 'كتم صوت الافتتاحية'):
             assert player_control not in visible, f'Player/ad control leaked into launch opening: {player_control}'
+    if screen == 'history':
+        assert 'سجل قرارات الطلبات' in visible, f'Decision history page did not render on direct open: {name}'
+        assert 'تأكد القبول من شاشة التطبيق' in visible, f'Seeded decision row did not render on direct open: {name}'
+        assert 'التطبيق: ci-preview' in visible, f'Seeded decision metadata missing on direct open: {name}'
     if screen == 'welcome-example':
         # The pipeline scene leads the page; the worked example sits below it.
         assert reachable_by_scrolling('٢٫٥ ر.س قبل التكاليف', visible), f'Concrete fare/distance example missing: {name}'
@@ -209,6 +215,38 @@ for name, screen, dark, font_scale, env in cases:
         # Google Play requires an in-app path to delete the account in every distribution.
         # It sits at the end of the page, below the first screen, so scroll before reading.
         assert reachable_by_scrolling('حذف حسابي', visible), f'Account deletion entry point missing: {name}'
+    if screen == 'decision-log':
+        # This fixture starts on the real dashboard, then activates the real History tab.
+        # The debug activity seeds one synthetic local row so both the empty and populated
+        # rendering paths are not confused with a successful-but-empty screen.
+        history_tab = next((node for node in nodes
+                            if node.get('package') == args.package and
+                            'سجل القرارات' in (node.get('text', '') + node.get('content-desc', ''))), None)
+        assert history_tab is not None, f'Decision history navigation item missing: {name}'
+        bounds = re.findall(r'\d+', history_tab.get('bounds', ''))
+        assert len(bounds) == 4, f'Decision history navigation bounds missing: {name}'
+        left, top, right, bottom = map(int, bounds)
+        adb('shell', 'input', 'tap', str((left + right) // 2), str((top + bottom) // 2))
+        time.sleep(1.5)
+        adb('shell', 'uiautomator', 'dump', '/sdcard/sabbaq-ui.xml', timeout=60, transport_retries=2)
+        history_xml = adb('shell', 'cat', '/sdcard/sabbaq-ui.xml', transport_retries=2)
+        (out / 'decision-log-after-navigation.xml').write_text(history_xml)
+        history_nodes = ET.fromstring(history_xml).findall('.//node')
+        history_visible = ' '.join(
+            node.get('text', '') + ' ' + node.get('content-desc', '')
+            for node in history_nodes if node.get('package') == args.package
+        )
+        history_runtime = adb('logcat', '-d', '-s', 'AndroidRuntime:E')
+        (out / 'decision-log-after-navigation-runtime.txt').write_text(history_runtime)
+        history_screenshot = screencap()
+        if history_screenshot.startswith(b'\x89PNG\r\n\x1a\n'):
+            (out / 'decision-log-after-navigation.png').write_bytes(history_screenshot)
+        print(f'decision-log post-tap package-visible={args.package in history_visible}; text={history_visible[:1000]!r}', flush=True)
+        assert 'سجل قرارات الطلبات' in history_visible, f'Decision history page did not open: {name}'
+        assert 'تأكد القبول من شاشة التطبيق' in history_visible, f'Seeded decision row did not render: {name}'
+        assert 'التطبيق: ci-preview' in history_visible, f'Seeded decision metadata missing: {name}'
+        assert 'FATAL EXCEPTION' not in history_runtime, f'App crashed after opening decision history:\n{history_runtime}'
+        assert history_screenshot.startswith(b'\x89PNG\r\n\x1a\n'), f'Invalid decision history screenshot: {name}'
     if screen == 'dashboard':
         # The stats card is intentionally below voice alerts; capture the real phone UI
         # at each section instead of relying only on the dashboard's first viewport.
