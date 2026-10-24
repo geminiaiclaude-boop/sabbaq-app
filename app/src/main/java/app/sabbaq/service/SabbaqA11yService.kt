@@ -84,10 +84,11 @@ class SabbaqA11yService : AccessibilityService() {
             for (parser in parsers) {
                 val parsed = parser.parse(screenNode)
                 val nowMs = SystemClock.elapsedRealtime()
-                when (val outcome = acceptTracker.observe(
+                val acceptOutcome = acceptTracker.observe(
                     confirmedScreenForProfile = parser.profileId.takeIf { parsed.confirmed },
                     nowMs = nowMs,
-                )) {
+                )
+                when (acceptOutcome) {
                     is AcceptTracker.Outcome.Confirmed -> {
                         pendingHistoryProfileId?.let { profileId -> runCatching {
                             OfferDecisionLogStore.recordOutcome(profileId, DecisionLogOutcome.ACCEPTED_CONFIRMED)
@@ -106,7 +107,7 @@ class SabbaqA11yService : AccessibilityService() {
                     }
                     null -> Unit
                 }
-                if (outcome != null) pendingHistoryProfileId = null
+                if (acceptOutcome != null) pendingHistoryProfileId = null
                 if (parsed.confirmed) continue
 
                 parsed.offer?.let { offer ->
