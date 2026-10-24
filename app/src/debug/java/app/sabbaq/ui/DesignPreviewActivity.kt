@@ -5,6 +5,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
@@ -20,6 +22,12 @@ class DesignPreviewActivity : ComponentActivity() {
         val style = if (dark) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
             else SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.argb(210, 20, 44, 55))
         enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+        if (screen == "cinematic-opening") {
+            WindowInsetsControllerCompat(window, window.decorView).apply {
+                systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                hide(WindowInsetsCompat.Type.systemBars())
+            }
+        }
         val destination = when (screen) {
             "filters" -> DriverDestination.Filters
             "simulator" -> DriverDestination.Simulator
@@ -30,7 +38,9 @@ class DesignPreviewActivity : ComponentActivity() {
         setContent {
             SabbaqTheme(darkTheme = dark) {
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-                    SabbaqShell(showHeader = screen !in setOf("login", "login-trial", "welcome", "welcome-example", "welcome-ready", "disclosure", "intro"), themeMode = if (dark) ThemeMode.DARK else ThemeMode.LIGHT,
+                    if (screen == "cinematic-opening") {
+                        SabbaqVideoOpening(onFinished = {})
+                    } else SabbaqShell(showHeader = screen !in setOf("login", "login-trial", "welcome", "welcome-example", "welcome-ready", "disclosure", "intro"), themeMode = if (dark) ThemeMode.DARK else ThemeMode.LIGHT,
                         onThemeChange = {}, onLogout = { finish() }) {
                         if (screen == "intro") SabbaqLaunchIntro(onFinished = {}, staticFrame = true)
                         else if (screen == "login") LoginScreen(onLoginSuccess = { finish() })
