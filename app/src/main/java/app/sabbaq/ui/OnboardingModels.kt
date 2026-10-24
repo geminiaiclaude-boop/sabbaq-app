@@ -4,7 +4,7 @@ import java.text.NumberFormat
 import java.util.Locale
 
 /** Stable destinations for the onboarding flow; callers must not depend on page numbers. */
-internal enum class OnboardingPage {
+enum class OnboardingPage {
     INTRODUCTION,
     FEATURES,
     HOW_IT_WORKS,
