@@ -254,7 +254,13 @@ class SabbaqA11yService : AccessibilityService() {
         root.packageName?.toString() == packageName && node.packageName?.toString() == packageName &&
             node.isVisibleToUser && node.isEnabled && node.isClickable &&
             node.actionList.any { it.id == AccessibilityNodeInfo.ACTION_CLICK } &&
-            ServicesSafetyPolicy.hasSafeGestureBounds(node.boundsInScreen(), resources.displayMetrics.widthPixels, resources.displayMetrics.heightPixels)
+            node.boundsInScreen().let { rect ->
+                ServicesSafetyPolicy.hasSafeGestureBounds(
+                    Bounds(rect.left, rect.top, rect.right, rect.bottom),
+                    resources.displayMetrics.widthPixels,
+                    resources.displayMetrics.heightPixels,
+                )
+            }
 
     private fun AccessibilityNodeInfo.boundsInScreen(): Rect = Rect().also { getBoundsInScreen(it) }
 
