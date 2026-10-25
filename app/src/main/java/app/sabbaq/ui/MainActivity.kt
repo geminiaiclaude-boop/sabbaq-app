@@ -6,7 +6,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import android.provider.Settings as AndroidSettings
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
@@ -146,6 +145,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             var mode by remember { mutableStateOf(Settings.themeMode) }
             var showA11yDisclosure by remember { mutableStateOf(false) }
+            var showRestrictedA11yGuidance by remember { mutableStateOf(false) }
             var permissionMessage by remember { mutableStateOf<String?>(null) }
             val systemDark = isSystemInDarkTheme()
             val dark = when (mode) { ThemeMode.SYSTEM -> systemDark; ThemeMode.DARK -> true; ThemeMode.LIGHT -> false }
@@ -172,6 +172,16 @@ class MainActivity : ComponentActivity() {
             }
             val permissionRequest = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
                 notificationsGranted = it
+            }
+            val restrictedSettingsLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.StartActivityForResult()
+            ) {
+                // Android does not expose a public API that reports whether the
+                // Restricted Settings menu action was accepted. Open the target
+                // screen after the user returns; the system then reflects the
+                // real state and shows no extra block when it was accepted.
+                runCatching { startActivity(AccessibilitySetup.accessibilitySettingsIntent()) }
+                    .onFailure { permissionMessage = "تعذر فتح إعدادات إمكانية الوصول. حاول مجددًا من لوحة القيادة." }
             }
             val endSession = {
                 // Signing out ends automatic resume too; clearSession() also wipes the saved session.
@@ -279,14 +289,29 @@ class MainActivity : ComponentActivity() {
                         onAccept = {
                             showA11yDisclosure = false
                             Settings.a11yDisclosureAccepted = true
-                            runCatching { startActivity(Intent(AndroidSettings.ACTION_ACCESSIBILITY_SETTINGS)) }
-                                .onFailure { permissionMessage = "تعذر فتح إعدادات إمكانية الوصول. حاول مجددًا من لوحة القيادة." }
+                            if (AccessibilitySetup.requiresRestrictedSettingsGuidance(this@MainActivity)) {
+                                showRestrictedA11yGuidance = true
+                            } else {
+                                runCatching { startActivity(AccessibilitySetup.accessibilitySettingsIntent()) }
+                                    .onFailure { permissionMessage = "تعذر فتح إعدادات إمكانية الوصول. حاول مجددًا من لوحة القيادة." }
+                            }
                         },
                         onDismiss = {
                             showA11yDisclosure = false
                             Settings.a11yDisclosureAccepted = false
                             stopService(Intent(this@MainActivity, KeeperService::class.java))
                         }
+                    )
+                    if (showRestrictedA11yGuidance) RestrictedAccessibilityDialog(
+                        onOpenAppDetails = {
+                            showRestrictedA11yGuidance = false
+                            runCatching {
+                                restrictedSettingsLauncher.launch(AccessibilitySetup.appDetailsIntent(this@MainActivity))
+                            }.onFailure {
+                                permissionMessage = "تعذر فتح معلومات التطبيق. افتح إعدادات الجهاز ثم التطبيقات ثم سبّاق."
+                            }
+                        },
+                        onDismiss = { showRestrictedA11yGuidance = false },
                     )
                     permissionMessage?.let { message -> AlertDialog(
                         onDismissRequest = { permissionMessage = null },
