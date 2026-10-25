@@ -12,6 +12,10 @@ class OfferParser(private val profile: RideProfile, private val verifiedViewIdHi
 
     val profileId: String get() = profile.id
 
+    /** Creates a parser with the latest bounded, verified runtime hints. */
+    fun withVerifiedViewIdHints(hints: Set<String>): OfferParser =
+        OfferParser(profile, hints)
+
     private val acceptLabels = profile.acceptLabels.map(Text::normalize).filter { it.isNotEmpty() }
     private val confirmLabels = profile.confirmLabels.map(Text::normalize).filter { it.isNotEmpty() }
     private val acceptIds = profile.acceptViewIds.toSet()

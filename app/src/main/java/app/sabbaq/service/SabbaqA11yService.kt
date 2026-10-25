@@ -106,9 +106,12 @@ class SabbaqA11yService : AccessibilityService() {
             lastParseTimeMs = parseTimeMs
             val screenNode = rootNode.toScreenNode()
             for (parser in parsers) {
-                val parsed = parser.parse(screenNode)
+                val activeParser = if (packageName == JEENY_PACKAGE) {
+                    parser.withVerifiedViewIdHints(jeenyHints?.snapshot()?.toSet().orEmpty())
+                } else parser
+                val parsed = activeParser.parse(screenNode)
                 val nowMs = SystemClock.elapsedRealtime()
-                val acceptOutcome = acceptTracker.observe(parser.profileId.takeIf { parsed.confirmed }, nowMs)
+                val acceptOutcome = acceptTracker.observe(activeParser.profileId.takeIf { parsed.confirmed }, nowMs)
                 when (acceptOutcome) {
                     is AcceptTracker.Outcome.Confirmed -> {
                         pendingHistoryProfileId?.let { profileId -> runCatching { OfferDecisionLogStore.recordOutcome(profileId, DecisionLogOutcome.ACCEPTED_CONFIRMED) } }
@@ -132,7 +135,7 @@ class SabbaqA11yService : AccessibilityService() {
                 if (!verdict.accept) runCatching { OfferStatsStore.recordRejected(offer.fingerprint, verdict.reasons.map { it.code }) }
                 val acceptNode = parsed.acceptNode ?: continue
                 // Learn only from a node that the parser verified through a matching label.
-                if (packageName == JEENY_PACKAGE && acceptNode.viewId != null && hasMatchingAcceptLabel(acceptNode, screenNode, parser)) {
+                if (packageName == JEENY_PACKAGE && acceptNode.viewId != null && hasMatchingAcceptLabel(acceptNode)) {
                     jeenyHints?.learnVerified(acceptNode.viewId)
                 }
                 val display = resources.displayMetrics
@@ -158,7 +161,7 @@ class SabbaqA11yService : AccessibilityService() {
         }
     }
 
-    private fun hasMatchingAcceptLabel(target: ScreenNode, root: ScreenNode, parser: OfferParser): Boolean {
+    private fun hasMatchingAcceptLabel(target: ScreenNode): Boolean {
         var found = false
         target.walk { node ->
             val label = Text.normalize(node.text).ifEmpty { Text.normalize(node.description) }
