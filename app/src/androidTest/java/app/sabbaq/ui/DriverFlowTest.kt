@@ -7,10 +7,11 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertDoesNotExist
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -257,7 +258,7 @@ class DriverFlowTest {
         // Operational readiness comes before offer filters in the production setup order.
         compose.onNodeWithText("تأكد من اشتراكك").assertIsDisplayed()
         compose.onNodeWithText("فتح حسابي").assertIsDisplayed()
-        compose.onNodeWithText("قريب وسريع").assertDoesNotExist()
+        compose.onAllNodesWithText("قريب وسريع").assertCountEquals(0)
     }
 
     @Test
