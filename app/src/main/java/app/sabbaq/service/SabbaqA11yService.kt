@@ -32,6 +32,9 @@ class SabbaqA11yService : AccessibilityService() {
     private val lateReadHandler = Handler(Looper.getMainLooper())
     private var jeenyHints: JeenyAcceptIdStore? = null
     private var lateReadGeneration = 0
+    private val jeenyPipeline = JeenyOfferPipeline()
+    private var lastJeenyEventMs = 0L
+    private var lastJeenyWindowId: Int? = null
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -75,33 +78,63 @@ class SabbaqA11yService : AccessibilityService() {
         }
         val packageName = event.packageName?.toString() ?: return
         if (!ServicesSafetyPolicy.isSupportedPackage(packageName, parsersByPackage.keys)) return
+        if (packageName == JEENY_PACKAGE) {
+            handleJeenyEvent(event)
+            return
+        }
         val now = SystemClock.elapsedRealtime()
         val previous = lastParseTimeMs.takeIf { lastParsedPackage == packageName }
         if (!ServicesSafetyPolicy.shouldParse(event.eventType, now, previous)) return
         processPackage(packageName)
-        if (packageName == JEENY_PACKAGE) scheduleJeenyLateReads(packageName)
+    }
+
+    /** Jeeny has its own cheap signal -> full frame -> two late capture pipeline. */
+    private fun handleJeenyEvent(event: AccessibilityEvent) {
+        if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+            event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) return
+        val now = SystemClock.elapsedRealtime()
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
+            now >= lastJeenyEventMs && now - lastJeenyEventMs < JEENY_EVENT_THROTTLE_MS) return
+        lastJeenyEventMs = now
+        if (lastJeenyWindowId != null && lastJeenyWindowId != event.windowId) {
+            acceptTracker.reset()
+            clickGate.reset()
+            pendingHistoryProfileId = null
+            pendingVoiceDetails = null
+        }
+        lastJeenyWindowId = event.windowId
+        val token = jeenyPipeline.begin(JEENY_PACKAGE, event.windowId.toString())
+        processPackage(JEENY_PACKAGE, requireJeenySignal = true, generation = token)
+        if (!jeenyPipeline.hasActionPending()) {
+            scheduleJeenyLateReads(JEENY_PACKAGE, token)
+        } else {
+            lateReadGeneration++
+            lateReadHandler.removeCallbacksAndMessages(LATE_READ_TOKEN)
+        }
     }
 
     /** Re-reads the active window after progressive UI rendering, at most twice. */
-    private fun scheduleJeenyLateReads(packageName: String) {
+    private fun scheduleJeenyLateReads(packageName: String, pipelineGeneration: Long) {
         val generation = ++lateReadGeneration
         lateReadHandler.removeCallbacksAndMessages(LATE_READ_TOKEN)
         LATE_READ_DELAYS_MS.forEachIndexed { index, delay ->
             lateReadHandler.postAtTime({
-                if (generation == lateReadGeneration && Settings.isActive &&
-                    Settings.a11yDisclosureAccepted && SupabaseClient.hasValidLicense()) {
-                    processPackage(packageName)
+                if (generation == lateReadGeneration && jeenyPipeline.isCurrent(pipelineGeneration) &&
+                    jeenyPipeline.allowLateCapture() && Settings.isActive &&
+                    Settings.a11yDisclosureAccepted && SupabaseClient.hasValidLicense() &&
+                    jeenyPipeline.markLateCapture()) {
+                    processPackage(packageName, requireJeenySignal = true, generation = pipelineGeneration)
                 }
             }, LATE_READ_TOKEN, SystemClock.uptimeMillis() + delay)
         }
     }
 
-    private fun processPackage(packageName: String) {
-        val parsers = parsersByPackage[packageName] ?: return
+    private fun processPackage(packageName: String, requireJeenySignal: Boolean = false, generation: Long = 0L): Boolean {
+        val parsers = parsersByPackage[packageName] ?: return false
         val parseTimeMs = SystemClock.elapsedRealtime()
-        val rootNode = rootInActiveWindow ?: return
+        val rootNode = rootInActiveWindow ?: return false
         try {
-            if (rootNode.packageName?.toString() != packageName) return
+            if (rootNode.packageName?.toString() != packageName) return false
             lastParsedPackage = packageName
             lastParseTimeMs = parseTimeMs
             val screenNode = rootNode.toScreenNode()
@@ -109,17 +142,23 @@ class SabbaqA11yService : AccessibilityService() {
                 val activeParser = if (packageName == JEENY_PACKAGE) {
                     parser.withVerifiedViewIdHints(jeenyHints?.snapshot()?.toSet().orEmpty())
                 } else parser
+                if (requireJeenySignal && !jeenyPipeline.hasActionPending() && activeParser.probeOfferSignal(screenNode) == null) {
+                    Log.i(TAG, "jeeny frame skipped: signal-miss")
+                    return false
+                }
                 val parsed = activeParser.parse(screenNode)
                 val nowMs = SystemClock.elapsedRealtime()
                 val acceptOutcome = acceptTracker.observe(activeParser.profileId.takeIf { parsed.confirmed }, nowMs)
                 when (acceptOutcome) {
                     is AcceptTracker.Outcome.Confirmed -> {
+                        if (packageName == JEENY_PACKAGE) jeenyPipeline.markConfirmationResolved()
                         pendingHistoryProfileId?.let { profileId -> runCatching { OfferDecisionLogStore.recordOutcome(profileId, DecisionLogOutcome.ACCEPTED_CONFIRMED) } }
                         runCatching { OfferStatsStore.recordAcceptedConfirmed() }
                         pendingVoiceDetails?.let { (fare, pickupKm) -> OfferEvents.accepted(fare, pickupKm) }
                         pendingVoiceDetails = null
                     }
                     is AcceptTracker.Outcome.NotConfirmed -> {
+                        if (packageName == JEENY_PACKAGE) jeenyPipeline.markConfirmationResolved()
                         pendingHistoryProfileId?.let { profileId -> runCatching { OfferDecisionLogStore.recordOutcome(profileId, DecisionLogOutcome.CONFIRMATION_TIMEOUT) } }
                         Log.i(TAG, "offer confirmation timeout")
                         pendingVoiceDetails = null
@@ -129,6 +168,10 @@ class SabbaqA11yService : AccessibilityService() {
                 if (acceptOutcome != null) pendingHistoryProfileId = null
                 if (parsed.confirmed) continue
                 val offer = parsed.offer ?: continue
+                if (packageName == JEENY_PACKAGE && !jeenyPipeline.shouldProcess(offer.fingerprint)) {
+                    Log.i(TAG, "jeeny frame skipped: same-offer")
+                    return false
+                }
                 val verdict = OfferEvaluator.evaluate(offer, Settings.filters, Calendar.getInstance().let { it.get(Calendar.HOUR_OF_DAY) * 60 + it.get(Calendar.MINUTE) })
                 runCatching { OfferDecisionLogStore.recordDecision(offer.fingerprint, offer.profileId, if (verdict.accept) emptyList() else verdict.reasons.map { it.code }) }
                 runCatching { OfferStatsStore.recordVisible(offer.fingerprint) }
@@ -147,18 +190,21 @@ class SabbaqA11yService : AccessibilityService() {
                     } else {
                         runCatching { OfferDecisionLogStore.recordOutcome(offer.profileId, if (clickResult == ClickResult.SEMANTIC) DecisionLogOutcome.SEMANTIC_CLICK_SENT else DecisionLogOutcome.GESTURE_CLICK_SENT) }
                         acceptTracker.tapped(offer.fingerprint, offer.profileId, SystemClock.elapsedRealtime())
+                        if (packageName == JEENY_PACKAGE) jeenyPipeline.markActionPending()
+                        if (packageName == JEENY_PACKAGE) jeenyPipeline.remember(offer.fingerprint)
                         pendingHistoryProfileId = offer.profileId
                         pendingVoiceDetails = offer.fare to offer.pickupKm
                         Log.i(TAG, "accept dispatched; confirmation pending")
                     }
                 }
-                return
+                return true
             }
         } catch (_: Exception) {
             Log.i(TAG, "supported app tree rejected or exceeded safety budget")
         } finally {
             rootNode.recycle()
         }
+        return false
     }
 
     private fun hasMatchingAcceptLabel(target: ScreenNode): Boolean {
@@ -274,6 +320,8 @@ class SabbaqA11yService : AccessibilityService() {
     override fun onDestroy() {
         lateReadGeneration++
         lateReadHandler.removeCallbacksAndMessages(LATE_READ_TOKEN)
+        jeenyPipeline.reset()
+        lastJeenyWindowId = null
         clickGate.reset()
         pendingHistoryProfileId = null
         pendingVoiceDetails = null
@@ -324,6 +372,7 @@ class SabbaqA11yService : AccessibilityService() {
         const val MAX_CHILDREN_PER_NODE = 200
         const val MAX_TOTAL_NODES = 3000
         const val JEENY_PACKAGE = "me.com.easytaxista"
+        const val JEENY_EVENT_THROTTLE_MS = 25L
         val LATE_READ_DELAYS_MS = longArrayOf(120L, 420L)
         val LATE_READ_TOKEN = Any()
     }

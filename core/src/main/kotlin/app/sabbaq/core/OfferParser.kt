@@ -16,6 +16,37 @@ class OfferParser(private val profile: RideProfile, private val verifiedViewIdHi
     fun withVerifiedViewIdHints(hints: Set<String>): OfferParser =
         OfferParser(profile, hints)
 
+    /**
+     * Cheap Jeeny preflight. It is intentionally weaker than parse() and is
+     * never an authorization to click: callers must still parse and verify the
+     * live platform node. A learned id is accepted only when an unambiguous
+     * accept label is present in the same current tree.
+     */
+    fun probeOfferSignal(root: ScreenNode): JeenyOfferSignal? {
+        var hasOfferData = false
+        var labelledAccept = false
+        root.walk { node ->
+            val label = Text.normalize(node.text).ifEmpty { Text.normalize(node.description) }
+            if (label.isNotEmpty() && (
+                    currencyRegex?.containsMatchIn(label) == true ||
+                        kmRegex?.containsMatchIn(label) == true ||
+                        meterRegex?.containsMatchIn(label) == true ||
+                        minuteRegex?.containsMatchIn(label) == true ||
+                        addressCues.any { Text.containsWord(label, it) }
+                    )) hasOfferData = true
+            if (isAcceptLabel(label)) labelledAccept = true
+        }
+        if (!hasOfferData || !labelledAccept) return null
+        val accept = findAcceptControl(root) ?: return null
+        val evidence = if (accept.viewId in verifiedViewIdHints && !isAcceptLabel(nodeLabel(accept))) {
+            JeenyOfferSignal.Evidence.HINTED_CONTROL_WITH_LABEL
+        } else JeenyOfferSignal.Evidence.LABELLED_CONTROL
+        return JeenyOfferSignal(accept.nodePath, evidence)
+    }
+
+    private fun nodeLabel(node: ScreenNode): String =
+        Text.normalize(node.text).ifEmpty { Text.normalize(node.description) }
+
     private val acceptLabels = profile.acceptLabels.map(Text::normalize).filter { it.isNotEmpty() }
     private val confirmLabels = profile.confirmLabels.map(Text::normalize).filter { it.isNotEmpty() }
     private val acceptIds = profile.acceptViewIds.toSet()
