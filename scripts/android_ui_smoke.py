@@ -131,8 +131,8 @@ cases = [
     ('first-launch', None, False, 1.0, None),
     ('cinematic-opening', 'cinematic-opening', False, 1.0, None),
     ('intro', 'intro', False, 1.0, None),
+    ('welcome-features', 'welcome-features', False, 1.0, None),
     ('welcome-example', 'welcome-example', False, 1.0, None),
-    ('welcome-ready', 'welcome-ready', False, 1.0, None),
     ('login', 'login', False, 1.0, None),
     ('login-trial', 'login-trial', False, 1.0, None),
     ('dashboard', 'dashboard', False, 1.0, None),
@@ -223,6 +223,9 @@ for name, screen, dark, font_scale, env in cases:
     if screen == 'welcome-example':
         # The pipeline scene leads the page; the worked example sits below it.
         assert reachable_by_scrolling('٢٫٥ ر.س قبل التكاليف', visible), f'Concrete fare/distance example missing: {name}'
+    if screen == 'welcome-features':
+        assert 'أنت تحدد، وسبّاق يتابع' in visible, f'Feature card missing: {name}'
+        assert reachable_by_scrolling('جرّبه قبل الاشتراك', visible) or reachable_by_scrolling('اكتشفه أولًا', visible), f'Subscription card missing: {name}'
     if env == 'offline':
         # The app-wide offline banner must tell the driver what needs a connection.
         assert 'لا يوجد اتصال بالإنترنت' in visible, f'Offline banner missing: {name}'

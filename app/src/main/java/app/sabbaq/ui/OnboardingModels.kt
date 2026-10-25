@@ -3,6 +3,25 @@ package app.sabbaq.ui
 import java.text.NumberFormat
 import java.util.Locale
 
+/** Stable destinations for the onboarding flow; callers must not depend on page numbers. */
+enum class OnboardingPage {
+    INTRODUCTION,
+    FEATURES,
+    HOW_IT_WORKS,
+}
+
+internal fun OnboardingPage.next(): OnboardingPage? = when (this) {
+    OnboardingPage.INTRODUCTION -> OnboardingPage.FEATURES
+    OnboardingPage.FEATURES -> OnboardingPage.HOW_IT_WORKS
+    OnboardingPage.HOW_IT_WORKS -> null
+}
+
+internal fun OnboardingPage.previous(): OnboardingPage? = when (this) {
+    OnboardingPage.INTRODUCTION -> null
+    OnboardingPage.FEATURES -> OnboardingPage.INTRODUCTION
+    OnboardingPage.HOW_IT_WORKS -> OnboardingPage.FEATURES
+}
+
 /**
  * نسخة مصغّرة من العرض العام للاستخدام المرئي فقط. لا تمنح تجربة أو اشتراكًا،
  * ولا تُخزَّن خارج تركيب الشاشة.
