@@ -232,6 +232,7 @@ for name, screen, dark, font_scale, env in cases:
     if screen == 'login':
         # Play requires the privacy policy to be reachable inside the app before sign-in.
         # It sits at the end of the sign-in page, below the first screen.
+        assert 'فتح القائمة الجانبية' in visible, f'Global navigation menu missing on unauthenticated page: {name}'
         assert reachable_by_scrolling('سياسة الخصوصية', visible), f'Privacy policy link missing: {name}'
     if screen == 'account':
         # Google Play requires an in-app path to delete the account in every distribution.

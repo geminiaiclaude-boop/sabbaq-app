@@ -19,16 +19,26 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Logout
+import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.FilterAlt
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.LightMode
+import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.SettingsBrightness
+import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -42,6 +52,7 @@ import app.sabbaq.stats.OfferDecisionLogStore
 import app.sabbaq.stats.OfferStatsStore
 import app.sabbaq.ui.theme.SabbaqDepthContent
 import app.sabbaq.ui.theme.SabbaqTheme
+import app.sabbaq.ui.theme.LocalSabbaqBrand
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -141,6 +152,8 @@ class MainActivity : ComponentActivity() {
             var notificationsGranted by remember { mutableStateOf(hasNotificationPermission()) }
             var filterSavePending by remember { mutableStateOf(false) }
             var hasUnpersistedFilterChanges by remember { mutableStateOf(false) }
+            var driverDestinationRequest by rememberSaveable { mutableStateOf<DriverDestination?>(null) }
+            var activeDriverDestination by rememberSaveable { mutableStateOf(DriverDestination.Dashboard) }
             // The cinematic clip precedes the existing logo intro once per install/update.
             var showVideoOpening by rememberSaveable {
                 mutableStateOf(savedInstanceState == null && LaunchVideoPreferences.shouldShow(this@MainActivity))
@@ -169,6 +182,8 @@ class MainActivity : ComponentActivity() {
                 SupabaseClient.clearSession()
                 filterSavePending = false
                 hasUnpersistedFilterChanges = false
+                driverDestinationRequest = null
+                activeDriverDestination = DriverDestination.Dashboard
                 navigation.signedOut()
             }
             LaunchedEffect(navigation.sessionRestoreStatus) {
@@ -183,13 +198,18 @@ class MainActivity : ComponentActivity() {
             SabbaqTheme(darkTheme = dark) {
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                     SabbaqShell(
-                        showHeader = navigation.route == AppState.DRIVER_PANEL || navigation.route == AppState.ADMIN_PANEL,
+                        showHeader = navigation.route != AppState.WELCOME && !showVideoOpening && !showIntro,
                         themeMode = mode,
                         onThemeChange = { mode = it; Settings.themeMode = it },
                         isSavingFilters = filterSavePending,
                         hasUnpersistedFilterChanges = hasUnpersistedFilterChanges,
                         onLogout = endSession,
                         allowLogout = navigation.sessionRestoreStatus != SessionRestoreStatus.RESTORING,
+                        isAuthenticated = navigation.route == AppState.DRIVER_PANEL || navigation.route == AppState.ADMIN_PANEL,
+                        isAdmin = navigation.route == AppState.ADMIN_PANEL,
+                        activeDriverDestination = activeDriverDestination,
+                        onOpenDriverDestination = { driverDestinationRequest = it },
+                        onOpenLogin = { if (navigation.route == AppState.WELCOME) navigation.welcomeFinished(false) },
                     ) {
                         SabbaqDepthContent(target = navigation.route, order = { it.ordinal }, label = "app-route") { route ->
                         when (route) {
@@ -240,6 +260,9 @@ class MainActivity : ComponentActivity() {
                                     filterSavePending = saving
                                     hasUnpersistedFilterChanges = unpersisted
                                 },
+                                navigationRequest = driverDestinationRequest,
+                                onDestinationChanged = { activeDriverDestination = it },
+                                onNavigationRequestHandled = { driverDestinationRequest = null },
                                 onAccountDeleted = {
                                     val wiped = Settings.clearAccountData()
                                     val statsWiped = OfferStatsStore.clear(this@MainActivity)
@@ -305,45 +328,75 @@ internal fun SabbaqShell(
     allowLogout: Boolean = true,
     isSavingFilters: Boolean = false,
     hasUnpersistedFilterChanges: Boolean = false,
+    isAuthenticated: Boolean = false,
+    isAdmin: Boolean = false,
+    activeDriverDestination: DriverDestination? = null,
+    onOpenDriverDestination: (DriverDestination) -> Unit = {},
+    onOpenLogin: () -> Unit = {},
     content: @Composable () -> Unit
 ) {
     var showThemeMenu by remember { mutableStateOf(false) }
     var confirmLogout by remember { mutableStateOf(false) }
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        contentWindowInsets = WindowInsets.safeDrawing,
-        topBar = {
-            if (showHeader) TopAppBar(
-                title = { SabbaqBrand(compact = true) },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
-                actions = {
-                    Box {
-                        IconButton(onClick = { showThemeMenu = true }) {
-                            Icon(when (themeMode) { ThemeMode.DARK -> Icons.Outlined.DarkMode
-                                ThemeMode.LIGHT -> Icons.Outlined.LightMode
-                                ThemeMode.SYSTEM -> Icons.Outlined.SettingsBrightness }, "تغيير مظهر التطبيق")
-                        }
-                        DropdownMenu(expanded = showThemeMenu, onDismissRequest = { showThemeMenu = false }) {
-                            ThemeMode.entries.forEach { item ->
-                                DropdownMenuItem(text = { Text(when (item) {
-                                    ThemeMode.SYSTEM -> "حسب النظام"; ThemeMode.LIGHT -> "فاتح"; ThemeMode.DARK -> "داكن"
-                                }) }, onClick = { showThemeMenu = false; onThemeChange(item) },
-                                    trailingIcon = { RadioButton(selected = item == themeMode, onClick = null) })
-                            }
-                        }
-                    }
-                    IconButton(onClick = { confirmLogout = true }, enabled = allowLogout) {
-                        Icon(Icons.AutoMirrored.Outlined.Logout, "تسجيل الخروج")
-                    }
-                }
+    val context = LocalContext.current
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    val requestLogout = { confirmLogout = true }
+    val closeDrawer = { scope.launch { drawerState.close() } }
+
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        gesturesEnabled = showHeader,
+        drawerContent = {
+            if (showHeader) SabbaqDrawerSheet(
+                isAuthenticated = isAuthenticated,
+                isAdmin = isAdmin,
+                activeDestination = activeDriverDestination,
+                onOpenDriverDestination = { destination ->
+                    closeDrawer()
+                    onOpenDriverDestination(destination)
+                },
+                onOpenLogin = {
+                    closeDrawer()
+                    onOpenLogin()
+                },
+                onOpenPrivacy = {
+                    closeDrawer()
+                    PublicLinks.open(context, PublicLinks.PRIVACY_POLICY)
+                },
+                onOpenDeletion = {
+                    closeDrawer()
+                    PublicLinks.open(context, PublicLinks.ACCOUNT_DELETION)
+                },
+                onRequestLogout = {
+                    closeDrawer()
+                    requestLogout()
+                },
             )
-        }
-    ) { insets ->
-        Box(Modifier.fillMaxSize()) {
-            SabbaqAmbientBackground(Modifier.matchParentSize())
-            Column(Modifier.fillMaxSize().padding(insets).consumeWindowInsets(insets)) {
-                OfflineBanner(online = rememberIsOnline())
-                Box(Modifier.weight(1f).fillMaxWidth()) { content() }
+        },
+    ) {
+        Scaffold(
+            containerColor = MaterialTheme.colorScheme.background,
+            contentWindowInsets = WindowInsets.safeDrawing,
+            topBar = {
+                if (showHeader) SabbaqTopBar(
+                    themeMode = themeMode,
+                    isAuthenticated = isAuthenticated,
+                    onOpenDrawer = { scope.launch { drawerState.open() } },
+                    onThemeMenu = { showThemeMenu = true },
+                    themeMenuExpanded = showThemeMenu,
+                    onDismissThemeMenu = { showThemeMenu = false },
+                    onThemeChange = { showThemeMenu = false; onThemeChange(it) },
+                    onRequestLogout = requestLogout,
+                    allowLogout = allowLogout,
+                )
+            }
+        ) { insets ->
+            Box(Modifier.fillMaxSize()) {
+                SabbaqAmbientBackground(Modifier.matchParentSize())
+                Column(Modifier.fillMaxSize().padding(insets).consumeWindowInsets(insets)) {
+                    OfflineBanner(online = rememberIsOnline())
+                    Box(Modifier.weight(1f).fillMaxWidth()) { content() }
+                }
             }
         }
     }
@@ -367,4 +420,174 @@ internal fun SabbaqShell(
         } },
         dismissButton = { TextButton(onClick = { confirmLogout = false }) { Text("البقاء") } }
     )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SabbaqTopBar(
+    themeMode: ThemeMode,
+    isAuthenticated: Boolean,
+    onOpenDrawer: () -> Unit,
+    onThemeMenu: () -> Unit,
+    themeMenuExpanded: Boolean,
+    onDismissThemeMenu: () -> Unit,
+    onThemeChange: (ThemeMode) -> Unit,
+    onRequestLogout: () -> Unit,
+    allowLogout: Boolean,
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 3.dp,
+        shadowElevation = 2.dp,
+    ) {
+        TopAppBar(
+            navigationIcon = {
+                IconButton(onClick = onOpenDrawer, modifier = Modifier.size(52.dp)) {
+                    Icon(Icons.Outlined.Menu, contentDescription = "فتح القائمة الجانبية")
+                }
+            },
+            title = { SabbaqBrand(compact = true) },
+            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+            actions = {
+                Box {
+                    IconButton(onClick = onThemeMenu, modifier = Modifier.size(52.dp)) {
+                        Icon(
+                            when (themeMode) {
+                                ThemeMode.DARK -> Icons.Outlined.DarkMode
+                                ThemeMode.LIGHT -> Icons.Outlined.LightMode
+                                ThemeMode.SYSTEM -> Icons.Outlined.SettingsBrightness
+                            },
+                            contentDescription = "تغيير مظهر التطبيق",
+                        )
+                    }
+                    DropdownMenu(expanded = themeMenuExpanded, onDismissRequest = onDismissThemeMenu) {
+                        ThemeMode.entries.forEach { item ->
+                            DropdownMenuItem(
+                                text = { Text(when (item) {
+                                    ThemeMode.SYSTEM -> "حسب النظام"
+                                    ThemeMode.LIGHT -> "فاتح"
+                                    ThemeMode.DARK -> "داكن"
+                                }) },
+                                onClick = { onThemeChange(item) },
+                                trailingIcon = { RadioButton(selected = item == themeMode, onClick = null) },
+                            )
+                        }
+                    }
+                }
+                if (isAuthenticated) {
+                    IconButton(onClick = onRequestLogout, enabled = allowLogout, modifier = Modifier.size(52.dp)) {
+                        Icon(Icons.AutoMirrored.Outlined.Logout, contentDescription = "تسجيل الخروج")
+                    }
+                }
+            },
+        )
+    }
+}
+
+private data class SabbaqDrawerItem(
+    val destination: DriverDestination,
+    val label: String,
+    val icon: ImageVector,
+)
+
+private val sabbaqDrawerItems = listOf(
+    SabbaqDrawerItem(DriverDestination.Dashboard, "حالة العمل", Icons.Outlined.Home),
+    SabbaqDrawerItem(DriverDestination.Filters, "طلبات تناسبك", Icons.Outlined.FilterAlt),
+    SabbaqDrawerItem(DriverDestination.Simulator, "تجربة الطلب", Icons.Outlined.Visibility),
+    SabbaqDrawerItem(DriverDestination.Account, "حسابي", Icons.Outlined.AccountCircle),
+    SabbaqDrawerItem(DriverDestination.History, "سجل القرارات", Icons.Outlined.Info),
+    SabbaqDrawerItem(DriverDestination.Setup, "دليل الإعداد", Icons.Outlined.Tune),
+)
+
+@Composable
+private fun SabbaqDrawerSheet(
+    isAuthenticated: Boolean,
+    isAdmin: Boolean,
+    activeDestination: DriverDestination?,
+    onOpenDriverDestination: (DriverDestination) -> Unit,
+    onOpenLogin: () -> Unit,
+    onOpenPrivacy: () -> Unit,
+    onOpenDeletion: () -> Unit,
+    onRequestLogout: () -> Unit,
+) {
+    val brand = LocalSabbaqBrand.current
+    ModalDrawerSheet(
+        drawerContainerColor = MaterialTheme.colorScheme.surface,
+        drawerTonalElevation = 8.dp,
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = brand.heroStart,
+            contentColor = brand.onHero,
+        ) {
+            Column(Modifier.padding(horizontal = 24.dp, vertical = 28.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SabbaqBrand(onHero = true)
+                Text(
+                    if (isAuthenticated) "مسجل الدخول — إدارة عملك بثقة" else "استكشف سبّاق وسجّل الدخول للبدء",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = brand.onHeroMuted,
+                )
+            }
+        }
+        Column(
+            Modifier.fillMaxHeight().padding(horizontal = 12.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            if (isAuthenticated && !isAdmin) {
+                sabbaqDrawerItems.forEach { item ->
+                    NavigationDrawerItem(
+                        label = { Text(item.label) },
+                        selected = item.destination == activeDestination,
+                        onClick = { onOpenDriverDestination(item.destination) },
+                        icon = { Icon(item.icon, contentDescription = null) },
+                        modifier = Modifier.heightIn(min = 52.dp),
+                    )
+                }
+                HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            }
+            if (isAdmin) {
+                NavigationDrawerItem(
+                    label = { Text("لوحة الإدارة") },
+                    selected = true,
+                    onClick = {},
+                    icon = { Icon(Icons.Outlined.Tune, contentDescription = null) },
+                    modifier = Modifier.heightIn(min = 52.dp),
+                )
+                HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            }
+            if (!isAuthenticated) {
+                NavigationDrawerItem(
+                    label = { Text("تسجيل الدخول") },
+                    selected = false,
+                    onClick = onOpenLogin,
+                    icon = { Icon(Icons.Outlined.AccountCircle, contentDescription = null) },
+                    modifier = Modifier.heightIn(min = 52.dp),
+                )
+            }
+            NavigationDrawerItem(
+                label = { Text("سياسة الخصوصية") },
+                selected = false,
+                onClick = onOpenPrivacy,
+                icon = { Icon(Icons.Outlined.Info, contentDescription = null) },
+                modifier = Modifier.heightIn(min = 52.dp),
+            )
+            NavigationDrawerItem(
+                label = { Text("طلب حذف الحساب") },
+                selected = false,
+                onClick = onOpenDeletion,
+                icon = { Icon(Icons.Outlined.Info, contentDescription = null) },
+                modifier = Modifier.heightIn(min = 52.dp),
+            )
+            if (isAuthenticated) {
+                Spacer(Modifier.weight(1f))
+                NavigationDrawerItem(
+                    label = { Text("تسجيل الخروج") },
+                    selected = false,
+                    onClick = onRequestLogout,
+                    icon = { Icon(Icons.AutoMirrored.Outlined.Logout, contentDescription = null) },
+                    modifier = Modifier.heightIn(min = 52.dp),
+                )
+            }
+        }
+    }
 }
