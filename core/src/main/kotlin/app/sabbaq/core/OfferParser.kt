@@ -8,7 +8,7 @@ import java.math.RoundingMode
  * control is present; every value the filters need is read from the labels
  * around it and left null when it cannot be read with confidence.
  */
-class OfferParser(private val profile: RideProfile) {
+class OfferParser(private val profile: RideProfile, private val verifiedViewIdHints: Set<String> = emptySet()) {
 
     val profileId: String get() = profile.id
 
@@ -63,17 +63,18 @@ class OfferParser(private val profile: RideProfile) {
      */
     private fun findAcceptControl(root: ScreenNode): ScreenNode? {
         var labelled: ScreenNode? = null
+        var hintedLabelled: ScreenNode? = null
         var labelledContainer: ScreenNode? = null
         root.walk { node ->
-            if (labelled != null) return@walk
             val label = Text.normalize(node.text).ifEmpty { Text.normalize(node.description) }
             if (isAcceptControl(node, label)) {
-                labelled = node
+                if (node.viewId in verifiedViewIdHints) hintedLabelled = node
+                labelled = labelled ?: node
             } else if (node.clickable && containsAcceptLabel(node)) {
                 labelledContainer = labelledContainer ?: node
             }
         }
-        return labelled ?: labelledContainer
+        return hintedLabelled ?: labelled ?: labelledContainer
     }
 
     private fun containsAcceptLabel(node: ScreenNode): Boolean {
