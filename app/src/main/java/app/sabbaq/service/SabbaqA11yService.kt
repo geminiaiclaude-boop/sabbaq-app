@@ -36,6 +36,8 @@ class SabbaqA11yService : AccessibilityService() {
     private val jeenyPipeline = JeenyOfferPipeline()
     private val diagnostics = BoundedDiagnostics()
     private val liveness = LivenessState()
+    private val runtimeStatus = RuntimeStatusRepository
+    private val dispatchRetry = BoundedDispatchRetry()
     private var lastJeenyFingerprint: String? = null
     private var lastJeenyEventMs = 0L
     private var lastJeenyWindowId: Int? = null
@@ -43,6 +45,7 @@ class SabbaqA11yService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         liveness.pause(null)
+        runtimeStatus.lifecycle(Settings.isActive, null)
         jeenyHints = runCatching { JeenyAcceptIdStore(applicationContext) }.getOrNull()
         runCatching { OfferStatsStore.init(applicationContext) }
             .onFailure { Log.w(TAG, "تعذر تهيئة الإحصاءات المحلية") }
@@ -58,7 +61,7 @@ class SabbaqA11yService : AccessibilityService() {
                         .filter { it.isNotBlank() }
                         .map { packageName ->
                             val hints = if (packageName == JEENY_PACKAGE) jeenyHints?.snapshot().orEmpty() else emptySet()
-                            packageName to (adaptersByProfile[profile.id] ?: DefaultRideAppAdapter(profile)).parser(hints)
+                            packageName to adaptersByProfile.getValue(profile.id).parser(hints)
                         }
                 }
                 .groupBy(keySelector = { it.first }, valueTransform = { it.second })
@@ -75,25 +78,29 @@ class SabbaqA11yService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
         val eventNow = SystemClock.elapsedRealtime()
         liveness.accessibilityEvent(eventNow)
-        diagnostics.record(DiagnosticStage.EVENT_RECEIVED, eventNow)
+        runtimeStatus.event(eventNow)
+        recordDiagnostic(DiagnosticStage.EVENT_RECEIVED, eventNow)
         if (!Settings.a11yDisclosureAccepted) {
             liveness.pause("disclosure_required")
+            runtimeStatus.lifecycle(false, "disclosure_required")
             Settings.isActive = false
             return
         }
         if (!Settings.isActive) {
             liveness.pause("service_paused")
+            runtimeStatus.lifecycle(false, "service_paused")
             return
         }
         if (!ServicesSafetyPolicy.isRelevantAccessibilityEvent(event.eventType)) return
         if (!SupabaseClient.hasValidLicense()) {
             liveness.pause("license_expired")
+            runtimeStatus.lifecycle(false, "license_expired")
             Settings.isActive = false
             return
         }
         val packageName = event.packageName?.toString() ?: return
         if (!ServicesSafetyPolicy.isSupportedPackage(packageName, parsersByPackage.keys)) return
-        diagnostics.record(DiagnosticStage.PACKAGE_SEEN, eventNow)
+        recordDiagnostic(DiagnosticStage.PACKAGE_SEEN, eventNow)
         if (packageName == JEENY_PACKAGE) {
             liveness.targetEvent(eventNow)
             handleJeenyEvent(event)
@@ -119,6 +126,7 @@ class SabbaqA11yService : AccessibilityService() {
             clickGate.reset()
             pendingHistoryProfileId = null
             pendingVoiceDetails = null
+            dispatchRetry.onConfirmationOrWindowChange()
         }
         lastJeenyWindowId = event.windowId
         val token = jeenyPipeline.begin(JEENY_PACKAGE, event.windowId.toString())
@@ -162,34 +170,33 @@ class SabbaqA11yService : AccessibilityService() {
             if (packageName == JEENY_PACKAGE && requireJeenySignal) {
                 val fingerprint = ScreenChangeFingerprint.compute(packageName, lastJeenyWindowId?.toString(), screenNode)
                 if (fingerprint == lastJeenyFingerprint) {
-                    diagnostics.record(DiagnosticStage.STALE, parseTimeMs, "unchanged_frame")
+                    recordDiagnostic(DiagnosticStage.STALE, parseTimeMs, "unchanged_frame")
                     return false
                 }
                 lastJeenyFingerprint = fingerprint
             }
             for (parser in parsers) {
-                val adapter = adaptersByProfile[parser.profileId]
-                    ?: if (packageName == JEENY_PACKAGE) JeenyRideAppAdapter(Profiles.bundled().first { it.id == parser.profileId })
-                    else DefaultRideAppAdapter(Profiles.bundled().first { it.id == parser.profileId })
+                val adapter = adaptersByProfile[parser.profileId] ?: return false
                 val hints = if (packageName == JEENY_PACKAGE) jeenyHints?.snapshot()?.toSet().orEmpty() else emptySet()
                 val assessment = adapter.classify(screenNode, hints)
                 if (assessment?.classification == JeenyFrameClass.INCOMPLETE) {
-                    diagnostics.record(DiagnosticStage.FRAME_INCOMPLETE, parseTimeMs, "bounded_preflight")
+                    recordDiagnostic(DiagnosticStage.FRAME_INCOMPLETE, parseTimeMs, "bounded_preflight")
                 }
                 val activeParser = if (packageName == JEENY_PACKAGE) {
                     adapter.parser(hints)
                 } else adapter.parser()
                 if (requireJeenySignal && !jeenyPipeline.hasActionPending() && activeParser.probeOfferSignal(screenNode) == null) {
-                    diagnostics.record(DiagnosticStage.SIGNAL_MISS, parseTimeMs, "preflight")
+                    recordDiagnostic(DiagnosticStage.SIGNAL_MISS, parseTimeMs, "preflight")
                     return false
                 }
-                if (requireJeenySignal) diagnostics.record(DiagnosticStage.SIGNAL_FOUND, parseTimeMs)
+                if (requireJeenySignal) recordDiagnostic(DiagnosticStage.SIGNAL_FOUND, parseTimeMs)
                 val parsed = activeParser.parse(screenNode)
                 val nowMs = SystemClock.elapsedRealtime()
                 val acceptOutcome = acceptTracker.observe(activeParser.profileId.takeIf { parsed.confirmed }, nowMs)
                 when (acceptOutcome) {
                     is AcceptTracker.Outcome.Confirmed -> {
-                        diagnostics.record(DiagnosticStage.CONFIRMATION_CONFIRMED, nowMs)
+                        dispatchRetry.onConfirmationOrWindowChange()
+                        recordDiagnostic(DiagnosticStage.CONFIRMATION_CONFIRMED, nowMs)
                         if (packageName == JEENY_PACKAGE) jeenyPipeline.markConfirmationResolved()
                         pendingHistoryProfileId?.let { profileId -> runCatching { OfferDecisionLogStore.recordOutcome(profileId, DecisionLogOutcome.ACCEPTED_CONFIRMED) } }
                         runCatching { OfferStatsStore.recordAcceptedConfirmed() }
@@ -197,7 +204,8 @@ class SabbaqA11yService : AccessibilityService() {
                         pendingVoiceDetails = null
                     }
                     is AcceptTracker.Outcome.NotConfirmed -> {
-                        diagnostics.record(DiagnosticStage.CONFIRMATION_TIMEOUT, nowMs)
+                        dispatchRetry.onConfirmationOrWindowChange()
+                        recordDiagnostic(DiagnosticStage.CONFIRMATION_TIMEOUT, nowMs)
                         if (packageName == JEENY_PACKAGE) jeenyPipeline.markConfirmationResolved()
                         pendingHistoryProfileId?.let { profileId -> runCatching { OfferDecisionLogStore.recordOutcome(profileId, DecisionLogOutcome.CONFIRMATION_TIMEOUT) } }
                         Log.i(TAG, "offer confirmation timeout")
@@ -209,7 +217,8 @@ class SabbaqA11yService : AccessibilityService() {
                 if (parsed.confirmed) continue
                 val offer = parsed.offer ?: continue
                 liveness.offerDetected(nowMs)
-                if (offer.fare == null) diagnostics.record(DiagnosticStage.FARE_MISSING, nowMs)
+                runtimeStatus.offer(nowMs)
+                if (offer.fare == null) recordDiagnostic(DiagnosticStage.FARE_MISSING, nowMs)
                 if (packageName == JEENY_PACKAGE && !jeenyPipeline.shouldProcess(offer.fingerprint)) {
                     Log.i(TAG, "jeeny frame skipped: same-offer")
                     return false
@@ -217,28 +226,36 @@ class SabbaqA11yService : AccessibilityService() {
                 val verdict = OfferEvaluator.evaluate(offer, Settings.filters, Calendar.getInstance().let { it.get(Calendar.HOUR_OF_DAY) * 60 + it.get(Calendar.MINUTE) })
                 runCatching { OfferDecisionLogStore.recordDecision(offer.fingerprint, offer.profileId, if (verdict.accept) emptyList() else verdict.reasons.map { it.code }) }
                 liveness.decision(nowMs)
+                runtimeStatus.decision(nowMs, verdict.report)
                 runCatching { OfferStatsStore.recordVisible(offer.fingerprint) }
                 if (!verdict.accept) {
-                    diagnostics.record(DiagnosticStage.REJECTED, nowMs, verdict.reasons.firstOrNull()?.code?.name ?: "rule")
+                    recordDiagnostic(DiagnosticStage.REJECTED, nowMs, verdict.reasons.firstOrNull()?.code?.name ?: "rule")
                     runCatching { OfferStatsStore.recordRejected(offer.fingerprint, verdict.reasons.map { it.code }) }
                 }
                 val acceptNode = parsed.acceptNode ?: continue
-                diagnostics.record(DiagnosticStage.ACCEPT_NODE_FOUND, nowMs)
+                recordDiagnostic(DiagnosticStage.ACCEPT_NODE_FOUND, nowMs)
                 // Learn only from a node that the parser verified through a matching label.
                 if (packageName == JEENY_PACKAGE && acceptNode.viewId != null && hasMatchingAcceptLabel(acceptNode)) {
                     jeenyHints?.learnVerified(acceptNode.viewId)
                 }
                 val display = resources.displayMetrics
-                if (verdict.accept && ServicesSafetyPolicy.hasSafeGestureBounds(acceptNode.bounds, display.widthPixels, display.heightPixels) && clickGate.tryAcquire(offer.fingerprint, nowMs)) {
+                val windowToken = lastJeenyWindowId?.toString() ?: packageName
+                dispatchRetry.begin(offer.fingerprint, windowToken)
+                val acquired = clickGate.tryAcquire(offer.fingerprint, nowMs) ||
+                    dispatchRetry.consumeRetry(offer.fingerprint, windowToken, nowMs)
+                if (verdict.accept && ServicesSafetyPolicy.hasSafeGestureBounds(acceptNode.bounds, display.widthPixels, display.heightPixels) && acquired) {
                     val clickResult = dispatchAcceptClick(rootNode, packageName, acceptNode)
-                    diagnostics.record(DiagnosticStage.CLICK_PATH, nowMs, clickResult.name.lowercase())
+                    recordDiagnostic(DiagnosticStage.CLICK_PATH, nowMs, clickResult.name.lowercase())
                     if (clickResult == ClickResult.NOT_DISPATCHED) {
                         clickGate.release(offer.fingerprint, nowMs)
+                        dispatchRetry.onDispatchResult(DispatchFailure.NOT_DISPATCHED, nowMs)
                         Log.i(TAG, "accept dispatch rejected by safety gate")
                     } else {
+                        dispatchRetry.onDispatchResult(if (clickResult == ClickResult.SEMANTIC) DispatchFailure.SEMANTIC_SUCCESS else DispatchFailure.GESTURE_SUCCESS, nowMs)
                         runCatching { OfferDecisionLogStore.recordOutcome(offer.profileId, if (clickResult == ClickResult.SEMANTIC) DecisionLogOutcome.SEMANTIC_CLICK_SENT else DecisionLogOutcome.GESTURE_CLICK_SENT) }
                         acceptTracker.tapped(offer.fingerprint, offer.profileId, SystemClock.elapsedRealtime())
                         liveness.click(SystemClock.elapsedRealtime())
+                        runtimeStatus.click(SystemClock.elapsedRealtime())
                         if (packageName == JEENY_PACKAGE) jeenyPipeline.markActionPending()
                         if (packageName == JEENY_PACKAGE) jeenyPipeline.remember(offer.fingerprint)
                         pendingHistoryProfileId = offer.profileId
@@ -372,15 +389,24 @@ class SabbaqA11yService : AccessibilityService() {
 
     override fun onInterrupt() {
         liveness.pause("interrupted")
-        diagnostics.record(DiagnosticStage.WATCHDOG, SystemClock.elapsedRealtime(), "interrupted")
+        runtimeStatus.lifecycle(false, "interrupted")
+        recordDiagnostic(DiagnosticStage.WATCHDOG, SystemClock.elapsedRealtime(), "interrupted")
     }
 
     /** Privacy-safe metadata for a UI or local log; no screen content is included. */
     fun livenessSnapshot(nowMs: Long = SystemClock.elapsedRealtime()): LivenessSnapshot = liveness.snapshot(nowMs).also {
-        if (it.stale) diagnostics.record(DiagnosticStage.WATCHDOG, nowMs, "stale")
+        if (it.stale) {
+            recordDiagnostic(DiagnosticStage.WATCHDOG, nowMs, "stale")
+            runtimeStatus.lifecycle(false, "stale")
+        }
     }
 
     fun diagnosticSnapshot(): List<DiagnosticEntry> = diagnostics.snapshot()
+
+    private fun recordDiagnostic(stage: DiagnosticStage, nowMs: Long, reason: String? = null) {
+        diagnostics.record(stage, nowMs, reason)
+        runtimeStatus.diagnostic(DiagnosticEntry(stage, nowMs, reason))
+    }
 
     override fun onDestroy() {
         lateReadGeneration++
@@ -390,9 +416,11 @@ class SabbaqA11yService : AccessibilityService() {
         clickGate.reset()
         pendingHistoryProfileId = null
         pendingVoiceDetails = null
+        dispatchRetry.onConfirmationOrWindowChange()
         parsersByPackage = emptyMap()
         adaptersByProfile = emptyMap()
         liveness.pause("service_destroyed")
+        runtimeStatus.reset()
         super.onDestroy()
     }
 

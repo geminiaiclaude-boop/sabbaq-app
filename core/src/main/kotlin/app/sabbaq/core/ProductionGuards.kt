@@ -26,18 +26,23 @@ interface RideAppAdapter {
         if (requiresPreflight) JeenyFrameClassifier(profile, verifiedViewIdHints, signalConfig.maxNodes, signalConfig.maxTextChars).assess(root) else null
 }
 
-class DefaultRideAppAdapter(override val profile: RideProfile) : RideAppAdapter {
-    override val packageNames: Set<String> = profile.packages.toSet()
-}
-
 class JeenyRideAppAdapter(override val profile: RideProfile) : RideAppAdapter {
     override val packageNames: Set<String> = profile.packages.toSet()
     override val requiresPreflight: Boolean = true
 }
 
 object RideAppAdapters {
+    private val factories: Map<String, (RideProfile) -> RideAppAdapter> = mapOf(
+        "jeeny" to ::JeenyRideAppAdapter,
+        "bolt" to ::BoltRideAppAdapter,
+        "petra" to ::PetraRideAppAdapter,
+    )
+
     fun forProfile(profile: RideProfile): RideAppAdapter =
-        if (profile.id == "jeeny") JeenyRideAppAdapter(profile) else DefaultRideAppAdapter(profile)
+        factories[profile.id]?.invoke(profile)
+            ?: error("Unsupported bundled ride profile: ${profile.id}")
+
+    fun supportedProfileIds(): Set<String> = factories.keys
 
     fun byPackage(profiles: Iterable<RideProfile>): Map<String, RideAppAdapter> = buildMap {
         profiles.filter { it.enabled }.forEach { profile ->

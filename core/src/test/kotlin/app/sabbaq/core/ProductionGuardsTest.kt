@@ -18,10 +18,12 @@ class ProductionGuardsTest {
         assertFalse(a.contains("5.50"))
     }
 
-    @Test fun adaptersKeepJeenySpecialAndOtherProfilesDefault() {
+    @Test fun adaptersAreExplicitForEveryBundledProfile() {
         assertTrue(RideAppAdapters.forProfile(profile) is JeenyRideAppAdapter)
         val bolt = Profiles.bundled().first { it.id == "bolt" }
-        assertTrue(RideAppAdapters.forProfile(bolt) is DefaultRideAppAdapter)
+        assertTrue(RideAppAdapters.forProfile(bolt) is BoltRideAppAdapter)
+        val petra = Profiles.bundled().first { it.id == "petra" }
+        assertTrue(RideAppAdapters.forProfile(petra) is PetraRideAppAdapter)
         assertTrue(RideAppAdapters.forProfile(profile).requiresPreflight)
     }
 
