@@ -193,6 +193,9 @@ fun SettingsScreen(
     isRestoringSession: Boolean = false,
     sessionRestoreError: Boolean = false,
     onRetrySessionRestore: () -> Unit = {},
+    navigationRequest: DriverDestination? = null,
+    onDestinationChanged: (DriverDestination) -> Unit = {},
+    onNavigationRequestHandled: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -232,6 +235,17 @@ fun SettingsScreen(
     var showResetFilters by remember { mutableStateOf(false) }
     val filterSaveMutex = remember { Mutex() }
     var filterRevision by remember { mutableStateOf(0L) }
+
+    LaunchedEffect(navigationRequest) {
+        navigationRequest?.let {
+            destination = it
+            onDestinationChanged(it)
+            onNavigationRequestHandled()
+        }
+    }
+    LaunchedEffect(destination) {
+        onDestinationChanged(destination)
+    }
 
     val latestToggleKeeper by rememberUpdatedState(onToggleKeeper)
     val haptics = LocalHapticFeedback.current

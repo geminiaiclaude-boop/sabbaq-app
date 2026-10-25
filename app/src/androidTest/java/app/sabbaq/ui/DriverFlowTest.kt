@@ -6,6 +6,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -16,6 +17,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.sabbaq.Settings
+import app.sabbaq.ThemeMode
 import app.sabbaq.ui.theme.SabbaqTheme
 import java.math.BigDecimal
 import org.junit.Assert.assertEquals
@@ -68,6 +70,46 @@ class DriverFlowTest {
         waitForText("طلبات على مقاس شروطك")
         compose.onNodeWithText("تخطي الجولة").performScrollTo().performClick()
         compose.runOnIdle { assertTrue(continued) }
+    }
+
+    @Test
+    fun authenticated_shell_drawer_exposes_driver_pages_without_removing_top_bar_actions() {
+        var selected: DriverDestination? = null
+        show {
+            SabbaqShell(
+                showHeader = true,
+                themeMode = ThemeMode.SYSTEM,
+                onThemeChange = {},
+                onLogout = {},
+                isAuthenticated = true,
+                activeDriverDestination = DriverDestination.Dashboard,
+                onOpenDriverDestination = { selected = it },
+            ) {}
+        }
+
+        compose.onNodeWithContentDescription("فتح القائمة الجانبية").performClick()
+        waitForText("طلبات تناسبك")
+        compose.onNodeWithText("طلبات تناسبك").performClick()
+        compose.runOnIdle { assertEquals(DriverDestination.Filters, selected) }
+    }
+
+    @Test
+    fun unauthenticated_shell_drawer_keeps_login_and_legal_paths_available() {
+        var loginRequested = false
+        show {
+            SabbaqShell(
+                showHeader = true,
+                themeMode = ThemeMode.SYSTEM,
+                onThemeChange = {},
+                onLogout = {},
+                onOpenLogin = { loginRequested = true },
+            ) {}
+        }
+
+        compose.onNodeWithContentDescription("فتح القائمة الجانبية").performClick()
+        waitForText("تسجيل الدخول")
+        compose.onNodeWithText("تسجيل الدخول").performClick()
+        compose.runOnIdle { assertTrue(loginRequested) }
     }
 
     @Test
