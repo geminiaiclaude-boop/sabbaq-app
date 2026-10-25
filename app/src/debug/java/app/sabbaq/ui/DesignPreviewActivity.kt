@@ -48,8 +48,13 @@ class DesignPreviewActivity : ComponentActivity() {
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                     if (screen == "cinematic-opening") {
                         SabbaqVideoOpening(onFinished = {})
-                    } else SabbaqShell(showHeader = screen !in setOf("cinematic-opening", "intro", "welcome", "welcome-features", "welcome-example", "welcome-ready"), themeMode = if (dark) ThemeMode.DARK else ThemeMode.LIGHT,
-                        onThemeChange = {}, onLogout = { finish() }) {
+                    } else SabbaqShell(
+                        showHeader = screen !in setOf("cinematic-opening", "intro", "welcome", "welcome-features", "welcome-example", "welcome-ready"),
+                        themeMode = if (dark) ThemeMode.DARK else ThemeMode.LIGHT,
+                        onThemeChange = {},
+                        onLogout = { finish() },
+                        isAuthenticated = screen == "decision-log",
+                    ) {
                         if (screen == "intro") SabbaqLaunchIntro(onFinished = {}, staticFrame = true)
                         else if (screen == "login") LoginScreen(onLoginSuccess = { finish() })
                         else if (screen == "login-trial") LoginScreen(onLoginSuccess = { finish() }, initialIntent = AccessIntent.Trial)
