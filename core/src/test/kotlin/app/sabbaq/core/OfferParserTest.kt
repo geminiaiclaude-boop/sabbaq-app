@@ -73,6 +73,22 @@ class OfferParserTest {
     }
 
     @Test
+    fun jeenyAcceptLabelInsideClickableContainerIsActionable() {
+        val acceptButton = ScreenNode(
+            id = nextId++,
+            clickable = true,
+            nodePath = listOf(3),
+            children = listOf(node("قبول العرض")),
+        )
+        val parsed = OfferParser(profiles.getValue("jeeny")).parse(
+            screen(node("SAR 5.84"), node("4 دقائق - 1.5 كم"), node("الرحاب"), acceptButton),
+        )
+        assertNotNull(parsed.offer)
+        assertEquals(acceptButton.id, parsed.acceptNode?.id)
+        assertEquals(listOf(3), parsed.acceptNode?.nodePath)
+    }
+
+    @Test
     fun hoursAndMinutesInOneLabelAreCombined() {
         val root = screen(node("SAR 60"), node("1 h 15 min"), node("Accept", clickable = true))
         val offer = OfferParser(profiles.getValue("bolt")).parse(root).offer!!

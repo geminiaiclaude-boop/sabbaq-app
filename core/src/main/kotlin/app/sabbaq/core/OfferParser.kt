@@ -40,28 +40,59 @@ class OfferParser(private val profile: RideProfile) {
 
     fun parse(root: ScreenNode): ParsedScreen {
         val items = ArrayList<Item>()
-        var accept: ScreenNode? = null
         var confirmed = false
         root.walk { node ->
             val label = Text.normalize(node.text).ifEmpty { Text.normalize(node.description) }
-            if (accept == null && isAcceptControl(node, label)) accept = node
             if (label.isNotEmpty()) {
                 items += Item(label, node)
                 if (!confirmed && confirmLabels.any { Text.containsWord(label, it) }) confirmed = true
             }
         }
+        val accept = findAcceptControl(root)
         val acceptNode = accept ?: return ParsedScreen(offer = null, acceptNode = null, confirmed = confirmed)
         // A confirmation state can retain an old accept control for a frame. Never
         // expose it as an actionable offer: the caller must not tap it again.
         return ParsedScreen(offer = if (confirmed) null else readOffer(items), acceptNode = acceptNode, confirmed = confirmed)
     }
 
+    /**
+     * Ride apps commonly expose the button label as a non-clickable Text node
+     * inside a clickable button/container. Prefer a directly labelled control,
+     * then fall back only to a clickable ancestor with an unambiguous accept
+     * label in its subtree. This keeps the target safe for the live-node check.
+     */
+    private fun findAcceptControl(root: ScreenNode): ScreenNode? {
+        var labelled: ScreenNode? = null
+        var labelledContainer: ScreenNode? = null
+        root.walk { node ->
+            if (labelled != null) return@walk
+            val label = Text.normalize(node.text).ifEmpty { Text.normalize(node.description) }
+            if (isAcceptControl(node, label)) {
+                labelled = node
+            } else if (node.clickable && containsAcceptLabel(node)) {
+                labelledContainer = labelledContainer ?: node
+            }
+        }
+        return labelled ?: labelledContainer
+    }
+
+    private fun containsAcceptLabel(node: ScreenNode): Boolean {
+        var found = false
+        node.walk { child ->
+            val label = Text.normalize(child.text).ifEmpty { Text.normalize(child.description) }
+            if (!child.clickable && label.isNotEmpty() && isAcceptLabel(label)) found = true
+        }
+        return found
+    }
+
+    private fun isAcceptLabel(label: String): Boolean =
+        label.length <= 40 && acceptLabels.any { it == label || Text.containsWord(label, it) && label.length <= it.length + 12 }
+
     private fun isAcceptControl(node: ScreenNode, label: String): Boolean {
         if (!node.clickable) return false
         val id = node.viewId
         if (id != null && id in acceptIds) return true
-        if (label.isEmpty() || label.length > 40) return false
-        return acceptLabels.any { it == label || Text.containsWord(label, it) && label.length <= it.length + 12 }
+        return isAcceptLabel(label)
     }
 
     private fun readOffer(items: List<Item>): Offer {
