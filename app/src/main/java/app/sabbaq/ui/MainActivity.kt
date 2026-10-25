@@ -422,6 +422,7 @@ internal fun SabbaqShell(
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SabbaqTopBar(
     themeMode: ThemeMode,
