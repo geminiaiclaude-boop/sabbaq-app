@@ -48,8 +48,8 @@ class DesignPreviewActivity : ComponentActivity() {
         setContent {
             SabbaqTheme(darkTheme = dark) {
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-                    var previewNavigationRequest by remember { mutableStateOf<DriverDestination?>(null) }
-                    var previewActiveDestination by remember { mutableStateOf(destination) }
+                    val previewNavigationRequest = remember { mutableStateOf<DriverDestination?>(null) }
+                    val previewActiveDestination = remember { mutableStateOf(destination) }
                     if (screen == "cinematic-opening") {
                         SabbaqVideoOpening(onFinished = {})
                     } else SabbaqShell(
@@ -58,8 +58,8 @@ class DesignPreviewActivity : ComponentActivity() {
                         onThemeChange = {},
                         onLogout = { finish() },
                         isAuthenticated = screen == "decision-log",
-                        activeDriverDestination = previewActiveDestination,
-                        onOpenDriverDestination = { previewNavigationRequest = it },
+                        activeDriverDestination = previewActiveDestination.value,
+                        onOpenDriverDestination = { previewNavigationRequest.value = it },
                     ) {
                         if (screen == "intro") SabbaqLaunchIntro(onFinished = {}, staticFrame = true)
                         else if (screen == "login") LoginScreen(onLoginSuccess = { finish() })
@@ -75,9 +75,9 @@ class DesignPreviewActivity : ComponentActivity() {
                             onToggleKeeper = { Result.failure(IllegalStateException("المعاينة لا تشغّل الخدمات")) },
                             initialDestination = destination,
                             autoSetupGuide = false,
-                            navigationRequest = previewNavigationRequest,
-                            onDestinationChanged = { previewActiveDestination = it },
-                            onNavigationRequestHandled = { previewNavigationRequest = null },
+                            navigationRequest = previewNavigationRequest.value,
+                            onDestinationChanged = { previewActiveDestination.value = it },
+                            onNavigationRequestHandled = { previewNavigationRequest.value = null },
                         )
                     }
                 }
