@@ -1,26 +1,30 @@
 # Jeeny parity matrix
 
-This matrix records implementation evidence in the repository only. It does not claim real-device success rates. `Fully implemented` means deterministic JVM coverage exists for the behavior; `Partial` means a production path exists but depends on Android accessibility/device behavior; `Unproven` means no repository evidence is sufficient.
+هذه المصفوفة تسجل أدلة المستودع فقط، ولا تدعي نجاحاً على جهاز حقيقي أو تكافؤاً ميدانياً. «منفذ» يعني عقداً deterministic مع اختبار JVM؛ «جزئي» يعني أن مسار Android موصول لكن سلوك APK/شجرة الإتاحة يحتاج جهازاً؛ «غير مثبت» يعني عدم وجود دليل كافٍ في المستودع.
 
-| Dimension | Status | Evidence / remaining proof |
-|---|---|---|
-| Package and window scoping | Fully implemented | `SabbaqA11yService` scopes Jeeny events and `JeenyOfferPipeline` resets generation on window changes; JVM state tests cover this. |
-| Progressive frame handling | Fully implemented | `JeenyFrameClassifier` returns `INCOMPLETE`; probe refuses it; JVM test covers fare-plus-accept partial frames. |
-| Independent offer signals | Fully implemented | Classifier combines accept, fare/currency, distance, time, pickup/address and offer-label families with a threshold and minimum feature count. |
-| Confirmation/active-ride exclusion | Fully implemented | Confirmation labels and active-state cues are hard exclusions; JVM test covers an active frame retaining an accept-looking node. |
-| Full fare/route parsing | Fully implemented | Existing `OfferParser` tests cover Arabic/Indic digits, split currency, meters, minutes, addresses and identity. |
-| Bounded scan and text budget | Fully implemented | Classifier caps at 128 nodes/4096 text characters; JVM test verifies the node cap. |
-| Late captures | Fully implemented | Two bounded late reads remain in the service and pipeline; existing pipeline test verifies the cap and pending-action stop. |
-| Same-offer identity suppression | Fully implemented | `Offer.fingerprint` excludes countdown text and the pipeline suppresses the same fingerprint; JVM tests cover both. |
-| Safe click ordering and confirmation tracking | Partial | The service retains `ClickGate`, live-node re-resolution, semantic-before-gesture ordering, and `AcceptTracker`; actual Android dispatch and post-click confirmation are device-only. |
-| Accessibility tree/package/device parity | Unproven | No real-device corpus or emulator accessibility capture is checked into this repository; verify with Jeeny builds, locale variants, TalkBack/accessibility settings, and rotated/window transitions. |
+| البعد | الحالة | القياس والدليل | المتبقي |
+|---|---|---|---|
+| package/window scoping | منفذ | `SabbaqA11yService` يقيد Jeeny بالحزمة والنافذة، و`JeenyOfferPipeline` يلغي generation عند التغيير؛ اختبارات state | تحقق device من تبديل النوافذ أثناء إعادة الرسم |
+| adapter contract | منفذ | `JeenyRideAppAdapter` يعرّف package/accept-confirm families/signal config/node-confirmation strategy؛ contract tests لـ Jeeny/Bolt/Petra | تحقق device من labels/IDs الفعلية لكل APK |
+| independent bounded preflight | منفذ | classifier قبل full parse؛ 128 node و4096 حرفاً كحد أقصى، وminimum 3 features؛ `ProductionGuardsTest` و`JeenyOfferPipelineTest` | corpus حي لقياس false positive/negative |
+| structural change fingerprint | منفذ | SHA-256 حتمي يضم package/window/path/class/view-id وhash/length للإشارات النصية فقط؛ 96 node و2048 حرفاً؛ لا يعيد النص | قياس latency على أجهزة منخفضة الموارد |
+| progressive frames | منفذ | `INCOMPLETE` لا ينتج signal ولا click، وdiagnostic `frame_incomplete` | توقيت إعادة الرسم الحقيقي |
+| confirmation/active exclusion | منفذ | confirm labels وactive cues hard exclusion؛ `AcceptTracker` bounded | شاشة تأكيد Jeeny الحقيقية وتنوع اللغات |
+| full fare/route parsing | منفذ | parser corpus يغطي Arabic/Indic digits/currency/meters/minutes/addresses/identity | توافق شجرة APK الحالي |
+| decision explainability | منفذ | `DecisionReport` 0–100، available signals فقط، وreasons بدون fake missing values؛ لا يغير `Verdict.accept`؛ tests | مراجعة UX لعرض snapshot في UI |
+| diagnostics/privacy | منفذ | ring buffer capacity 64، stages محددة، reason allow-list/redaction؛ لا نص عرض/عنوان/صورة/network | مراجعة release logcat |
+| watchdog/liveness | منفذ جزئي | `LivenessState` يسجل accessibility/target/offer/decision/click ويحسب stale/paused؛ snapshot privacy-safe؛ لا background loop | ربط شاشة UI فعلية وقياس thresholds ميدانياً |
+| safe click/confirmation | جزئي | node → ancestor → gesture مع ClickGate/AcceptTracker وlifecycle الحالي | dispatch/action/timeout على جهاز حقيقي |
 
-## Counts
+## Counts and tests
 
-- Fully implemented: **8 / 10**
-- Partial: **1 / 10**
-- Unproven: **1 / 10**
+- ملفات `core` المضافة/الموصولة: `ProductionGuards.kt`، وتعديلات `OfferEvaluator.kt` و`SabbaqA11yService.kt`.
+- `JeenyOfferPipelineTest`: 7 سيناريوهات pipeline/classifier قائمة (positive, incomplete, active, hint-only, scan budget, same-offer, window reset).
+- `ProductionGuardsTest`: 7 اختبارات (fingerprint determinism/context/redaction، adapter platform contract، diagnostics capacity، liveness، decision report، preflight budgets).
+- تشغيل التحقق: `export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64 && git diff --check && ./gradlew --no-daemon :core:test` — **نجح**.
+- حدود preflight: 128 عقدة/4096 حرفاً للمصنف، fingerprint مستقل 96 عقدة/2048 حرفاً، late captures بحد أقصى 2، diagnostics بحد أقصى 64 entry.
+- لا توجد أرقام accuracy أو parity ميدانية مدعاة.
 
-## Test corpus metric
+## Real-device-only criteria
 
-The checked-in JVM corpus contains **7 Jeeny pipeline/classifier scenarios** in `JeenyOfferPipelineTest` (positive frame, progressive/incomplete frame, confirmation/active frame, hint-only/unrelated frame, scan limit, same-offer suppression, and window reset), plus parser corpus cases in `OfferParserTest`. This is a repository test count, not a real-device accuracy metric. There are **no real-device parity measurements** claimed here.
+قبل أي ادعاء إنتاجي يجب تشغيل APK Jeeny مفوض على Android 8+، خصوصاً 13/14/16، مع RTL وIndic digits، العرض التدريجي، تغيّر view IDs، زر غير قابل للنقر، confirmation timeout، إعادة الرسم، window/app switch، license expiry، disclosure revoke، شجرة كبيرة، وفشل ACTION_CLICK. يجب حفظ package/API/app version والنتيجة وقياس false positives/negatives وpreflight latency، دون حفظ نصوص/عناوين/صور.

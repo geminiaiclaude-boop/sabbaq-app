@@ -2,6 +2,16 @@
 
 هذه قائمة اعتماد تشغيلية، وليست تصريحًا بأن التطبيق اجتاز الاختبارات على أجهزة حقيقية أو أنه نُشر.
 
+## حواجز الإنتاج القابلة للقياس — مسار Jeeny (2026-10-25)
+
+تم توصيل `RideAppAdapter` بعقد صريح للـpackage وعائلات accept/confirm وإعدادات signal واستراتيجية node/confirmation؛ Jeeny يستخدم `JeenyRideAppAdapter` وBolt/Petra يستخدمان `DefaultRideAppAdapter` مع بقاء JSON profiles كما هي. قبل full parse يوجد preflight حتمي bounded: classifier بحد 128 عقدة/4096 حرفاً، وبصمة تغيير مستقلة بحد 96 عقدة/2048 حرفاً، ولا تُسجل البصمة نص الشاشة.
+
+أضيف `DecisionReport` بدرجة 0–100 وإشارات متاحة فقط (fare/time/distance/destination/per-km/filter) وأسباب rejection قابلة للتفسير؛ التقرير لا يغير `Verdict.accept` ولا يخترع قيمة مفقودة. أضيف `LivenessState` مع snapshot privacy-safe لآخر accessibility/target/offer/decision/click وحالتي stale/paused، و`BoundedDiagnostics` بسعة 64 مرحلة metadata فقط مع redaction للأسباب الحرة. لا توجد حلقة background جديدة؛ التحديثات تتم داخل lifecycle والأحداث والقراءات الموجودة.
+
+التحقق المنفذ: `git diff --check` و`export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64 && ./gradlew --no-daemon :core:test` — **نجح**. توجد 7 اختبارات جديدة في `ProductionGuardsTest` لعقود المنصات الثلاث والبصمة والbudget والتشخيص/liveness والتقرير، إضافة إلى 7 سيناريوهات Jeeny pipeline/classifier القائمة. تعذر تشغيل اختبارات Android (`:app:testDirectDebugUnitTest` و`:app:testPlayDebugUnitTest`) في بيئة التحقق الحالية لأن Android SDK غير معرف (`ANDROID_HOME`/`local.properties` مفقود)؛ هذا ليس دليلاً على نجاح Android compile.
+
+لا تُعد هذه النتائج real-device parity. يلزم جهاز Android مفوض وAPK Jeeny فعلي لقياس latency/false positives، وتنوع شجرة الإتاحة وIDs، ترتيب dispatch والتأكيد، stale thresholds، RTL/Indic digits، progressive rendering، license/disclosure gates، والتقاط package/API/version والنتيجة دون نصوص أو عناوين أو صور.
+
 
 ## إضافة مسار Jeeny (2026-10-25)
 
