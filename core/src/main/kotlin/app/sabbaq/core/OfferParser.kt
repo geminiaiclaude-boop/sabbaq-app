@@ -23,25 +23,17 @@ class OfferParser(private val profile: RideProfile, private val verifiedViewIdHi
      * accept label is present in the same current tree.
      */
     fun probeOfferSignal(root: ScreenNode): JeenyOfferSignal? {
-        var hasOfferData = false
-        var labelledAccept = false
-        root.walk { node ->
-            val label = Text.normalize(node.text).ifEmpty { Text.normalize(node.description) }
-            if (label.isNotEmpty() && (
-                    currencyRegex?.containsMatchIn(label) == true ||
-                        kmRegex?.containsMatchIn(label) == true ||
-                        meterRegex?.containsMatchIn(label) == true ||
-                        minuteRegex?.containsMatchIn(label) == true ||
-                        addressCues.any { Text.containsWord(label, it) }
-                    )) hasOfferData = true
-            if (isAcceptLabel(label)) labelledAccept = true
-        }
-        if (!hasOfferData || !labelledAccept) return null
+        val assessment = JeenyFrameClassifier(profile, verifiedViewIdHints).assess(root)
+        if (assessment.classification != JeenyFrameClass.OFFER) return null
         val accept = findAcceptControl(root) ?: return null
-        val evidence = if (accept.viewId in verifiedViewIdHints && !isAcceptLabel(nodeLabel(accept))) {
-            JeenyOfferSignal.Evidence.HINTED_CONTROL_WITH_LABEL
-        } else JeenyOfferSignal.Evidence.LABELLED_CONTROL
-        return JeenyOfferSignal(accept.nodePath, evidence)
+        val label = nodeLabel(accept)
+        val evidence = when {
+            accept.viewId in verifiedViewIdHints && !isAcceptLabel(label) ->
+                JeenyOfferSignal.Evidence.HINTED_CONTROL_WITH_LABEL
+            assessment.featureCount >= 4 -> JeenyOfferSignal.Evidence.LABELLED_CONTROL_WITH_ROUTE
+            else -> JeenyOfferSignal.Evidence.LABELLED_CONTROL
+        }
+        return JeenyOfferSignal(accept.nodePath, evidence, assessment.score, assessment.featureCount)
     }
 
     private fun nodeLabel(node: ScreenNode): String =
