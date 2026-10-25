@@ -239,13 +239,23 @@ for name, screen, dark, font_scale, env in cases:
         # It sits at the end of the page, below the first screen, so scroll before reading.
         assert reachable_by_scrolling('حذف حسابي', visible), f'Account deletion entry point missing: {name}'
     if screen == 'decision-log':
-        # This fixture starts on the real dashboard, then activates the real History tab.
-        # The debug activity seeds one synthetic local row so both the empty and populated
-        # rendering paths are not confused with a successful-but-empty screen.
+        # History is intentionally not a crowded bottom-bar item. It remains available
+        # from the production hamburger menu; the debug activity seeds one synthetic row
+        # so both the empty and populated rendering paths are exercised.
+        menu_button = next((node for node in nodes
+                            if node.get('package') == args.package and
+                            node.get('content-desc') == 'فتح القائمة الجانبية'), None)
+        assert menu_button is not None, f'Hamburger menu missing: {name}'
+        menu_bounds = re.findall(r'\d+', menu_button.get('bounds', ''))
+        assert len(menu_bounds) == 4, f'Hamburger menu bounds missing: {name}'
+        menu_left, menu_top, menu_right, menu_bottom = map(int, menu_bounds)
+        adb('shell', 'input', 'tap', str((menu_left + menu_right) // 2), str((menu_top + menu_bottom) // 2))
+        time.sleep(0.8)
+        nodes = ET.fromstring(ui_xml()).findall('.//node')
         history_tab = next((node for node in nodes
                             if node.get('package') == args.package and
                             'سجل القرارات' in (node.get('text', '') + node.get('content-desc', ''))), None)
-        assert history_tab is not None, f'Decision history navigation item missing: {name}'
+        assert history_tab is not None, f'Decision history hamburger item missing: {name}'
         bounds = re.findall(r'\d+', history_tab.get('bounds', ''))
         assert len(bounds) == 4, f'Decision history navigation bounds missing: {name}'
         left, top, right, bottom = map(int, bounds)

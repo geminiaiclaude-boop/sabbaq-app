@@ -8,6 +8,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import app.sabbaq.ThemeMode
@@ -46,10 +48,19 @@ class DesignPreviewActivity : ComponentActivity() {
         setContent {
             SabbaqTheme(darkTheme = dark) {
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                    val previewNavigationRequest = remember { mutableStateOf<DriverDestination?>(null) }
+                    val previewActiveDestination = remember { mutableStateOf(destination) }
                     if (screen == "cinematic-opening") {
                         SabbaqVideoOpening(onFinished = {})
-                    } else SabbaqShell(showHeader = screen !in setOf("cinematic-opening", "intro", "welcome", "welcome-features", "welcome-example", "welcome-ready"), themeMode = if (dark) ThemeMode.DARK else ThemeMode.LIGHT,
-                        onThemeChange = {}, onLogout = { finish() }) {
+                    } else SabbaqShell(
+                        showHeader = screen !in setOf("cinematic-opening", "intro", "welcome", "welcome-features", "welcome-example", "welcome-ready"),
+                        themeMode = if (dark) ThemeMode.DARK else ThemeMode.LIGHT,
+                        onThemeChange = {},
+                        onLogout = { finish() },
+                        isAuthenticated = screen == "decision-log",
+                        activeDriverDestination = previewActiveDestination.value,
+                        onOpenDriverDestination = { previewNavigationRequest.value = it },
+                    ) {
                         if (screen == "intro") SabbaqLaunchIntro(onFinished = {}, staticFrame = true)
                         else if (screen == "login") LoginScreen(onLoginSuccess = { finish() })
                         else if (screen == "login-trial") LoginScreen(onLoginSuccess = { finish() }, initialIntent = AccessIntent.Trial)
@@ -64,6 +75,9 @@ class DesignPreviewActivity : ComponentActivity() {
                             onToggleKeeper = { Result.failure(IllegalStateException("المعاينة لا تشغّل الخدمات")) },
                             initialDestination = destination,
                             autoSetupGuide = false,
+                            navigationRequest = previewNavigationRequest.value,
+                            onDestinationChanged = { previewActiveDestination.value = it },
+                            onNavigationRequestHandled = { previewNavigationRequest.value = null },
                         )
                     }
                 }

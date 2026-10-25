@@ -15,7 +15,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.outlined.AccountCircle
@@ -368,9 +370,18 @@ internal fun SabbaqShell(
     val requestLogout = { confirmLogout = true }
     val closeDrawer = { scope.launch { drawerState.close() } }
 
+    // The drawer is an explicit navigation surface. Keep it closed whenever the
+    // shell enters or leaves a header-bearing screen; it must never appear as a
+    // side effect of the first render or another button navigation.
+    LaunchedEffect(showHeader) {
+        drawerState.close()
+    }
+
     ModalNavigationDrawer(
         drawerState = drawerState,
-        gesturesEnabled = showHeader,
+        // Opening is intentionally limited to the hamburger button. This avoids
+        // accidental edge swipes and makes the first-render state deterministic.
+        gesturesEnabled = false,
         drawerContent = {
             if (showHeader) SabbaqDrawerSheet(
                 isAuthenticated = isAuthenticated,
@@ -537,6 +548,7 @@ private fun SabbaqDrawerSheet(
 ) {
     val brand = LocalSabbaqBrand.current
     ModalDrawerSheet(
+        modifier = Modifier.widthIn(max = 320.dp),
         drawerContainerColor = MaterialTheme.colorScheme.surface,
         drawerTonalElevation = 8.dp,
     ) {
@@ -555,7 +567,10 @@ private fun SabbaqDrawerSheet(
             }
         }
         Column(
-            Modifier.fillMaxHeight().padding(horizontal = 12.dp, vertical = 16.dp),
+            Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 12.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             if (isAuthenticated && !isAdmin) {
@@ -604,7 +619,7 @@ private fun SabbaqDrawerSheet(
                 modifier = Modifier.heightIn(min = 52.dp),
             )
             if (isAuthenticated) {
-                Spacer(Modifier.weight(1f))
+                HorizontalDivider(Modifier.padding(vertical = 8.dp))
                 NavigationDrawerItem(
                     label = { Text("تسجيل الخروج") },
                     selected = false,

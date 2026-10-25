@@ -5,9 +5,13 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsNotDisplayed
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -87,6 +91,7 @@ class DriverFlowTest {
             ) {}
         }
 
+        compose.onNodeWithText("طلبات تناسبك").assertIsNotDisplayed()
         compose.onNodeWithContentDescription("فتح القائمة الجانبية").performClick()
         waitForText("طلبات تناسبك")
         compose.onNodeWithText("طلبات تناسبك").performClick()
@@ -238,7 +243,7 @@ class DriverFlowTest {
     }
 
     @Test
-    fun setup_guide_advances_when_conditions_are_saved() {
+    fun setup_guide_starts_with_operational_prerequisites() {
         show {
             SettingsScreen(
                 notificationPermissionGranted = false,
@@ -250,10 +255,10 @@ class DriverFlowTest {
         }
 
         waitForText("لنجهّز سبّاق معًا")
-        compose.onNodeWithText("قريب وسريع").performScrollTo().performClick()
-        // The preset is saved automatically; the guide advances as soon as it is durable.
-        waitForText("تفعيل الإذن")
-        compose.runOnIdle { assertTrue(Settings.filters.anyActive()) }
+        // Operational readiness comes before offer filters in the production setup order.
+        compose.onNodeWithText("تأكد من اشتراكك").assertIsDisplayed()
+        compose.onNodeWithText("فتح حسابي").assertIsDisplayed()
+        compose.onAllNodesWithText("قريب وسريع").assertCountEquals(0)
     }
 
     @Test

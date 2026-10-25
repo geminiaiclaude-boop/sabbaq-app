@@ -1,47 +1,38 @@
 package app.sabbaq.ui
 
 import android.content.Context
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Celebration
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import app.sabbaq.ui.theme.LocalSabbaqBrand
-import app.sabbaq.ui.theme.LocalReducedMotion
-import app.sabbaq.ui.theme.SabbaqMotion
-import app.sabbaq.ui.theme.flipWhenSelected
 import app.sabbaq.ui.theme.sabbaqEntrance
+import kotlinx.coroutines.delay
 
 /** Whether the driver finished or dismissed the setup guide; holds no account data. */
 object SetupGuidePreferences {
@@ -72,10 +63,7 @@ internal data class SetupStep(
     val extra: (@Composable () -> Unit)? = null,
 )
 
-/**
- * Walks the driver through getting Sabbaq ready, one step at a time: what each step is
- * for in plain words, a single action, and a visible tick when it is done.
- */
+/** Walks the driver through setup with one focused, priority-ordered action at a time. */
 @Composable
 internal fun SetupGuidePage(
     steps: List<SetupStep>,
@@ -87,6 +75,17 @@ internal fun SetupGuidePage(
     val doneCount = steps.count { it.done }
     val current = steps.indexOfFirst { !it.done }
     val allDone = current == -1
+    var successMessage by remember { mutableStateOf<String?>(null) }
+    var observedDoneCount by remember { mutableStateOf(doneCount) }
+
+    LaunchedEffect(doneCount) {
+        if (doneCount > observedDoneCount) {
+            successMessage = "تم إكمال الإعداد بنجاح. ننتقل بك إلى الخطوة التالية."
+            delay(2_800)
+            successMessage = null
+        }
+        observedDoneCount = doneCount
+    }
 
     SabbaqHeroSurface(Modifier.sabbaqEntrance(0)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -94,7 +93,7 @@ internal fun SetupGuidePage(
                 Text(if (allDone) "سبّاق جاهز لك" else "لنجهّز سبّاق معًا", style = MaterialTheme.typography.headlineSmall)
                 Text(
                     if (allDone) "أكملت كل الخطوات. ابدأ متابعة الطلبات متى شئت."
-                    else "${ArabicCount.steps(steps.size)} قصيرة، ونرافقك في كل واحدة منها.",
+                    else "نرتب الإعدادات حسب الأهمية ونقودك خطوة واحدة في كل مرة.",
                     style = MaterialTheme.typography.bodyMedium, color = brand.onHeroMuted,
                 )
             }
@@ -103,77 +102,60 @@ internal fun SetupGuidePage(
         }
     }
 
-    steps.forEachIndexed { index, step ->
-        SetupStepRow(
-            number = index + 1,
-            step = step,
-            expanded = index == current,
-            upcoming = current != -1 && index > current,
-            last = index == steps.lastIndex,
-            modifier = Modifier.sabbaqEntrance(index + 1),
-        )
-    }
+    SabbaqAnimatedMessage(successMessage, SabbaqTone.Success, Modifier.sabbaqEntrance(1))
 
     if (allDone) {
         SabbaqCard(title = "كل شيء جاهز", subtitle = "شروطك محفوظة والأذونات مفعّلة واشتراكك صالح.",
-            icon = Icons.Outlined.Celebration, modifier = Modifier.sabbaqEntrance(steps.size + 1)) {
+            icon = Icons.Outlined.Celebration, modifier = Modifier.sabbaqEntrance(1)) {
             SabbaqButton("انتقل إلى حالة العمل", onClick = onFinish)
             SabbaqButton("جرّب طلبًا كمثال أولًا", onClick = onTryExample, style = SabbaqButtonStyle.Secondary, icon = Icons.Outlined.Visibility)
         }
-    } else {
-        TextButton(onClick = onLater, modifier = Modifier.heightIn(min = 48.dp)) { Text("سأكمل لاحقًا من حالة العمل") }
+        return
     }
-}
 
-@Composable
-private fun SetupStepRow(number: Int, step: SetupStep, expanded: Boolean, upcoming: Boolean, last: Boolean, modifier: Modifier) {
+    val step = steps[current]
+    val progress = doneCount.toFloat() / steps.size.toFloat()
     val colors = MaterialTheme.colorScheme
-    val reduced = LocalReducedMotion.current
-    val coinColor by animateColorAsState(
-        when { step.done -> colors.primary; expanded -> colors.secondary; else -> colors.surfaceContainerHigh },
-        tween(SabbaqMotion.MEDIUM), label = "setup-coin",
-    )
-    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-        // Numbered coin on a vertical track; it turns over to a tick when the step completes.
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(
-                Modifier
-                    .size(40.dp)
-                    .flipWhenSelected(step.done)
-                    .shadow(if (upcoming) 0.dp else 8.dp, CircleShape, spotColor = coinColor)
-                    .clip(CircleShape)
-                    .background(Brush.verticalGradient(listOf(coinColor.copy(alpha = 0.75f), coinColor))),
-                contentAlignment = Alignment.Center,
+    Column(
+        Modifier.fillMaxWidth().sabbaqEntrance(1),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("الخطوة ${current + 1} من ${steps.size}", style = MaterialTheme.typography.labelLarge, color = colors.primary)
+            Text("${ArabicCount.steps(steps.size - doneCount)} متبقية", style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+        }
+        LinearProgressIndicator(
+            progress = { progress },
+            modifier = Modifier.fillMaxWidth().heightIn(min = 6.dp),
+            trackColor = colors.surfaceVariant,
+        )
+        if (doneCount > 0) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (step.done) Icon(Icons.Outlined.Check, contentDescription = "مكتملة", tint = colors.onPrimary, modifier = Modifier.size(22.dp))
-                else Text("$number", style = MaterialTheme.typography.titleMedium,
-                    color = if (expanded) colors.onSecondary else colors.onSurfaceVariant)
-            }
-            if (!last) Box(Modifier.width(2.dp).heightIn(min = 28.dp).background(if (step.done) colors.primary else colors.outlineVariant))
-        }
-        Column(Modifier.weight(1f)) {
-            if (expanded) {
-                SabbaqCard(title = step.title, icon = step.icon) {
-                    Text(step.why, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
-                    step.extra?.invoke()
-                    SabbaqButton(step.actionLabel, onClick = step.onAction)
-                }
-            } else {
-                Column(Modifier.heightIn(min = 40.dp).fillMaxWidth(), verticalArrangement = Arrangement.Center) {
-                    Text(step.title, style = MaterialTheme.typography.titleSmall,
-                        color = if (upcoming) colors.onSurfaceVariant else colors.onSurface)
-                    AnimatedVisibility(
-                        visible = step.done,
-                        enter = if (reduced) fadeIn(tween(0)) else expandVertically() + fadeIn(),
-                        exit = if (reduced) fadeOut(tween(0)) else shrinkVertically() + fadeOut(),
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(step.doneText, style = MaterialTheme.typography.bodySmall, color = colors.primary, modifier = Modifier.weight(1f))
-                            TextButton(onClick = step.onAction, modifier = Modifier.heightIn(min = 48.dp)) { Text("مراجعة") }
-                        }
-                    }
-                }
+                Icon(Icons.Outlined.Check, contentDescription = null, tint = colors.primary, modifier = Modifier.size(18.dp))
+                Text("أكملت $doneCount من الإعدادات المطلوبة", style = MaterialTheme.typography.bodySmall, color = colors.primary)
             }
         }
+        SabbaqCard(title = step.title, icon = step.icon) {
+            Text("إعداد ذو أولوية", style = MaterialTheme.typography.labelLarge, color = colors.secondary)
+            Spacer(Modifier.size(4.dp))
+            Text(step.why, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
+            step.extra?.invoke()
+            SabbaqButton(step.actionLabel, onClick = step.onAction)
+        }
+        Text(
+            "بعد إكمال هذه الخطوة والعودة، سيتحقق سبّاق من حالتها وينقلك تلقائيًا إلى الخطوة التالية.",
+            style = MaterialTheme.typography.bodySmall,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 4.dp),
+        )
+        TextButton(onClick = onLater, modifier = Modifier.heightIn(min = 48.dp)) { Text("سأكمل لاحقًا من حالة العمل") }
     }
 }
