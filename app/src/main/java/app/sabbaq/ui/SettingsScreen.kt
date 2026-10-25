@@ -175,6 +175,8 @@ private val driverDestinations = listOf(
     DriverNavItem(DriverDestination.History, "سجل القرارات", Icons.Outlined.Info),
 )
 
+private val bottomDriverDestinations = driverDestinations.filterNot { it.destination == DriverDestination.History }
+
 /**
  * لوحة السائق الإنتاجية. الحواف الآمنة وapp bar والخروج يملكها SabbaqShell في MainActivity؛
  * لذلك لا تضيف هذه الشاشة systemBarsPadding أو أي حالة مصادقة دائمة.
@@ -233,6 +235,7 @@ fun SettingsScreen(
     var showNotificationRequired by remember { mutableStateOf(false) }
     var showMissingPermissions by remember { mutableStateOf(false) }
     var showResetFilters by remember { mutableStateOf(false) }
+    var returnToSetupAfterAction by rememberSaveable { mutableStateOf(false) }
     val filterSaveMutex = remember { Mutex() }
     var filterRevision by remember { mutableStateOf(0L) }
 
@@ -348,6 +351,10 @@ fun SettingsScreen(
                         draft = FilterDraft.from(filters)
                         filtersMessage = DriverStatus("حُفظت التعديلات تلقائيًا.", success = true)
                         haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+                        if (returnToSetupAfterAction && destination == DriverDestination.Filters) {
+                            returnToSetupAfterAction = false
+                            destination = DriverDestination.Setup
+                        }
                     } else {
                         filtersMessage = DriverStatus("تعذر حفظ التعديلات على الجهاز؛ ما زالت الشروط السابقة مستخدمة. أعد المحاولة.", isError = true)
                         haptics.performHapticFeedback(HapticFeedbackType.Reject)
@@ -372,6 +379,11 @@ fun SettingsScreen(
     fun navigateTo(next: DriverDestination) {
         if (next == destination) return
         destination = next
+    }
+
+    fun navigateFromSetup(next: DriverDestination) {
+        returnToSetupAfterAction = true
+        navigateTo(next)
     }
 
     fun requestActivation() {
@@ -449,8 +461,13 @@ fun SettingsScreen(
         }
     }
 
-    BackHandler(enabled = destination == DriverDestination.Filters || destination == DriverDestination.History || destination == DriverDestination.Setup) {
-        navigateTo(DriverDestination.Dashboard)
+    BackHandler(enabled = destination == DriverDestination.Filters || destination == DriverDestination.History || destination == DriverDestination.Setup || destination == DriverDestination.Account) {
+        if (returnToSetupAfterAction) {
+            returnToSetupAfterAction = false
+            navigateTo(DriverDestination.Setup)
+        } else {
+            navigateTo(DriverDestination.Dashboard)
+        }
     }
 
     if (showAccessibilityRequired) {
@@ -602,17 +619,13 @@ fun SettingsScreen(
                 SetupGuidePage(
                     steps = listOf(
                         SetupStep(
-                            icon = Icons.Outlined.FilterAlt,
-                            title = "اختر الطلبات التي تناسبك",
-                            why = "اختر قالبًا أو اضبط الأجرة والمسافة والوقت؛ كل تغيير صالح يُحفظ تلقائيًا فورًا.",
-                            doneText = "محفوظ لديك: ${ArabicCount.conditions(activeFilterCount(savedFilters))}",
-                            actionLabel = "ضبط الشروط",
-                            done = savedFilters.anyActive(),
-                            onAction = { navigateTo(DriverDestination.Filters) },
-                            extra = {
-                                FilterPresetChips(draft = draft, enabled = true, onDraftChange = ::updateDraft)
-                                SabbaqAnimatedMessage(filtersMessage?.message, filtersMessage?.tone ?: SabbaqTone.Info)
-                            },
+                            icon = Icons.Outlined.VerifiedUser,
+                            title = "تأكد من اشتراكك",
+                            why = "ابدأ تجربتك أو فعّل اشتراكك من صفحة حسابي.",
+                            doneText = "اشتراكك جاهز للعمل",
+                            actionLabel = "فتح حسابي",
+                            done = licenseInMemory,
+                            onAction = { navigateFromSetup(DriverDestination.Account) },
                         ),
                         SetupStep(
                             icon = Icons.Outlined.AccessibilityNew,
@@ -648,17 +661,7 @@ fun SettingsScreen(
                                     .recoverCatching { context.startActivity(PowerSetup.appDetailsIntent(context)) }
                             },
                         ),
-                        SetupStep(
-                            icon = Icons.Outlined.VerifiedUser,
-                            title = "تأكد من اشتراكك",
-                            why = "ابدأ تجربتك أو فعّل اشتراكك من صفحة حسابي.",
-                            doneText = "اشتراكك جاهز للعمل",
-                            actionLabel = "فتح حسابي",
-                            done = licenseInMemory,
-                            onAction = { navigateTo(DriverDestination.Account) },
-                        ),
                     ) + listOfNotNull(
-                        // Some phone makers block restarts unless their own auto-start switch is on.
                         if (PowerSetup.needsAutostart()) SetupStep(
                             icon = Icons.Outlined.RestartAlt,
                             title = "فعّل التشغيل التلقائي في جوالك",
@@ -672,6 +675,20 @@ fun SettingsScreen(
                                 autostartDone = true
                             },
                         ) else null
+                    ) + listOf(
+                        SetupStep(
+                            icon = Icons.Outlined.FilterAlt,
+                            title = "اختر الطلبات التي تناسبك",
+                            why = "الآن بعد تجهيز التطبيق، اختر قالبًا أو اضبط الأجرة والمسافة والوقت؛ كل تغيير صالح يُحفظ تلقائيًا فورًا.",
+                            doneText = "محفوظ لديك: ${ArabicCount.conditions(activeFilterCount(savedFilters))}",
+                            actionLabel = "ضبط الشروط",
+                            done = savedFilters.anyActive(),
+                            onAction = { navigateFromSetup(DriverDestination.Filters) },
+                            extra = {
+                                FilterPresetChips(draft = draft, enabled = true, onDraftChange = ::updateDraft)
+                                SabbaqAnimatedMessage(filtersMessage?.message, filtersMessage?.tone ?: SabbaqTone.Info)
+                            },
+                        ),
                     ),
                     onTryExample = { SetupGuidePreferences.markDone(context); navigateTo(DriverDestination.Simulator) },
                     onFinish = leaveGuide,
@@ -700,7 +717,13 @@ fun SettingsScreen(
             DriverDestination.Account -> AccountPage(
                 licenseInMemory = licenseInMemory,
                 message = accountMessage,
-                onLicenseChanged = { licenseInMemory = it },
+                onLicenseChanged = {
+                    licenseInMemory = it
+                    if (returnToSetupAfterAction && it) {
+                        returnToSetupAfterAction = false
+                        navigateTo(DriverDestination.Setup)
+                    }
+                },
                 onMessage = { accountMessage = it },
                 onAccountDeleted = {
                     if (isActive) stopKeeper()
@@ -761,7 +784,7 @@ private fun DriverNavigationShell(
                 contentWindowInsets = WindowInsets(0, 0, 0, 0),
                 bottomBar = {
                     NavigationBar(windowInsets = WindowInsets(0, 0, 0, 0)) {
-                        driverDestinations.forEach { item ->
+                        bottomDriverDestinations.forEach { item ->
                             NavigationBarItem(
                                 selected = destination == item.destination,
                                 onClick = { onDestinationSelected(item.destination) },

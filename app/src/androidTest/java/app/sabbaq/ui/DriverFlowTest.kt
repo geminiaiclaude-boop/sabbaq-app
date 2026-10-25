@@ -5,6 +5,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -87,6 +88,7 @@ class DriverFlowTest {
             ) {}
         }
 
+        compose.onNodeWithText("طلبات تناسبك").assertIsNotDisplayed()
         compose.onNodeWithContentDescription("فتح القائمة الجانبية").performClick()
         waitForText("طلبات تناسبك")
         compose.onNodeWithText("طلبات تناسبك").performClick()
