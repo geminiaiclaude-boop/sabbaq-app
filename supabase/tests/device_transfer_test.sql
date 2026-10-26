@@ -74,3 +74,6 @@ set request.jwt.claim.sub = '40000000-0000-0000-0000-000000000002';
 select pg_temp.expect(public.transfer_device('device-transfer-EEEE-05') ->> 'error' = 'unregistered',
     'unregistered account is told so');
 reset role;
+
+-- Offer telemetry contract (kept here so the existing CI step runs it).
+\ir offer_telemetry_test.sql

@@ -146,11 +146,21 @@ class OfferParserTest {
     @Test
     fun confirmationStateSuppressesAnOtherwiseActionableOffer() {
         val parsed = OfferParser(profiles.getValue("bolt")).parse(
-            screen(node("JD 4"), node("Navigate"), node("Accept", clickable = true)),
+            screen(node("JD 4"), node("End ride"), node("Accept", clickable = true)),
         )
         assertTrue(parsed.confirmed)
         assertNull(parsed.offer)
         assertNotNull(parsed.acceptNode)
+    }
+
+    @Test
+    fun weakCueNextToAnAcceptControlDoesNotSuppressTheOffer() {
+        // "Navigate" also appears on offer cards; it confirms a ride only without an accept control.
+        val parsed = OfferParser(profiles.getValue("bolt")).parse(
+            screen(node("JD 4"), node("Navigate"), node("Accept", clickable = true)),
+        )
+        assertFalse(parsed.confirmed)
+        assertNotNull(parsed.offer)
     }
 
     @Test

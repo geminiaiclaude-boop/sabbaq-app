@@ -149,6 +149,43 @@ test('التحقق من إعداد Supabase وتحييد CSV يعملان بال
     assert.equal(toCsvField('a"b'), '"a""b"');
 });
 
+test('تشخيص الشكوى يحدد السبب والإجراء: توجيه المستخدم أو تحديث التطبيق', () => {
+    const app = read(sourceAdmin, 'app.js');
+    const html = read(sourceAdmin, 'index.html');
+    assert.match(app, /db\.rpc\('admin_offer_telemetry_for_driver', \{ p_driver: driver\.id \}\)/);
+    assert.match(app, /db\.rpc\('admin_offer_telemetry_overview'\)/);
+    assert.match(html, /id="telemetry-overview"/);
+    const diagnose = extractFunction(app, 'diagnoseTelemetry', 'stageLabel');
+    const row = (stage, count, reason_code = null) => ({ stage, count, reason_code });
+    const beat = (reason_code, occurred_at = '2026-10-26T10:00:00Z') => ({ stage: 'HEARTBEAT', reason_code, occurred_at });
+
+    assert.equal(diagnose([], [], false).action, 'user');
+    const disabled = diagnose([row('HEARTBEAT', 3, 'a11y_disabled')], [beat('a11y_disabled')], true);
+    assert.equal(disabled.action, 'user');
+    assert.match(disabled.cause, /إمكانية الوصول/);
+    assert.equal(diagnose([row('HEARTBEAT', 1, 'battery_optimized')], [beat('battery_optimized')], true).action, 'user');
+    const unreadable = diagnose(
+        [row('HEARTBEAT', 1, 'healthy'), row('PACKAGE_SEEN', 50), row('ROOT_UNAVAILABLE', 40, 'active_other')],
+        [beat('healthy')], true);
+    assert.equal(unreadable.action, 'update');
+    assert.match(unreadable.cause, /غير قابلة للقراءة/);
+    const unrecognised = diagnose([row('HEARTBEAT', 1, 'healthy'), row('PACKAGE_SEEN', 50), row('SIGNAL_MISS', 50, 'cls_none')], [beat('healthy')], true);
+    assert.equal(unrecognised.action, 'update');
+    const rules = diagnose([row('HEARTBEAT', 1, 'healthy'), row('PACKAGE_SEEN', 9), row('OFFER_DETECTED', 3), row('REJECTED', 3, 'fare_too_low')], [beat('healthy')], true);
+    assert.equal(rules.action, 'user');
+    assert.match(rules.cause, /الحد الأدنى/);
+    const noDestination = diagnose([row('HEARTBEAT', 1, 'healthy'), row('PACKAGE_SEEN', 9), row('OFFER_DETECTED', 3),
+        row('REJECTED', 1, 'fare_too_low'), row('REJECTED', 5, 'destination_missing')], [beat('healthy')], true);
+    assert.match(noDestination.advice, /بلا وجهة/);
+    const keeper = diagnose([row('HEARTBEAT', 1, 'healthy'), row('PAUSED', 1, 'keeper_restore_timeout')],
+        [{ stage: 'PAUSED', reason_code: 'keeper_restore_timeout', occurred_at: '2026-10-26T11:00:00Z' }, beat('healthy')], true);
+    assert.equal(keeper.action, 'user');
+    assert.match(keeper.cause, /إعادة تشغيل/);
+    const working = diagnose([row('HEARTBEAT', 1, 'healthy'), row('PACKAGE_SEEN', 9), row('OFFER_DETECTED', 3),
+        row('DECISION_ACCEPTED', 2), row('CLICK_RESULT', 2, 'semantic'), row('CONFIRMATION_CONFIRMED', 2)], [beat('healthy')], true);
+    assert.equal(working.action, 'none');
+});
+
 test('على الجوال لا تتحرك اللوحة أفقيًا: صفوف الجداول بطاقات تحمل أسماء أعمدتها', () => {
     const css = read(sourceAdmin, 'styles.css');
     const app = read(sourceAdmin, 'app.js');

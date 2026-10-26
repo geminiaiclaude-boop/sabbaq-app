@@ -41,6 +41,7 @@ class OfferParser(private val profile: RideProfile, private val verifiedViewIdHi
 
     private val acceptLabels = profile.acceptLabels.map(Text::normalize).filter { it.isNotEmpty() }
     private val confirmLabels = profile.confirmLabels.map(Text::normalize).filter { it.isNotEmpty() }
+    private val weakConfirmLabels = profile.weakConfirmLabels.map(Text::normalize).filter { it.isNotEmpty() }
     private val acceptIds = profile.acceptViewIds.toSet()
     private val addressCues = profile.addressCues.map(Text::normalize).filter { it.isNotEmpty() }
 
@@ -67,15 +68,18 @@ class OfferParser(private val profile: RideProfile, private val verifiedViewIdHi
 
     fun parse(root: ScreenNode): ParsedScreen {
         val items = ArrayList<Item>()
-        var confirmed = false
+        var strongCue = false
+        var weakCue = false
         root.walk { node ->
             val label = Text.normalize(node.text).ifEmpty { Text.normalize(node.description) }
             if (label.isNotEmpty()) {
                 items += Item(label, node)
-                if (!confirmed && confirmLabels.any { Text.containsWord(label, it) }) confirmed = true
+                if (!strongCue && confirmLabels.any { Text.containsWord(label, it) }) strongCue = true
+                if (!weakCue && weakConfirmLabels.any { Text.containsWord(label, it) }) weakCue = true
             }
         }
         val accept = findAcceptControl(root)
+        val confirmed = strongCue || (weakCue && accept == null)
         val acceptNode = accept ?: return ParsedScreen(offer = null, acceptNode = null, confirmed = confirmed)
         // A confirmation state can retain an old accept control for a frame. Never
         // expose it as an actionable offer: the caller must not tap it again.
@@ -232,7 +236,7 @@ class OfferParser(private val profile: RideProfile, private val verifiedViewIdHi
     }
 
     private fun isLabel(text: String): Boolean =
-        acceptLabels.any { it == text } || confirmLabels.any { it == text }
+        acceptLabels.any { it == text } || confirmLabels.any { it == text } || weakConfirmLabels.any { it == text }
 
     private fun isAddress(text: String): Boolean {
         if (addressCues.any { Text.containsWord(text, it) }) return true

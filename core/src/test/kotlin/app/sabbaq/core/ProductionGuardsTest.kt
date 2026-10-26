@@ -39,9 +39,22 @@ class ProductionGuardsTest {
 
     @Test fun preflightBudgetIsFixedAndBounded() {
         val adapter = RideAppAdapters.forProfile(profile)
-        assertTrue(adapter.signalConfig.maxNodes <= 128)
-        assertTrue(adapter.signalConfig.maxTextChars <= 4096)
+        // Bounded by the service's 3000-node tree budget, never smaller than it: a smaller
+        // preflight window silently ignored offer cards rendered below a map.
+        assertEquals(3000, adapter.signalConfig.maxNodes)
+        assertTrue(adapter.signalConfig.maxTextChars <= 32768)
         assertTrue(adapter.signalConfig.minimumIndependentFeatures >= 3)
+    }
+
+    @Test fun fingerprintChangesWhenOnlyADeepNodeChanges() {
+        // Regression: only the first 96 nodes were hashed, so a new offer card deeper in the
+        // tree produced the same fingerprint and the frame was dropped as unchanged.
+        fun tree(cardText: String) = ScreenNode(1, children = (0 until 300).map { ScreenNode(10 + it, text = "tile $it") } +
+            ScreenNode(999, text = cardText, clickable = true))
+        assertNotEquals(
+            ScreenChangeFingerprint.compute("me.com.easytaxista", "7", tree("")),
+            ScreenChangeFingerprint.compute("me.com.easytaxista", "7", tree("قبول العرض")),
+        )
     }
 
     @Test fun diagnosticsAreBoundedAndReasonsAreRedacted() {

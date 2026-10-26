@@ -961,6 +961,7 @@ private fun DashboardPage(
     )
     ActiveConditionsCockpit(filters, activeFilterCount, onOpenFilters, Modifier.sabbaqEntrance(2))
     RuntimeStatusCard(runtime, Modifier.sabbaqEntrance(1))
+    TelemetryDiagnosticsCard(Modifier.sabbaqEntrance(1))
     val missing = (readiness + power).filterNot { it.ready }
     if (missing.isNotEmpty()) MissingPermissionsCard(missing, Modifier.sabbaqEntrance(1))
     SabbaqAnimatedMessage(message?.message, message?.tone ?: SabbaqTone.Info)

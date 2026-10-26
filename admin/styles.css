@@ -560,6 +560,8 @@ p { text-wrap: pretty; }
     background: var(--danger-hover);
 }
 
+td button + button { margin-inline-start: 8px; }
+
 .table-hint {
     margin-top: 20px;
     color: var(--muted);

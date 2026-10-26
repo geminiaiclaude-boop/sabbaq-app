@@ -18,6 +18,8 @@ data class JeenyFrameAssessment(
     val featureCount: Int,
     val scannedNodes: Int,
     val acceptNodePath: List<Int>? = null,
+    /** Machine-only feature summary for telemetry, for example `a1,f0,d1,t1,p1,o0,c0,n42,cap0`. */
+    val flags: String = "",
 )
 
 /**
@@ -47,14 +49,16 @@ class JeenyFrameClassifier(
             }
         }
         val all = labels.map { it.second }
-        val confirmed = all.any { label -> profile.confirmLabels.any { Text.containsWord(label, Text.normalize(it)) } } ||
-            all.any { Text.containsWord(it, "active") || Text.containsWord(it, "in progress") ||
-                Text.containsWord(it, "جارٍ التوصيل") || Text.containsWord(it, "في التوصيل") }
         val accept = labels.firstOrNull { (node, label) ->
             node.clickable && isAcceptLabel(label)
         } ?: labels.firstOrNull { (node, _) ->
             node.clickable && containsAcceptLabel(node, labels)
         }
+        val strongCue = all.any { label -> strongConfirmCues.any { Text.containsWord(label, it) } }
+        // Same rule as OfferParser: cues that also appear on offer cards count only once the
+        // accept control is gone, otherwise a real offer is classified as an active ride.
+        val weakCue = all.any { label -> weakConfirmCues.any { Text.containsWord(label, it) } }
+        val confirmed = strongCue || (weakCue && accept == null)
         val hasFare = all.any { hasCurrencyAndNumber(it) }
         val hasDistance = all.any { kmRegex.containsMatchIn(it) || meterRegex.containsMatchIn(it) }
         val hasTime = all.any { minuteRegex.containsMatchIn(it) || hourRegex.containsMatchIn(it) }
@@ -73,7 +77,13 @@ class JeenyFrameClassifier(
             score >= INCOMPLETE_THRESHOLD -> JeenyFrameClass.INCOMPLETE
             else -> JeenyFrameClass.NONE
         }
-        return JeenyFrameAssessment(classification, score.coerceIn(MIN_SCORE, MAX_SCORE), features, scanned, accept?.first?.nodePath)
+        val capped = scanned >= maxNodes || chars >= maxTextChars
+        val flags = listOf(
+            "a" to (accept != null), "f" to hasFare, "d" to hasDistance, "t" to hasTime,
+            "p" to (hasPickup || hasAddress), "o" to hasOfferLabel, "c" to confirmed,
+        ).joinToString(",") { (key, present) -> key + if (present) "1" else "0" } +
+            ",n$scanned,cap${if (capped) 1 else 0}"
+        return JeenyFrameAssessment(classification, score.coerceIn(MIN_SCORE, MAX_SCORE), features, scanned, accept?.first?.nodePath, flags)
     }
 
     private fun hasCurrencyAndNumber(label: String): Boolean =
@@ -87,6 +97,10 @@ class JeenyFrameClassifier(
             node.children.any { child -> containsAcceptLabel(child, labels) }
 
     private val acceptLabels = profile.acceptLabels.map(Text::normalize).filter { it.isNotEmpty() }
+    private val strongConfirmCues = (profile.confirmLabels + listOf("in progress", "جارٍ التوصيل", "في التوصيل"))
+        .map(Text::normalize).filter { it.isNotEmpty() }.distinct()
+    private val weakConfirmCues = (profile.weakConfirmLabels + "active")
+        .map(Text::normalize).filter { it.isNotEmpty() }.distinct()
     private val currencyRegex = profile.currencyTokens.map(Text::normalize).filter { it.isNotEmpty() }
     private val numberRegex = Regex(Text.NUMBER)
     private val kmRegex = Regex("(${Text.NUMBER})\\s*(?:${Text.tokenAlternation(profile.kmUnits)})(?![\\p{L}])")
@@ -97,8 +111,10 @@ class JeenyFrameClassifier(
     private val offerLabels = listOf("offer", "ride request", "request", "طلب", "عرض", "رحلة", "مشوار")
 
     companion object {
-        const val MAX_NODES = 128
-        const val MAX_TEXT_CHARS = 4096
+        // Must cover the whole bounded accessibility tree (3000 nodes): an offer card rendered
+        // below a map or list would otherwise be cut off and silently classified as NONE.
+        const val MAX_NODES = 3000
+        const val MAX_TEXT_CHARS = 32768
         const val OFFER_THRESHOLD = 8
         const val INCOMPLETE_THRESHOLD = 4
         const val MIN_INDEPENDENT_FEATURES = 3
@@ -132,6 +148,13 @@ class JeenyOfferPipeline(private val maxLateCaptures: Int = 2) {
     fun allowLateCapture(): Boolean = lateCaptures < maxLateCaptures && !actionPending
     fun hasActionPending(): Boolean = actionPending
     fun markLateCapture(): Boolean = if (allowLateCapture()) { lateCaptures++; true } else false
+
+    /**
+     * A new accessibility event starts a new render burst with its own late-read budget. The
+     * budget used to last for the whole window, so a long-lived Jeeny window stopped re-reading
+     * progressively rendered offer cards after the first two late reads of the session.
+     */
+    fun beginBurst() { lateCaptures = 0 }
     fun markActionPending() { actionPending = true }
     fun markConfirmationResolved() { actionPending = false }
     fun shouldProcess(fingerprint: String): Boolean = !actionPending && fingerprint != lastFingerprint

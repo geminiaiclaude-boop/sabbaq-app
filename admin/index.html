@@ -150,10 +150,11 @@
                     </section>
 
                     <section id="tab-telemetry" class="tab-content" role="tabpanel" aria-labelledby="telemetry-tab" hidden>
-                        <div class="section-heading"><div><h3>تشخيص الشكاوى</h3><p>ابحث بمعرّف الدعم pseudonymous فقط؛ لا تعرض هذه الصفحة نصوص العروض أو الموقع.</p></div></div>
+                        <div class="section-heading"><div><h3>تشخيص الشكاوى</h3><p>اضغط «تشخيص الشكوى» بجانب السائق في تبويب السائقين، أو ابحث بمعرّف الدعم. لا تعرض هذه الصفحة نصوص العروض أو الموقع.</p></div></div>
                         <form id="telemetry-form" class="toolbar toolbar--form" novalidate>
                             <div class="field batch-field"><label for="telemetry-correlation">معرّف الدعم</label><input id="telemetry-correlation" maxlength="64" dir="ltr" autocomplete="off" required></div>
                             <button id="telemetry-search" type="submit">بحث</button>
+                            <button id="telemetry-overview" class="btn-secondary" type="button">نظرة الأسطول (24 ساعة)</button>
                         </form>
                         <p id="telemetry-feedback" class="policy-feedback" role="status" aria-live="polite" hidden></p>
                         <div id="telemetry-results" class="card" hidden></div>

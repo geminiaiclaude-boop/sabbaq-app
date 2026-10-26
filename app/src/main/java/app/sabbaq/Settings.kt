@@ -55,7 +55,12 @@ object Settings {
     var isActive: Boolean
         get() = prefs().getBoolean(KEY_IS_ACTIVE, false)
         set(value) {
-            prefs().edit().putBoolean(KEY_IS_ACTIVE, value).apply()
+            // The accessibility service re-asserts false on every blocked event; writing only
+            // on change keeps that hot path from queuing a disk write per event.
+            val current = prefs()
+            if (current.getBoolean(KEY_IS_ACTIVE, false) != value || !current.contains(KEY_IS_ACTIVE)) {
+                current.edit().putBoolean(KEY_IS_ACTIVE, value).apply()
+            }
         }
 
     /**
