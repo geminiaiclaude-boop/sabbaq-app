@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
+import androidx.activity.compose.BackHandler
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -21,6 +22,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.FilterAlt
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Info
@@ -34,6 +36,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -370,6 +373,10 @@ internal fun SabbaqShell(
     val requestLogout = { confirmLogout = true }
     val closeDrawer = { scope.launch { drawerState.close() } }
 
+    BackHandler(enabled = drawerState.isOpen) {
+        closeDrawer()
+    }
+
     // The drawer is an explicit navigation surface. Keep it closed whenever the
     // shell enters or leaves a header-bearing screen; it must never appear as a
     // side effect of the first render or another button navigation.
@@ -379,9 +386,9 @@ internal fun SabbaqShell(
 
     ModalNavigationDrawer(
         drawerState = drawerState,
-        // Opening is intentionally limited to the hamburger button. This avoids
-        // accidental edge swipes and makes the first-render state deterministic.
-        gesturesEnabled = false,
+        // Keep the standard swipe-to-close interaction available. Opening is still
+        // controlled by the hamburger button because the drawer starts closed.
+        gesturesEnabled = true,
         drawerContent = {
             if (showHeader) SabbaqDrawerSheet(
                 isAuthenticated = isAuthenticated,
@@ -407,6 +414,7 @@ internal fun SabbaqShell(
                     closeDrawer()
                     requestLogout()
                 },
+                onClose = closeDrawer,
             )
         },
     ) {
@@ -545,6 +553,7 @@ private fun SabbaqDrawerSheet(
     onOpenPrivacy: () -> Unit,
     onOpenDeletion: () -> Unit,
     onRequestLogout: () -> Unit,
+    onClose: () -> Unit,
 ) {
     val brand = LocalSabbaqBrand.current
     ModalDrawerSheet(
@@ -558,7 +567,19 @@ private fun SabbaqDrawerSheet(
             contentColor = brand.onHero,
         ) {
             Column(Modifier.padding(horizontal = 24.dp, vertical = 28.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                SabbaqBrand(onHero = true)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    SabbaqBrand(onHero = true)
+                    IconButton(
+                        onClick = onClose,
+                        modifier = Modifier.size(48.dp),
+                    ) {
+                        Icon(Icons.Outlined.Close, contentDescription = "إغلاق القائمة")
+                    }
+                }
                 Text(
                     if (isAuthenticated) "مسجل الدخول — إدارة عملك بثقة" else "استكشف سبّاق وسجّل الدخول للبدء",
                     style = MaterialTheme.typography.bodySmall,
