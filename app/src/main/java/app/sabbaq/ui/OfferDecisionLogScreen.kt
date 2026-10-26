@@ -22,6 +22,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -35,6 +36,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import app.sabbaq.service.RuntimeStatusRepository
 import app.sabbaq.stats.DecisionLogOutcome
 import app.sabbaq.stats.OfferDecisionLogEntry
 import app.sabbaq.stats.OfferDecisionLogStore
@@ -77,13 +79,16 @@ fun OfferDecisionLogScreen(onBack: () -> Unit) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
-        OfferStatsCard(Modifier.sabbaqEntrance(0))
+        val runtime by RuntimeStatusRepository.snapshot.collectAsState()
+        RuntimeStatusCard(runtime, Modifier.sabbaqEntrance(0))
+
+        OfferStatsCard(Modifier.sabbaqEntrance(1))
 
         SabbaqCard(
             title = "آخر القرارات",
             subtitle = "آخر 7 أيام. لا يتضمن نص الطلب أو العناوين أو الأجرة، ولا يُرفع إلى الخادم.",
             icon = Icons.Outlined.History,
-            modifier = Modifier.sabbaqEntrance(1),
+            modifier = Modifier.sabbaqEntrance(2),
         ) {
             if (rows.isEmpty()) {
                 Text("لا توجد قرارات مسجلة بعد.", style = MaterialTheme.typography.titleSmall)

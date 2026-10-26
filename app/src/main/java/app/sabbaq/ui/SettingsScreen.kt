@@ -110,7 +110,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -145,7 +144,6 @@ import app.sabbaq.network.LicenseState
 import app.sabbaq.network.SubscriptionSnapshot
 import app.sabbaq.network.SupabaseClient
 import app.sabbaq.service.SabbaqA11yService
-import app.sabbaq.service.RuntimeStatusRepository
 import app.sabbaq.core.RuntimeStatusSnapshot
 import java.math.BigDecimal
 import java.util.Calendar
@@ -238,7 +236,6 @@ fun SettingsScreen(
     var accountMessage by remember { mutableStateOf<DriverStatus?>(null) }
     var isSavingFilters by remember { mutableStateOf(false) }
     var isActive by remember { mutableStateOf(Settings.isActive) }
-    val runtimeSnapshot by RuntimeStatusRepository.snapshot.collectAsState()
     var accessibilityEnabled by remember(context) { mutableStateOf(context.isSabbaqAccessibilityEnabled()) }
     var notificationsEnabled by remember(context) { mutableStateOf(context.hasNotificationPermission()) }
     var batteryUnrestricted by remember(context) { mutableStateOf(PowerSetup.isBatteryUnrestricted(context)) }
@@ -607,7 +604,6 @@ fun SettingsScreen(
                 licenseInMemory = licenseInMemory,
                 subscriptionSnapshot = subscriptionSnapshot,
                 filters = savedFilters,
-                runtime = runtimeSnapshot,
                 activeFilterCount = activeFilterCount(savedFilters),
                 message = runtimeMessage,
                 onToggle = { enabled -> if (enabled) requestActivation() else stopKeeper() },
@@ -958,7 +954,6 @@ private fun DashboardPage(
     licenseInMemory: Boolean,
     subscriptionSnapshot: SubscriptionSnapshot?,
     filters: Filters,
-    runtime: RuntimeStatusSnapshot,
     activeFilterCount: Int,
     message: DriverStatus?,
     onToggle: (Boolean) -> Unit,
@@ -1012,7 +1007,7 @@ private fun DashboardPage(
         modifier = Modifier.sabbaqEntrance(1),
     )
     ActiveConditionsCockpit(filters, activeFilterCount, onOpenFilters, Modifier.sabbaqEntrance(2))
-    RuntimeStatusCard(runtime, Modifier.sabbaqEntrance(1))
+    // «حالة التشغيل الفعلية» lives in «سجل القرارات» next to the statistics.
     TelemetryDiagnosticsCard(Modifier.sabbaqEntrance(1))
     val missing = (readiness + power).filterNot { it.ready }
     if (missing.isNotEmpty()) MissingPermissionsCard(missing, Modifier.sabbaqEntrance(1))
@@ -1077,7 +1072,7 @@ private fun DashboardPage(
 }
 
 @Composable
-private fun RuntimeStatusCard(status: RuntimeStatusSnapshot, modifier: Modifier = Modifier) {
+internal fun RuntimeStatusCard(status: RuntimeStatusSnapshot, modifier: Modifier = Modifier) {
     // Relative times ("قبل 12 ثانية") must keep moving even when no event updates the snapshot.
     var now by remember { mutableStateOf(android.os.SystemClock.elapsedRealtime()) }
     LaunchedEffect(Unit) {
