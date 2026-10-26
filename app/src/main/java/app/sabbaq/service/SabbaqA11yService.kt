@@ -43,6 +43,8 @@ class SabbaqA11yService : AccessibilityService() {
     private var lastJeenyEventMs = 0L
     private var lastJeenyWindowId: Int? = null
     private var profileRevision = -1
+    private var firstSeenFingerprint: String? = null
+    private var firstSeenAtMs = 0L
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -285,6 +287,10 @@ class SabbaqA11yService : AccessibilityService() {
                 } ?: continue
                 liveness.offerDetected(nowMs)
                 runtimeStatus.offer(nowMs)
+                if (offer.fingerprint != firstSeenFingerprint) {
+                    firstSeenFingerprint = offer.fingerprint
+                    firstSeenAtMs = parseTimeMs
+                }
                 recordDiagnostic(
                     if (offer.fare == null) DiagnosticStage.FARE_MISSING else DiagnosticStage.OFFER_DETECTED, nowMs,
                     if (offer.fare == null) "fare_missing" else "complete", assessment?.flags, provider,
@@ -325,7 +331,10 @@ class SabbaqA11yService : AccessibilityService() {
                 }
                 if (verdict.accept && safeBounds && acquired) {
                     val clickResult = dispatchAcceptClick(rootNode, packageName, acceptNode)
-                    recordDiagnostic(DiagnosticStage.CLICK_PATH, nowMs, clickResult.name.lowercase(), provider = provider)
+                    // Offer first seen -> tap dispatched: the number that decides whether another
+                    // driver's app wins the same request.
+                    val responseMs = (SystemClock.elapsedRealtime() - firstSeenAtMs).takeIf { firstSeenFingerprint == offer.fingerprint && it >= 0 }
+                    recordDiagnostic(DiagnosticStage.CLICK_PATH, nowMs, clickResult.name.lowercase(), provider = provider, latencyMs = responseMs)
                     if (clickResult == ClickResult.NOT_DISPATCHED) {
                         clickGate.release(offer.fingerprint, nowMs)
                         dispatchRetry.onDispatchResult(DispatchFailure.NOT_DISPATCHED, nowMs)
@@ -531,6 +540,7 @@ class SabbaqA11yService : AccessibilityService() {
         reason: String? = null,
         detail: String? = null,
         provider: String = SERVICE_PROVIDER,
+        latencyMs: Long? = null,
     ) {
         // Every event is counted by telemetry; keeping them out of the 12-slot local ring
         // stops "last stages" on the dashboard from showing nothing but EVENT_RECEIVED.
@@ -557,7 +567,7 @@ class SabbaqA11yService : AccessibilityService() {
             DiagnosticStage.ROOT_UNAVAILABLE -> TelemetryStage.ROOT_UNAVAILABLE
             DiagnosticStage.TREE_REJECTED -> TelemetryStage.TREE_REJECTED
         }
-        TelemetryRepository.trace(telemetryStage, reasonCode = reason, detail = detail, provider = provider)
+        TelemetryRepository.trace(telemetryStage, reasonCode = reason, detail = detail, provider = provider, latencyMs = latencyMs)
     }
 
     override fun onDestroy() {

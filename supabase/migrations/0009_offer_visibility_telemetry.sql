@@ -110,6 +110,12 @@ begin
     perform public.require_admin();
     return jsonb_build_object(
         'since', p_since,
+        'response_ms', (select jsonb_build_object(
+                'p50', percentile_cont(0.5) within group (order by latency_ms),
+                'p90', percentile_cont(0.9) within group (order by latency_ms),
+                'samples', count(*))
+            from public.offer_telemetry_events
+            where occurred_at >= p_since and stage = 'CLICK_RESULT' and latency_ms is not null),
         'funnel', coalesce((select jsonb_agg(jsonb_build_object('stage', stage, 'reason_code', reason_code, 'count', total, 'devices', devices) order by total desc)
             from (select stage, reason_code, sum(event_count) total, count(distinct correlation_id) devices
                   from public.offer_telemetry_events where occurred_at >= p_since

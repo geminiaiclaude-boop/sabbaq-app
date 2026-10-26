@@ -92,6 +92,8 @@ select pg_temp.expect(
 select pg_temp.expect(
     jsonb_array_length(public.admin_offer_telemetry_overview() -> 'devices') = 1, 'overview lists the reporting device');
 select pg_temp.expect(
+    (public.admin_offer_telemetry_overview() -> 'response_ms' ->> 'samples')::int = 0, 'response time has no samples without clicks');
+select pg_temp.expect(
     (public.admin_offer_telemetry_for_driver('40000000-0000-0000-0000-000000000002') ->> 'correlation_id') = '5eef581d3799dfc07675dedb7025613c',
     'complaint lookup by driver account finds the device');
 select pg_temp.expect(

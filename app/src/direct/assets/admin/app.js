@@ -761,7 +761,8 @@
         events.slice(0, 100).forEach((item) => {
             const row = document.createElement('li');
             row.textContent = `${formatDateTime(item.occurred_at)} · ${stageLabel(item.stage)} · ${displayValue(item.reason_code, 'بدون سبب')}` +
-                ` ×${Number(item.event_count) || 1} · سبّاق ${displayValue(item.app_version)} · جيني ${displayValue(item.target_app_version, 'غير معروف')}`;
+                ` ×${Number(item.event_count) || 1} · سبّاق ${displayValue(item.app_version)} · جيني ${displayValue(item.target_app_version, 'غير معروف')}` +
+                (Number.isFinite(Number(item.latency_ms)) && item.latency_ms !== null ? ` · زمن الاستجابة ${Number(item.latency_ms)} ملّي ثانية` : '');
             list.append(row);
         });
         el.telemetryResults.append(funnelHeading, funnelList, timelineHeading, list);
@@ -774,6 +775,12 @@
         el.telemetryResults.replaceChildren();
         const heading = document.createElement('h4');
         heading.textContent = `الأسطول خلال 24 ساعة: ${devices.length} جهاز`;
+        const response = data?.response_ms;
+        const responseLine = document.createElement('p');
+        responseLine.textContent = Number(response?.samples) > 0
+            ? `زمن الاستجابة من ظهور الطلب إلى الضغط: الوسيط ${Math.round(Number(response.p50))} ملّي ثانية · 90% أسرع من ${Math.round(Number(response.p90))} ملّي ثانية (${Number(response.samples)} عينة)`
+            : 'لا توجد عينات زمن استجابة بعد.';
+        el.telemetryResults.append(responseLine);
         const funnelList = document.createElement('ul');
         funnel.slice(0, 30).forEach((item) => {
             const row = document.createElement('li');

@@ -181,6 +181,35 @@ class OfferParserTest {
     }
 
     @Test
+    fun loneLabelledPickupDistanceIsNotReadAsTheTrip() {
+        // Regression: a single distance always took singleDistanceRole (TRIP), so "يبعد 2 كم"
+        // failed a max-pickup rule as "missing" and passed a trip rule it never described.
+        val offer = OfferParser(profiles.getValue("jeeny")).parse(
+            screen(node("SAR 9"), node("يبعد 2 كم"), node("قبول", clickable = true)),
+        ).offer!!
+        assertEquals(BigDecimal("2"), offer.pickupKm)
+        assertNull(offer.tripKm)
+    }
+
+    @Test
+    fun tripLineShownBeforeThePickupLineKeepsBothRoles() {
+        val offer = OfferParser(profiles.getValue("jeeny")).parse(
+            screen(node("SAR 30"), node("مسافة الرحلة 14 كم"), node("3 كم"), node("قبول", clickable = true)),
+        ).offer!!
+        assertEquals(BigDecimal("14"), offer.tripKm)
+        assertEquals(BigDecimal("3"), offer.pickupKm)
+    }
+
+    @Test
+    fun offerAndPaymentLabelsAreNotAddresses() {
+        val offer = OfferParser(profiles.getValue("jeeny")).parse(
+            screen(node("طلب رحلة جديد"), node("SAR 12"), node("الدفع نقدي"), node("شارع الجامعة"), node("قبول", clickable = true)),
+        ).offer!!
+        assertEquals(listOf("شارع الجامعة"), offer.addresses)
+        assertFalse(offer.destinationAvailable)
+    }
+
+    @Test
     fun unrepresentableDurationIsLeftUnreadableInsteadOfOverflowing() {
         val offer = OfferParser(profiles.getValue("bolt")).parse(
             screen(node("JD 60"), node("2147483648 min"), node("Accept", clickable = true)),
