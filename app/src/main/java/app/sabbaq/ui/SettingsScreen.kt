@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -1290,44 +1291,119 @@ private fun OperationHero(
     modifier: Modifier = Modifier,
 ) {
     val brand = LocalSabbaqBrand.current
-    SabbaqHeroSurface(modifier, sceneActive = isActive) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            if (isActive) LiveStatusMark(isActive = true)
-            else SabbaqProgressCoin(done = readyCount, total = totalCount,
-                modifier = Modifier.semantics { stateDescription = "جاهزية $readyCount من $totalCount" })
-            Column(modifier = Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite }) {
+    val reduced = LocalReducedMotion.current
+    val readiness = if (totalCount > 0) readyCount.toFloat() / totalCount else 0f
+    val ring by animateFloatAsState(
+        targetValue = if (isActive) 1f else readiness,
+        animationSpec = tween(SabbaqMotion.LONG, easing = SabbaqMotion.Emphasized),
+        label = "dial-ring",
+    )
+    // The sweeping «second hand» only runs while monitoring runs, so motion is the state signal.
+    val sweep = if (isActive && !reduced) {
+        rememberInfiniteTransition(label = "dial-sweep").animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec = infiniteRepeatable(tween(6_000, easing = LinearEasing)),
+            label = "dial-sweep-angle",
+        ).value
+    } else null
+
+    BoxWithConstraints(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        val dial = minOf(maxWidth, 340.dp)
+        Box(
+            modifier = Modifier
+                .size(dial)
+                .shadow(14.dp, CircleShape, spotColor = brand.heroStart)
+                .clip(CircleShape)
+                .background(Brush.radialGradient(listOf(brand.heroEnd, brand.heroStart))),
+            contentAlignment = Alignment.Center,
+        ) {
+            Canvas(Modifier.matchParentSize()) {
+                val radius = size.minDimension / 2f
+                val bezel = 10.dp.toPx()
+                // Minute ticks: 60 marks, longer every five like a watch bezel.
+                for (i in 0 until 60) {
+                    val major = i % 5 == 0
+                    val angle = Math.toRadians(i * 6.0 - 90.0)
+                    val outer = radius - bezel
+                    val inner = outer - if (major) 9.dp.toPx() else 4.dp.toPx()
+                    drawLine(
+                        color = brand.onHero.copy(alpha = if (major) 0.55f else 0.22f),
+                        start = center + androidx.compose.ui.geometry.Offset((kotlin.math.cos(angle) * inner).toFloat(), (kotlin.math.sin(angle) * inner).toFloat()),
+                        end = center + androidx.compose.ui.geometry.Offset((kotlin.math.cos(angle) * outer).toFloat(), (kotlin.math.sin(angle) * outer).toFloat()),
+                        strokeWidth = if (major) 2.dp.toPx() else 1.dp.toPx(),
+                    )
+                }
+                // Readiness ring (stopped) / full live ring (running).
+                val ringWidth = 6.dp.toPx()
+                val inset = bezel / 2f + ringWidth / 2f - 2.dp.toPx()
+                val arcSize = androidx.compose.ui.geometry.Size(size.width - inset * 2, size.height - inset * 2)
+                val topLeft = androidx.compose.ui.geometry.Offset(inset, inset)
+                drawArc(brand.onHero.copy(alpha = 0.14f), -90f, 360f, false, topLeft, arcSize, style = Stroke(ringWidth))
+                drawArc(brand.heroAccent, -90f, 360f * ring, false, topLeft, arcSize,
+                    style = Stroke(ringWidth, cap = androidx.compose.ui.graphics.StrokeCap.Round))
+                sweep?.let { angle ->
+                    drawArc(
+                        brush = Brush.sweepGradient(listOf(Color.Transparent, brand.onHero.copy(alpha = 0.85f)), center),
+                        startAngle = angle - 90f - 40f, sweepAngle = 40f, useCenter = false,
+                        topLeft = topLeft, size = arcSize,
+                        style = Stroke(ringWidth, cap = androidx.compose.ui.graphics.StrokeCap.Round),
+                    )
+                }
+            }
+            Column(
+                modifier = Modifier
+                    .widthIn(max = dial * 0.72f)
+                    .semantics(mergeDescendants = false) { liveRegion = LiveRegionMode.Polite },
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                if (isActive) LiveStatusMark(isActive = true)
+                else SabbaqProgressCoin(done = readyCount, total = totalCount,
+                    modifier = Modifier.semantics { stateDescription = "جاهزية $readyCount من $totalCount" })
                 AnimatedContent(
                     targetState = isActive,
                     transitionSpec = { (fadeIn(tween(SabbaqMotion.MEDIUM)) togetherWith fadeOut(tween(SabbaqMotion.SHORT))) },
                     label = "hero-status",
                 ) { active ->
-                    Column {
-                        Text(if (active) "متابعة الطلبات تعمل" else "متابعة الطلبات متوقفة", style = MaterialTheme.typography.titleLarge)
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            if (active) "متابعة الطلبات تعمل" else "متابعة الطلبات متوقفة",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = brand.onHero,
+                            textAlign = TextAlign.Center,
+                        )
                         Text(
                             if (active) "تُطبّق شروطك المحفوظة وأوقات عملك."
-                            else if (readyCount < totalCount) "جاهزية $readyCount من $totalCount. أكمل البقية أدناه ليعمل بكامل طاقته."
-                            else "كل شيء جاهز ليعمل بكامل طاقته. ابدأ عندما تكون مستعدًا.",
-                            style = MaterialTheme.typography.bodyMedium,
+                            else if (readyCount < totalCount) "جاهزية $readyCount من $totalCount؛ أكمل البقية أدناه."
+                            else "كل شيء جاهز. ابدأ عندما تكون مستعدًا.",
+                            style = MaterialTheme.typography.bodySmall,
                             color = brand.onHeroMuted,
+                            textAlign = TextAlign.Center,
+                            maxLines = 2,
                         )
                     }
                 }
+                SabbaqButton(
+                    text = if (isActive) "إيقاف" else "ابدأ",
+                    onClick = { onToggle(!isActive) },
+                    enabled = isActive || canStart,
+                    busy = isChecking,
+                    busyText = busyText,
+                    icon = if (isActive) Icons.Outlined.Stop else Icons.Outlined.PlayArrow,
+                    fillWidth = false,
+                    modifier = Modifier.semantics {
+                        contentDescription = if (isActive) "إيقاف متابعة الطلبات" else "ابدأ متابعة الطلبات"
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isActive) brand.onHero.copy(alpha = 0.14f) else brand.onHero,
+                        contentColor = if (isActive) brand.onHero else brand.heroStart,
+                        disabledContainerColor = brand.onHero.copy(alpha = 0.24f),
+                        disabledContentColor = brand.onHero,
+                    ),
+                )
             }
         }
-        SabbaqButton(
-            text = if (isActive) "إيقاف متابعة الطلبات" else "ابدأ متابعة الطلبات",
-            onClick = { onToggle(!isActive) },
-            enabled = isActive || canStart,
-            busy = isChecking,
-            busyText = busyText,
-            icon = if (isActive) Icons.Outlined.Stop else Icons.Outlined.PlayArrow,
-            colors = ButtonDefaults.buttonColors(
-                containerColor = if (isActive) brand.onHero.copy(alpha = 0.14f) else brand.onHero,
-                contentColor = if (isActive) brand.onHero else brand.heroStart,
-                disabledContainerColor = brand.onHero.copy(alpha = 0.24f),
-                disabledContentColor = brand.onHero,
-            ),
-        )
     }
 }
 
