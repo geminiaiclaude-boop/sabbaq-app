@@ -198,7 +198,7 @@ internal fun SettingsHubPage(
             SabbaqCard(modifier = Modifier.sabbaqEntrance(0)) {
                 SettingsCategoryRow(Icons.Outlined.Visibility, "تجربة الطلب", "جرّب شروطك على طلب افتراضي قبل العمل", false, onOpenSimulator)
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                SettingsCategoryRow(Icons.Outlined.History, "سجل القرارات", "ما الذي قبله سبّاق ورفضه ولماذا", false, onOpenHistory)
+                SettingsCategoryRow(Icons.Outlined.History, "سجل القرارات والإحصاءات", "ما قبله سبّاق ورفضه ولماذا، وإحصاءات اليوم والأسبوع والشهر", false, onOpenHistory)
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 SettingsCategoryRow(Icons.Outlined.Tune, "دليل الإعداد", "تجهيز سبّاق خطوة بخطوة", false, onOpenSetupGuide)
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)

@@ -50,7 +50,7 @@ internal fun OfferStatsCard(modifier: Modifier = Modifier) {
 
     SabbaqCard(
         title = "إحصاءات سبّاق",
-        subtitle = "ملخص نشاط المتابعة على هذا الجهاز فقط؛ قد يُحتسب العرض مرة أخرى بعد إعادة تشغيل التطبيق لأن معرّفات العروض لا تُحفظ.",
+        subtitle = "ملخص نشاط المتابعة على هذا الجهاز: اليوم والأسبوع والشهر.",
         icon = Icons.Outlined.BarChart,
         modifier = modifier,
     ) {
@@ -77,7 +77,7 @@ internal fun OfferStatsCard(modifier: Modifier = Modifier) {
             }
         }
         Text(
-            "تُحفظ التواريخ والأعداد وأكواد أسباب الرفض محليًا فقط. لا تُحفظ عناوين أو نصوص الطلبات، ولا تُرسل هذه الإحصاءات إلى خادم.",
+            "تُحفظ الأعداد وأسباب الرفض على هذا الجهاز فقط، دون عناوين أو نصوص الطلبات. قد يُحتسب الطلب نفسه مرة أخرى بعد إعادة تشغيل التطبيق.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 2.dp),

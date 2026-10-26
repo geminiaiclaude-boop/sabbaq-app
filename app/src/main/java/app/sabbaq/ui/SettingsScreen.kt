@@ -1063,9 +1063,7 @@ private fun DashboardPage(
             "تلقائي إذا تركت المتابعة تعمل", "", "", {}))
     }
 
-    // Voice alerts moved to «الإعدادات ← الصوت والتنبيهات»; the rest of the work state stays here.
-    OfferStatsCard(Modifier.sabbaqEntrance(4))
-
+    // Voice alerts live in «الإعدادات ← الصوت والتنبيهات»; statistics live in «سجل القرارات».
     SupportedPlatformsCard(Modifier.sabbaqEntrance(5))
 
     SabbaqCard(title = "أثناء وقت العمل", icon = Icons.Outlined.Info, modifier = Modifier.sabbaqEntrance(6)) {
