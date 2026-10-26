@@ -20,7 +20,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.CircleShape
@@ -339,9 +338,14 @@ fun SettingsScreen(
         refreshRuntimePrerequisites()
     }
 
-    fun updateDraft(next: FilterDraft) {
+    /**
+     * [stopIfActive] is false for the quick controls on «حالة العمل»: they are bounded steppers
+     * and switches whose value is validated before the debounced save, and the service reads
+     * the saved filters on the next offer, so a mid-shift adjustment applies without a restart.
+     */
+    fun updateDraft(next: FilterDraft, stopIfActive: Boolean = true) {
         if (next === draft) return
-        if (isActive) {
+        if (isActive && stopIfActive) {
             stopKeeper("أوقفنا متابعة الطلبات قبل تعديل شروطك؛ سيُحفظ التغيير تلقائيًا.")
         }
         draft = next
@@ -611,7 +615,10 @@ fun SettingsScreen(
                 notificationsEnabled = notificationsEnabled,
                 licenseInMemory = licenseInMemory,
                 subscriptionSnapshot = subscriptionSnapshot,
-                filters = savedFilters,
+                draft = draft,
+                draftErrors = draftValidation.errors,
+                filtersMessage = filtersMessage,
+                onQuickDraftChange = { updateDraft(it, stopIfActive = false) },
                 activeFilterCount = activeFilterCount(savedFilters),
                 message = runtimeMessage,
                 onToggle = { enabled -> if (enabled) requestActivation() else stopKeeper() },
@@ -1015,8 +1022,11 @@ private fun DashboardPage(
     notificationsEnabled: Boolean,
     licenseInMemory: Boolean,
     subscriptionSnapshot: SubscriptionSnapshot?,
-    filters: Filters,
     activeFilterCount: Int,
+    draft: FilterDraft,
+    draftErrors: Map<String, String>,
+    filtersMessage: DriverStatus?,
+    onQuickDraftChange: (FilterDraft) -> Unit,
     message: DriverStatus?,
     onToggle: (Boolean) -> Unit,
     onOpenA11y: () -> Unit,
@@ -1068,7 +1078,16 @@ private fun DashboardPage(
         busyText = if (isRestoringSession) "جارٍ استعادة الجلسة" else "جارٍ التحقق من الاشتراك",
         modifier = Modifier.sabbaqEntrance(1),
     )
-    ActiveConditionsCockpit(filters, activeFilterCount, onOpenFilters, Modifier.sabbaqEntrance(2))
+    ActiveConditionsCockpit(
+        draft = draft,
+        errors = draftErrors,
+        activeCount = activeFilterCount,
+        isActive = isActive,
+        saveMessage = filtersMessage,
+        onDraftChange = onQuickDraftChange,
+        onOpenFilters = onOpenFilters,
+        modifier = Modifier.sabbaqEntrance(2),
+    )
     // «حالة التشغيل الفعلية» lives in «سجل القرارات» next to the statistics.
     TelemetryDiagnosticsCard(Modifier.sabbaqEntrance(1))
     val missing = (readiness + power).filterNot { it.ready }
@@ -1198,72 +1217,47 @@ private fun SessionRestoreNotice(isRestoring: Boolean, onRetry: () -> Unit) {
     }
 }
 
+/**
+ * «شروط القيادة»: the four conditions drivers change most, editable in place with their own
+ * switches (the same components as «طلبات تناسبك», so both edit one draft). Everything else
+ * stays on the full page behind the button.
+ */
 @Composable
 private fun ActiveConditionsCockpit(
-    filters: Filters,
+    draft: FilterDraft,
+    errors: Map<String, String>,
     activeCount: Int,
+    isActive: Boolean,
+    saveMessage: DriverStatus?,
+    onDraftChange: (FilterDraft) -> Unit,
     onOpenFilters: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val fareRange = if (filters.isFareRangeEnabled && (!filters.minFare.isNullOrBlank() || !filters.maxFare.isNullOrBlank())) {
-        "${filters.minFare?.takeIf { it.isNotBlank() } ?: "بلا حد أدنى"} – ${filters.maxFare?.takeIf { it.isNotBlank() } ?: "بلا حد أعلى"}"
-    } else null
-    val pickupDistance = filters.maxPickupKm?.takeIf { filters.isPickupDistanceEnabled && it.isNotBlank() }
-    val pickupTimeActive = filters.isPickupTimeEnabled &&
-        ((filters.minPickupMinutes?.let { it > 0 } == true) || filters.maxPickupMinutes != null)
-    val pickupTime = if (pickupTimeActive) {
-        "${filters.minPickupMinutes?.toString() ?: "—"}–${filters.maxPickupMinutes?.toString() ?: "—"} دقيقة"
-    } else null
-    val override = filters.highFareOverrideAmount.takeIf { filters.highFareOverrideEnabled }
-
     SabbaqCard(
         title = "شروط القيادة",
-        subtitle = if (activeCount == 0) "لا توجد شروط اختيار فعالة بعد." else "${ArabicCount.conditions(activeCount)} فعالة؛ محفوظة على هذا الجهاز.",
+        subtitle = when {
+            activeCount == 0 -> "فعّل شرطًا واحدًا على الأقل لاختيار الطلبات."
+            isActive -> "${ArabicCount.conditions(activeCount)} فعّالة · أي تعديل هنا يُطبَّق فورًا دون إيقاف المتابعة."
+            else -> "${ArabicCount.conditions(activeCount)} فعّالة · تُحفظ التعديلات تلقائيًا."
+        },
         icon = Icons.Outlined.Tune,
         modifier = modifier,
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            CockpitMetric("نطاق السعر", fareRange ?: "غير مفعّل", fareRange != null, Modifier.weight(1f))
-            CockpitMetric("وقت الوصول", pickupTime ?: "غير مفعّل", pickupTimeActive, Modifier.weight(1f))
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            CockpitMetric("مسافة الوصول", pickupDistance?.let { "≤ $it كم" } ?: "غير مفعّل", pickupDistance != null, Modifier.weight(1f))
-            CockpitMetric("تجاوز عند السعر", override?.let { "من $it" } ?: "غير مفعّل", override != null, Modifier.weight(1f))
-        }
-        if (filters.acceptNoDestination) {
-            Text(
-                if (filters.isAcceptNoDestinationEffective) "الطلبات بلا وجهة: مفعّلة" else "الطلبات بلا وجهة: موقوفة مؤقتًا بسبب كلمات الاستثناء",
-                style = MaterialTheme.typography.bodySmall,
-                color = if (filters.isAcceptNoDestinationEffective) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
-            )
-        }
-        SabbaqButton("تعديل شروط القيادة", onClick = onOpenFilters, style = SabbaqButtonStyle.Secondary, icon = Icons.Outlined.FilterAlt)
+        FareRangeCondition(draft, errors, onDraftChange, keyPrefix = QUICK_PREFIX)
+        PickupTimeCondition(draft, errors, onDraftChange, keyPrefix = QUICK_PREFIX)
+        HighFareOverrideCondition(draft, errors, onDraftChange, keyPrefix = QUICK_PREFIX)
+        NoDestinationCondition(draft, onDraftChange, keyPrefix = QUICK_PREFIX)
+        SabbaqAnimatedMessage(saveMessage?.message, saveMessage?.tone ?: SabbaqTone.Info)
+        SabbaqButton(
+            "باقي الشروط في «طلبات تناسبك»",
+            onClick = onOpenFilters,
+            style = SabbaqButtonStyle.Secondary,
+            icon = Icons.Outlined.FilterAlt,
+        )
     }
 }
 
-@Composable
-private fun CockpitMetric(label: String, value: String, active: Boolean, modifier: Modifier = Modifier) {
-    val colors = MaterialTheme.colorScheme
-    Surface(
-        modifier = modifier,
-        shape = MaterialTheme.shapes.medium,
-        color = if (active) colors.primaryContainer.copy(alpha = 0.62f) else colors.surfaceVariant.copy(alpha = 0.5f),
-        border = BorderStroke(1.dp, if (active) colors.primary.copy(alpha = 0.18f) else colors.outlineVariant),
-    ) {
-        Column(
-            Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 9.dp),
-            verticalArrangement = Arrangement.spacedBy(3.dp),
-        ) {
-            Text(label, style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant, maxLines = 1)
-            Text(
-                value,
-                style = MaterialTheme.typography.titleSmall,
-                color = if (active) colors.onPrimaryContainer else colors.onSurfaceVariant,
-                maxLines = 1,
-            )
-        }
-    }
-}
+private const val QUICK_PREFIX = "quick-"
 
 internal data class ReadinessItem(
     val icon: ImageVector,

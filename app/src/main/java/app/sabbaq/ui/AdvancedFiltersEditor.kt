@@ -56,8 +56,6 @@ internal fun AdvancedFiltersEditor(
     onDraftChange: (FilterDraft) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var showOverrideHelp by rememberSaveable { mutableStateOf(false) }
-    val hasExcludedWords = draft.excludeKeywords.split(',', '،', '\n', '\r').any { it.isNotBlank() }
 
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(9.dp)) {
         SabbaqSectionTitle(
@@ -86,34 +84,7 @@ internal fun AdvancedFiltersEditor(
             }
         }
 
-        ProConditionCard(
-            title = "نطاق السعر",
-            subtitle = "أدنى وأعلى أجرة للطلب",
-            enabled = draft.fareRangeEnabled,
-            testKey = "fare-range",
-            onEnabledChange = { enabled ->
-                onDraftChange(draft.copy(
-                    fareRangeEnabled = enabled,
-                    minFare = if (enabled) draft.minFare.ifBlank { "0" } else draft.minFare,
-                    maxFare = if (enabled) upperDefault(draft.minFare, draft.maxFare, "100") else draft.maxFare,
-                ))
-            },
-        ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ProStepperValue(
-                    label = "أدنى سعر", value = draft.minFare, unit = "",
-                    step = "1", keyboardType = KeyboardType.Decimal, error = errors["minFare"],
-                    testKey = "min-fare", modifier = Modifier.weight(1f),
-                    onValueChange = { onDraftChange(draft.copy(minFare = it)) },
-                )
-                ProStepperValue(
-                    label = "أعلى سعر", value = draft.maxFare, unit = "",
-                    step = "1", keyboardType = KeyboardType.Decimal, error = errors["maxFare"],
-                    testKey = "max-fare", modifier = Modifier.weight(1f),
-                    onValueChange = { onDraftChange(draft.copy(maxFare = it)) },
-                )
-            }
-        }
+        FareRangeCondition(draft, errors, onDraftChange)
 
         ProConditionCard(
             title = "الحد الأدنى للعائد لكل كم",
@@ -170,35 +141,7 @@ internal fun AdvancedFiltersEditor(
             )
         }
 
-        ProConditionCard(
-            title = "وقت الوصول",
-            subtitle = "أقل وأقصى وقت للوصول إلى الراكب",
-            enabled = draft.pickupTimeEnabled,
-            testKey = "pickup-time",
-            onEnabledChange = { enabled ->
-                val lower = if (enabled) draft.minPickupMinutes.ifBlank { "0" } else draft.minPickupMinutes
-                onDraftChange(draft.copy(
-                    pickupTimeEnabled = enabled,
-                    minPickupMinutes = lower,
-                    maxPickupMinutes = if (enabled) upperDefault(lower, draft.maxPickupMinutes, "30") else draft.maxPickupMinutes,
-                ))
-            },
-        ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ProStepperValue(
-                    label = "أقل وقت", value = draft.minPickupMinutes, unit = "دقيقة",
-                    step = "5", keyboardType = KeyboardType.Number, error = errors["minPickupMinutes"],
-                    testKey = "min-pickup-minutes", modifier = Modifier.weight(1f),
-                    onValueChange = { onDraftChange(draft.copy(minPickupMinutes = it)) },
-                )
-                ProStepperValue(
-                    label = "أقصى وقت", value = draft.maxPickupMinutes, unit = "دقيقة",
-                    step = "5", keyboardType = KeyboardType.Number, error = errors["maxPickupMinutes"],
-                    testKey = "max-pickup-minutes", modifier = Modifier.weight(1f),
-                    onValueChange = { onDraftChange(draft.copy(maxPickupMinutes = it)) },
-                )
-            }
-        }
+        PickupTimeCondition(draft, errors, onDraftChange)
 
         ProConditionCard(
             title = "مسافة الرحلة",
@@ -260,30 +203,7 @@ internal fun AdvancedFiltersEditor(
             }
         }
 
-        ProConditionCard(
-            title = "تجاوز الوقت عند سعر",
-            subtitle = "يسمح بوقت/مسافة وصول أطول عند الأجرة المجزية",
-            enabled = draft.highFareOverrideEnabled,
-            testKey = "high-fare-override",
-            headerAction = {
-                IconButton(onClick = { showOverrideHelp = true }, modifier = Modifier.size(40.dp)) {
-                    Icon(Icons.Outlined.Info, contentDescription = "شرح تجاوز الوقت عند سعر")
-                }
-            },
-            onEnabledChange = { enabled ->
-                onDraftChange(draft.copy(
-                    highFareOverrideEnabled = enabled,
-                    highFareOverrideAmount = if (enabled) draft.highFareOverrideAmount.ifBlank { "35" } else draft.highFareOverrideAmount,
-                ))
-            },
-        ) {
-            ProStepperValue(
-                label = "يبدأ التجاوز من", value = draft.highFareOverrideAmount, unit = "سعر الطلب",
-                step = "1", keyboardType = KeyboardType.Decimal, error = errors["highFareOverrideAmount"],
-                testKey = "high-fare-amount",
-                onValueChange = { onDraftChange(draft.copy(highFareOverrideAmount = it)) },
-            )
-        }
+        HighFareOverrideCondition(draft, errors, onDraftChange)
 
         FilterGroup(
             title = "المناطق والوجهة الذكية والممر",
@@ -328,22 +248,7 @@ internal fun AdvancedFiltersEditor(
             )
         }
 
-        ProConditionCard(
-            title = "قنص الطلبات بدون وجهة",
-            subtitle = if (hasExcludedWords) "موقوف مؤقتًا بسبب كلمات الاستثناء؛ ستعود حالته المحفوظة عند حذفها."
-                else "اسمح بالعروض التي لا تعرض وجهة، مع استمرار تطبيق بقية شروط الأمان.",
-            enabled = draft.acceptNoDestination,
-            switchEnabled = !hasExcludedWords,
-            testKey = "no-destination",
-            onEnabledChange = { onDraftChange(draft.copy(acceptNoDestination = it)) },
-        ) {
-            Text(
-                if (hasExcludedWords) "الكلمات المستثناة لها الأولوية ولا يمكن تجاوزها بهذا الخيار."
-                else "لا يتجاوز هذا الخيار السعر الأدنى أو الكلمات المحظورة أو شروط الوصول؛ فعّل شرط انتقاء آخر قبل بدء المتابعة.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        NoDestinationCondition(draft, onDraftChange)
 
         FilterGroup(
             title = "الكلمات المستثناة",
@@ -392,15 +297,137 @@ internal fun AdvancedFiltersEditor(
             }
         }
     }
+}
 
-    if (showOverrideHelp) {
+/*
+ * The four most-used conditions, shared by «طلبات تناسبك» and the «شروط القيادة» card on
+ * «حالة العمل»: one implementation, so both places edit the same draft with the same defaults,
+ * validation and auto-save. [keyPrefix] keeps the dashboard copy's test tags and saved stepper
+ * state apart from the full page.
+ */
+
+@Composable
+internal fun FareRangeCondition(draft: FilterDraft, errors: Map<String, String>, onDraftChange: (FilterDraft) -> Unit, keyPrefix: String = "") {
+    ProConditionCard(
+        title = "نطاق السعر",
+        subtitle = "أدنى وأعلى أجرة للطلب",
+        enabled = draft.fareRangeEnabled,
+        testKey = keyPrefix + "fare-range",
+        onEnabledChange = { enabled ->
+            onDraftChange(draft.copy(
+                fareRangeEnabled = enabled,
+                minFare = if (enabled) draft.minFare.ifBlank { "0" } else draft.minFare,
+                maxFare = if (enabled) upperDefault(draft.minFare, draft.maxFare, "100") else draft.maxFare,
+            ))
+        },
+    ) {
+        if (draft.fareRangeEnabled || keyPrefix.isEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ProStepperValue(
+                label = "أدنى سعر", value = draft.minFare, unit = "",
+                step = "1", keyboardType = KeyboardType.Decimal, error = errors["minFare"],
+                testKey = keyPrefix + "min-fare", modifier = Modifier.weight(1f),
+                onValueChange = { onDraftChange(draft.copy(minFare = it)) },
+            )
+            ProStepperValue(
+                label = "أعلى سعر", value = draft.maxFare, unit = "",
+                step = "1", keyboardType = KeyboardType.Decimal, error = errors["maxFare"],
+                testKey = keyPrefix + "max-fare", modifier = Modifier.weight(1f),
+                onValueChange = { onDraftChange(draft.copy(maxFare = it)) },
+            )
+        }
+    }
+}
+
+@Composable
+internal fun PickupTimeCondition(draft: FilterDraft, errors: Map<String, String>, onDraftChange: (FilterDraft) -> Unit, keyPrefix: String = "") {
+    ProConditionCard(
+        title = "وقت الوصول",
+        subtitle = "أقل وأقصى وقت للوصول إلى الراكب",
+        enabled = draft.pickupTimeEnabled,
+        testKey = keyPrefix + "pickup-time",
+        onEnabledChange = { enabled ->
+            val lower = if (enabled) draft.minPickupMinutes.ifBlank { "0" } else draft.minPickupMinutes
+            onDraftChange(draft.copy(
+                pickupTimeEnabled = enabled,
+                minPickupMinutes = lower,
+                maxPickupMinutes = if (enabled) upperDefault(lower, draft.maxPickupMinutes, "30") else draft.maxPickupMinutes,
+            ))
+        },
+    ) {
+        if (draft.pickupTimeEnabled || keyPrefix.isEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ProStepperValue(
+                label = "أقل وقت", value = draft.minPickupMinutes, unit = "دقيقة",
+                step = "5", keyboardType = KeyboardType.Number, error = errors["minPickupMinutes"],
+                testKey = keyPrefix + "min-pickup-minutes", modifier = Modifier.weight(1f),
+                onValueChange = { onDraftChange(draft.copy(minPickupMinutes = it)) },
+            )
+            ProStepperValue(
+                label = "أقصى وقت", value = draft.maxPickupMinutes, unit = "دقيقة",
+                step = "5", keyboardType = KeyboardType.Number, error = errors["maxPickupMinutes"],
+                testKey = keyPrefix + "max-pickup-minutes", modifier = Modifier.weight(1f),
+                onValueChange = { onDraftChange(draft.copy(maxPickupMinutes = it)) },
+            )
+        }
+    }
+}
+
+@Composable
+internal fun HighFareOverrideCondition(draft: FilterDraft, errors: Map<String, String>, onDraftChange: (FilterDraft) -> Unit, keyPrefix: String = "") {
+    var showHelp by rememberSaveable(keyPrefix) { mutableStateOf(false) }
+    ProConditionCard(
+        title = "تجاوز الوقت عند سعر",
+        subtitle = "يسمح بوقت/مسافة وصول أطول عند الأجرة المجزية",
+        enabled = draft.highFareOverrideEnabled,
+        testKey = keyPrefix + "high-fare-override",
+        headerAction = {
+            IconButton(onClick = { showHelp = true }, modifier = Modifier.size(40.dp)) {
+                Icon(Icons.Outlined.Info, contentDescription = "شرح تجاوز الوقت عند سعر")
+            }
+        },
+        onEnabledChange = { enabled ->
+            onDraftChange(draft.copy(
+                highFareOverrideEnabled = enabled,
+                highFareOverrideAmount = if (enabled) draft.highFareOverrideAmount.ifBlank { "35" } else draft.highFareOverrideAmount,
+            ))
+        },
+    ) {
+        if (draft.highFareOverrideEnabled || keyPrefix.isEmpty()) ProStepperValue(
+            label = "يبدأ التجاوز من", value = draft.highFareOverrideAmount, unit = "سعر الطلب",
+            step = "1", keyboardType = KeyboardType.Decimal, error = errors["highFareOverrideAmount"],
+            testKey = keyPrefix + "high-fare-amount",
+            onValueChange = { onDraftChange(draft.copy(highFareOverrideAmount = it)) },
+        )
+    }
+    if (showHelp) {
         AlertDialog(
-            onDismissRequest = { showOverrideHelp = false },
+            onDismissRequest = { showHelp = false },
             title = { Text("تجاوز الوقت عند سعر") },
             text = {
                 Text("إذا كان سعر الطلب ظاهرًا ويبلغ العتبة أو يتجاوزها، يتجاوز سبّاق الحد الأقصى لوقت الوصول ومدة الرحلة ومسافة الوصول فقط. تبقى حدود الوقت الدنيا وحدود السعر والعائد والكلمات المستثناة وشروط السلامة الأخرى مطبّقة. إذا لم يظهر السعر فلا يحدث تجاوز.")
             },
-            confirmButton = { TextButton(onClick = { showOverrideHelp = false }) { Text("فهمت") } },
+            confirmButton = { TextButton(onClick = { showHelp = false }) { Text("فهمت") } },
+        )
+    }
+}
+
+@Composable
+internal fun NoDestinationCondition(draft: FilterDraft, onDraftChange: (FilterDraft) -> Unit, keyPrefix: String = "") {
+    val hasExcludedWords = draft.excludeKeywords.split(',', '،', '\n', '\r').any { it.isNotBlank() }
+    ProConditionCard(
+        title = "قنص الطلبات بدون وجهة",
+        subtitle = if (hasExcludedWords) "موقوف مؤقتًا بسبب كلمات الاستثناء؛ ستعود حالته المحفوظة عند حذفها."
+            else "اسمح بالعروض التي لا تعرض وجهة، مع استمرار تطبيق بقية شروط الأمان.",
+        enabled = draft.acceptNoDestination,
+        switchEnabled = !hasExcludedWords,
+        testKey = keyPrefix + "no-destination",
+        onEnabledChange = { onDraftChange(draft.copy(acceptNoDestination = it)) },
+    ) {
+        // The full page explains the rule; the dashboard card stays one line per condition.
+        if (keyPrefix.isEmpty()) Text(
+            if (hasExcludedWords) "الكلمات المستثناة لها الأولوية ولا يمكن تجاوزها بهذا الخيار."
+            else "لا يتجاوز هذا الخيار السعر الأدنى أو الكلمات المحظورة أو شروط الوصول؛ فعّل شرط انتقاء آخر قبل بدء المتابعة.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
