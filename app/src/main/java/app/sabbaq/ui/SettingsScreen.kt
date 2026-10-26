@@ -1672,15 +1672,6 @@ internal fun reasonArabic(code: ReasonCode): String = when (code) {
     ReasonCode.DESTINATION_CORRIDOR_MISMATCH -> "الوجهة خارج ممر الرحلة المحدد."
 }
 
-// Each server answer gets its own message: the three were grouped, so a mistyped code told the
-// driver that the account had moved to another device.
-private fun redeemErrorMessage(error: Throwable?): String = when (error?.message) {
-    "الرمز غير صحيح أو استُخدم مسبقًا" -> "الرمز غير صحيح أو استُخدم مسبقًا. تأكد من نسخه كاملًا كما وصلك."
-    "محاولات كثيرة؛ يرجى الانتظار قبل المحاولة مجددًا" -> "محاولات كثيرة متتالية. انتظر بضع دقائق ثم أعد المحاولة."
-    "هذا الحساب مرتبط بجهاز آخر" -> "نُقل حسابك إلى جهاز آخر. سجّل الدخول هنا مجددًا لنقله إلى هذا الجهاز."
-    else -> "تعذر تفعيل الرمز. تحقق من الرمز واتصال الإنترنت ثم أعد المحاولة."
-}
-
 private fun Context.isSabbaqAccessibilityEnabled(): Boolean {
     val expectedId = ComponentName(this, SabbaqA11yService::class.java).flattenToString()
     val manager = getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager ?: return false

@@ -359,10 +359,10 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit, initialIntent: AccessIntent =
                 checkRoleAndLicense(result.getOrThrow())
             } catch (cancelled: CancellationException) {
                 throw cancelled
-            } catch (e: Exception) {
+            } catch (_: Exception) {
+                // An unexpected exception's message is English/internal text; never show it.
                 SupabaseClient.clearSession()
-                errorMessage = e.message?.takeIf { it.isNotBlank() }
-                    ?: "تعذر إتمام الدخول باستخدام Google. تحقق من الاتصال ثم أعد المحاولة. [G-RUNTIME-EX]"
+                errorMessage = "تعذر إتمام الدخول باستخدام Google. تحقق من الاتصال ثم أعد المحاولة. [G-RUNTIME-EX]"
             } finally {
                 if (journey == AuthJourney.Authenticating) journey = AuthJourney.Idle
             }
@@ -1065,6 +1065,8 @@ private fun trialErrorMessage(error: Throwable?): String = when (error?.message)
 private fun activationErrorMessage(error: Throwable?): String = when (error?.message) {
     "رمز التفعيل غير صالح", "الرمز غير صحيح أو استُخدم مسبقًا" -> "رمز التفعيل غير صالح. راجعه ثم أعد المحاولة."
     "انتهت الجلسة؛ سجّل الدخول من جديد" -> "انتهت جلسة الدخول. سجّل الدخول من جديد."
+    "محاولات كثيرة؛ يرجى الانتظار قبل المحاولة مجددًا" -> "محاولات كثيرة متتالية. انتظر بضع دقائق ثم أعد المحاولة."
+    "هذا الحساب مرتبط بجهاز آخر" -> "حسابك مرتبط بجهاز آخر. سجّل الدخول من جديد لنقله إلى هذا الجهاز ثم فعّل الرمز."
     else -> "تعذر قبول رمز التفعيل. راجع الرمز والاتصال ثم أعد المحاولة."
 }
 
