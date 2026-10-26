@@ -28,6 +28,7 @@ import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -1298,26 +1299,28 @@ private fun OperationHero(
         animationSpec = tween(SabbaqMotion.LONG, easing = SabbaqMotion.Emphasized),
         label = "dial-ring",
     )
-    // The sweeping «second hand» only runs while monitoring runs, so motion is the state signal.
-    val sweep = if (isActive && !reduced) {
-        rememberInfiniteTransition(label = "dial-sweep").animateFloat(
-            initialValue = 0f,
-            targetValue = 360f,
-            animationSpec = infiniteRepeatable(tween(6_000, easing = LinearEasing)),
-            label = "dial-sweep-angle",
-        ).value
-    } else null
+    // One 12 s clock drives the radar face: three times faster while monitoring runs, slow and
+    // dim while stopped, frozen under reduced motion.
+    val clock = if (reduced) null else rememberInfiniteTransition(label = "dial-clock").animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(12_000, easing = LinearEasing)),
+        label = "dial-clock-phase",
+    )
+    val sweepAngle = ((clock?.value ?: 0.15f) * (if (isActive) 3f else 1f) * 360f) % 360f
 
     BoxWithConstraints(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         val dial = minOf(maxWidth, 340.dp)
         Box(
             modifier = Modifier
                 .size(dial)
-                .shadow(14.dp, CircleShape, spotColor = brand.heroStart)
+                .tilt3D(maxDegrees = 6f, idle = true)
+                .shadow(18.dp, CircleShape, ambientColor = brand.heroEnd, spotColor = brand.heroEnd)
                 .clip(CircleShape)
                 .background(Brush.radialGradient(listOf(brand.heroEnd, brand.heroStart))),
             contentAlignment = Alignment.Center,
         ) {
+            DialRadarFace(sweepAngle = sweepAngle, active = isActive, modifier = Modifier.matchParentSize())
             Canvas(Modifier.matchParentSize()) {
                 val radius = size.minDimension / 2f
                 val bezel = 10.dp.toPx()
@@ -1342,10 +1345,11 @@ private fun OperationHero(
                 drawArc(brand.onHero.copy(alpha = 0.14f), -90f, 360f, false, topLeft, arcSize, style = Stroke(ringWidth))
                 drawArc(brand.heroAccent, -90f, 360f * ring, false, topLeft, arcSize,
                     style = Stroke(ringWidth, cap = androidx.compose.ui.graphics.StrokeCap.Round))
-                sweep?.let { angle ->
+                // The bezel tip of the radar sweep: the dial's second hand.
+                if (isActive) {
                     drawArc(
-                        brush = Brush.sweepGradient(listOf(Color.Transparent, brand.onHero.copy(alpha = 0.85f)), center),
-                        startAngle = angle - 90f - 40f, sweepAngle = 40f, useCenter = false,
+                        brush = Brush.sweepGradient(listOf(Color.Transparent, brand.onHero.copy(alpha = 0.9f)), center),
+                        startAngle = sweepAngle - 90f - 36f, sweepAngle = 36f, useCenter = false,
                         topLeft = topLeft, size = arcSize,
                         style = Stroke(ringWidth, cap = androidx.compose.ui.graphics.StrokeCap.Round),
                     )
@@ -1404,6 +1408,68 @@ private fun OperationHero(
                 )
             }
         }
+    }
+}
+
+/**
+ * The dial's own 3D scene: a radar seen from above. Depth rings shade toward the rim, a lit
+ * cone sweeps with the second hand, and order blips flare as it passes (the matched one keeps a
+ * halo). A soft dark core behind the centre keeps the text readable over the motion.
+ */
+@Composable
+private fun DialRadarFace(sweepAngle: Float, active: Boolean, modifier: Modifier = Modifier) {
+    val brand = LocalSabbaqBrand.current
+    Canvas(modifier) {
+        val radius = size.minDimension / 2f
+        val accent = brand.heroAccent
+        val light = brand.onHero
+        val intensity = if (active) 1f else 0.45f
+
+        // Depth: the face is lit at the centre and falls into shadow toward the bezel.
+        drawCircle(Brush.radialGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.28f)), center, radius), radius, center)
+        for (ring in 1..4) {
+            val k = ring / 4.6f
+            drawCircle(accent.copy(alpha = 0.10f * intensity * (1.2f - k)), radius * k, center, style = Stroke(1.dp.toPx()))
+        }
+        drawLine(accent.copy(alpha = 0.08f * intensity), center.copy(x = center.x - radius * 0.86f), center.copy(x = center.x + radius * 0.86f), strokeWidth = 1.dp.toPx())
+        drawLine(accent.copy(alpha = 0.08f * intensity), center.copy(y = center.y - radius * 0.86f), center.copy(y = center.y + radius * 0.86f), strokeWidth = 1.dp.toPx())
+
+        // The sweep cone trailing behind the hand, in canvas angles (0° = 3 o'clock).
+        val handAngle = sweepAngle - 90f
+        drawArc(
+            brush = Brush.sweepGradient(
+                0f to Color.Transparent,
+                0.85f to Color.Transparent,
+                1f to accent.copy(alpha = 0.38f * intensity),
+                center = center,
+            ),
+            startAngle = handAngle - 60f, sweepAngle = 60f, useCenter = true,
+            topLeft = center - androidx.compose.ui.geometry.Offset(radius * 0.86f, radius * 0.86f),
+            size = androidx.compose.ui.geometry.Size(radius * 1.72f, radius * 1.72f),
+        )
+        rotate(handAngle + 90f, center) {
+            drawLine(
+                Brush.verticalGradient(listOf(accent.copy(alpha = 0.9f * intensity), Color.Transparent), startY = center.y - radius * 0.86f, endY = center.y),
+                start = center, end = center.copy(y = center.y - radius * 0.86f), strokeWidth = 2.dp.toPx(),
+                cap = androidx.compose.ui.graphics.StrokeCap.Round,
+            )
+        }
+
+        // Order blips: brightest right after the sweep passes them, fading over the next turn.
+        listOf(Triple(38f, 0.62f, false), Triple(152f, 0.74f, true), Triple(250f, 0.52f, false), Triple(318f, 0.80f, false)).forEach { (angle, dist, matched) ->
+            val since = ((sweepAngle - angle) % 360f + 360f) % 360f / 360f
+            val glow = (1f - since).let { it * it } * intensity
+            val rad = Math.toRadians(angle - 90.0)
+            val spot = center + androidx.compose.ui.geometry.Offset(
+                (kotlin.math.cos(rad) * radius * dist).toFloat(), (kotlin.math.sin(rad) * radius * dist).toFloat(),
+            )
+            val color = if (matched) accent else light
+            drawCircle(color.copy(alpha = 0.18f + 0.6f * glow), radius = (3.dp.toPx() + 3.dp.toPx() * glow), center = spot)
+            if (matched && active) drawCircle(accent.copy(alpha = 0.22f * (0.4f + glow)), radius = 11.dp.toPx(), center = spot, style = Stroke(1.5.dp.toPx()))
+        }
+
+        // Readability core behind the centred status, button and text.
+        drawCircle(Brush.radialGradient(listOf(brand.heroStart.copy(alpha = 0.78f), Color.Transparent), center, radius * 0.62f), radius * 0.62f, center)
     }
 }
 
