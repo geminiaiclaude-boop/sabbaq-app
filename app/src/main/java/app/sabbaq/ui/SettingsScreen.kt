@@ -78,6 +78,7 @@ import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.PrivacyTip
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Save
+import androidx.compose.material.icons.outlined.Settings as SettingsIcon
 import androidx.compose.material.icons.outlined.Stop
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.VerifiedUser
@@ -134,6 +135,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import app.sabbaq.BuildConfig
 import app.sabbaq.Settings
+import app.sabbaq.ThemeMode
 import app.sabbaq.core.Filters
 import app.sabbaq.core.Offer
 import app.sabbaq.core.OfferEvaluator
@@ -156,7 +158,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 /** وجهات لوحة السائق؛ يمكن استدعاء الشاشة مباشرة إلى أي منها في معاينات/اختبارات الواجهة. */
-enum class DriverDestination { Dashboard, Filters, Simulator, Account, History, Setup }
+enum class DriverDestination { Dashboard, Filters, Simulator, Account, History, Setup, Settings }
 
 private data class DriverStatus(val message: String, val isError: Boolean = false, val success: Boolean = false) {
     val tone: SabbaqTone get() = when {
@@ -175,12 +177,17 @@ private data class DriverNavItem(
 private val driverDestinations = listOf(
     DriverNavItem(DriverDestination.Dashboard, "حالة العمل", Icons.Outlined.Tune),
     DriverNavItem(DriverDestination.Filters, "طلبات تناسبك", Icons.Outlined.FilterAlt),
-    DriverNavItem(DriverDestination.Simulator, "تجربة الطلب", Icons.Outlined.Visibility),
+    DriverNavItem(DriverDestination.Settings, "الإعدادات", Icons.Outlined.SettingsIcon),
     DriverNavItem(DriverDestination.Account, "حسابي", Icons.Outlined.AccountCircle),
+    DriverNavItem(DriverDestination.Simulator, "تجربة الطلب", Icons.Outlined.Visibility),
     DriverNavItem(DriverDestination.History, "سجل القرارات", Icons.Outlined.Info),
 )
 
-private val bottomDriverDestinations = driverDestinations.filterNot { it.destination == DriverDestination.History }
+// Four tabs on phones; «تجربة الطلب» and «سجل القرارات» stay one tap away in the drawer and
+// in «الإعدادات ← المزيد».
+private val bottomDriverDestinations = driverDestinations.filter {
+    it.destination in setOf(DriverDestination.Dashboard, DriverDestination.Filters, DriverDestination.Settings, DriverDestination.Account)
+}
 
 /**
  * لوحة السائق الإنتاجية. الحواف الآمنة وapp bar والخروج يملكها SabbaqShell في MainActivity؛
@@ -203,6 +210,8 @@ fun SettingsScreen(
     navigationRequest: DriverDestination? = null,
     onDestinationChanged: (DriverDestination) -> Unit = {},
     onNavigationRequestHandled: () -> Unit = {},
+    themeMode: ThemeMode = Settings.themeMode,
+    onThemeChange: (ThemeMode) -> Unit = { Settings.themeMode = it },
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -472,7 +481,9 @@ fun SettingsScreen(
         }
     }
 
-    BackHandler(enabled = destination == DriverDestination.Filters || destination == DriverDestination.History || destination == DriverDestination.Setup || destination == DriverDestination.Account) {
+    BackHandler(enabled = destination == DriverDestination.Filters || destination == DriverDestination.History ||
+        destination == DriverDestination.Setup || destination == DriverDestination.Account ||
+        destination == DriverDestination.Settings || destination == DriverDestination.Simulator) {
         if (returnToSetupAfterAction) {
             returnToSetupAfterAction = false
             navigateTo(DriverDestination.Setup)
@@ -722,6 +733,44 @@ fun SettingsScreen(
             )
 
             DriverDestination.Simulator -> SimulatorPage(savedFilters = savedFilters)
+
+            DriverDestination.Settings -> DriverPage {
+                val openBattery = {
+                    runCatching { context.startActivity(PowerSetup.batteryIntent(context)) }
+                        .recoverCatching { context.startActivity(PowerSetup.appDetailsIntent(context)) }
+                    Unit
+                }
+                val openA11y = {
+                    if (onOpenA11y().isFailure) {
+                        runtimeMessage = DriverStatus("تعذر فتح إعدادات إمكانية الوصول. افتحها يدويًا من إعدادات الجهاز.", true)
+                    }
+                }
+                SettingsHubPage(
+                    permissions = listOf(
+                        ReadinessItem(Icons.Outlined.AccessibilityNew, "إذن متابعة الطلبات", accessibilityEnabled,
+                            "مفعّل", "ليقرأ الطلب ويقبل المطابق؛ بدونه لا يعمل", "تفعيل الإذن", openA11y),
+                        ReadinessItem(Icons.Outlined.Notifications, "تنبيهات حالة العمل", notificationsEnabled,
+                            "مفعّلة", "ليظهر لك دائمًا أن المتابعة تعمل", "السماح", onRequestNotificationPermission),
+                        ReadinessItem(Icons.Outlined.VerifiedUser, "حالة الاشتراك", licenseInMemory,
+                            "جاهز للعمل", "ابدأ تجربتك أو فعّل اشتراكك", "فتح حسابي") { navigateTo(DriverDestination.Account) },
+                    ),
+                    power = buildList {
+                        add(ReadinessItem(Icons.Outlined.BatteryChargingFull, "العمل دون قيود البطارية", batteryUnrestricted,
+                            "لن يوقفه توفير الطاقة", "قد يوقفه أندرويد عند قفل الشاشة", "السماح", openBattery))
+                        if (PowerSetup.needsAutostart()) add(ReadinessItem(Icons.Outlined.RestartAlt, "التشغيل التلقائي في جوالك", autostartDone,
+                            "مفعّل لسبّاق", "ليعود بعد إعادة تشغيل الجوال؛ فعّل «التشغيل التلقائي»", "فتح الإعداد") {
+                            runCatching { context.startActivity(PowerSetup.autostartIntent(context)) }
+                            Settings.autostartConfirmed = true
+                            autostartDone = true
+                        })
+                    },
+                    themeMode = themeMode,
+                    onThemeChange = onThemeChange,
+                    onOpenSimulator = { navigateTo(DriverDestination.Simulator) },
+                    onOpenHistory = { navigateTo(DriverDestination.History) },
+                    onOpenSetupGuide = { navigateTo(DriverDestination.Setup) },
+                )
+            }
 
             DriverDestination.History -> DriverPage {
                 OfferDecisionLogScreen(onBack = { navigateTo(DriverDestination.Dashboard) })
@@ -1014,8 +1063,7 @@ private fun DashboardPage(
             "تلقائي إذا تركت المتابعة تعمل", "", "", {}))
     }
 
-    VoiceAlertsCard(Modifier.sabbaqEntrance(3))
-
+    // Voice alerts moved to «الإعدادات ← الصوت والتنبيهات»; the rest of the work state stays here.
     OfferStatsCard(Modifier.sabbaqEntrance(4))
 
     SupportedPlatformsCard(Modifier.sabbaqEntrance(5))
@@ -1162,7 +1210,7 @@ private fun CockpitMetric(label: String, value: String, active: Boolean, modifie
     }
 }
 
-private data class ReadinessItem(
+internal data class ReadinessItem(
     val icon: ImageVector,
     val title: String,
     val ready: Boolean,
@@ -1272,7 +1320,7 @@ private fun LiveStatusMark(isActive: Boolean) {
 
 /** One readiness requirement. The whole row is the action, so no extra button rows are needed. */
 @Composable
-private fun ReadinessRow(item: ReadinessItem) {
+internal fun ReadinessRow(item: ReadinessItem) {
     val tint by animateColorAsState(
         if (item.ready) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
         tween(SabbaqMotion.MEDIUM),
