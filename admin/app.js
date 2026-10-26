@@ -57,6 +57,13 @@
             driversPanel: document.getElementById('tab-drivers'),
             codesPanel: document.getElementById('tab-codes'),
             commercialPolicyPanel: document.getElementById('tab-commercial-policy'),
+            telemetryTab: document.getElementById('telemetry-tab'),
+            telemetryPanel: document.getElementById('tab-telemetry'),
+            telemetryForm: document.getElementById('telemetry-form'),
+            telemetryCorrelation: document.getElementById('telemetry-correlation'),
+            telemetrySearch: document.getElementById('telemetry-search'),
+            telemetryFeedback: document.getElementById('telemetry-feedback'),
+            telemetryResults: document.getElementById('telemetry-results'),
             refreshDrivers: document.getElementById('refresh-drivers'),
             refreshCodes: document.getElementById('refresh-codes'),
             driversPrevious: document.getElementById('drivers-previous'),
@@ -212,6 +219,8 @@
         el.driversTab.addEventListener('click', () => { void showTab('drivers'); });
         el.codesTab.addEventListener('click', () => { void showTab('codes'); });
         el.commercialPolicyTab.addEventListener('click', () => { void showTab('commercial-policy'); });
+        el.telemetryTab.addEventListener('click', () => { void showTab('telemetry'); });
+        el.telemetryForm.addEventListener('submit', handleTelemetrySearch);
         el.refreshDrivers.addEventListener('click', () => { void loadDrivers({ reset: true }); });
         el.refreshCodes.addEventListener('click', () => { void loadCodes({ reset: true }); });
         el.driversPrevious.addEventListener('click', () => { void movePage('drivers', -1); });
@@ -440,22 +449,25 @@
     }
 
     async function showTab(tabName) {
-        if (tabName !== 'drivers' && tabName !== 'codes' && tabName !== 'commercial-policy') return;
+        if (tabName !== 'drivers' && tabName !== 'codes' && tabName !== 'commercial-policy' && tabName !== 'telemetry') return;
         state.activeTab = tabName;
         const showingDrivers = tabName === 'drivers';
         const showingCodes = tabName === 'codes';
         el.driversPanel.hidden = !showingDrivers;
         el.codesPanel.hidden = !showingCodes;
         el.commercialPolicyPanel.hidden = tabName !== 'commercial-policy';
+        el.telemetryPanel.hidden = tabName !== 'telemetry';
         el.driversTab.classList.toggle('active', showingDrivers);
         el.codesTab.classList.toggle('active', showingCodes);
         el.commercialPolicyTab.classList.toggle('active', tabName === 'commercial-policy');
+        el.telemetryTab.classList.toggle('active', tabName === 'telemetry');
         el.driversTab.setAttribute('aria-selected', String(showingDrivers));
         el.codesTab.setAttribute('aria-selected', String(showingCodes));
         el.commercialPolicyTab.setAttribute('aria-selected', String(tabName === 'commercial-policy'));
+        el.telemetryTab.setAttribute('aria-selected', String(tabName === 'telemetry'));
         if (showingDrivers) await loadDrivers();
         else if (showingCodes) await loadCodes();
-        else if (!state.commercialPolicyLoaded) await loadCommercialPolicy({ announce: true });
+        else if (tabName === 'commercial-policy' && !state.commercialPolicyLoaded) await loadCommercialPolicy({ announce: true });
     }
 
     async function loadCommercialPolicy({ announce = true } = {}) {
@@ -543,6 +555,63 @@
                 invalidateCommercialPolicy('تعذر تأكيد حفظ السياسة. أعد تحميلها قبل أي محاولة جديدة.');
             }
         });
+    }
+
+    async function handleTelemetrySearch(event) {
+        event.preventDefault();
+        const correlation = el.telemetryCorrelation.value.trim().toLowerCase();
+        if (!/^[a-f0-9]{16,64}$/.test(correlation)) {
+            setTelemetryFeedback('أدخل معرّف دعم سداسي عشري صحيحًا. لم تُرسل أي عملية.', 'error');
+            return;
+        }
+        await runWithButton(el.telemetrySearch, async () => {
+            if (!await ensureActiveSession()) return;
+            setTelemetryFeedback('يجري تحميل خط سير العرض…', 'info');
+            el.telemetryResults.hidden = false;
+            el.telemetryResults.textContent = 'جارٍ التحميل…';
+            try {
+                const { data, error } = await db.rpc('admin_offer_telemetry', { p_correlation_id: correlation });
+                if (error) throw error;
+                renderTelemetry(data);
+            } catch (error) {
+                if (isAuthorizationError(error)) await signOut('انتهت صلاحية جلسة المشرف.');
+                else {
+                    setTelemetryFeedback('تعذر تحميل التشخيص. تحقق من الاتصال أو من صلاحية معرّف الدعم.', 'error');
+                    el.telemetryResults.textContent = 'لا تتوفر نتائج مؤكدة.';
+                }
+            }
+        });
+    }
+
+    function renderTelemetry(data) {
+        const events = Array.isArray(data?.events) ? data.events : [];
+        const funnel = Array.isArray(data?.funnel) ? data.funnel : [];
+        el.telemetryResults.replaceChildren();
+        if (!events.length) {
+            el.telemetryResults.textContent = 'لا توجد أحداث ضمن نافذة الاحتفاظ لهذا المعرّف.';
+            setTelemetryFeedback('اكتمل البحث دون نتائج.', 'info');
+            return;
+        }
+        const heading = document.createElement('h4');
+        heading.textContent = `المسار (${events.length} حدث)`;
+        el.telemetryResults.append(heading);
+        const funnelText = document.createElement('p');
+        funnelText.textContent = `الفunnel: ${funnel.map(item => `${displayValue(item.stage)} (${item.count})`).join(' ← ')}`;
+        el.telemetryResults.append(funnelText);
+        const list = document.createElement('ol');
+        events.forEach((item) => {
+            const row = document.createElement('li');
+            row.textContent = `${formatDate(item.occurred_at)} · ${displayValue(item.stage)} · ${displayValue(item.reason_code, 'بدون سبب')}`;
+            list.append(row);
+        });
+        el.telemetryResults.append(list);
+        setTelemetryFeedback('تم تحميل بيانات metadata المسموح بها للمشرف.', 'success');
+    }
+
+    function setTelemetryFeedback(message, type) {
+        el.telemetryFeedback.textContent = message;
+        el.telemetryFeedback.className = `policy-feedback policy-feedback--${type}`;
+        el.telemetryFeedback.hidden = false;
     }
 
     async function handleCommercialPolicyFailure(error, fallbackMessage) {

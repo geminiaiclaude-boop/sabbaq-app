@@ -16,10 +16,15 @@ import app.sabbaq.network.SupabaseClient
 import app.sabbaq.stats.DecisionLogOutcome
 import app.sabbaq.stats.OfferDecisionLogStore
 import app.sabbaq.stats.OfferStatsStore
+import app.sabbaq.telemetry.TelemetryRepository
 import app.sabbaq.voice.OfferEvents
 import java.math.BigDecimal
 import java.util.Calendar
-
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 class SabbaqA11yService : AccessibilityService() {
 
     private val clickGate = ClickGate(perOfferSuppressMs = 20000, minIntervalMs = 500)
@@ -41,6 +46,7 @@ class SabbaqA11yService : AccessibilityService() {
     private var lastJeenyFingerprint: String? = null
     private var lastJeenyEventMs = 0L
     private var lastJeenyWindowId: Int? = null
+    private val telemetryScope = CoroutineScope(Dispatchers.IO + Job())
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -51,6 +57,7 @@ class SabbaqA11yService : AccessibilityService() {
             .onFailure { Log.w(TAG, "تعذر تهيئة الإحصاءات المحلية") }
         runCatching { OfferDecisionLogStore.init(applicationContext) }
             .onFailure { Log.w(TAG, "تعذر تهيئة سجل القرارات المحلي") }
+        telemetryScope.launch { runCatching { TelemetryRepository.flushOnce() } }
         parsersByPackage = runCatching {
             val profiles = Profiles.bundled().filter { it.enabled }
             adaptersByProfile = profiles.associate { it.id to RideAppAdapters.forProfile(it) }
@@ -406,9 +413,23 @@ class SabbaqA11yService : AccessibilityService() {
     private fun recordDiagnostic(stage: DiagnosticStage, nowMs: Long, reason: String? = null) {
         diagnostics.record(stage, nowMs, reason)
         runtimeStatus.diagnostic(DiagnosticEntry(stage, nowMs, reason))
+        val telemetryStage = when (stage) {
+            DiagnosticStage.SIGNAL_FOUND -> TelemetryStage.SIGNAL_FOUND
+            DiagnosticStage.SIGNAL_MISS -> TelemetryStage.SIGNAL_MISS
+            DiagnosticStage.FRAME_INCOMPLETE -> TelemetryStage.FRAME_INCOMPLETE
+            DiagnosticStage.REJECTED -> TelemetryStage.REJECTED
+            DiagnosticStage.ACCEPT_NODE_FOUND -> TelemetryStage.ACCEPT_NODE
+            DiagnosticStage.CLICK_PATH -> TelemetryStage.CLICK_RESULT
+            DiagnosticStage.CONFIRMATION_CONFIRMED -> TelemetryStage.CONFIRMATION_CONFIRMED
+            DiagnosticStage.CONFIRMATION_TIMEOUT -> TelemetryStage.CONFIRMATION_TIMEOUT
+            DiagnosticStage.STALE -> TelemetryStage.STALE
+            else -> TelemetryStage.EVENT_RECEIVED
+        }
+        runCatching { TelemetryRepository.record(telemetryStage, reasonCode = reason) }
     }
 
     override fun onDestroy() {
+        telemetryScope.cancel()
         lateReadGeneration++
         lateReadHandler.removeCallbacksAndMessages(LATE_READ_TOKEN)
         jeenyPipeline.reset()

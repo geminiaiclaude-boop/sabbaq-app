@@ -120,3 +120,32 @@ node --test admin/tests/admin-static.test.mjs
 - قبل SQL: احفظ نسخة احتياطية؛ الترحيلات أمنية، لذلك الرجوع الأعمى إلى سياسات `0001` يعيد ثغرات. عالج العطل بترحيل تصحيحي أو استعادة معتمدة.
 - قبل Android: احفظ artifact وبصمته ونسخة الشيفرة، واحتفظ بهوية التوقيع خارج Git.
 - قبل أي إطلاق: لا توجد أخطاء بناء/lint مفتوحة، الاختبارات موثقة، الترحيلات مطبقة، الاختبارات الحية/الأجهزة ناجحة، ومتطلبات المتجر والتوقيع معتمدة.
+
+
+## 7. طبقة تتبّع دورة العرض والشكاوى (migration 0008)
+
+أضيف عقد `OfferTelemetryEvent` بالإصدار 1 في `core/src/main/kotlin/app/sabbaq/core/OfferTelemetry.kt`. العقد metadata-only: `eventId`، وقت الحدث، correlation pseudonymous، التطبيق/الإصدار/Android، المزود، stage، reason-code، score، latency bucket، ونسخ الإعداد/الملف. لا يقبل reason-code نصًا حرًا؛ النصوص غير المطابقة تتحول إلى `redacted`. لا تُجمع نصوص العروض أو الأجرة أو العناوين أو الموقع أو screenshots أو شجرة Accessibility أو الهاتف أو البريد أو الرموز.
+
+ينشئ `TelemetryRepository` معرّف تثبيت عشوائيًا محليًا ثم correlation SHA-256؛ لا يرسل هوية Auth الخام. يحفظ `TelemetryQueue` في SharedPreferences الخاص بالتطبيق بحد 300 حدث واحتفاظ 7 أيام، وdedupe بـ`eventId`، دفعات لا تتجاوز 50 حدثًا/200KB، وbackoff أسي حتى 5 محاولات. الرفع يجري فقط في lifecycle الخدمة وعلى خيط IO عبر جلسة Supabase الحالية وRPC `ingest_offer_telemetry`; الفشل أو عدم الاتصال لا يوقف القبول ولا يفتح مسارًا بديلًا للمصادقة. لا توجد مكتبة تشفير محلية معتمدة متاحة هنا، لذلك التخزين metadata-only ومحدود ومُحمر؛ لا يُضاف تشفير مخصص غير مُراجع.
+
+تسجل `SabbaqA11yService` تلقائيًا مراحل signal miss/found، frame incomplete، rejection، accept node، click result، confirmation/timeout، stale وlifecycle metadata عبر `recordDiagnostic` دون تغيير `Verdict.accept`. صفحة «تشخيص الشكاوى» في `admin/` تستخدم RPC إداريًا فقط للبحث بمعرّف الدعم وتعرض timeline وfunnel وcohort metadata مع حالات فارغة/خطأ/تحميل.
+
+### نشر قاعدة البيانات
+
+1. خذ نسخة احتياطية وطبّق `supabase/migrations/0008_offer_telemetry.sql` بعد الترحيلات `0001`–`0007` في staging أولًا.
+2. تحقّق من grants: `ingest_offer_telemetry(jsonb)` للمستخدم authenticated فقط، و`admin_offer_telemetry(text,timestamptz)` للمستخدم authenticated مع `require_admin()`؛ لا توجد صلاحية قراءة مباشرة للجدول.
+3. اختبر دفعة صحيحة، event مكرر (يُقبل مرة واحدة)، batch أكبر من 50 أو 200KB، reason غير آمن، وanonymous/driver غير الإداري عند استدعاء RPC الإداري.
+4. فعّل مهمة privileged يومية لحذف `offer_telemetry_events` الأقدم من 30 يومًا، وراقب حجم الجدول وفشل ingestion ومعدل `UPLOAD_REJECTED`. لا تُشغّل fixtures أو bootstrap على الإنتاج.
+
+### الاسترجاع والـrollback
+
+إذا فشل الترحيل قبل اعتماده: أوقف النشر ولا تغيّر التطبيق. إذا نُشر التطبيق قبل RPC: يبقى queue محليًا ويعيد المحاولة، ولا يتأثر قبول العرض؛ يمكن تعطيل endpoint/التبويب مؤقتًا. للاسترجاع التشغيلي أوقف job retention/ingestion، احفظ snapshot، ثم نفّذ rollback معتمدًا يحذف RPC والفهارس والجدول فقط بعد التأكد من عدم حاجة لوحة الإدارة لها؛ لا تُسقط migration سابقة ولا تحذف بيانات الحسابات. يمكن حذف بيانات tracing وحدها كبيانات مشتقة عند طلب الخصوصية دون مساس بالترخيص.
+
+### إثبات مطلوب قبل إعلان الإنتاج
+
+- **CI:** تشغيل `:core:test`، اختبارات Android unit/admin، `git diff --check`، وفحوص SQL المحلية مع RLS/grants. في هذه البيئة نجحت اختبارات core (97 اختبارًا) و`node --check admin/app.js` و`git diff --check`.
+- **Staging/DB:** تشغيل migration 0008 على PostgreSQL/Supabase staging واختبار RPC، RLS، idempotency، retention، والاستعلامات aggregate مع مستخدم admin وغير admin.
+- **جهاز حقيقي:** التحقق من offline/online، session renewal، queue bounds/backoff، lifecycle service، وأن Accessibility tree/النص/الموقع لا يظهر في payload أو الشبكة.
+- **إطلاق تجاري:** مراجعة Data Safety/الخصوصية والاحتفاظ، مراقبة حجم الجدول، وتجربة شكوى end-to-end من correlation id إلى timeline، مع اختبار أن قبول العرض لم يتغير.
+
+التحقق المحلي الكامل لوحدة Android تعذر في هذه البيئة لأن Android SDK غير مضبوط (`local.properties`/`ANDROID_HOME` مفقود)؛ يلزم تشغيله في CI أو جهاز التطوير قبل الدمج.

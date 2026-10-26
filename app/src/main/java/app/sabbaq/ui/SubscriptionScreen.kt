@@ -13,9 +13,11 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.material.icons.Icons
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.material.icons.outlined.BugReport
+import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.Share
 import app.sabbaq.CrashLog
@@ -67,12 +69,14 @@ import app.sabbaq.network.LicenseState
 import app.sabbaq.network.PublicOffer
 import app.sabbaq.network.SubscriptionSnapshot
 import app.sabbaq.network.SupabaseClient
+import app.sabbaq.telemetry.TelemetryRepository
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import androidx.compose.ui.text.AnnotatedString
 
 /**
  * شاشة اشتراك لا تنشئ صلاحية محلية: كل الحالة والتواريخ المعروضة صادرة من آخر
@@ -134,6 +138,10 @@ internal fun SubscriptionScreen(
     }
     val context = LocalContext.current
     val isDirectDistribution = BuildConfig.DIRECT_DISTRIBUTION
+    @Suppress("DEPRECATION")
+    val clipboard = LocalClipboardManager.current
+    val correlationId = TelemetryRepository.currentCorrelationId()
+    var correlationCopied by rememberSaveable { mutableStateOf(false) }
 
     var snapshot by remember { mutableStateOf(SupabaseClient.subscriptionSnapshot()) }
     var offer by remember { mutableStateOf<PublicOffer?>(null) }
@@ -363,9 +371,38 @@ internal fun SubscriptionScreen(
             SabbaqLegalLinks()
         }
 
+        correlationId?.let { id ->
+            SabbaqCard(
+                title = "التشخيص والدعم",
+                subtitle = "معرّف آمن لمساعدة الدعم في ربط شكواك دون عرض بياناتك أو تفاصيل تقنية.",
+                icon = Icons.Outlined.Info,
+                modifier = Modifier.sabbaqEntrance(4),
+            ) {
+                Text(
+                    "انسخ هذا المعرّف وأرسله للدعم عند الإبلاغ عن مشكلة:",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    id,
+                    style = MaterialTheme.typography.titleSmall.copy(textDirection = TextDirection.Ltr),
+                    modifier = Modifier.semantics { contentDescription = "معرّف الدعم: $id" },
+                )
+                SabbaqButton(
+                    text = if (correlationCopied) "تم نسخ معرّف الدعم" else "نسخ معرّف الدعم",
+                    onClick = {
+                        clipboard.setText(AnnotatedString(id))
+                        correlationCopied = true
+                    },
+                    style = SabbaqButtonStyle.Secondary,
+                    icon = Icons.Outlined.ContentCopy,
+                )
+            }
+        }
+
         CrashReportCard()
 
-        SabbaqCard(title = "حذف الحساب", icon = Icons.Outlined.DeleteForever, modifier = Modifier.sabbaqEntrance(4), destructive = true) {
+        SabbaqCard(title = "حذف الحساب", icon = Icons.Outlined.DeleteForever, modifier = Modifier.sabbaqEntrance(5), destructive = true) {
             Text(
                 "يحذف حسابك واشتراكك وشروطك وبيانات الجهاز المرتبطة نهائيًا. لا يمكن التراجع عن الحذف، ولا تُستعاد مدة اشتراك متبقية.",
                 style = MaterialTheme.typography.bodyMedium,

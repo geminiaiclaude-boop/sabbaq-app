@@ -9,6 +9,7 @@ import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.GetCredentialException
 import app.sabbaq.BuildConfig
+import app.sabbaq.core.OfferTelemetryEvent
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import kotlinx.coroutines.CancellationException
@@ -25,6 +26,7 @@ import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import kotlinx.serialization.encodeToString
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
@@ -130,6 +132,20 @@ object SupabaseClient {
 
     /** فحص محلي فقط؛ لا ينفّذ اتصالًا من مسار أحداث إمكانية الوصول. */
     fun hasValidLicense(): Boolean = sessions.hasValidLicense()
+
+    /** Uploads only the bounded metadata contract; requires the existing authenticated session. */
+    suspend fun uploadOfferTelemetry(events: List<OfferTelemetryEvent>): Result<Int> = networkCall {
+        val session = sessions.snapshot() ?: return@networkCall Result.failure(ClientRequestException("لا توجد جلسة صالحة"))
+        if (events.isEmpty() || events.size > 50) return@networkCall Result.failure(ClientRequestException("دفعة تتبع غير صالحة"))
+        val payload = json.encodeToString(events)
+        if (payload.toByteArray().size > 200_000) return@networkCall Result.failure(ClientRequestException("دفعة التتبع كبيرة"))
+        val request = authenticatedRequest(endpoint("rest/v1/rpc/ingest_offer_telemetry"), session.token,
+            buildJsonObject { put("p_events", json.parseToJsonElement(payload)) }.toString().toRequestBody(jsonMediaType))
+        val response = execute(request)
+        if (!response.isSuccessful) return@networkCall Result.failure(ClientRequestException("تعذر رفع التتبع"))
+        val accepted = response.body?.let { responseObject(it)["accepted"]?.jsonPrimitive?.intOrNull } ?: 0
+        Result.success(accepted)
+    }
 
     /** يمكّن مسار تسجيل خروج مستقبلي من إبطال الجلسة الذاكرية صراحةً. */
     fun clearSession(forget: Boolean = true) {

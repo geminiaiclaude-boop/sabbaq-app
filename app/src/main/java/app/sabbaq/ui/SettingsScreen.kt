@@ -139,6 +139,8 @@ import app.sabbaq.core.Offer
 import app.sabbaq.core.OfferEvaluator
 import app.sabbaq.core.ReasonCode
 import app.sabbaq.core.Verdict
+import app.sabbaq.network.LicenseState
+import app.sabbaq.network.SubscriptionSnapshot
 import app.sabbaq.network.SupabaseClient
 import app.sabbaq.service.SabbaqA11yService
 import app.sabbaq.service.RuntimeStatusRepository
@@ -233,6 +235,7 @@ fun SettingsScreen(
     var batteryUnrestricted by remember(context) { mutableStateOf(PowerSetup.isBatteryUnrestricted(context)) }
     var autostartDone by remember { mutableStateOf(!PowerSetup.needsAutostart() || Settings.autostartConfirmed) }
     var licenseInMemory by remember { mutableStateOf(SupabaseClient.hasValidLicense()) }
+    var subscriptionSnapshot by remember { mutableStateOf(SupabaseClient.subscriptionSnapshot()) }
     var checkingActivation by remember { mutableStateOf(false) }
     var showActivationConsent by remember { mutableStateOf(false) }
     var showAccessibilityRequired by remember { mutableStateOf(false) }
@@ -285,6 +288,7 @@ fun SettingsScreen(
         batteryUnrestricted = PowerSetup.isBatteryUnrestricted(context)
         autostartDone = !PowerSetup.needsAutostart() || Settings.autostartConfirmed
         licenseInMemory = licensed
+        subscriptionSnapshot = SupabaseClient.subscriptionSnapshot()
         val persistedActive = Settings.isActive
         if (persistedActive != isActive) isActive = persistedActive
         if (persistedActive && (!a11y || !notifications || !licensed)) {
@@ -587,6 +591,7 @@ fun SettingsScreen(
                 accessibilityEnabled = accessibilityEnabled,
                 notificationsEnabled = notificationsEnabled,
                 licenseInMemory = licenseInMemory,
+                subscriptionSnapshot = subscriptionSnapshot,
                 filters = savedFilters,
                 runtime = runtimeSnapshot,
                 activeFilterCount = activeFilterCount(savedFilters),
@@ -822,6 +827,74 @@ private fun DriverPage(content: @Composable () -> Unit) {
 }
 
 @Composable
+private fun ActiveSubscriptionStatusCard(
+    snapshot: SubscriptionSnapshot?,
+    onOpenAccount: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val brand = LocalSabbaqBrand.current
+    val state = snapshot?.state
+    val operational = state == LicenseState.ACTIVE || state == LicenseState.TRIAL
+    val title = when (state) {
+        LicenseState.ACTIVE -> "اشتراك فعّال"
+        LicenseState.TRIAL -> "تجربة فعّالة"
+        LicenseState.PENDING -> "الاشتراك بانتظار التفعيل"
+        LicenseState.EXPIRED -> "انتهى الاشتراك"
+        LicenseState.DEVICE_MISMATCH -> "الاشتراك مرتبط بجهاز آخر"
+        LicenseState.BANNED, LicenseState.REJECTED -> "الاشتراك غير متاح"
+        LicenseState.UNREGISTERED, null -> "حالة الاشتراك غير مؤكدة"
+    }
+    val until = when (state) {
+        LicenseState.ACTIVE -> snapshot?.proUntil
+        LicenseState.TRIAL -> snapshot?.trialUntil
+        else -> null
+    }
+    val remainingDays = until?.let {
+        java.time.Duration.between(java.time.Instant.now(), it).toDays().coerceAtLeast(0)
+    }
+    val subtitle = when {
+        state == null -> "حدّث حالة حسابك لمعرفة ما إذا كانت متابعة الطلبات متاحة."
+        operational && remainingDays == 0L -> "ينتهي خلال أقل من يوم؛ جدّد اشتراكك من حسابي."
+        operational && remainingDays != null -> "متاح لمتابعة الطلبات — متبقٍ ${ArabicCount.days(remainingDays.toInt())}."
+        state == LicenseState.PENDING -> "سنفعّل الوصول بعد اكتمال التحقق من الاشتراك."
+        else -> "افتح حسابي لمعرفة التفاصيل وتحديث حالة الاشتراك."
+    }
+    SabbaqCard(
+        title = title,
+        subtitle = subtitle,
+        icon = Icons.Outlined.VerifiedUser,
+        modifier = modifier,
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    if (operational) "الحساب جاهز لتشغيل سبّاق" else "تحقق من حالة الوصول قبل بدء العمل",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (operational) brand.success else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                until?.let {
+                    Text(
+                        "ينتهي في ${it.toString().substringBefore('T')}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            SabbaqButton(
+                text = "حسابي",
+                onClick = onOpenAccount,
+                style = SabbaqButtonStyle.Text,
+                fillWidth = false,
+            )
+        }
+    }
+}
+
+@Composable
 private fun DashboardPage(
     isActive: Boolean,
     isCheckingActivation: Boolean,
@@ -831,6 +904,7 @@ private fun DashboardPage(
     accessibilityEnabled: Boolean,
     notificationsEnabled: Boolean,
     licenseInMemory: Boolean,
+    subscriptionSnapshot: SubscriptionSnapshot?,
     filters: Filters,
     runtime: RuntimeStatusSnapshot,
     activeFilterCount: Int,
@@ -870,6 +944,11 @@ private fun DashboardPage(
     if (isRestoringSession || sessionRestoreError) {
         SessionRestoreNotice(isRestoring = isRestoringSession, onRetry = onRetrySessionRestore)
     }
+    ActiveSubscriptionStatusCard(
+        snapshot = subscriptionSnapshot,
+        onOpenAccount = onOpenAccount,
+        modifier = Modifier.sabbaqEntrance(0),
+    )
     OperationHero(
         isActive = isActive,
         isChecking = isCheckingActivation || isRestoringSession,
@@ -878,10 +957,10 @@ private fun DashboardPage(
         onToggle = onToggle,
         canStart = !isRestoringSession && !sessionRestoreError,
         busyText = if (isRestoringSession) "جارٍ استعادة الجلسة" else "جارٍ التحقق من الاشتراك",
-        modifier = Modifier.sabbaqEntrance(0),
+        modifier = Modifier.sabbaqEntrance(1),
     )
-    ActiveConditionsCockpit(filters, activeFilterCount, onOpenFilters, Modifier.sabbaqEntrance(1))
-    RuntimeStatusCard(runtime, Modifier.sabbaqEntrance(0))
+    ActiveConditionsCockpit(filters, activeFilterCount, onOpenFilters, Modifier.sabbaqEntrance(2))
+    RuntimeStatusCard(runtime, Modifier.sabbaqEntrance(1))
     val missing = (readiness + power).filterNot { it.ready }
     if (missing.isNotEmpty()) MissingPermissionsCard(missing, Modifier.sabbaqEntrance(1))
     SabbaqAnimatedMessage(message?.message, message?.tone ?: SabbaqTone.Info)
