@@ -20,11 +20,11 @@ $$;
 grant execute on function pg_temp.event(text, text, jsonb) to authenticated, anon;
 
 insert into auth.users (id, email, phone, phone_confirmed_at, raw_app_meta_data, raw_user_meta_data) values
-    ('40000000-0000-0000-0000-000000000001', 'telemetry-admin@example.test', null, null,
+    ('7e1e0000-0000-0000-0000-000000000001', 'telemetry-admin@example.test', null, null,
      '{"provider":"google","providers":["google"]}'::jsonb, '{}'::jsonb),
-    ('40000000-0000-0000-0000-000000000002', null, '+966512399002', now(),
+    ('7e1e0000-0000-0000-0000-000000000002', null, '+966512399002', now(),
      '{"provider":"phone","providers":["phone"]}'::jsonb, '{}'::jsonb);
-insert into public.admins (user_id) values ('40000000-0000-0000-0000-000000000001');
+insert into public.admins (user_id) values ('7e1e0000-0000-0000-0000-000000000001');
 
 -- Anonymous clients cannot write telemetry.
 set role anon;
@@ -37,7 +37,7 @@ reset role;
 
 -- A signed-in driver ingests v1 and v2 rows; duplicates are idempotent.
 set role authenticated;
-set request.jwt.claim.sub = '40000000-0000-0000-0000-000000000002';
+set request.jwt.claim.sub = '7e1e0000-0000-0000-0000-000000000002';
 select pg_temp.expect((public.ingest_offer_telemetry(jsonb_build_array(
     pg_temp.event('00000000-0000-4000-8000-000000000011', 'EVENT_RECEIVED'),
     pg_temp.event('00000000-0000-4000-8000-000000000012', 'SIGNAL_MISS',
@@ -80,7 +80,7 @@ reset role;
 
 -- The admin sees counts summed per stage and reason, the latest detail, and the fleet overview.
 set role authenticated;
-set request.jwt.claim.sub = '40000000-0000-0000-0000-000000000001';
+set request.jwt.claim.sub = '7e1e0000-0000-0000-0000-000000000001';
 select pg_temp.expect(
     (select (f ->> 'count')::int from jsonb_array_elements(public.admin_offer_telemetry('5eef581d3799dfc07675dedb7025613c') -> 'funnel') f
      where f ->> 'stage' = 'SIGNAL_MISS') = 41, 'funnel sums aggregated counts');
@@ -94,16 +94,16 @@ select pg_temp.expect(
 select pg_temp.expect(
     (public.admin_offer_telemetry_overview() -> 'response_ms' ->> 'samples')::int = 0, 'response time has no samples without clicks');
 select pg_temp.expect(
-    (public.admin_offer_telemetry_for_driver('40000000-0000-0000-0000-000000000002') ->> 'correlation_id') = '5eef581d3799dfc07675dedb7025613c',
+    (public.admin_offer_telemetry_for_driver('7e1e0000-0000-0000-0000-000000000002') ->> 'correlation_id') = '5eef581d3799dfc07675dedb7025613c',
     'complaint lookup by driver account finds the device');
 select pg_temp.expect(
-    (public.admin_offer_telemetry_for_driver('40000000-0000-0000-0000-000000000001') ->> 'driver_has_telemetry')::boolean = false,
+    (public.admin_offer_telemetry_for_driver('7e1e0000-0000-0000-0000-000000000001') ->> 'driver_has_telemetry')::boolean = false,
     'driver without telemetry is reported explicitly');
 reset role;
 set role authenticated;
-set request.jwt.claim.sub = '40000000-0000-0000-0000-000000000002';
+set request.jwt.claim.sub = '7e1e0000-0000-0000-0000-000000000002';
 do $$ begin
-    perform public.admin_offer_telemetry_for_driver('40000000-0000-0000-0000-000000000002');
+    perform public.admin_offer_telemetry_for_driver('7e1e0000-0000-0000-0000-000000000002');
     raise exception 'EXPECTATION FAILED: driver used the complaint lookup';
 exception when insufficient_privilege then null;
 end $$;
@@ -111,10 +111,10 @@ reset role;
 
 -- Hourly bound: rows beyond it are acknowledged but not stored.
 insert into public.offer_telemetry_events(event_id, occurred_at, correlation_id, app_id, app_version, android_api, provider, stage, ingested_by)
-select gen_random_uuid(), now(), 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'sabbaq', '1', 34, 'jeeny', 'HEARTBEAT', '40000000-0000-0000-0000-000000000002'
+select gen_random_uuid(), now(), 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'sabbaq', '1', 34, 'jeeny', 'HEARTBEAT', '7e1e0000-0000-0000-0000-000000000002'
 from generate_series(1, 3000);
 set role authenticated;
-set request.jwt.claim.sub = '40000000-0000-0000-0000-000000000002';
+set request.jwt.claim.sub = '7e1e0000-0000-0000-0000-000000000002';
 select pg_temp.expect((public.ingest_offer_telemetry(jsonb_build_array(
     pg_temp.event('00000000-0000-4000-8000-000000000031', 'HEARTBEAT'))) ->> 'rate_limited')::boolean, 'hourly bound applies');
 reset role;
@@ -124,7 +124,7 @@ insert into public.offer_telemetry_events(event_id, occurred_at, correlation_id,
 values (gen_random_uuid(), now() - interval '40 days', 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'sabbaq', '1', 34, 'jeeny', 'HEARTBEAT', now() - interval '40 days');
 select pg_temp.expect(public.purge_offer_telemetry() = 1, 'old row purged');
 set role authenticated;
-set request.jwt.claim.sub = '40000000-0000-0000-0000-000000000001';
+set request.jwt.claim.sub = '7e1e0000-0000-0000-0000-000000000001';
 do $$ begin
     perform public.purge_offer_telemetry();
     raise exception 'EXPECTATION FAILED: client ran retention';

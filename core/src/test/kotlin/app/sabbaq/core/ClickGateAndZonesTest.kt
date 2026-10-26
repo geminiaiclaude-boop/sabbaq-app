@@ -86,7 +86,8 @@ class ClickGateAndZonesTest {
     @Test
     fun newerRemoteProfileReplacesBundled() {
         val local = Profiles.bundled()
-        val remote = listOf(local.first().copy(version = 2, acceptLabels = listOf("go")), local.first().copy(id = "genie", version = 1))
+        // Relative to the bundled version so the test keeps meaning "strictly newer" after profile bumps.
+        val remote = listOf(local.first().copy(version = local.first().version + 1, acceptLabels = listOf("go")), local.first().copy(id = "genie", version = 1))
         val merged = Profiles.merge(local, remote).associateBy { it.id }
         assertEquals(listOf("go"), merged.getValue(local.first().id).acceptLabels)
         assertTrue("genie" in merged)
