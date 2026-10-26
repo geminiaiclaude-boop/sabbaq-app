@@ -87,6 +87,14 @@ def apply_environment(env):
         time.sleep(4)
 
 
+def assert_decision_history(visible, where):
+    """The history page in reading order: heading, live status, statistics, then the seeded row."""
+    assert 'سجل القرارات' in visible, f'Decision history page did not render: {where}'
+    for label in ('حالة التشغيل الفعلية', 'إحصاءات سبّاق', 'هذا الأسبوع', 'هذا الشهر', 'أكثر أسباب الرفض اليوم',
+                  'آخر القرارات', 'تم قبول الرحلة', 'ci-preview ·'):
+        assert reachable_by_scrolling(label, visible), f'Decision history section missing: {label}: {where}'
+
+
 def reachable_by_scrolling(text, visible):
     """True when [text] is on screen now or appears after scrolling the page down."""
     if text in visible:
@@ -217,9 +225,7 @@ for name, screen, dark, font_scale, env in cases:
         for player_control in ('تخطي الفيديو', 'تشغيل صوت الافتتاحية', 'كتم صوت الافتتاحية'):
             assert player_control not in visible, f'Player/ad control leaked into launch opening: {player_control}'
     if screen == 'history':
-        assert 'سجل قرارات الطلبات' in visible, f'Decision history page did not render on direct open: {name}'
-        assert 'تأكد القبول من شاشة التطبيق' in visible, f'Seeded decision row did not render on direct open: {name}'
-        assert 'التطبيق: ci-preview' in visible, f'Seeded decision metadata missing on direct open: {name}'
+        assert_decision_history(visible, f'direct open: {name}')
     if screen == 'welcome-example':
         # The pipeline scene leads the page; the worked example sits below it.
         assert reachable_by_scrolling('٢٫٥ ر.س قبل التكاليف', visible), f'Concrete fare/distance example missing: {name}'
@@ -274,21 +280,17 @@ for name, screen, dark, font_scale, env in cases:
         if history_screenshot.startswith(b'\x89PNG\r\n\x1a\n'):
             (out / 'decision-log-after-navigation.png').write_bytes(history_screenshot)
         print(f'decision-log post-tap package-visible={args.package in history_visible}; text={history_visible[:1000]!r}', flush=True)
-        assert 'سجل قرارات الطلبات' in history_visible, f'Decision history page did not open: {name}'
-        assert 'تأكد القبول من شاشة التطبيق' in history_visible, f'Seeded decision row did not render: {name}'
-        assert 'التطبيق: ci-preview' in history_visible, f'Seeded decision metadata missing: {name}'
+        assert_decision_history(history_visible, f'after navigation: {name}')
         assert 'FATAL EXCEPTION' not in history_runtime, f'App crashed after opening decision history:\n{history_runtime}'
         assert history_screenshot.startswith(b'\x89PNG\r\n\x1a\n'), f'Invalid decision history screenshot: {name}'
     if screen == 'dashboard':
-        # The stats card is intentionally below voice alerts; capture the real phone UI
-        # at each section instead of relying only on the dashboard's first viewport.
+        # Voice alerts moved to «الإعدادات» and the statistics to «سجل القرارات»; the work page
+        # keeps the editable driving conditions and the supported apps. Capture each section.
         current_visible = visible
         checkpoints = (
-            ('التنبيهات الصوتية', None),
-            ('إحصاءات سبّاق', 'stats'),
-            ('هذا الأسبوع', 'stats-week'),
-            ('هذا الشهر', 'stats-month'),
-            ('أكثر أسباب الرفض اليوم', 'stats-reasons'),
+            ('شروط القيادة', 'conditions'),
+            ('نطاق السعر', None),
+            ('قنص الطلبات بدون وجهة', None),
             ('يعمل مع تطبيقات الرحلات', None),
         )
         for label, capture_name in checkpoints:
