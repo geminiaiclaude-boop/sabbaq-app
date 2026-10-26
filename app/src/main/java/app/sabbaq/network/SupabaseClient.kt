@@ -137,6 +137,9 @@ object SupabaseClient {
 
     /** Uploads only the bounded metadata contract; requires the existing authenticated session. */
     suspend fun uploadOfferTelemetry(events: List<OfferTelemetryEvent>): TelemetryUploadPolicy.Outcome {
+        // Only KeeperService renews the access token; with monitoring off it would expire after
+        // an hour and telemetry about exactly that state could never be uploaded.
+        if (refreshToken != null && SystemClock.elapsedRealtime() - accessIssuedAt > RENEW_AFTER_MILLIS) renewAccessToken()
         val session = sessions.snapshot() ?: return TelemetryUploadPolicy.Outcome.NO_SESSION
         if (events.isEmpty() || events.size > OfferTelemetryContract.MAX_BATCH_EVENTS) return TelemetryUploadPolicy.Outcome.INVALID_BATCH
         val payload = json.encodeToString(events)
@@ -154,6 +157,29 @@ object SupabaseClient {
             })
         }
         return result.getOrDefault(TelemetryUploadPolicy.Outcome.TRANSIENT_FAILURE)
+    }
+
+    /**
+     * Enabled ride-app profiles published by the administration (RLS: authenticated, enabled
+     * only). Returned as a `{"profiles":[...]}` bundle for [app.sabbaq.core.Profiles.decode], which
+     * drops anything unusable, so a bad row can never disable bundled parsing.
+     */
+    suspend fun fetchRideProfiles(): Result<String> {
+        val session = sessions.snapshot()
+            ?: return Result.failure(ClientRequestException("انتهت الجلسة؛ سجّل الدخول من جديد"))
+        return networkCall {
+            val url = endpoint("rest/v1/ride_profiles").newBuilder()
+                .addQueryParameter("select", "body")
+                .addQueryParameter("enabled", "eq.true")
+                .build()
+            val response = execute(requestBuilder(url).header("Authorization", "Bearer ${session.token}").get().build())
+            if (response.code == 401) return@networkCall Result.failure(ClientRequestException("انتهت الجلسة"))
+            if (!response.isSuccessful) return@networkCall httpFailure("قراءة ملفات التطبيقات", response)
+            val rows = json.parseToJsonElement(response.body) as? JsonArray
+                ?: return@networkCall Result.failure(ClientRequestException("استجابة ملفات التطبيقات غير صالحة"))
+            val bodies = JsonArray(rows.mapNotNull { (it as? JsonObject)?.get("body") as? JsonObject })
+            Result.success(buildJsonObject { put("profiles", bodies) }.toString())
+        }
     }
 
     /** يمكّن مسار تسجيل خروج مستقبلي من إبطال الجلسة الذاكرية صراحةً. */
@@ -235,7 +261,8 @@ object SupabaseClient {
         if (!sessions.replaceToken(current.token, pair.first)) return@renewMutex false
         refreshToken = pair.second
         accessIssuedAt = SystemClock.elapsedRealtime()
-        current.deviceId?.let { device -> appContext?.let { SessionVault.save(it, pair.second, device) } }
+        // Keystore + commit(): never on the caller's thread, which is Main for KeeperService.
+        current.deviceId?.let { device -> appContext?.let { withContext(Dispatchers.IO) { SessionVault.save(it, pair.second, device) } } }
         true
     }
 

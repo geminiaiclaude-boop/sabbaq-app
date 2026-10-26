@@ -12,6 +12,7 @@ import app.sabbaq.core.TelemetryAggregator
 import app.sabbaq.core.TelemetryStage
 import app.sabbaq.core.TelemetryUploadPolicy
 import app.sabbaq.network.SupabaseClient
+import app.sabbaq.service.ProfileRepository
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -100,6 +101,20 @@ object TelemetryRepository {
     fun currentCorrelationId(): String? = correlation
 
     fun status(): Status = Status(correlation, pending, lastUploadEpochMs, uploadState, aggregator.funnel())
+
+    /**
+     * Account deletion: nothing tied to the account may stay on the device. Drops the queue and
+     * counters and rotates the installation id so later rows cannot be linked to the old ones.
+     */
+    fun clearForAccountDeletion() {
+        val app = appContext ?: return
+        aggregator.reset()
+        val newInstallation = UUID.randomUUID().toString()
+        app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString(INSTALLATION, newInstallation).remove(CRASH_MARKER).apply()
+        correlation = OfferTelemetryContract.correlationId(newInstallation)
+        worker.launch { runCatching { queue?.clearAll(); pending = 0 } }
+    }
 
     /** Drains counters and uploads now, e.g. when the service stops or the driver asks for it. */
     fun flushNow() {
@@ -233,6 +248,9 @@ object TelemetryRepository {
         latencyBucket = latencyMs?.let(::bucket),
         eventCount = emission.count,
         detail = emission.detail,
+        // Which profile version produced the observation: a fix published from the admin panel
+        // can be confirmed (or ruled out) per device from the telemetry alone.
+        profileVersion = runCatching { ProfileRepository.versionOf(emission.key.provider) }.getOrNull()?.let { "v$it" },
         targetAppVersion = installedVersion(emission.key.provider),
     )
 

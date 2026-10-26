@@ -42,6 +42,7 @@ class SabbaqA11yService : AccessibilityService() {
     private var lastJeenyFingerprint: String? = null
     private var lastJeenyEventMs = 0L
     private var lastJeenyWindowId: Int? = null
+    private var profileRevision = -1
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -53,8 +54,19 @@ class SabbaqA11yService : AccessibilityService() {
         runCatching { OfferDecisionLogStore.init(applicationContext) }
             .onFailure { Log.w(TAG, "تعذر تهيئة سجل القرارات المحلي") }
         TelemetryRepository.serviceConnected = true
+        loadProfiles()
+        TelemetryRepository.trace(
+            TelemetryStage.SERVICE_CONNECTED,
+            reasonCode = if (parsersByPackage.isEmpty()) "no_profiles" else "ready",
+            detail = "packages=${parsersByPackage.size},windows=${if (canReadWindows()) 1 else 0}",
+        )
+    }
+
+    /** Builds parsers from the profiles in effect; re-run when the administration publishes new ones. */
+    private fun loadProfiles() {
+        profileRevision = ProfileRepository.revision
         parsersByPackage = runCatching {
-            val profiles = Profiles.bundled().filter { it.enabled }
+            val profiles = ProfileRepository.current().filter { it.enabled }
             adaptersByProfile = profiles.associate { it.id to RideAppAdapters.forProfile(it) }
             profiles
                 .asSequence()
@@ -75,11 +87,6 @@ class SabbaqA11yService : AccessibilityService() {
         if (parsersByPackage.isEmpty()) {
             Log.w(TAG, "لا توجد ملفات تعريف صالحة لخدمة الإتاحة")
         }
-        TelemetryRepository.trace(
-            TelemetryStage.SERVICE_CONNECTED,
-            reasonCode = if (parsersByPackage.isEmpty()) "no_profiles" else "ready",
-            detail = "packages=${parsersByPackage.size},windows=${if (canReadWindows()) 1 else 0}",
-        )
     }
 
     private fun canReadWindows(): Boolean =
@@ -90,6 +97,7 @@ class SabbaqA11yService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
         val eventNow = SystemClock.elapsedRealtime()
+        if (profileRevision != ProfileRepository.revision) loadProfiles()
         liveness.accessibilityEvent(eventNow)
         runtimeStatus.event(eventNow)
         val eventPackage = event.packageName?.toString()

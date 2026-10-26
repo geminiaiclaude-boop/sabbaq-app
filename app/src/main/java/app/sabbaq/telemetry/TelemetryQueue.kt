@@ -84,6 +84,10 @@ class TelemetryQueue private constructor(private val prefs: SharedPreferences) {
 
     @Synchronized fun size(): Int = read().size
 
+    @Synchronized fun clearAll() {
+        prefs.edit().remove(KEY).remove(RETRY_KEY).remove(DROPPED_KEY).commit()
+    }
+
     @Synchronized fun nextRetryAt(): Long = readRetry().nextAt
 
     private fun read(): List<OfferTelemetryEvent> = runCatching {

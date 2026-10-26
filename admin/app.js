@@ -28,6 +28,7 @@
         commercialPolicy: null,
         commercialPolicyLoaded: false,
         commercialPolicyLoading: false,
+        profiles: null,
         nativeAccessToken: null,
         nativeSessionAccepting: false,
         idleTimer: null,
@@ -65,6 +66,15 @@
             telemetryFeedback: document.getElementById('telemetry-feedback'),
             telemetryResults: document.getElementById('telemetry-results'),
             telemetryOverview: document.getElementById('telemetry-overview'),
+            profilesTab: document.getElementById('profiles-tab'),
+            profilesPanel: document.getElementById('tab-profiles'),
+            profileForm: document.getElementById('profile-form'),
+            profileSelect: document.getElementById('profile-select'),
+            profileEnabled: document.getElementById('profile-enabled'),
+            profileReload: document.getElementById('profile-reload'),
+            profileSave: document.getElementById('profile-save'),
+            profileBody: document.getElementById('profile-body'),
+            profileFeedback: document.getElementById('profile-feedback'),
             refreshDrivers: document.getElementById('refresh-drivers'),
             refreshCodes: document.getElementById('refresh-codes'),
             driversPrevious: document.getElementById('drivers-previous'),
@@ -223,6 +233,10 @@
         el.telemetryTab.addEventListener('click', () => { void showTab('telemetry'); });
         el.telemetryForm.addEventListener('submit', handleTelemetrySearch);
         el.telemetryOverview.addEventListener('click', () => { void handleTelemetryOverview(); });
+        el.profilesTab.addEventListener('click', () => { void showTab('profiles'); });
+        el.profileSelect.addEventListener('change', showSelectedProfile);
+        el.profileReload.addEventListener('click', () => { void runWithButton(el.profileReload, loadProfiles); });
+        el.profileForm.addEventListener('submit', handleProfileSave);
         el.refreshDrivers.addEventListener('click', () => { void loadDrivers({ reset: true }); });
         el.refreshCodes.addEventListener('click', () => { void loadCodes({ reset: true }); });
         el.driversPrevious.addEventListener('click', () => { void movePage('drivers', -1); });
@@ -451,7 +465,7 @@
     }
 
     async function showTab(tabName) {
-        if (tabName !== 'drivers' && tabName !== 'codes' && tabName !== 'commercial-policy' && tabName !== 'telemetry') return;
+        if (!['drivers', 'codes', 'commercial-policy', 'telemetry', 'profiles'].includes(tabName)) return;
         state.activeTab = tabName;
         const showingDrivers = tabName === 'drivers';
         const showingCodes = tabName === 'codes';
@@ -459,17 +473,102 @@
         el.codesPanel.hidden = !showingCodes;
         el.commercialPolicyPanel.hidden = tabName !== 'commercial-policy';
         el.telemetryPanel.hidden = tabName !== 'telemetry';
+        el.profilesPanel.hidden = tabName !== 'profiles';
         el.driversTab.classList.toggle('active', showingDrivers);
         el.codesTab.classList.toggle('active', showingCodes);
         el.commercialPolicyTab.classList.toggle('active', tabName === 'commercial-policy');
         el.telemetryTab.classList.toggle('active', tabName === 'telemetry');
+        el.profilesTab.classList.toggle('active', tabName === 'profiles');
         el.driversTab.setAttribute('aria-selected', String(showingDrivers));
         el.codesTab.setAttribute('aria-selected', String(showingCodes));
         el.commercialPolicyTab.setAttribute('aria-selected', String(tabName === 'commercial-policy'));
         el.telemetryTab.setAttribute('aria-selected', String(tabName === 'telemetry'));
+        el.profilesTab.setAttribute('aria-selected', String(tabName === 'profiles'));
         if (showingDrivers) await loadDrivers();
         else if (showingCodes) await loadCodes();
         else if (tabName === 'commercial-policy' && !state.commercialPolicyLoaded) await loadCommercialPolicy({ announce: true });
+        else if (tabName === 'profiles' && !state.profiles) await loadProfiles();
+    }
+
+    async function loadProfiles() {
+        if (!await ensureActiveSession()) return;
+        setProfileFeedback('يجري تحميل ملفات التطبيقات…', 'info');
+        const { data, error } = await db.from('ride_profiles').select('id,version,enabled,updated_at,body').order('id');
+        if (error) {
+            if (isAuthorizationError(error)) await signOut('انتهت صلاحية جلسة المشرف.');
+            else setProfileFeedback('تعذر تحميل ملفات التطبيقات. تحقق من الاتصال.', 'error');
+            return;
+        }
+        state.profiles = Array.isArray(data) ? data : [];
+        el.profileSelect.replaceChildren();
+        state.profiles.forEach((profile) => {
+            const option = document.createElement('option');
+            option.value = profile.id;
+            option.textContent = `${profile.id} · الإصدار ${profile.version}${profile.enabled ? '' : ' · معطّل'}`;
+            el.profileSelect.append(option);
+        });
+        const empty = document.createElement('option');
+        empty.value = '';
+        empty.textContent = 'ملف جديد…';
+        el.profileSelect.append(empty);
+        showSelectedProfile();
+        setProfileFeedback(state.profiles.length
+            ? 'الملفات المنشورة تتقدّم على الملفات المضمّنة في التطبيق فقط إذا كان رقم إصدارها أكبر.'
+            : 'لا توجد ملفات منشورة بعد؛ التطبيق يستعمل الملفات المضمّنة (الإصدار 2). الصق ملفًا برقم إصدار 3 أو أكبر لنشر إصلاح.', 'info');
+    }
+
+    function showSelectedProfile() {
+        const selected = (state.profiles || []).find(profile => profile.id === el.profileSelect.value);
+        el.profileBody.value = selected ? JSON.stringify(selected.body, null, 2) : '';
+        el.profileEnabled.checked = selected ? selected.enabled === true : true;
+    }
+
+    // Mirrors admin_upsert_profile and core Profiles.isUsable so a bad edit is refused before
+    // it reaches the server, and a publish never silently loses to an equal or higher version.
+    function validateProfileDraft(text, published) {
+        let body;
+        try { body = JSON.parse(text); } catch (_) { return { error: 'المحتوى ليس JSON صالحًا.' }; }
+        if (!body || typeof body !== 'object' || Array.isArray(body)) return { error: 'الملف يجب أن يكون كائن JSON.' };
+        if (typeof body.id !== 'string' || !/^[a-z0-9_]{2,32}$/.test(body.id)) return { error: 'المعرّف id غير صالح.' };
+        if (!Number.isSafeInteger(body.version) || body.version < 1) return { error: 'رقم الإصدار version يجب أن يكون عددًا صحيحًا موجبًا.' };
+        for (const field of ['packages', 'acceptLabels', 'currencyTokens']) {
+            if (!Array.isArray(body[field]) || !body[field].some(value => typeof value === 'string' && value.trim())) {
+                return { error: `الحقل ${field} يجب أن يكون قائمة غير فارغة.` };
+            }
+        }
+        const current = (published || []).find(profile => profile.id === body.id);
+        if (current && body.version <= Number(current.version)) {
+            return { error: `ارفع رقم الإصدار فوق ${current.version}؛ لن يطبّق التطبيق إصدارًا مساويًا أو أقدم.` };
+        }
+        return { body };
+    }
+
+    async function handleProfileSave(event) {
+        event.preventDefault();
+        const draft = validateProfileDraft(el.profileBody.value, state.profiles);
+        if (draft.error) {
+            setProfileFeedback(draft.error, 'error');
+            return;
+        }
+        await runWithButton(el.profileSave, async () => {
+            if (!await ensureActiveSession()) return;
+            const { error } = await db.rpc('admin_upsert_profile', { p_body: draft.body, p_enabled: el.profileEnabled.checked });
+            if (error) {
+                if (isAuthorizationError(error)) await signOut('انتهت صلاحية جلسة المشرف.');
+                else setProfileFeedback('رفض الخادم الملف. تحقق من الحقول ورقم الإصدار ثم أعد المحاولة.', 'error');
+                return;
+            }
+            await loadProfiles();
+            el.profileSelect.value = draft.body.id;
+            showSelectedProfile();
+            setProfileFeedback(`نُشر ${draft.body.id} الإصدار ${draft.body.version}. يصل للسائقين خلال 6 ساعات أو عند تشغيل المتابعة.`, 'success');
+        });
+    }
+
+    function setProfileFeedback(message, type) {
+        el.profileFeedback.textContent = message;
+        el.profileFeedback.className = `policy-feedback policy-feedback--${type}`;
+        el.profileFeedback.hidden = false;
     }
 
     async function loadCommercialPolicy({ announce = true } = {}) {

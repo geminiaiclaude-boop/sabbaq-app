@@ -291,14 +291,17 @@ fun SettingsScreen(
         subscriptionSnapshot = SupabaseClient.subscriptionSnapshot()
         val persistedActive = Settings.isActive
         if (persistedActive != isActive) isActive = persistedActive
-        if (persistedActive && (!a11y || !notifications || !licensed)) {
-            stopKeeper(
-                when {
-                    !a11y -> "توقفت متابعة الطلبات لأن إذن إمكانية الوصول لم يعد مفعّلًا."
-                    !notifications -> "توقفت متابعة الطلبات لأن إذن الإشعارات لم يعد مفعّلًا."
-                    else -> "توقفت متابعة الطلبات لأن حالة اشتراكك تحتاج إلى تحقق."
-                }
-            )
+        // KeeperService owns the license and accessibility lifecycle: it pauses while the lease
+        // cannot be renewed and resumes when accessibility comes back. Stopping here (which
+        // clears monitoringWanted) turned every coverage gap or accessibility blip seen while
+        // the dashboard was open into a permanent stop. Only a revoked notification permission,
+        // which the keeper also treats as fatal, ends monitoring from the screen.
+        if (persistedActive && !notifications) {
+            stopKeeper("توقفت متابعة الطلبات لأن إذن الإشعارات لم يعد مفعّلًا.")
+        } else if (persistedActive && !a11y) {
+            runtimeMessage = DriverStatus("إذن إمكانية الوصول مغلق؛ لن يُقبل أي طلب حتى تعيد تفعيله، وتُستأنف المتابعة تلقائيًا بعدها.", isError = true)
+        } else if (persistedActive && !licensed) {
+            runtimeMessage = DriverStatus("نتحقق من اشتراكك؛ تُستأنف المتابعة تلقائيًا عند عودة الاتصال.", isError = true)
         }
     }
 

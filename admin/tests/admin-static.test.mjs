@@ -186,6 +186,22 @@ test('تشخيص الشكوى يحدد السبب والإجراء: توجيه �
     assert.equal(working.action, 'none');
 });
 
+test('نشر ملف تطبيق يرفض المحتوى غير الصالح أو الإصدار غير الأحدث', () => {
+    const app = read(sourceAdmin, 'app.js');
+    const html = read(sourceAdmin, 'index.html');
+    for (const id of ['profiles-tab', 'tab-profiles', 'profile-select', 'profile-body', 'profile-save']) {
+        assert.match(html, new RegExp(`id="${id}"`));
+    }
+    assert.match(app, /db\.rpc\('admin_upsert_profile', \{ p_body: draft\.body, p_enabled: el\.profileEnabled\.checked \}\)/);
+    const validate = extractFunction(app, 'validateProfileDraft', 'handleProfileSave');
+    const valid = { id: 'jeeny', version: 3, packages: ['me.com.easytaxista'], acceptLabels: ['قبول'], currencyTokens: ['sar'] };
+    assert.ok(validate(JSON.stringify(valid), [{ id: 'jeeny', version: 2 }]).body);
+    assert.match(validate('{bad', []).error, /JSON/);
+    assert.match(validate(JSON.stringify({ ...valid, version: 2 }), [{ id: 'jeeny', version: 2 }]).error, /ارفع رقم الإصدار/);
+    assert.match(validate(JSON.stringify({ ...valid, acceptLabels: [] }), []).error, /acceptLabels/);
+    assert.match(validate(JSON.stringify({ ...valid, id: 'Bad Id' }), []).error, /id/);
+});
+
 test('على الجوال لا تتحرك اللوحة أفقيًا: صفوف الجداول بطاقات تحمل أسماء أعمدتها', () => {
     const css = read(sourceAdmin, 'styles.css');
     const app = read(sourceAdmin, 'app.js');

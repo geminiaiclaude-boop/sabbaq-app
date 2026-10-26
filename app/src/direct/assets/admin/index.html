@@ -57,6 +57,7 @@
                         <button id="codes-tab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="tab-codes">أكواد التفعيل</button>
                         <button id="commercial-policy-tab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="tab-commercial-policy">سياسة العرض</button>
                         <button id="telemetry-tab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="tab-telemetry">تشخيص الشكاوى</button>
+                        <button id="profiles-tab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="tab-profiles">ملفات التطبيقات</button>
                     </nav>
                 </aside>
 
@@ -158,6 +159,17 @@
                         </form>
                         <p id="telemetry-feedback" class="policy-feedback" role="status" aria-live="polite" hidden></p>
                         <div id="telemetry-results" class="card" hidden></div>
+                    </section>
+                    <section id="tab-profiles" class="tab-content" role="tabpanel" aria-labelledby="profiles-tab" hidden>
+                        <div class="section-heading"><div><h3>ملفات التطبيقات</h3><p>تعديل طريقة قراءة جيني/بولت/بترا يصل لكل السائقين خلال 6 ساعات دون إصدار جديد. ارفع رقم الإصدار عند كل تعديل.</p></div></div>
+                        <form id="profile-form" class="toolbar toolbar--form" novalidate>
+                            <div class="field batch-field"><label for="profile-select">الملف</label><select id="profile-select"></select></div>
+                            <div class="field"><label for="profile-enabled">مفعّل</label><input id="profile-enabled" type="checkbox"></div>
+                            <button id="profile-reload" class="btn-secondary" type="button">تحديث</button>
+                            <button id="profile-save" type="submit">نشر الملف</button>
+                        </form>
+                        <div class="field"><label for="profile-body">محتوى الملف (JSON)</label><textarea id="profile-body" dir="ltr" rows="18" spellcheck="false"></textarea></div>
+                        <p id="profile-feedback" class="policy-feedback" role="status" aria-live="polite" hidden></p>
                     </section>
                     <section id="tab-commercial-policy" class="tab-content" role="tabpanel" aria-labelledby="commercial-policy-tab" hidden>
                         <div class="section-heading">

@@ -122,9 +122,11 @@ class KeeperService : Service() {
         registerNetworkCallback()
         checkAccessibility()
         warnIfSubscriptionEnding()
+        refreshProfiles(force = true)
         while (currentCoroutineContext().isActive) {
             delay(60_000)
             if (!checkStillAllowed()) break
+            refreshProfiles(force = false)
         }
     }
 
@@ -203,6 +205,17 @@ class KeeperService : Service() {
             restored.getOrNull() == true -> { resumeAfterOutage(); true }
             restored.isSuccess -> stopForLicense()
             else -> { pauseForOutage(); true }
+        }
+    }
+
+    /** Picks up profile fixes published by the administration (at most every six hours). */
+    private suspend fun refreshProfiles(force: Boolean) {
+        try {
+            withContext(Dispatchers.IO) { ProfileRepository.refreshIfStale(force) }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // A failed fetch keeps the cached profiles; the next interval retries.
         }
     }
 
