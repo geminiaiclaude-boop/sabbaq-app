@@ -56,6 +56,7 @@
                         <button id="drivers-tab" class="tab active" type="button" role="tab" aria-selected="true" aria-controls="tab-drivers">السائقون</button>
                         <button id="codes-tab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="tab-codes">أكواد التفعيل</button>
                         <button id="commercial-policy-tab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="tab-commercial-policy">سياسة العرض</button>
+                        <button id="telemetry-tab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="tab-telemetry">تشخيص الشكاوى</button>
                     </nav>
                 </aside>
 
@@ -148,6 +149,15 @@
                         </div>
                     </section>
 
+                    <section id="tab-telemetry" class="tab-content" role="tabpanel" aria-labelledby="telemetry-tab" hidden>
+                        <div class="section-heading"><div><h3>تشخيص الشكاوى</h3><p>ابحث بمعرّف الدعم pseudonymous فقط؛ لا تعرض هذه الصفحة نصوص العروض أو الموقع.</p></div></div>
+                        <form id="telemetry-form" class="toolbar toolbar--form" novalidate>
+                            <div class="field batch-field"><label for="telemetry-correlation">معرّف الدعم</label><input id="telemetry-correlation" maxlength="64" dir="ltr" autocomplete="off" required></div>
+                            <button id="telemetry-search" type="submit">بحث</button>
+                        </form>
+                        <p id="telemetry-feedback" class="policy-feedback" role="status" aria-live="polite" hidden></p>
+                        <div id="telemetry-results" class="card" hidden></div>
+                    </section>
                     <section id="tab-commercial-policy" class="tab-content" role="tabpanel" aria-labelledby="commercial-policy-tab" hidden>
                         <div class="section-heading">
                             <div>
