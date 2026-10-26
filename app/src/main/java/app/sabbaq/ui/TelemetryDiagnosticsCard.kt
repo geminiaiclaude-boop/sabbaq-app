@@ -46,12 +46,14 @@ internal fun TelemetryDiagnosticsCard(modifier: Modifier = Modifier) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
         )
-        status.funnel.take(8).forEach { row ->
-            Text(
-                "${stageText(row.key.stage)} · ${row.key.reason ?: "—"} · ${row.total}",
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
+        status.funnel.filter { it.key.stage != TelemetryStage.EVENT_RECEIVED && it.key.stage != TelemetryStage.HEARTBEAT }
+            .take(6).forEach { row ->
+                val reason = RuntimeLabels.reason(row.key.reason)
+                Text(
+                    stageText(row.key.stage) + (if (reason.isNotEmpty()) " · $reason" else "") + " · ${row.total} مرة",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
         Text(
             "بانتظار الإرسال: ${status.pending} · ${uploadText(status.state)}",
             style = MaterialTheme.typography.bodySmall,

@@ -51,7 +51,13 @@ fun OfferDecisionLogScreen(onBack: () -> Unit) {
         }
         if (rows.isEmpty()) {
             Text("لا توجد قرارات مسجلة في الأيام السبعة الأخيرة.", style = MaterialTheme.typography.bodyLarge)
+            Text(
+                "إن كانت الطلبات تصلك في تطبيق النقل ولا تظهر هنا، فسبّاق لا يراها: افتح «تشخيص الرصد» في لوحة التحكم لمعرفة السبب، أو أرسل معرّف الدعم من صفحة الاشتراك.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         } else {
+            DecisionSummary(rows)
             rows.forEach { row -> DecisionRow(row) }
         }
     }
@@ -72,6 +78,35 @@ fun OfferDecisionLogScreen(onBack: () -> Unit) {
     )
 }
 
+/** What the driver actually wants to know first: how many offers matched, and what blocks the rest. */
+@Composable
+private fun DecisionSummary(rows: List<OfferDecisionLogEntry>) {
+    val matched = rows.count { it.outcome == DecisionLogOutcome.MATCHED }
+    val rejected = rows.filter { it.outcome == DecisionLogOutcome.REJECTED }
+    val confirmed = rows.count { it.outcome == DecisionLogOutcome.ACCEPTED_CONFIRMED }
+    val topReason = rejected.flatMap { it.reasons.take(1) }.groupingBy { it }.eachCount().maxByOrNull { it.value }
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("خلال 7 أيام", style = MaterialTheme.typography.titleSmall)
+            Text("طلبات مطابقة: $matched · مرفوضة: ${rejected.size} · قبول مؤكد: $confirmed", style = MaterialTheme.typography.bodyMedium)
+            topReason?.let { (reason, count) ->
+                Text(
+                    "أكثر سبب للرفض ($count مرة): ${reasonArabic(reason)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+private fun platformName(profileId: String): String = when (profileId) {
+    "jeeny" -> "جيني"
+    "bolt" -> "بولت"
+    "petra" -> "بترا"
+    else -> profileId
+}
+
 @Composable
 private fun DecisionRow(entry: OfferDecisionLogEntry) {
     val time = remember(entry.timestampEpochMs) {
@@ -82,15 +117,15 @@ private fun DecisionRow(entry: OfferDecisionLogEntry) {
     val outcome = when (entry.outcome) {
         DecisionLogOutcome.REJECTED -> "رُفض وفق الشروط"
         DecisionLogOutcome.MATCHED -> "مطابق للشروط"
-        DecisionLogOutcome.SEMANTIC_CLICK_SENT -> "أُرسل نقر العنصر دلاليًا؛ بانتظار التأكيد"
-        DecisionLogOutcome.GESTURE_CLICK_SENT -> "أُرسلت إيماءة النقر؛ بانتظار التأكيد"
-        DecisionLogOutcome.ACCEPTED_CONFIRMED -> "تأكد القبول من شاشة التطبيق"
-        DecisionLogOutcome.CONFIRMATION_TIMEOUT -> "لم تظهر شاشة التأكيد خلال المهلة"
+        DecisionLogOutcome.SEMANTIC_CLICK_SENT,
+        DecisionLogOutcome.GESTURE_CLICK_SENT -> "ضغط سبّاق على «قبول»؛ بانتظار تأكيد التطبيق"
+        DecisionLogOutcome.ACCEPTED_CONFIRMED -> "تم قبول الرحلة"
+        DecisionLogOutcome.CONFIRMATION_TIMEOUT -> "ضُغط «قبول» ولم يتأكد القبول (ربما أخذه سائق آخر)"
     }
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(outcome, style = MaterialTheme.typography.titleSmall)
-            Text("التطبيق: ${entry.profileId}", style = MaterialTheme.typography.bodySmall)
+            Text("التطبيق: ${platformName(entry.profileId)}", style = MaterialTheme.typography.bodySmall)
             Text(time, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (entry.reasons.isNotEmpty()) {
                 Text(

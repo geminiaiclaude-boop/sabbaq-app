@@ -232,7 +232,7 @@ class KeeperService : Service() {
         pausedForOutage = true
         Settings.isActive = false
         TelemetryRepository.trace(TelemetryStage.PAUSED, "keeper_waiting_network")
-        getSystemService(NotificationManager::class.java)?.notify(NOTIFICATION_ID, buildNotification(resuming = true))
+        getSystemService(NotificationManager::class.java)?.notify(NOTIFICATION_ID, buildNotification(resuming = true, waitingForNetwork = true))
     }
 
     private fun resumeAfterOutage() {
@@ -399,9 +399,17 @@ class KeeperService : Service() {
         android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE,
     )
 
-    private fun buildNotification(resuming: Boolean) = NotificationCompat.Builder(this, CHANNEL_ID)
-        .setContentTitle(if (resuming) "سبّاق يستأنف المتابعة…" else "سبّاق الطلبات مفعّل")
-        .setContentText(if (resuming) "نتحقق من اشتراكك ونعيد المتابعة تلقائيًا." else "يراقب العروض وفق الإعدادات التي اخترتها.")
+    private fun buildNotification(resuming: Boolean, waitingForNetwork: Boolean = false) = NotificationCompat.Builder(this, CHANNEL_ID)
+        .setContentTitle(when {
+            waitingForNetwork -> "سبّاق متوقف مؤقتًا"
+            resuming -> "سبّاق يستأنف المتابعة…"
+            else -> "سبّاق الطلبات مفعّل"
+        })
+        .setContentText(when {
+            waitingForNetwork -> "بانتظار الإنترنت لتأكيد اشتراكك؛ يعود تلقائيًا عند الاتصال."
+            resuming -> "نتحقق من اشتراكك ونعيد المتابعة تلقائيًا."
+            else -> "يراقب العروض وفق الإعدادات التي اخترتها."
+        })
         .setSmallIcon(app.sabbaq.R.drawable.ic_stat_sabbaq)
         .setColor(0xFF006B58.toInt())
         .setCategory(NotificationCompat.CATEGORY_SERVICE)

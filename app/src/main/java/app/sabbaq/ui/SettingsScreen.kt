@@ -1032,21 +1032,35 @@ private fun DashboardPage(
 
 @Composable
 private fun RuntimeStatusCard(status: RuntimeStatusSnapshot, modifier: Modifier = Modifier) {
+    // Relative times ("قبل 12 ثانية") must keep moving even when no event updates the snapshot.
+    var now by remember { mutableStateOf(android.os.SystemClock.elapsedRealtime()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            now = android.os.SystemClock.elapsedRealtime()
+            delay(1_000)
+        }
+    }
     val state = when {
-        status.pausedReason != null -> "متوقفة: ${status.pausedReason}"
-        status.stale -> "قديمة؛ بانتظار حدث جديد"
-        status.active -> "تعمل"
+        status.pausedReason != null -> RuntimeLabels.pausedReason(status.pausedReason)
+        status.stale -> "لا نشاط حديث؛ افتح تطبيق النقل وتأكد أنه متصل"
+        status.active -> "تعمل وتراقب الطلبات"
         else -> "متوقفة"
     }
     SabbaqCard(title = "حالة التشغيل الفعلية", subtitle = state, icon = Icons.Outlined.Autorenew, modifier = modifier) {
-        Text("آخر حدث: ${status.lastEventMs?.toString() ?: "لا يوجد"}", style = MaterialTheme.typography.bodySmall)
-        Text("آخر عرض: ${status.lastOfferMs?.toString() ?: "لا يوجد"} · آخر قرار: ${status.lastDecisionMs?.toString() ?: "لا يوجد"}", style = MaterialTheme.typography.bodySmall)
-        Text("آخر نقرة: ${status.lastClickMs?.toString() ?: "لا يوجد"}", style = MaterialTheme.typography.bodySmall)
+        Text("آخر نشاط من تطبيق النقل: ${RuntimeLabels.relativeTime(status.lastEventMs, now)}", style = MaterialTheme.typography.bodySmall)
+        Text("آخر طلب: ${RuntimeLabels.relativeTime(status.lastOfferMs, now)} · آخر قرار: ${RuntimeLabels.relativeTime(status.lastDecisionMs, now)}", style = MaterialTheme.typography.bodySmall)
+        Text("آخر ضغط على قبول: ${RuntimeLabels.relativeTime(status.lastClickMs, now)}", style = MaterialTheme.typography.bodySmall)
         status.latestReport?.let { report ->
-            Text("تقرير القرار: ${report.score}/100 · الإشارات: ${report.availableSignals.joinToString().ifEmpty { "لا توجد" }}", style = MaterialTheme.typography.bodySmall)
-            Text("الأسباب: ${report.reasons.joinToString { it.name }}", style = MaterialTheme.typography.bodySmall)
+            Text("وضوح آخر طلب: ${report.score}/100", style = MaterialTheme.typography.bodySmall)
+            if (report.reasons.isNotEmpty()) {
+                Text("سبب عدم القبول: ${report.reasons.take(2).joinToString(" · ") { reasonArabic(it).removeSuffix(".") }}",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            }
         }
-        if (status.diagnostics.isNotEmpty()) Text("آخر المراحل: ${status.diagnostics.takeLast(5).joinToString { it.stage.name }}", style = MaterialTheme.typography.bodySmall)
+        if (status.diagnostics.isNotEmpty()) {
+            Text("آخر المراحل: ${status.diagnostics.takeLast(4).joinToString(" ← ") { RuntimeLabels.stage(it.stage) }}",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 
@@ -1658,9 +1672,11 @@ internal fun reasonArabic(code: ReasonCode): String = when (code) {
     ReasonCode.DESTINATION_CORRIDOR_MISMATCH -> "الوجهة خارج ممر الرحلة المحدد."
 }
 
+// Each server answer gets its own message: the three were grouped, so a mistyped code told the
+// driver that the account had moved to another device.
 private fun redeemErrorMessage(error: Throwable?): String = when (error?.message) {
-    "الرمز غير صحيح أو استُخدم مسبقًا",
-    "محاولات كثيرة؛ يرجى الانتظار قبل المحاولة مجددًا",
+    "الرمز غير صحيح أو استُخدم مسبقًا" -> "الرمز غير صحيح أو استُخدم مسبقًا. تأكد من نسخه كاملًا كما وصلك."
+    "محاولات كثيرة؛ يرجى الانتظار قبل المحاولة مجددًا" -> "محاولات كثيرة متتالية. انتظر بضع دقائق ثم أعد المحاولة."
     "هذا الحساب مرتبط بجهاز آخر" -> "نُقل حسابك إلى جهاز آخر. سجّل الدخول هنا مجددًا لنقله إلى هذا الجهاز."
     else -> "تعذر تفعيل الرمز. تحقق من الرمز واتصال الإنترنت ثم أعد المحاولة."
 }
