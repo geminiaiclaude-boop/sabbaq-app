@@ -57,6 +57,12 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowLeft
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.size
@@ -881,64 +887,118 @@ private fun ActiveSubscriptionStatusCard(
     modifier: Modifier = Modifier,
 ) {
     val brand = LocalSabbaqBrand.current
+    val colors = MaterialTheme.colorScheme
     val state = snapshot?.state
-    val operational = state == LicenseState.ACTIVE || state == LicenseState.TRIAL
-    val title = when (state) {
-        LicenseState.ACTIVE -> "اشتراك فعّال"
-        LicenseState.TRIAL -> "تجربة فعّالة"
-        LicenseState.PENDING -> "الاشتراك بانتظار التفعيل"
-        LicenseState.EXPIRED -> "انتهى الاشتراك"
-        LicenseState.DEVICE_MISMATCH -> "الاشتراك مرتبط بجهاز آخر"
-        LicenseState.BANNED, LicenseState.REJECTED -> "الاشتراك غير متاح"
-        LicenseState.UNREGISTERED, null -> "حالة الاشتراك غير مؤكدة"
-    }
+    val isPro = state == LicenseState.ACTIVE
+    val isTrial = state == LicenseState.TRIAL
     val until = when (state) {
         LicenseState.ACTIVE -> snapshot?.proUntil
         LicenseState.TRIAL -> snapshot?.trialUntil
         else -> null
     }
-    val remainingDays = until?.let {
-        java.time.Duration.between(java.time.Instant.now(), it).toDays().coerceAtLeast(0)
+    val now = java.time.Instant.now()
+    val remaining = until?.let { java.time.Duration.between(now, it).coerceAtLeast(java.time.Duration.ZERO) }
+    val remainingDays = remaining?.toDays()
+    val endDate = until?.let {
+        java.time.format.DateTimeFormatter.ofPattern("d MMMM yyyy", java.util.Locale("ar"))
+            .withZone(java.time.ZoneId.systemDefault()).format(it)
     }
-    val subtitle = when {
-        state == null -> "حدّث حالة حسابك لمعرفة ما إذا كانت متابعة الطلبات متاحة."
-        operational && remainingDays == 0L -> "ينتهي خلال أقل من يوم؛ جدّد اشتراكك من حسابي."
-        operational && remainingDays != null -> "متاح لمتابعة الطلبات — متبقٍ ${ArabicCount.days(remainingDays.toInt())}."
-        state == LicenseState.PENDING -> "سنفعّل الوصول بعد اكتمال التحقق من الاشتراك."
-        else -> "افتح حسابي لمعرفة التفاصيل وتحديث حالة الاشتراك."
+    val title = when (state) {
+        LicenseState.ACTIVE -> "مشترك في سبّاق Pro"
+        LicenseState.TRIAL -> "فترة تجريبية مجانية"
+        LicenseState.PENDING -> "الاشتراك بانتظار التفعيل"
+        LicenseState.EXPIRED -> "انتهى اشتراكك"
+        LicenseState.DEVICE_MISMATCH -> "الاشتراك مرتبط بجهاز آخر"
+        LicenseState.BANNED, LicenseState.REJECTED -> "الاشتراك غير متاح"
+        LicenseState.UNREGISTERED, null -> "حالة الاشتراك غير مؤكدة"
     }
-    SabbaqCard(
-        title = title,
-        subtitle = subtitle,
-        icon = Icons.Outlined.VerifiedUser,
-        modifier = modifier,
+    val detail = when {
+        (isPro || isTrial) && remainingDays == 0L -> "ينتهي خلال أقل من يوم — جدّد الآن"
+        (isPro || isTrial) && remainingDays != null -> "متبقٍ ${ArabicCount.days(remainingDays.toInt())} · حتى $endDate"
+        isPro || isTrial -> "متابعة الطلبات متاحة"
+        state == LicenseState.PENDING -> "سنفعّل الوصول بعد اكتمال التحقق"
+        state == null -> "حدّث حالة حسابك من «حسابي»"
+        else -> "افتح «حسابي» للتجديد أو التفاصيل"
+    }
+    val endingSoon = (isPro || isTrial) && remainingDays != null && remainingDays <= 2
+    // Trial length is known, so its progress is shown; a paid period's start is not, so Pro shows the date only.
+    val trialProgress = if (isTrial && remaining != null) snapshot?.trialDays?.takeIf { it > 0 }?.let { days ->
+        (remaining.toMinutes().toFloat() / (days * 24 * 60f)).coerceIn(0f, 1f)
+    } else null
+
+    val background = when {
+        isPro -> Brush.linearGradient(listOf(brand.heroStart, brand.heroEnd))
+        isTrial -> Brush.linearGradient(listOf(colors.primaryContainer, colors.secondaryContainer))
+        else -> Brush.linearGradient(listOf(colors.errorContainer, colors.errorContainer))
+    }
+    val content = when {
+        isPro -> brand.onHero
+        isTrial -> colors.onPrimaryContainer
+        else -> colors.onErrorContainer
+    }
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.large)
+            .clickable(onClickLabel = "فتح حسابي", role = Role.Button, onClick = onOpenAccount)
+            .semantics(mergeDescendants = true) { stateDescription = "$title، $detail" },
+        shape = MaterialTheme.shapes.large,
+        color = Color.Transparent,
+        contentColor = content,
+        shadowElevation = if (isPro) 8.dp else 2.dp,
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    if (operational) "الحساب جاهز لتشغيل سبّاق" else "تحقق من حالة الوصول قبل بدء العمل",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (operational) brand.success else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                until?.let {
-                    Text(
-                        "ينتهي في ${it.toString().substringBefore('T')}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        Box(Modifier.background(background)) {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    MembershipBadge(isPro = isPro, isTrial = isTrial)
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                        Text(
+                            detail,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = when {
+                                endingSoon && isPro -> brand.heroAccent
+                                endingSoon -> colors.error
+                                else -> content.copy(alpha = 0.85f)
+                            },
+                            maxLines = 1,
+                        )
+                    }
+                    Icon(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, contentDescription = null, tint = content.copy(alpha = 0.8f))
+                }
+                trialProgress?.let { progress ->
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier.fillMaxWidth().height(4.dp).clip(CircleShape),
+                        color = colors.primary,
+                        trackColor = colors.primary.copy(alpha = 0.18f),
                     )
                 }
             }
-            SabbaqButton(
-                text = "حسابي",
-                onClick = onOpenAccount,
-                style = SabbaqButtonStyle.Text,
-                fillWidth = false,
-            )
         }
+    }
+}
+
+/** «PRO» in gold for members, «تجربة» for trial users, a warning mark otherwise. */
+@Composable
+private fun MembershipBadge(isPro: Boolean, isTrial: Boolean) {
+    val colors = MaterialTheme.colorScheme
+    val (label, fill, ink) = when {
+        isPro -> Triple("PRO", Brush.linearGradient(listOf(Color(0xFFF7D774), Color(0xFFD9A526))), Color(0xFF3A2A00))
+        isTrial -> Triple("تجربة", Brush.linearGradient(listOf(colors.primary, colors.primary)), colors.onPrimary)
+        else -> Triple("!", Brush.linearGradient(listOf(colors.error, colors.error)), colors.onError)
+    }
+    Box(
+        modifier = Modifier
+            .heightIn(min = 36.dp)
+            .widthIn(min = 52.dp)
+            .shadow(if (isPro) 6.dp else 0.dp, RoundedCornerShape(12.dp), spotColor = Color(0xFFD9A526))
+            .clip(RoundedCornerShape(12.dp))
+            .background(fill)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, style = MaterialTheme.typography.labelLarge, color = ink, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
     }
 }
 
