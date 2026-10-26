@@ -414,7 +414,7 @@ internal fun SabbaqShell(
                     closeDrawer()
                     requestLogout()
                 },
-                onClose = closeDrawer,
+                onClose = { closeDrawer() },
             )
         },
     ) {
