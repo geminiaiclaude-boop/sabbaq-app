@@ -15,7 +15,9 @@ function extractFunction(source, name, nextName) {
     const start = source.indexOf(`function ${name}(`);
     const end = source.indexOf(`function ${nextName}(`, start);
     assert.ok(start >= 0 && end > start, `تعذر استخراج الدالة ${name}`);
-    return new Function(`${source.slice(start, end)}; return ${name};`)();
+    // The next function may be `async function …`; its `async` keyword must not be left behind.
+    const body = source.slice(start, end).replace(/\basync\s*$/, '');
+    return new Function(`${body}; return ${name};`)();
 }
 
 test('نسختا لوحة الإدارة متطابقتان', () => {
