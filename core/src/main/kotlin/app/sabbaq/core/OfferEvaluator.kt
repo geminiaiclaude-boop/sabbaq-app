@@ -91,7 +91,18 @@ enum class ReasonCode {
 
 data class Reason(val code: ReasonCode, val detail: String? = null)
 
-data class Verdict(val accept: Boolean, val reasons: List<Reason>, val farePerKm: BigDecimal?)
+data class DecisionReport(
+    val score: Int,
+    val availableSignals: List<String>,
+    val reasons: List<ReasonCode>,
+)
+
+data class Verdict(
+    val accept: Boolean,
+    val reasons: List<Reason>,
+    val farePerKm: BigDecimal?,
+    val report: DecisionReport = DecisionReport(0, emptyList(), emptyList()),
+)
 
 /**
  * Applies [Filters] to an [Offer]. A rule the driver enabled is never treated
@@ -214,9 +225,37 @@ object OfferEvaluator {
             val failedCodes = distinct.mapTo(HashSet()) { it.code }
             val passed = selectionGroups.any { group -> group.none { it in failedCodes } }
             val finalReasons = if (passed) emptyList() else distinct
-            return Verdict(accept = passed, reasons = finalReasons, farePerKm = perKm)
+            return Verdict(accept = passed, reasons = finalReasons, farePerKm = perKm,
+                report = decisionReport(offer, filters, distinct, perKm))
         }
-        return Verdict(accept = distinct.isEmpty(), reasons = distinct, farePerKm = perKm)
+        return Verdict(accept = distinct.isEmpty(), reasons = distinct, farePerKm = perKm,
+            report = decisionReport(offer, filters, distinct, perKm))
+    }
+
+    /** Explainability only; this report is not an acceptance gate. Missing values earn no points. */
+    private fun decisionReport(offer: Offer, filters: Filters, reasons: List<Reason>, perKm: BigDecimal?): DecisionReport {
+        val signals = buildList {
+            if (offer.fare != null) add("fare")
+            if (offer.pickupMinutes != null || offer.tripMinutes != null) add("time")
+            if (offer.pickupKm != null || offer.tripKm != null) add("distance")
+            if (offer.destinationAvailable) add("destination")
+            if (perKm != null) add("fare_per_km")
+            if (filters.destinationZones.any { it.enabled } || filters.smartDestination != null || filters.destinationCorridor != null) {
+                if (offer.destinationAvailable) add("destination_filter")
+            }
+        }
+        val raw = (if (offer.fare != null) 25 else 0) +
+            (if (offer.pickupMinutes != null || offer.tripMinutes != null) 15 else 0) +
+            (if (offer.pickupKm != null || offer.tripKm != null) 15 else 0) +
+            (if (offer.destinationAvailable) 20 else 0) +
+            (if (perKm != null) 10 else 0) +
+            (if ("destination_filter" in signals) 15 else 0)
+        val penalty = reasons.count { it.code in setOf(
+            ReasonCode.FARE_MISSING, ReasonCode.PER_KM_MISSING, ReasonCode.PICKUP_KM_MISSING,
+            ReasonCode.PICKUP_MIN_MISSING, ReasonCode.TRIP_KM_MISSING, ReasonCode.TRIP_MIN_MISSING,
+            ReasonCode.DESTINATION_MISSING, ReasonCode.DESTINATION_GEO_UNKNOWN,
+        ) } * 5
+        return DecisionReport((raw - penalty).coerceIn(0, 100), signals, reasons.map { it.code })
     }
 
     private fun resolveDestinationPoint(offer: Offer, aliases: List<DestinationAlias>): GeoPoint? {

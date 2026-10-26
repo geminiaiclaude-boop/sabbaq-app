@@ -109,6 +109,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -140,6 +141,8 @@ import app.sabbaq.core.ReasonCode
 import app.sabbaq.core.Verdict
 import app.sabbaq.network.SupabaseClient
 import app.sabbaq.service.SabbaqA11yService
+import app.sabbaq.service.RuntimeStatusRepository
+import app.sabbaq.core.RuntimeStatusSnapshot
 import java.math.BigDecimal
 import java.util.Calendar
 import kotlinx.coroutines.CancellationException
@@ -224,6 +227,7 @@ fun SettingsScreen(
     var accountMessage by remember { mutableStateOf<DriverStatus?>(null) }
     var isSavingFilters by remember { mutableStateOf(false) }
     var isActive by remember { mutableStateOf(Settings.isActive) }
+    val runtimeSnapshot by RuntimeStatusRepository.snapshot.collectAsState()
     var accessibilityEnabled by remember(context) { mutableStateOf(context.isSabbaqAccessibilityEnabled()) }
     var notificationsEnabled by remember(context) { mutableStateOf(context.hasNotificationPermission()) }
     var batteryUnrestricted by remember(context) { mutableStateOf(PowerSetup.isBatteryUnrestricted(context)) }
@@ -584,6 +588,7 @@ fun SettingsScreen(
                 notificationsEnabled = notificationsEnabled,
                 licenseInMemory = licenseInMemory,
                 filters = savedFilters,
+                runtime = runtimeSnapshot,
                 activeFilterCount = activeFilterCount(savedFilters),
                 message = runtimeMessage,
                 onToggle = { enabled -> if (enabled) requestActivation() else stopKeeper() },
@@ -827,6 +832,7 @@ private fun DashboardPage(
     notificationsEnabled: Boolean,
     licenseInMemory: Boolean,
     filters: Filters,
+    runtime: RuntimeStatusSnapshot,
     activeFilterCount: Int,
     message: DriverStatus?,
     onToggle: (Boolean) -> Unit,
@@ -875,6 +881,7 @@ private fun DashboardPage(
         modifier = Modifier.sabbaqEntrance(0),
     )
     ActiveConditionsCockpit(filters, activeFilterCount, onOpenFilters, Modifier.sabbaqEntrance(1))
+    RuntimeStatusCard(runtime, Modifier.sabbaqEntrance(0))
     val missing = (readiness + power).filterNot { it.ready }
     if (missing.isNotEmpty()) MissingPermissionsCard(missing, Modifier.sabbaqEntrance(1))
     SabbaqAnimatedMessage(message?.message, message?.tone ?: SabbaqTone.Info)
@@ -937,6 +944,26 @@ private fun DashboardPage(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+@Composable
+private fun RuntimeStatusCard(status: RuntimeStatusSnapshot, modifier: Modifier = Modifier) {
+    val state = when {
+        status.pausedReason != null -> "متوقفة: ${status.pausedReason}"
+        status.stale -> "قديمة؛ بانتظار حدث جديد"
+        status.active -> "تعمل"
+        else -> "متوقفة"
+    }
+    SabbaqCard(title = "حالة التشغيل الفعلية", subtitle = state, icon = Icons.Outlined.Autorenew, modifier = modifier) {
+        Text("آخر حدث: ${status.lastEventMs?.toString() ?: "لا يوجد"}", style = MaterialTheme.typography.bodySmall)
+        Text("آخر عرض: ${status.lastOfferMs?.toString() ?: "لا يوجد"} · آخر قرار: ${status.lastDecisionMs?.toString() ?: "لا يوجد"}", style = MaterialTheme.typography.bodySmall)
+        Text("آخر نقرة: ${status.lastClickMs?.toString() ?: "لا يوجد"}", style = MaterialTheme.typography.bodySmall)
+        status.latestReport?.let { report ->
+            Text("تقرير القرار: ${report.score}/100 · الإشارات: ${report.availableSignals.joinToString().ifEmpty { "لا توجد" }}", style = MaterialTheme.typography.bodySmall)
+            Text("الأسباب: ${report.reasons.joinToString { it.name }}", style = MaterialTheme.typography.bodySmall)
+        }
+        if (status.diagnostics.isNotEmpty()) Text("آخر المراحل: ${status.diagnostics.takeLast(5).joinToString { it.stage.name }}", style = MaterialTheme.typography.bodySmall)
     }
 }
 

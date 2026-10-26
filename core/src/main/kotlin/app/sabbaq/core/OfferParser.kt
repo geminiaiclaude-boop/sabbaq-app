@@ -8,9 +8,36 @@ import java.math.RoundingMode
  * control is present; every value the filters need is read from the labels
  * around it and left null when it cannot be read with confidence.
  */
-class OfferParser(private val profile: RideProfile) {
+class OfferParser(private val profile: RideProfile, private val verifiedViewIdHints: Set<String> = emptySet()) {
 
     val profileId: String get() = profile.id
+
+    /** Creates a parser with the latest bounded, verified runtime hints. */
+    fun withVerifiedViewIdHints(hints: Set<String>): OfferParser =
+        OfferParser(profile, hints)
+
+    /**
+     * Cheap Jeeny preflight. It is intentionally weaker than parse() and is
+     * never an authorization to click: callers must still parse and verify the
+     * live platform node. A learned id is accepted only when an unambiguous
+     * accept label is present in the same current tree.
+     */
+    fun probeOfferSignal(root: ScreenNode): JeenyOfferSignal? {
+        val assessment = JeenyFrameClassifier(profile, verifiedViewIdHints).assess(root)
+        if (assessment.classification != JeenyFrameClass.OFFER) return null
+        val accept = findAcceptControl(root) ?: return null
+        val label = nodeLabel(accept)
+        val evidence = when {
+            accept.viewId in verifiedViewIdHints && !isAcceptLabel(label) ->
+                JeenyOfferSignal.Evidence.HINTED_CONTROL_WITH_LABEL
+            assessment.featureCount >= 4 -> JeenyOfferSignal.Evidence.LABELLED_CONTROL_WITH_ROUTE
+            else -> JeenyOfferSignal.Evidence.LABELLED_CONTROL
+        }
+        return JeenyOfferSignal(accept.nodePath, evidence, assessment.score, assessment.featureCount)
+    }
+
+    private fun nodeLabel(node: ScreenNode): String =
+        Text.normalize(node.text).ifEmpty { Text.normalize(node.description) }
 
     private val acceptLabels = profile.acceptLabels.map(Text::normalize).filter { it.isNotEmpty() }
     private val confirmLabels = profile.confirmLabels.map(Text::normalize).filter { it.isNotEmpty() }
@@ -63,17 +90,18 @@ class OfferParser(private val profile: RideProfile) {
      */
     private fun findAcceptControl(root: ScreenNode): ScreenNode? {
         var labelled: ScreenNode? = null
+        var hintedLabelled: ScreenNode? = null
         var labelledContainer: ScreenNode? = null
         root.walk { node ->
-            if (labelled != null) return@walk
             val label = Text.normalize(node.text).ifEmpty { Text.normalize(node.description) }
             if (isAcceptControl(node, label)) {
-                labelled = node
+                if (node.viewId in verifiedViewIdHints) hintedLabelled = node
+                labelled = labelled ?: node
             } else if (node.clickable && containsAcceptLabel(node)) {
                 labelledContainer = labelledContainer ?: node
             }
         }
-        return labelled ?: labelledContainer
+        return hintedLabelled ?: labelled ?: labelledContainer
     }
 
     private fun containsAcceptLabel(node: ScreenNode): Boolean {

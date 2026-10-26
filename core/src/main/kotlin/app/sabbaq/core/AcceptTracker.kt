@@ -24,6 +24,11 @@ class AcceptTracker(val confirmWindowMs: Long = DEFAULT_CONFIRM_WINDOW_MS) {
         pending = Pending(fingerprint, profileId, nowMs)
     }
 
+    /** Clears stale confirmation state when the active package/window changes. */
+    fun reset() {
+        pending = null
+    }
+
     /**
      * A confirmation only counts for the profile that received the tap and before
      * the deadline. A backwards-moving clock invalidates the pending observation.

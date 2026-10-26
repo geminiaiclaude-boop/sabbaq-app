@@ -2,6 +2,46 @@
 
 هذه قائمة اعتماد تشغيلية، وليست تصريحًا بأن التطبيق اجتاز الاختبارات على أجهزة حقيقية أو أنه نُشر.
 
+## حواجز الإنتاج القابلة للقياس — مسار Jeeny (2026-10-25)
+
+تم توصيل `RideAppAdapter` بعقد صريح للـpackage وعائلات accept/confirm وإعدادات signal واستراتيجية node/confirmation؛ لكل profile مدعوم محول ملموس (`JeenyRideAppAdapter` و`BoltRideAppAdapter` و`PetraRideAppAdapter`) وتختار الخدمة من خريطة profile id، بلا fake Uber/Taxi أو fallback عام. قبل full parse يوجد preflight حتمي bounded: classifier بحد 128 عقدة/4096 حرفاً، وبصمة تغيير مستقلة بحد 96 عقدة/2048 حرفاً، ولا تُسجل البصمة نص الشاشة.
+
+أضيف `DecisionReport` بدرجة 0–100 وإشارات متاحة فقط (fare/time/distance/destination/per-km/filter) وأسباب rejection قابلة للتفسير؛ يُخزّن آخر تقرير لكل عرض في `RuntimeStatusStore` ويُعرض في بطاقة عربية، دون تغيير `Verdict.accept`. أضيف `LivenessState` مع snapshot privacy-safe لآخر accessibility/target/offer/decision/click وحالتي stale/paused، و`BoundedDiagnostics` بسعة 64، ومخزن حالة مشترك محدود يعرض آخر المراحل بعد redaction. كما أضيف `BoundedDispatchRetry`: إعادة واحدة فقط بعد `NOT_DISPATCHED`، بتأخير، لنفس العرض/النافذة، وتُلغى بالنجاح الدلالي أو التأكيد أو تغيير النافذة.
+
+التحقق المنفذ: `git diff --check` و`export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64 && ./gradlew --no-daemon :core:test` — **نجح (94 اختبارًا)**، ويشمل اختبارات المحولات الثلاث، التقرير، الحالة والـretry وJeeny. تعذر تشغيل اختبار Android (`:app:testDirectDebugUnitTest`) لأن Android SDK غير معرف (`ANDROID_HOME`/`local.properties` مفقود)؛ هذا ليس دليلاً على نجاح Android compile.
+
+لا تُعد هذه النتائج real-device parity. يلزم جهاز Android مفوض وAPK Jeeny فعلي لقياس latency/false positives، وتنوع شجرة الإتاحة وIDs، ترتيب dispatch والتأكيد، stale thresholds، RTL/Indic digits، progressive rendering، license/disclosure gates، والتقاط package/API/version والنتيجة دون نصوص أو عناوين أو صور.
+
+
+## إضافة مسار Jeeny (2026-10-25)
+
+الحزمة `me.com.easytaxista` لها مسار أحداث مخصص: preflight رخيص يتطلب دليل قبول حيًا وبيانات تشبه العرض، ثم parse كامل صريح، ثم قراءتان متأخرتان فقط. القراءات مؤجلة ومُلْغاة بالـgeneration، وتعيد اكتساب الجذر في كل مرة؛ لا توجد حلقة إعادة غير محدودة. هوية العرض/البصمة محفوظة محليًا لحجب الإعادة، ويظل `ClickGate` مانعًا لتكرار نفس العرض.
+
+معرّفات العرض المقبول التي تظهر بعد نجاح parser مع نص قبول غير ملتبس والتحقق من العقدة الحية تُحفظ محليًا فقط ضمن حد ثابت، وتُستخدم فورًا في parser التالي؛ لا يمكن لمعرّف متعلم مجهول أن يبرر القبول وحده، ولا تُرفع هذه المعرّفات أو نصوص الشاشة إلى الشبكة. الإشارة وحدها لا تنفذ نقرة.
+
+ترتيب التنفيذ هو `ACTION_CLICK` على العقدة الحية المطابقة، ثم السلف القابل للنقر ضمن نفس حدود/سياق العقدة، ثم الإيماءة الآمنة أخيرًا. تبقى فحوص الحزمة، الظهور، التمكين، الحدود، الإفصاح، الترخيص، والمرشح سارية. بعد الإرسال توجد حالة انتظار تأكيد bounded عبر `AcceptTracker`، مع كبت بصمة العرض عبر `ClickGate`. السجلات المحلية لا تحتوي نصوص العرض أو الأجرة أو العناوين أو لقطات الشاشة.
+
+يلزم قبل الإنتاج اختبار فعلي مفوض على أجهزة Android 8+، خصوصًا Android 13 و14 و16، مع عروض Jeeny ذات العرض التدريجي، تغيّر المعرّفات، زر غير قابل للنقر، تأخر التأكيد، إعادة الرسم، تبديل التطبيق/النافذة، انتهاء الترخيص، وسحب الإفصاح. يجب التحقق أيضًا من أن ترتيب النقر هو العقدة ثم السلف ثم الإيماءة، ومن عدم وجود نقرة ثانية أثناء pending أو confirmation timeout. نجاح اختبارات JVM أو البناء أو lint لا يثبت سلامة التكامل مع APK Jeeny الحالي؛ لا يوجد في CI جهاز Jeeny حقيقي.
+
+## مصفوفة المطابقة السلوكية مع المرجع المنافس
+
+هذه مصفوفة تنفيذ/تحقق وليست ادعاء تكافؤ ميداني. «منفذ» يعني أن السلوك موجود في الشيفرة واختباره محليًا ممكن، و«جزئي» يعني وجود الحارس مع فجوة قابلة للقياس، و«غير مثبت» يعني أن التحقق يتطلب جهازًا وAPK Jeeny حقيقيين.
+
+| السلوك المرجعي | معيار القياس في Sabbaq | الحالة | دليل/الفجوة المتبقية |
+|---|---|---|---|
+| event gating 32/2048 | لا يعالج مسار Jeeny إلا `TYPE_WINDOW_STATE_CHANGED` (32) أو `TYPE_WINDOW_CONTENT_CHANGED` (2048)، مع throttle محتوى 25ms | منفذ | `handleJeenyEvent`؛ يلزم اختبار جهاز للتأكد من ترتيب الأحداث |
+| fast signal preflight | لا ينتقل إلى parse الكامل إلا مع بيانات عرض ودليل قبول مسمى في الشجرة الحالية؛ لا نقرة من signal | منفذ | `OfferParser.probeOfferSignal` واختبار أن hint وحده غير كاف |
+| full frame parse | parse كامل بعد الإشارة مع `OfferEvaluator` و`AcceptTracker` و`ClickGate` | منفذ | اختبارات JVM؛ دقة شجرة Jeeny الفعلية غير مثبتة |
+| late captures | إعادة اكتساب `rootInActiveWindow` في كل قراءة، بحد أقصى قراءتان، delays 120ms و420ms، وإلغاء generation | منفذ | يحتاج قياسًا ميدانيًا لتوقيت إعادة الرسم |
+| learned IDs / bounded misses | `VerifiedIdHints` حدّه 8؛ التعلم بعد label مطابق وعقدة حية؛ hint وحده لا يثبت العرض، وmisses المتأخرة حدها 2 | منفذ | يلزم اختبار تغيّر view IDs على جهاز |
+| offer identity | بصمة ثابتة لا تتأثر بعدّاد، مع منع same-offer أثناء pending | منفذ | `Offer.fingerprint` و`JeenyOfferPipeline`؛ التشابه بين عروض حقيقية يحتاج corpus ميداني |
+| click order node → ancestor → gesture | `ACTION_CLICK` على العقدة، ثم clickable ancestor، ثم gesture، بلا jitter | منفذ | فحوص package/visible/enabled/bounds/license موجودة؛ الترتيب الفعلي يحتاج جهازًا |
+| cooldown / suppression | `ClickGate`: 20s لكل fingerprint، 500ms global interval، capacity 64، وrelease لفشل dispatch فقط | منفذ | القيم لم تُقارن ميدانيًا بكل حالات المرجع |
+| confirmation timeout | تأكيد نفس profile خلال أقل من 5s ثم bounded timeout، مع إنهاء pending | جزئي | منطق الساعة مختبر JVM؛ شاشة التأكيد والفشل الحقيقي يتطلبان جهازًا |
+| safe failure / privacy | رفض الحزمة/الشجرة/الترخيص/الإفصاح/الحدود، وتشخيصات محلية بلا نص شاشة/صور/رفع شبكة | منفذ | مراجعة logcat وAPK release مطلوبة؛ لا إثبات ميداني شامل |
+
+الخلاصة: لا توجد مطابقة ميدانية مثبتة مع المرجع المنافس حتى ينجح اختبار جهاز مفوض يغطي الصفوف السابقة على APK Jeeny الحالي. نتائج CI/JVM تثبت حدود الحالة والمنطق فقط، ولا تثبت أن الشجرة الحية أو توقيت الأحداث أو مسار النقر يطابق المرجع في الإنتاج.
+
 ## 1. عقد الأمان والتفعيل
 
 - حساب السائق يبدأ `pending`؛ لا تستطيع metadata التسجيل منح `active` أو دور مدير.
