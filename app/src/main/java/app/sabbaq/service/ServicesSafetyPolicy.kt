@@ -47,15 +47,17 @@ internal object ServicesSafetyPolicy {
             bounds.top < screenHeight
 
     /**
-     * Where a coordinate tap lands: the centre of the part of [bounds] that is on the real screen,
-     * or null when too little of it is visible to hit reliably. Never a point off the screen.
+     * Where a coordinate tap lands: the centre of the part of [bounds] inside both the real screen
+     * and the target app's own [window], or null when too little of it is there to hit reliably.
+     * The window excludes the system bars, so a button running under the navigation bar is never
+     * tapped through to Home or Back.
      */
-    fun visibleTapPoint(bounds: Bounds, screenWidth: Int, screenHeight: Int): Pair<Int, Int>? {
-        if (!isOnScreen(bounds, screenWidth, screenHeight)) return null
-        val left = bounds.left.coerceAtLeast(0)
-        val top = bounds.top.coerceAtLeast(0)
-        val right = bounds.right.coerceAtMost(screenWidth)
-        val bottom = bounds.bottom.coerceAtMost(screenHeight)
+    fun visibleTapPoint(bounds: Bounds, window: Bounds, screenWidth: Int, screenHeight: Int): Pair<Int, Int>? {
+        if (!isOnScreen(bounds, screenWidth, screenHeight) || window.isEmpty) return null
+        val left = maxOf(bounds.left, window.left, 0)
+        val top = maxOf(bounds.top, window.top, 0)
+        val right = minOf(bounds.right, window.right, screenWidth)
+        val bottom = minOf(bounds.bottom, window.bottom, screenHeight)
         if (right - left < MIN_TAP_PX || bottom - top < MIN_TAP_PX) return null
         return (left + (right - left) / 2) to (top + (bottom - top) / 2)
     }

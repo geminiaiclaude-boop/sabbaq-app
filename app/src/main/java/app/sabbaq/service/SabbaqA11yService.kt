@@ -518,9 +518,12 @@ class SabbaqA11yService : AccessibilityService() {
                 }
             } finally { ancestor.recycle() }
         }
-        // Coordinate fallback is last: the centre of the part of the live button that is on screen.
+        // Coordinate fallback is last: the centre of the part of the live button inside the app's
+        // own window. No window bounds, no gesture.
         val screen = realScreenSize()
-        val point = ServicesSafetyPolicy.visibleTapPoint(anchor, screen.first, screen.second) ?: return ClickResult.NOT_DISPATCHED
+        val window = runCatching { root.window?.let { info -> Rect().also(info::getBoundsInScreen) } }.getOrNull()
+            ?.let { Bounds(it.left, it.top, it.right, it.bottom) } ?: return ClickResult.NOT_DISPATCHED
+        val point = ServicesSafetyPolicy.visibleTapPoint(anchor, window, screen.first, screen.second) ?: return ClickResult.NOT_DISPATCHED
         return if (performGesture(point.first, point.second)) ClickResult.GESTURE else ClickResult.NOT_DISPATCHED
     }
 
