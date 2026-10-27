@@ -91,6 +91,7 @@ set role authenticated;
 set request.jwt.claim.sub = '7e3e0000-0000-0000-0000-000000000001';
 select pg_temp.expect((public.admin_support_threads() -> 0 ->> 'admin_unread')::int = 1, 'admin sees one unread message');
 select pg_temp.expect(public.admin_support_threads() -> 0 ->> 'last_correlation_id' = '5eef581d3799dfc07675dedb7025613c', 'support id travels with the thread');
+select pg_temp.expect(public.admin_support_threads() -> 0 -> 'last_message' ->> 'sender' = 'driver', 'inbox previews the driver, not the automatic reply');
 select pg_temp.expect(public.admin_support_thread('7e3e0000-0000-0000-0000-000000000002') ->> 'last_app_version' = '1.4.0', 'app version is shown');
 select pg_temp.expect((public.admin_support_threads() -> 0 ->> 'admin_unread')::int = 0, 'opening the thread marks it read');
 select pg_temp.expect(not (public.admin_support_reply('7e3e0000-0000-0000-0000-000000000002', '00000000-0000-4000-8000-0000000000b1',
@@ -111,7 +112,8 @@ select pg_temp.expect(public.support_unread() = 1, 'driver badge shows the reply
 select pg_temp.expect(
     (select count(*) from jsonb_array_elements(public.my_notifications()) n where n ->> 'action' = 'open_support') = 1,
     'reply raises one notification');
-select pg_temp.expect(jsonb_array_length(public.support_my_thread() -> 'messages') = 2, 'driver sees both messages');
+select pg_temp.expect(jsonb_array_length(public.support_my_thread() -> 'messages') = 3, 'driver sees own message, automatic acknowledgement and reply');
+select pg_temp.expect(public.support_my_thread() -> 'messages' -> 1 ->> 'sender' = 'admin', 'acknowledgement follows the first message');
 select pg_temp.expect(public.support_unread() = 0, 'reading the conversation clears the badge');
 reset role;
 

@@ -164,6 +164,9 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import androidx.compose.runtime.toMutableStateList
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.saveable.listSaver
 
 /** وجهات لوحة السائق؛ يمكن استدعاء الشاشة مباشرة إلى أي منها في معاينات/اختبارات الواجهة. */
 enum class DriverDestination { Dashboard, Filters, Simulator, Account, History, Setup, Settings, Support }
@@ -232,6 +235,11 @@ fun SettingsScreen(
             !SetupGuidePreferences.isDone(context)
         mutableStateOf(if (needsSetup) DriverDestination.Setup else initialDestination)
     }
+    // Pages visited before the current one, so the system back button retraces them.
+    val backStack = rememberSaveable(saver = listSaver<MutableList<DriverDestination>, String>(
+        save = { stack -> stack.map { it.name } },
+        restore = { names -> names.mapNotNull { name -> DriverDestination.entries.firstOrNull { it.name == name } }.toMutableStateList() },
+    )) { mutableStateListOf() }
     var savedFilters by remember { mutableStateOf(Settings.filters) }
     val draftSaver = remember {
         Saver<FilterDraft, String>(
@@ -265,6 +273,11 @@ fun SettingsScreen(
 
     LaunchedEffect(navigationRequest) {
         navigationRequest?.let {
+            // Drawer, bell and support entries record history like in-page navigation.
+            if (it != destination) {
+                if (it == DriverDestination.Dashboard) backStack.clear()
+                else { backStack.remove(it); backStack.add(destination) }
+            }
             destination = it
             onDestinationChanged(it)
             onNavigationRequestHandled()
@@ -411,6 +424,13 @@ fun SettingsScreen(
 
     fun navigateTo(next: DriverDestination) {
         if (next == destination) return
+        // «حالة العمل» is home: reaching it resets the history, so back from home leaves the app.
+        if (next == DriverDestination.Dashboard) backStack.clear()
+        else {
+            backStack.remove(next)
+            backStack.add(destination)
+            while (backStack.size > MAX_BACK_STACK) backStack.removeAt(0)
+        }
         destination = next
     }
 
@@ -437,8 +457,11 @@ fun SettingsScreen(
             runtimeMessage = DriverStatus("صحح شروط الطلبات واحفظها قبل بدء العمل.", isError = true)
             return
         }
+        // Conditions are not a setup step: they are what starting needs, so starting takes the
+        // driver straight to them.
         if (!savedFilters.anyActive()) {
-            runtimeMessage = DriverStatus("أضف شرطًا واحدًا محفوظًا على الأقل لاختيار الطلبات قبل بدء العمل.", isError = true)
+            navigateTo(DriverDestination.Filters)
+            filtersMessage = DriverStatus("اضبط شرطًا واحدًا على الأقل (مثل نطاق السعر أو وقت الوصول) ثم ارجع وابدأ المتابعة.", isError = true)
             return
         }
         refreshRuntimePrerequisites()
@@ -494,15 +517,12 @@ fun SettingsScreen(
         }
     }
 
-    BackHandler(enabled = destination == DriverDestination.Filters || destination == DriverDestination.History ||
-        destination == DriverDestination.Setup || destination == DriverDestination.Account ||
-        destination == DriverDestination.Settings || destination == DriverDestination.Simulator) {
-        if (returnToSetupAfterAction) {
-            returnToSetupAfterAction = false
-            navigateTo(DriverDestination.Setup)
-        } else {
-            navigateTo(DriverDestination.Dashboard)
-        }
+    // Every page except home goes back one step (the page it was opened from), never out of the app.
+    BackHandler(enabled = destination != DriverDestination.Dashboard) {
+        returnToSetupAfterAction = false
+        val previous = backStack.removeLastOrNull()
+        destination = previous ?: DriverDestination.Dashboard
+        if (destination == DriverDestination.Dashboard) backStack.clear()
     }
 
     if (showAccessibilityRequired) {
@@ -600,7 +620,7 @@ fun SettingsScreen(
     }
 
     val missingCount = listOf(
-        savedFilters.anyActive(), accessibilityEnabled, notificationsEnabled, licenseInMemory, batteryUnrestricted, autostartDone,
+        accessibilityEnabled, notificationsEnabled, licenseInMemory, batteryUnrestricted, autostartDone,
     ).count { !it }
     DriverNavigationShell(
         destination = destination,
@@ -714,20 +734,6 @@ fun SettingsScreen(
                                 autostartDone = true
                             },
                         ) else null
-                    ) + listOf(
-                        SetupStep(
-                            icon = Icons.Outlined.FilterAlt,
-                            title = "اختر الطلبات التي تناسبك",
-                            why = "الآن بعد تجهيز التطبيق، اختر قالبًا أو اضبط الأجرة والمسافة والوقت؛ كل تغيير صالح يُحفظ تلقائيًا فورًا.",
-                            doneText = "محفوظ لديك: ${ArabicCount.conditions(activeFilterCount(savedFilters))}",
-                            actionLabel = "ضبط الشروط",
-                            done = savedFilters.anyActive(),
-                            onAction = { navigateFromSetup(DriverDestination.Filters) },
-                            extra = {
-                                FilterPresetChips(draft = draft, enabled = true, onDraftChange = ::updateDraft)
-                                SabbaqAnimatedMessage(filtersMessage?.message, filtersMessage?.tone ?: SabbaqTone.Info)
-                            },
-                        ),
                     ),
                     onTryExample = { SetupGuidePreferences.markDone(context); navigateTo(DriverDestination.Simulator) },
                     onFinish = leaveGuide,
@@ -1067,8 +1073,6 @@ private fun DashboardPage(
     onOpenAutostart: () -> Unit = {},
 ) = DriverPage {
     val readiness = listOf(
-        ReadinessItem(Icons.Outlined.FilterAlt, "شروط الطلبات", activeFilterCount > 0,
-            "محفوظ لديك: ${ArabicCount.conditions(activeFilterCount)}", "حتى يعرف أي الطلبات تناسبك", "تعديل الشروط", onOpenFilters),
         ReadinessItem(Icons.Outlined.AccessibilityNew, "إذن متابعة الطلبات", accessibilityEnabled,
             "مفعّل", "ليقرأ الطلب ويقبل المطابق؛ بدونه لا يعمل", "تفعيل الإذن", onOpenA11y),
         ReadinessItem(Icons.Outlined.Notifications, "تنبيهات حالة العمل", notificationsEnabled,
@@ -1938,3 +1942,5 @@ private fun Context.isSabbaqAccessibilityEnabled(): Boolean {
 private fun Context.hasNotificationPermission(): Boolean =
     Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
         checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+
+private const val MAX_BACK_STACK = 12

@@ -1,6 +1,18 @@
 package app.sabbaq.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.material3.Surface
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -100,30 +112,36 @@ fun OnboardingScreen(
         offer = offer
     )
 
+    // The system back button walks back through the tour before it can leave the app.
+    BackHandler(enabled = pageIndex > 0) { page.previous()?.let { pageIndex = it.ordinal } }
+
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .imePadding()
-                .padding(horizontal = 22.dp)
+                .statusBarsPadding(),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            OnboardingTopBar(
+                page = page,
+                onSkip = onContinue,
+                modifier = Modifier.widthIn(max = 620.dp).padding(horizontal = 16.dp, vertical = 8.dp),
+            )
             Column(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .weight(1f)
+                    .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
-                    .padding(vertical = 24.dp),
+                    .padding(horizontal = 22.dp, vertical = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Column(
                     modifier = Modifier
                         .widthIn(max = 620.dp)
                         .fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(20.dp)
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    OnboardingTopBar(
-                        page = page,
-                        onSkip = onContinue
-                    )
                     SabbaqPageDots(
                         page = page.ordinal,
                         count = ONBOARDING_PAGES,
@@ -131,7 +149,7 @@ fun OnboardingScreen(
                     )
 
                     SabbaqDepthContent(target = page, order = { it.ordinal }, label = "onboarding-page") { shown ->
-                    Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     when (shown) {
                         OnboardingPage.INTRODUCTION -> WelcomePage(
                             loadingOffer = loadingOffer,
@@ -158,14 +176,18 @@ fun OnboardingScreen(
                     }
                     }
                     }
-
+                }
+            }
+            Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = 8.dp, modifier = Modifier.fillMaxWidth()) {
+                Box(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 22.dp, vertical = 10.dp), contentAlignment = Alignment.Center) {
                     OnboardingNavigation(
                         page = page,
                         canShowTrialJourney = offerCopy.canShowTrialJourney,
                         onBack = { page.previous()?.let { pageIndex = it.ordinal } },
                         onNext = {
                             page.next()?.let { pageIndex = it.ordinal } ?: onContinue()
-                        }
+                        },
+                        modifier = Modifier.widthIn(max = 620.dp),
                     )
                 }
             }
@@ -174,25 +196,40 @@ fun OnboardingScreen(
 }
 
 @Composable
-private fun OnboardingTopBar(page: OnboardingPage, onSkip: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+private fun OnboardingTopBar(page: OnboardingPage, onSkip: () -> Unit, modifier: Modifier = Modifier) {
+    val brand = LocalSabbaqBrand.current
+    Surface(
+        shape = RoundedCornerShape(22.dp),
+        color = brand.heroStart,
+        shadowElevation = 8.dp,
+        modifier = modifier.fillMaxWidth(),
     ) {
-        SabbaqBrand(compact = true)
-        TextButton(
-            onClick = onSkip,
-            modifier = Modifier.heightIn(min = 48.dp)
-        ) {
-            Text("تخطي الجولة")
+        Column(Modifier.background(Brush.horizontalGradient(listOf(brand.heroEnd, brand.heroStart)))) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.weight(1f)) { SabbaqBrand(compact = true, onHero = true) }
+                Text(
+                    "${page.ordinal + 1}/$ONBOARDING_PAGES",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = brand.onHeroMuted,
+                    modifier = Modifier.semantics { contentDescription = "خطوة ${page.ordinal + 1} من $ONBOARDING_PAGES" },
+                )
+                OutlinedButton(
+                    onClick = onSkip,
+                    border = BorderStroke(1.5.dp, brand.signature),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = brand.signature),
+                    contentPadding = PaddingValues(horizontal = 14.dp),
+                    modifier = Modifier.heightIn(min = 40.dp),
+                ) {
+                    Text("تخطي الجولة", style = MaterialTheme.typography.labelLarge)
+                }
+            }
+            Box(Modifier.fillMaxWidth().height(3.dp).background(brand.signature))
         }
     }
-    Text(
-        text = "خطوة ${page.ordinal + 1} من $ONBOARDING_PAGES",
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
 }
 
 @Composable
@@ -205,9 +242,9 @@ private fun WelcomePage(
     val brand = LocalSabbaqBrand.current
     SabbaqHeroSurface(Modifier.sabbaqEntrance(0), scene = false) {
         Text("تعرّف على سبّاق", style = MaterialTheme.typography.labelLarge, color = brand.heroAccent)
-        Text("طلبات على مقاس شروطك", style = MaterialTheme.typography.headlineMedium)
-        Text("تحدد شروطك مرة واحدة، ويتابع سبّاق الطلبات ويقبل ما يطابقها. وقت أقل أمام الشاشة.",
-            style = MaterialTheme.typography.bodyLarge, color = brand.onHeroMuted)
+        Text("طلبات على مقاس شروطك", style = MaterialTheme.typography.headlineSmall)
+        Text("تحدد شروطك مرة واحدة، ويتابع سبّاق الطلبات ويقبل ما يطابقها.",
+            style = MaterialTheme.typography.bodyMedium, color = brand.onHeroMuted)
         // The product, shown rather than described: example requests and Sabbaq' verdict.
         SabbaqOrderShowcase()
     }
@@ -344,10 +381,11 @@ private fun OnboardingNavigation(
     page: OnboardingPage,
     canShowTrialJourney: Boolean,
     onBack: () -> Unit,
-    onNext: () -> Unit
+    onNext: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

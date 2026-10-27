@@ -425,8 +425,17 @@ internal fun SabbaqShell(
     }
     LaunchedEffect(isDriver) { if (!isDriver) showNotifications = false }
 
-    BackHandler(enabled = drawerState.isOpen) {
-        closeDrawer()
+    // Lowest priority (registered first): on a root page one back press only warns; a second
+    // within two seconds leaves the app. Pages and the drawer register later and win.
+    var lastRootBackAt by remember { mutableLongStateOf(0L) }
+    BackHandler(enabled = showHeader) {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - lastRootBackAt < 2_000) {
+            (context as? android.app.Activity)?.finish()
+        } else {
+            lastRootBackAt = now
+            android.widget.Toast.makeText(context, "اضغط رجوع مرة أخرى للخروج من سبّاق", android.widget.Toast.LENGTH_SHORT).show()
+        }
     }
 
     // The drawer is an explicit navigation surface. Keep it closed whenever the
@@ -438,11 +447,13 @@ internal fun SabbaqShell(
 
     ModalNavigationDrawer(
         drawerState = drawerState,
-        // Keep the standard swipe-to-close interaction available. Opening is still
-        // controlled by the hamburger button because the drawer starts closed.
-        gesturesEnabled = true,
+        // Swipe only where the hamburger exists; on the welcome tour the drawer stays shut.
+        gesturesEnabled = showHeader || drawerState.isOpen,
+        // The sheet is always composed: when it appeared only with the header its width jumped
+        // from 0 to full on the first page after the tour, so the drawer's "closed" anchor was
+        // wrong for a frame and the menu flashed open and shut on taps like «ابدأ التجربة».
         drawerContent = {
-            if (showHeader) SabbaqDrawerSheet(
+            SabbaqDrawerSheet(
                 isAuthenticated = isAuthenticated,
                 isAdmin = isAdmin,
                 activeDestination = activeDriverDestination,
@@ -492,6 +503,8 @@ internal fun SabbaqShell(
                 Column(Modifier.fillMaxSize().padding(insets).consumeWindowInsets(insets)) {
                     OfflineBanner(online = rememberIsOnline())
                     Box(Modifier.weight(1f).fillMaxWidth()) { content() }
+                    // After the pages, so an open drawer closes before any page goes back.
+                    BackHandler(enabled = drawerState.isOpen) { closeDrawer() }
                 }
             }
         }

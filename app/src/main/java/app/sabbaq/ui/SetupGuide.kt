@@ -105,7 +105,7 @@ internal fun SetupGuidePage(
     SabbaqAnimatedMessage(successMessage, SabbaqTone.Success, Modifier.sabbaqEntrance(1))
 
     if (allDone) {
-        SabbaqCard(title = "كل شيء جاهز", subtitle = "شروطك محفوظة والأذونات مفعّلة واشتراكك صالح.",
+        SabbaqCard(title = "كل شيء جاهز", subtitle = "الأذونات مفعّلة واشتراكك صالح. اضبط شروطك ثم ابدأ المتابعة.",
             icon = Icons.Outlined.Celebration, modifier = Modifier.sabbaqEntrance(1)) {
             SabbaqButton("انتقل إلى حالة العمل", onClick = onFinish)
             SabbaqButton("جرّب طلبًا كمثال أولًا", onClick = onTryExample, style = SabbaqButtonStyle.Secondary, icon = Icons.Outlined.Visibility)

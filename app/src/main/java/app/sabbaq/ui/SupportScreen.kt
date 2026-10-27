@@ -104,8 +104,8 @@ internal fun SupportPage() {
 
     Column(Modifier.fillMaxSize().imePadding()) {
         SupportHeader(closed = ui.closed)
-        if (ui.loadFailed && !ui.loaded) {
-            SabbaqMessage("تعذر تحميل المحادثة. تحقق من الاتصال؛ ستُرسل رسائلك تلقائيًا عند عودته.", isError = true,
+        if (ui.loadFailed) {
+            SabbaqMessage(featureFailureText(ui.failure, "المحادثة"), isError = true,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -118,6 +118,7 @@ internal fun SupportPage() {
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
+                    item(key = "welcome") { SupportWelcomeBubble() }
                     var previousDay: LocalDate? = null
                     ui.messages.forEach { message ->
                         val day = Instant.ofEpochMilli(message.createdAtEpochMs).atZone(ZoneId.systemDefault()).toLocalDate()
@@ -195,19 +196,32 @@ private fun SupportEmptyState(loading: Boolean, onTopic: (String) -> Unit) {
             Text("جارٍ تحميل المحادثة…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             return@Column
         }
-        Text("كيف نساعدك؟", style = MaterialTheme.typography.titleLarge)
-        Text(
-            "اكتب مشكلتك أو اختر موضوعًا. يصلك الرد هنا وفي الإشعارات.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-        )
+        SupportWelcomeBubble()
+        Text("اختر موضوعًا أو اكتب مشكلتك:", style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             SUPPORT_TOPICS.forEach { (label, starter) ->
                 AssistChip(onClick = { onTopic(starter) }, label = { Text(label) })
             }
         }
     }
+}
+
+/** The greeting every conversation opens with; local, so it shows even before the first sync. */
+@Composable
+private fun SupportWelcomeBubble() {
+    SupportBubble(
+        message = SupportMessage(
+            clientId = "welcome",
+            sender = SupportSender.ADMIN,
+            body = "مرحبًا بك في دعم سبّاق 👋\nاكتب مشكلتك أو سؤالك وسيرد عليك فريقنا هنا خلال ساعات العمل، ويصلك إشعار عند الرد. " +
+                "لتسريع الحل نرفق تلقائيًا إصدار التطبيق ومعرّف الدعم، دون أي بيانات من طلباتك.",
+            createdAtEpochMs = 0,
+        ),
+        onRetry = {},
+        onDiscard = {},
+        showTime = false,
+    )
 }
 
 @Composable
@@ -221,7 +235,7 @@ private fun DaySeparator(label: String) {
 }
 
 @Composable
-private fun SupportBubble(message: SupportMessage, onRetry: () -> Unit, onDiscard: () -> Unit) {
+private fun SupportBubble(message: SupportMessage, onRetry: () -> Unit, onDiscard: () -> Unit, showTime: Boolean = true) {
     val colors = MaterialTheme.colorScheme
     val mine = message.sender == SupportSender.DRIVER
     val time = Instant.ofEpochMilli(message.createdAtEpochMs).atZone(ZoneId.systemDefault()).format(supportTimeFormat)
@@ -253,7 +267,7 @@ private fun SupportBubble(message: SupportMessage, onRetry: () -> Unit, onDiscar
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             when (message.delivery) {
-                SupportDelivery.SENT -> Text(time, style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
+                SupportDelivery.SENT -> if (showTime) Text(time, style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
                 SupportDelivery.SENDING -> {
                     Icon(Icons.Outlined.Schedule, contentDescription = null, tint = colors.onSurfaceVariant, modifier = Modifier.size(14.dp))
                     Text("جارٍ الإرسال…", style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
