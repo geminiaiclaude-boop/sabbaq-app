@@ -52,15 +52,16 @@ internal fun AdminTelemetrySection(session: AdminSession, consume: () -> AdminRe
     var view by remember { mutableStateOf<TelemetryView?>(null) }
     var notice by remember { mutableStateOf<AdminNotice?>(null) }
     var busy by remember { mutableStateOf(false) }
+    var failed by remember { mutableStateOf(false) }
 
     fun show(result: Result<AdminDiagnosis>, fallback: String) {
         result.fold(
             onSuccess = { diagnosis ->
                 diagnosis.correlationId?.let { supportId = it }
-                view = TelemetryView.Diagnosis(diagnosis)
+                view = TelemetryView.Diagnosis(diagnosis); failed = false
                 notice = if (diagnosis.events.isEmpty()) info("اكتمل البحث.") else success("تم تحميل بيانات metadata المسموح بها للمشرف.")
             },
-            onFailure = { view = null; notice = session.failureOf(it, fallback) },
+            onFailure = { view = null; failed = true; notice = session.failureOf(it, fallback) },
         )
     }
 
@@ -99,8 +100,8 @@ internal fun AdminTelemetrySection(session: AdminSession, consume: () -> AdminRe
                     scope.launch {
                         busy = true
                         AdminRepository.overview().fold(
-                            onSuccess = { view = TelemetryView.Fleet(it); notice = success("تم تحميل نظرة الأسطول.") },
-                            onFailure = { view = null; notice = session.failureOf(it, "تعذر تحميل نظرة الأسطول.") },
+                            onSuccess = { view = TelemetryView.Fleet(it); failed = false; notice = success("تم تحميل نظرة الأسطول.") },
+                            onFailure = { view = null; failed = true; notice = session.failureOf(it, "تعذر تحميل نظرة الأسطول.") },
                         )
                         busy = false
                     }
@@ -111,7 +112,7 @@ internal fun AdminTelemetrySection(session: AdminSession, consume: () -> AdminRe
         when (val current = view) {
             is TelemetryView.Diagnosis -> diagnosisItems(current.result)
             is TelemetryView.Fleet -> fleetItems(current.result)
-            null -> Unit
+            null -> if (failed) item(key = "none") { Text("لا تتوفر نتائج مؤكدة.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
     }
 }

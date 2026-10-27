@@ -24,6 +24,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import app.sabbaq.admin.AdminNotification
@@ -62,8 +64,12 @@ internal fun AdminNotificationsSection(session: AdminSession, consume: () -> Adm
     var confirmDelete by remember { mutableStateOf<AdminNotification?>(null) }
     var deleting by remember { mutableStateOf<String?>(null) }
 
+    val titleFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) {
-        (consume() as? AdminRequest.NotifyDriver)?.let { targetId = it.driverId; targetName = it.name }
+        (consume() as? AdminRequest.NotifyDriver)?.let {
+            targetId = it.driverId; targetName = it.name
+            runCatching { titleFocus.requestFocus() }
+        }
     }
     LaunchedEffect(reload) {
         listFailed = false
@@ -94,7 +100,7 @@ internal fun AdminNotificationsSection(session: AdminSession, consume: () -> Adm
 
     LazyColumn(Modifier.fillMaxSize().testTag("admin-notifications"), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item(key = "form") {
-            SabbaqCard(title = "إرسال إشعار", subtitle = "يظهر في مركز إشعارات التطبيق ويصل كتنبيه على الجوال أثناء المتابعة.", icon = Icons.Outlined.Campaign) {
+            SabbaqCard(title = "إرسال إشعار", subtitle = "أرسل رسالة تظهر في مركز إشعارات التطبيق لكل السائقين أو لسائق واحد، وتصل كتنبيه على الجوال أثناء المتابعة.", icon = Icons.Outlined.Campaign) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("المستلم:", style = MaterialTheme.typography.labelLarge)
                     Text(targetName ?: "كل السائقين", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
@@ -102,7 +108,7 @@ internal fun AdminNotificationsSection(session: AdminSession, consume: () -> Adm
                 }
                 Text("لاختيار سائق واحد اضغط «إرسال إشعار» بجانبه في قسم السائقين.", style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
-                AdminField("العنوان", title, { title = it; error = null }, maxLength = 80, modifier = Modifier.testTag("admin-notification-title"))
+                AdminField("العنوان", title, { title = it; error = null }, maxLength = 80, modifier = Modifier.testTag("admin-notification-title").focusRequester(titleFocus))
                 AdminField("النص", body, { body = it; error = null }, maxLength = 500, singleLine = false, minLines = 3,
                     hint = "${body.length} / 500", modifier = Modifier.testTag("admin-notification-body"))
                 AdminChoice("النوع", AdminRepository.NOTIFICATION_KINDS.toList(), kind, onSelect = { kind = it })

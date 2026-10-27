@@ -34,6 +34,7 @@ import app.sabbaq.ui.SabbaqAnimatedMessage
 import app.sabbaq.ui.SabbaqButton
 import app.sabbaq.ui.SabbaqButtonStyle
 import app.sabbaq.ui.SabbaqCard
+import app.sabbaq.ui.SabbaqSectionTitle
 import app.sabbaq.ui.SabbaqTone
 import kotlinx.coroutines.launch
 
@@ -57,6 +58,7 @@ private data class PolicyErrors(
 internal fun AdminPolicySection(session: AdminSession) {
     val scope = rememberCoroutineScope()
     var confirmed by remember { mutableStateOf<AdminPolicy?>(null) }
+    var everLoaded by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
     var reload by remember { mutableIntStateOf(0) }
@@ -92,6 +94,7 @@ internal fun AdminPolicySection(session: AdminSession) {
         return result.fold(
             onSuccess = { policy ->
                 confirmed = policy
+                everLoaded = true
                 trialEnabled = policy.trialEnabled
                 trialDays = policy.trialDays.toString()
                 price = AdminInputs.minorToSar(policy.priceMinor)
@@ -114,7 +117,8 @@ internal fun AdminPolicySection(session: AdminSession) {
 
     val editable = confirmed != null && !loading && !saving
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp).testTag("admin-policy"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(confirmed?.let { "آخر تأكيد من الخادم: ${formatFull(it.updatedAt)}" } ?: "لا توجد سياسة مؤكدة حاليًا.",
+        SabbaqSectionTitle("سياسة العرض والاشتراك", "تُحمّل السياسة من الخادم بعد التحقق من صلاحية المشرف، وتُحفظ كاملة في عملية واحدة.")
+        Text(confirmed?.let { "آخر تأكيد من الخادم: ${formatFull(it.updatedAt)}" } ?: if (everLoaded) "لا توجد سياسة مؤكدة حاليًا." else "لم تُحمّل سياسة مؤكدة بعد.",
             style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         SabbaqCard(title = "إعدادات العرض التجاري", icon = Icons.Outlined.Sell,
             subtitle = "السعر بالريال السعودي ويُرسل إلى الخادم كعدد صحيح من الهللات. لا يشمل هذا العرض ضريبة القيمة المضافة.") {

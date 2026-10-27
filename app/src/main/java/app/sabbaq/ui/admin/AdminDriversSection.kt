@@ -64,6 +64,8 @@ internal fun AdminDriversSection(session: AdminSession, open: (AdminRequest) -> 
     var hasMore by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf<AdminNotice?>(null) }
+    // An action's result survives the reload it triggers instead of giving way to «تم تحميل».
+    var kept by remember { mutableStateOf<AdminNotice?>(null) }
     var query by rememberSaveable { mutableStateOf("") }
     var reload by remember { mutableIntStateOf(0) }
     var confirmReset by remember { mutableStateOf<AdminDriver?>(null) }
@@ -74,7 +76,8 @@ internal fun AdminDriversSection(session: AdminSession, open: (AdminRequest) -> 
         AdminRepository.drivers(offset).fold(
             onSuccess = { page ->
                 drivers = page.items; hasMore = page.hasMore
-                notice = success("تم تحميل ${page.items.size} سجل من السائقين.")
+                notice = kept ?: success("تم تحميل ${page.items.size} سجل من السائقين.")
+                kept = null
                 versions = null; versionsFailed = false
                 AdminRepository.driverVersions(page.items.map { it.id }).fold(
                     onSuccess = { versions = it },
@@ -142,7 +145,7 @@ internal fun AdminDriversSection(session: AdminSession, open: (AdminRequest) -> 
                 scope.launch {
                     resetting = driver.id
                     AdminRepository.resetDevice(driver.id).fold(
-                        onSuccess = { notice = success("تم فك ربط الجهاز."); reload++ },
+                        onSuccess = { kept = success("تم فك ربط الجهاز."); notice = kept; reload++ },
                         onFailure = { notice = session.failureOf(it, "تعذر فك ربط الجهاز.") },
                     )
                     resetting = null

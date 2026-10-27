@@ -64,13 +64,14 @@ internal fun AdminProfilesSection(session: AdminSession) {
 
     LaunchedEffect(reload) {
         loading = true
+        val published = notice.takeIf { selectAfterLoad != null }
         notice = info("يجري تحميل ملفات التطبيقات…")
         AdminRepository.profiles().fold(
             onSuccess = { list ->
                 profiles = list
                 val keep = selectAfterLoad ?: selected.takeIf { id -> list.any { it.id == id } } ?: list.firstOrNull()?.id ?: NEW_PROFILE
                 select(keep, list)
-                notice = if (selectAfterLoad != null) notice else info(
+                notice = published ?: info(
                     if (list.isNotEmpty()) "الملفات المنشورة تتقدّم على الملفات المضمّنة في التطبيق فقط إذا كان رقم إصدارها أكبر."
                     else "لا توجد ملفات منشورة بعد؛ التطبيق يستعمل الملفات المضمّنة (الإصدار 3). الصق ملفًا برقم إصدار 4 أو أكبر لنشر إصلاح.")
                 selectAfterLoad = null

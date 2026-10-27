@@ -40,6 +40,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -80,8 +82,9 @@ internal fun AdminSupportSection(session: AdminSession, consume: () -> AdminRequ
     var refreshTick by remember { mutableIntStateOf(0) }
     var loadingList by remember { mutableStateOf(false) }
 
+    var focusReply by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        (consume() as? AdminRequest.MessageDriver)?.let { selected = it.driverId; reply = ""; pendingClientId = null }
+        (consume() as? AdminRequest.MessageDriver)?.let { selected = it.driverId; reply = ""; pendingClientId = null; focusReply = true }
     }
 
     suspend fun loadList(quiet: Boolean) {
@@ -161,6 +164,8 @@ internal fun AdminSupportSection(session: AdminSession, consume: () -> AdminRequ
                 }
             },
             onDiagnose = { conversation?.correlationId?.let { open(AdminRequest.DiagnoseSupportId(it)) } },
+            focusReply = focusReply,
+            onReplyFocused = { focusReply = false },
         )
         return
     }
@@ -216,8 +221,12 @@ private fun ConversationView(
     onSend: () -> Unit,
     onToggle: () -> Unit,
     onDiagnose: () -> Unit,
+    focusReply: Boolean,
+    onReplyFocused: () -> Unit,
 ) {
     val listState = rememberLazyListState()
+    val replyFocus = remember { FocusRequester() }
+    LaunchedEffect(focusReply) { if (focusReply) { runCatching { replyFocus.requestFocus() }; onReplyFocused() } }
     val count = conversation?.messages?.size ?: 0
     LaunchedEffect(count) { if (count > 0) listState.animateScrollToItem(count - 1) }
     Column(Modifier.fillMaxSize().imePadding().testTag("admin-conversation")) {
@@ -265,7 +274,7 @@ private fun ConversationView(
         Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(
                 value = reply, onValueChange = onReplyChange, placeholder = { Text("اكتب ردك…") }, maxLines = 5,
-                supportingText = { Text("${reply.length} / 1000") }, modifier = Modifier.weight(1f).testTag("admin-reply"),
+                supportingText = { Text("${reply.length} / 1000") }, modifier = Modifier.weight(1f).testTag("admin-reply").focusRequester(replyFocus),
             )
             FilledIconButton(onClick = onSend, enabled = !sending && reply.isNotBlank() && conversation != null, modifier = Modifier.size(52.dp).testTag("admin-reply-send")) {
                 Icon(Icons.AutoMirrored.Outlined.Send, contentDescription = "إرسال الرد")

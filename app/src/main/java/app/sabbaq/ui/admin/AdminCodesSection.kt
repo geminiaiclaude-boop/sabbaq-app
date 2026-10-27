@@ -70,11 +70,16 @@ internal fun AdminCodesSection(session: AdminSession) {
     var loading by remember { mutableStateOf(false) }
     var reload by remember { mutableIntStateOf(0) }
     var notice by remember { mutableStateOf<AdminNotice?>(null) }
+    var kept by remember { mutableStateOf<AdminNotice?>(null) }
 
     LaunchedEffect(offset, reload) {
         loading = true
         AdminRepository.codes(offset).fold(
-            onSuccess = { page -> codes = page.items; hasMore = page.hasMore },
+            onSuccess = { page ->
+                codes = page.items; hasMore = page.hasMore
+                notice = kept ?: success("تم تحميل ${page.items.size} سجل من أكواد التفعيل.")
+                kept = null
+            },
             onFailure = { notice = session.failureOf(it, "تعذر تحميل أكواد التفعيل. تحقق من الاتصال ثم أعد المحاولة.") },
         )
         loading = false
@@ -95,6 +100,10 @@ internal fun AdminCodesSection(session: AdminSession) {
     }
 
     LazyColumn(Modifier.fillMaxSize().testTag("admin-codes"), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item(key = "intro") {
+            Text("أنشئ دفعات محددة المدة وصدّر الأكواد المتاحة فقط.", style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         item(key = "generate") {
             SabbaqCard(title = "توليد أكواد جديدة", subtitle = "حدّد الدفعة ومدة الاشتراك قبل الإنشاء.", icon = Icons.Outlined.Key) {
                 AdminField("عدد الأكواد", count, { count = it.filter { c -> c.isDigit() } }, maxLength = 3, keyboard = KeyboardType.Number,
@@ -114,7 +123,8 @@ internal fun AdminCodesSection(session: AdminSession) {
                         AdminRepository.generateCodes(values.first, values.second, values.third).fold(
                             onSuccess = { list ->
                                 generated = list
-                                notice = success("تم توليد ${list.size.takeIf { it > 0 } ?: values.first} كود تفعيل.")
+                                kept = success("تم توليد ${list.size.takeIf { it > 0 } ?: values.first} كود تفعيل.")
+                                notice = kept
                                 batch = ""; offset = 0; reload++
                             },
                             onFailure = { notice = session.failureOf(it, "تعذر توليد أكواد التفعيل.") },
