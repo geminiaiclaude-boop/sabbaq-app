@@ -1,6 +1,9 @@
 import java.net.URI
 import java.security.KeyStore
 import java.security.PrivateKey
+import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import java.util.Base64
 import java.util.Properties
 import org.gradle.api.GradleException
@@ -33,9 +36,9 @@ fun setting(name: String): String? =
 // stays available through the SABBAQ_VERSION_CODE / SABBAQ_VERSION_NAME settings for a pinned
 // release, and an optional SABBAQ_BUILD_EPOCH_MS lets CI pass a fixed instant for a reproducible
 // build.
-const val VERSION_CODE_EPOCH_SECONDS = 1_577_836_800L // 2020-01-01T00:00:00Z
-const val VERSION_CODE_FLOOR = 14 // one above the last hand-numbered build (13); never regress below it
-const val VERSION_CODE_CEILING = 2_100_000_000L // Android's hard limit on versionCode
+val VERSION_CODE_EPOCH_SECONDS = 1_577_836_800L // 2020-01-01T00:00:00Z
+val VERSION_CODE_FLOOR = 14 // one above the last hand-numbered build (13); never regress below it
+val VERSION_CODE_CEILING = 2_100_000_000L // Android's hard limit on versionCode
 
 val buildEpochMs: Long = setting("SABBAQ_BUILD_EPOCH_MS")?.toLongOrNull() ?: System.currentTimeMillis()
 
@@ -48,8 +51,8 @@ fun buildVersionCode(): Int =
 
 // yyyyMMdd.HHmm (UTC): a human-readable build stamp, matching the telemetry/admin shape
 // [A-Za-z0-9._-] within 32 chars, so every installed build is identifiable without git.
-fun buildStamp(): String = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd.HHmm")
-    .withZone(java.time.ZoneOffset.UTC).format(java.time.Instant.ofEpochMilli(buildEpochMs))
+fun buildStamp(): String = DateTimeFormatter.ofPattern("yyyyMMdd.HHmm")
+    .withZone(ZoneOffset.UTC).format(Instant.ofEpochMilli(buildEpochMs))
 
 fun buildConfigString(value: String): String = buildString {
     append('"')
