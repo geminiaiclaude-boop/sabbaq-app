@@ -1030,7 +1030,7 @@ button:active:not(:disabled) {
     .status-pill--unavailable { color: #FFD3CF; }
 }
 
-/* ── Phone layout (2.0.1): the panel runs inside the app's WebView on phones. Nothing may
+/* ── Phone layout (2.0.1): the panel may be opened in a phone browser. Nothing may
    scroll sideways: the page is clipped to the screen, tabs wrap, and each table row becomes
    a card whose cells carry their column name (data-label, set by app.js). */
 html,

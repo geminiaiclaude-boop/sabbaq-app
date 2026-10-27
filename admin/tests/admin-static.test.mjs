@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
@@ -8,8 +8,6 @@ const repo = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const sourceAdmin = join(repo, 'admin');
 const bundledAdmin = join(repo, 'app', 'src', 'direct', 'assets', 'admin');
 const read = (base, name) => readFileSync(join(base, name), 'utf8');
-
-const files = ['index.html', 'app.js', 'styles.css', 'config.example.js'];
 
 function extractFunction(source, name, nextName) {
     const start = source.indexOf(`function ${name}(`);
@@ -20,10 +18,25 @@ function extractFunction(source, name, nextName) {
     return new Function(`${body}; return ${name};`)();
 }
 
-test('نسختا لوحة الإدارة متطابقتان', () => {
-    for (const file of files) {
-        assert.equal(read(sourceAdmin, file), read(bundledAdmin, file), `${file} يجب أن يتطابق بين المصدر والأصول المضمّنة`);
+test('كل عنصر تطلبه اللوحة موجود في الصفحة، فلا ينهار فتحها بعد الدخول', () => {
+    const html = read(sourceAdmin, 'index.html');
+    const app = read(sourceAdmin, 'app.js');
+    const ids = [...app.matchAll(/getElementById\('([^']+)'\)/g)].map((match) => match[1]);
+    assert.ok(ids.length > 50, 'تعذر استخراج معرّفات عناصر اللوحة');
+    const missing = ids.filter((id) => !new RegExp(`\\sid="${id}"`).test(html));
+    assert.deepEqual(missing, [], `عناصر مفقودة من index.html: ${missing.join(', ')}`);
+    // Every tab panel is its own section, so showing one tab never reaches a null panel.
+    for (const panel of ['drivers', 'codes', 'commercial-policy', 'telemetry', 'profiles', 'notifications', 'support']) {
+        assert.match(html, new RegExp(`<section id="tab-${panel}" class="tab-content" role="tabpanel" aria-labelledby="${panel}-tab"`));
     }
+});
+
+test('لوحة الويب للحاسوب فقط: لا نسخة مضمّنة في التطبيق ولا جسر جلسة أصلية', () => {
+    const app = read(sourceAdmin, 'app.js');
+    assert.equal(existsSync(bundledAdmin), false, 'التطبيق يستعمل الإدارة الأصلية؛ لا تُضمَّن لوحة الويب فيه');
+    assert.doesNotMatch(app, /SABBAQ_ACCEPT_NATIVE_SESSION|nativeAccessToken|sabbaq\.local/);
+    assert.match(app, /autoRefreshToken: true/);
+    assert.doesNotMatch(app, /auth\.setSession\(|refresh_token/);
 });
 
 test('صفحة الإدارة تمنع التنفيذ المضمن وتعلن سياسة CSP مقيدة', () => {
@@ -109,20 +122,6 @@ test('سياسة العرض لا تُعرض أو تُحفظ قبل تحقق ال
     assert.match(app, /invalidateCommercialPolicy\(fallbackMessage\)/);
     assert.match(app, /setPolicyFieldError\(/);
     assert.match(app, /retryCommercialPolicy/);
-});
-
-test('جسر جلسة التطبيق الأصلية أحادي الاستخدام ومرتبط بـ sabbaq.local فقط', () => {
-    const app = read(sourceAdmin, 'app.js');
-
-    assert.match(app, /window\.SABBAQ_ACCEPT_NATIVE_SESSION = acceptNativeSession/);
-    assert.match(app, /window\.location\.origin === 'https:\/\/sabbaq\.local'/);
-    assert.match(app, /state\.nativeAccessToken = nativeAccessToken/);
-    assert.match(app, /await verifyAdminSession\(\)/);
-    assert.match(app, /delete window\.SABBAQ_ACCEPT_NATIVE_SESSION/);
-    assert.match(app, /autoRefreshToken: nativeAccessToken === null/);
-    assert.match(app, /db\.auth\.getUser\(state\.nativeAccessToken\)/);
-    assert.match(app, /clearNativeAccessState\(\)/);
-    assert.doesNotMatch(app, /auth\.setSession\(|refresh_token/);
 });
 
 test('التحقق من إعداد Supabase وتحييد CSV يعملان بالقيم الحدّية', () => {

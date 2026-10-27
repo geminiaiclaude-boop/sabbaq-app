@@ -288,8 +288,8 @@ internal fun PickupTimeCondition(
     framed: Boolean = true,
 ) {
     ProConditionCard(
-        title = "وقت الوصول",
-        subtitle = if (framed) "أقل وأقصى وقت للوصول إلى الراكب" else null,
+        title = "وقت الوصول إلى الراكب (دقائق)",
+        subtitle = if (framed) "كم دقيقة تبعد عن الراكب: أقل وأقصى وقت تقبله" else null,
         enabled = draft.pickupTimeEnabled,
         testKey = keyPrefix + "pickup-time",
         framed = framed,
