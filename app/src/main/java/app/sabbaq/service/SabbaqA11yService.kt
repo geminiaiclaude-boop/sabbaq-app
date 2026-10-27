@@ -52,6 +52,7 @@ class SabbaqA11yService : AccessibilityService() {
     private var profileRevision = -1
     private var firstSeenFingerprint: String? = null
     private var firstSeenAtMs = 0L
+    private var gestureWarmed = false
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -170,6 +171,7 @@ class SabbaqA11yService : AccessibilityService() {
             return
         }
         recordDiagnostic(DiagnosticStage.PACKAGE_SEEN, eventNow, provider = provider)
+        warmUpGestureOnce()
         if (packageName == JEENY_PACKAGE) {
             liveness.targetEvent(eventNow)
             handleJeenyEvent(event)
@@ -701,12 +703,35 @@ class SabbaqA11yService : AccessibilityService() {
     private fun performGesture(x: Int, y: Int): Boolean {
         if (!ServicesSafetyPolicy.canProcessOffers(Settings.isActive,
                 Settings.a11yDisclosureAccepted, SupabaseClient.hasValidLicense())) return false
+        // A few pixels off the exact centre and a short randomised hold: the tap lands like a
+        // finger press, not a pixel-perfect machine tap that some buttons swallow.
         val path = Path().apply {
-            moveTo(x.toFloat(), y.toFloat())
+            moveTo((x + (-3..3).random()).toFloat(), (y + (-3..3).random()).toFloat())
         }
-        val stroke = GestureDescription.StrokeDescription(path, 10, 50)
-        val gesture = GestureDescription.Builder().addStroke(stroke).build()
+        val hold = (40L..90L).random()
+        val gesture = GestureDescription.Builder()
+            .addStroke(GestureDescription.StrokeDescription(path, 0L, hold)).build()
         return dispatchGesture(gesture, null, null)
+    }
+
+    /**
+     * The first dispatchGesture after the service connects is slow because the gesture pipeline is
+     * cold. A one-shot 1 ms no-op at (1,1) warms it, so the first real accept tap is not the slow
+     * one: that tap's latency decides whether this driver's app wins the request.
+     */
+    private fun warmUpGestureOnce() {
+        if (gestureWarmed) return
+        if (!ServicesSafetyPolicy.canProcessOffers(Settings.isActive, Settings.a11yDisclosureAccepted, SupabaseClient.hasValidLicense())) return
+        gestureWarmed = true
+        val gesture = runCatching {
+            GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(Path().apply { moveTo(1f, 1f) }, 0L, 1L)).build()
+        }.getOrNull() ?: return
+        // Re-check at dispatch time: the gate may have closed between the event and this runnable.
+        lateReadHandler.post {
+            if (ServicesSafetyPolicy.canProcessOffers(Settings.isActive, Settings.a11yDisclosureAccepted, SupabaseClient.hasValidLicense())) {
+                runCatching { dispatchGesture(gesture, null, null) }
+            }
+        }
     }
 
     override fun onInterrupt() {

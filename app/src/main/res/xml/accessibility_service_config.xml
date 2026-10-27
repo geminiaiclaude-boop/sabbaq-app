@@ -7,4 +7,4 @@
     android:canPerformGestures="true"
     android:packageNames="ee.mtakso.driver,me.com.easytaxista,com.PetraRide_Captain,com.petraride_captain"
     android:description="@string/accessibility_service_description"
-    android:notificationTimeout="150" />
+    android:notificationTimeout="0" />
