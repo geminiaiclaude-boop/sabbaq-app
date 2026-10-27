@@ -214,6 +214,11 @@ class SabbaqA11yService : AccessibilityService() {
         }
     }
 
+    private fun keepSketch(screen: ScreenNode, profile: RideProfile, reason: String) {
+        if (!ScreenSketchStore.wantsSketch()) return
+        runCatching { ScreenSketchStore.keep(ScreenSketch.render(screen, profile), reason) }
+    }
+
     /** Jeeny has its own cheap signal -> full frame -> two late capture pipeline. */
     private fun handleJeenyEvent(event: AccessibilityEvent) {
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
@@ -312,6 +317,8 @@ class SabbaqA11yService : AccessibilityService() {
                         else -> "cls_" + frameClass?.name?.lowercase()
                     }
                     recordDiagnostic(DiagnosticStage.SIGNAL_MISS, parseTimeMs, reason, assessment?.flags, provider)
+                    // Only frames the classifier took for an offer are worth an outline for support.
+                    if (frameClass == JeenyFrameClass.OFFER || frameClass == JeenyFrameClass.INCOMPLETE) keepSketch(screenNode, adapter.profile, reason)
                     return false
                 }
                 if (requireJeenySignal) recordDiagnostic(DiagnosticStage.SIGNAL_FOUND, parseTimeMs, detail = assessment?.flags, provider = provider)
@@ -344,6 +351,7 @@ class SabbaqA11yService : AccessibilityService() {
                 val offer = parsed.offer ?: run {
                     if (requireJeenySignal || assessment != null) {
                         recordDiagnostic(DiagnosticStage.OFFER_NOT_PARSED, nowMs, "parser_empty", assessment?.flags, provider)
+                        keepSketch(screenNode, adapter.profile, "parser_empty")
                     }
                     null
                 } ?: continue
