@@ -627,7 +627,10 @@ object SupabaseClient {
     }
 
     /** هوية الدخول للعرض فقط، مقنّعة قبل مغادرة العميل الشبكي ولا تُخزَّن. */
-    suspend fun accountIdentity(): Result<String> {
+    /** What the account page shows about who is signed in; [identity] is already masked. */
+    data class AccountProfile(val identity: String, val displayName: String?, val viaGoogle: Boolean)
+
+    suspend fun accountIdentity(): Result<AccountProfile> {
         val session = sessions.snapshot()
             ?: return Result.failure(ClientRequestException("انتهت الجلسة؛ سجّل الدخول من جديد"))
         return networkCall {
@@ -642,7 +645,11 @@ object SupabaseClient {
             val label = AccountIdentityMask.phone(user["phone"]?.jsonPrimitive?.contentOrNull)
                 ?: AccountIdentityMask.email(user["email"]?.jsonPrimitive?.contentOrNull)
                 ?: return@networkCall Result.failure(ClientRequestException("لا تتوفر بيانات دخول لعرضها."))
-            Result.success(label)
+            val metadata = user["user_metadata"] as? JsonObject
+            val name = (metadata?.get("full_name") ?: metadata?.get("name"))?.jsonPrimitive?.contentOrNull
+                ?.trim()?.filter { !it.isISOControl() }?.take(40)?.takeIf { it.length >= 2 }
+            val provider = (user["app_metadata"] as? JsonObject)?.get("provider")?.jsonPrimitive?.contentOrNull
+            Result.success(AccountProfile(label, name, viaGoogle = provider == "google"))
         }
     }
 

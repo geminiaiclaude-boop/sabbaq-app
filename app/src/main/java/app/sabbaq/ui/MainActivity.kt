@@ -179,6 +179,7 @@ class MainActivity : ComponentActivity() {
             var filterSavePending by remember { mutableStateOf(false) }
             var hasUnpersistedFilterChanges by remember { mutableStateOf(false) }
             var driverDestinationRequest by rememberSaveable { mutableStateOf<DriverDestination?>(null) }
+            var logoutRequests by remember { mutableIntStateOf(0) }
             var activeDriverDestination by rememberSaveable { mutableStateOf(DriverDestination.Dashboard) }
             // The cinematic clip precedes the existing logo intro once per install/update.
             var showVideoOpening by rememberSaveable {
@@ -251,6 +252,7 @@ class MainActivity : ComponentActivity() {
                         activeDriverDestination = activeDriverDestination,
                         onOpenDriverDestination = { driverDestinationRequest = it },
                         onOpenLogin = { if (navigation.route == AppState.WELCOME) navigation.welcomeFinished(false) },
+                        logoutRequests = logoutRequests,
                     ) {
                         SabbaqDepthContent(target = navigation.route, order = { it.ordinal }, label = "app-route") { route ->
                         when (route) {
@@ -302,6 +304,7 @@ class MainActivity : ComponentActivity() {
                                     hasUnpersistedFilterChanges = unpersisted
                                 },
                                 navigationRequest = driverDestinationRequest,
+                                onRequestLogout = { logoutRequests++ },
                                 onDestinationChanged = { activeDriverDestination = it },
                                 onNavigationRequestHandled = { driverDestinationRequest = null },
                                 themeMode = mode,
@@ -392,6 +395,7 @@ internal fun SabbaqShell(
     activeDriverDestination: DriverDestination? = null,
     onOpenDriverDestination: (DriverDestination) -> Unit = {},
     onOpenLogin: () -> Unit = {},
+    logoutRequests: Int = 0,
     content: @Composable () -> Unit
 ) {
     var confirmLogout by remember { mutableStateOf(false) }
@@ -403,6 +407,8 @@ internal fun SabbaqShell(
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val requestLogout = { confirmLogout = true }
+    // Pages ask for sign-out through this counter so every path shares the one confirmation.
+    LaunchedEffect(logoutRequests) { if (logoutRequests > 0 && allowLogout) confirmLogout = true }
     val closeDrawer = { scope.launch { drawerState.close() } }
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     // Server messages arrive while the app is open: sync on entering the driver panel and on

@@ -210,6 +210,7 @@ fun SettingsScreen(
     initialDestination: DriverDestination = DriverDestination.Dashboard,
     onFilterSaveStateChanged: (isSaving: Boolean, hasUnpersistedChanges: Boolean) -> Unit = { _, _ -> },
     onAccountDeleted: () -> Unit = {},
+    onRequestLogout: () -> Unit = {},
     /** Opens the setup guide first for a driver who has not finished or dismissed it. */
     autoSetupGuide: Boolean = true,
     isRestoringSession: Boolean = false,
@@ -807,6 +808,8 @@ fun SettingsScreen(
                     if (isActive) stopKeeper()
                     onAccountDeleted()
                 },
+                onOpenSupport = { navigateTo(DriverDestination.Support) },
+                onSignOut = onRequestLogout,
             )
         }
         }
@@ -1845,6 +1848,8 @@ private fun AccountPage(
     onLicenseChanged: (Boolean) -> Unit,
     onMessage: (DriverStatus?) -> Unit,
     onAccountDeleted: () -> Unit,
+    onOpenSupport: () -> Unit,
+    onSignOut: () -> Unit,
 ) {
     SubscriptionScreen(
         licenseInMemory = licenseInMemory,
@@ -1855,6 +1860,8 @@ private fun AccountPage(
             onMessage(nextMessage?.let { DriverStatus(it, isError) })
         },
         onAccountDeleted = onAccountDeleted,
+        onOpenSupport = onOpenSupport,
+        onSignOut = onSignOut,
     )
 }
 
