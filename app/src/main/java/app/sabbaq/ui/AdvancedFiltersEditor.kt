@@ -339,6 +339,18 @@ internal fun HighFareOverrideCondition(
     if (showHelp) HighFareOverrideHelp { showHelp = false }
 }
 
+@Composable
+internal fun HighFareOverrideHelp(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("تجاوز الوقت عند سعر") },
+        text = {
+            Text("إذا كان سعر الطلب ظاهرًا ويبلغ العتبة أو يتجاوزها، يتجاوز سبّاق الحد الأقصى لوقت الوصول ومدة الرحلة ومسافة الوصول فقط. تبقى حدود الوقت الدنيا وحدود السعر والعائد والكلمات المستثناة وشروط السلامة الأخرى مطبّقة. إذا لم يظهر السعر فلا يحدث تجاوز.")
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("فهمت") } },
+    )
+}
+
 /** Toggle rules shared by the full page and the quick card: switching on fills sensible bounds. */
 internal fun FilterDraft.withFareRange(enabled: Boolean): FilterDraft = copy(
     fareRangeEnabled = enabled,

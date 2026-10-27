@@ -397,8 +397,8 @@ private fun AccountHeader(
     val brand = LocalSabbaqBrand.current
     val status = snapshot?.state?.let(::licenseStatePresentation)
     val until = when (snapshot?.state) {
-        LicenseState.TRIAL -> snapshot.trialUntil ?: snapshot.validUntil
-        LicenseState.ACTIVE -> snapshot.proUntil ?: snapshot.validUntil
+        LicenseState.TRIAL -> snapshot?.trialUntil ?: snapshot?.validUntil
+        LicenseState.ACTIVE -> snapshot?.proUntil ?: snapshot?.validUntil
         else -> null
     }
     val now = Instant.now()
@@ -433,7 +433,7 @@ private fun AccountHeader(
         Text(
             when {
                 snapshot == null -> "حدّث الحالة لمعرفة مدة اشتراكك وخيارات تجربتك."
-                status?.isOperational == true && leaseInMemory -> CelebrationCopy.validity(until, now) ?: status.label
+                status?.isOperational == true && leaseInMemory -> CelebrationCopy.validity(until, now) ?: status?.label.orEmpty()
                 status?.isOperational == true -> "تعذر تأكيد اشتراكك على هذا الجوال الآن. حدّث الحالة."
                 else -> status?.label ?: "لا تتوفر حالة مؤكدة الآن"
             },
