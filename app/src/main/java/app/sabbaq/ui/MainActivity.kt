@@ -16,6 +16,17 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.background
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.material.icons.outlined.Checklist
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.PrivacyTip
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.verticalScroll
@@ -25,7 +36,6 @@ import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.FilterAlt
 import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.Menu
@@ -539,14 +549,21 @@ private data class SabbaqDrawerItem(
     val icon: ImageVector,
 )
 
-private val sabbaqDrawerItems = listOf(
-    SabbaqDrawerItem(DriverDestination.Dashboard, "حالة العمل", Icons.Outlined.Home),
-    SabbaqDrawerItem(DriverDestination.Filters, "طلبات تناسبك", Icons.Outlined.FilterAlt),
-    SabbaqDrawerItem(DriverDestination.Settings, "الإعدادات", Icons.Outlined.SettingsIcon),
-    SabbaqDrawerItem(DriverDestination.Simulator, "تجربة الطلب", Icons.Outlined.Visibility),
-    SabbaqDrawerItem(DriverDestination.Account, "حسابي", Icons.Outlined.AccountCircle),
-    SabbaqDrawerItem(DriverDestination.History, "سجل القرارات", Icons.Outlined.Info),
-    SabbaqDrawerItem(DriverDestination.Setup, "دليل الإعداد", Icons.Outlined.Tune),
+/** Drawer sections in the order a driver uses them: work, tools, account. */
+private val sabbaqDrawerSections = listOf(
+    "العمل" to listOf(
+        SabbaqDrawerItem(DriverDestination.Dashboard, "حالة العمل", Icons.Outlined.Home),
+        SabbaqDrawerItem(DriverDestination.Filters, "طلبات تناسبك", Icons.Outlined.FilterAlt),
+        SabbaqDrawerItem(DriverDestination.History, "سجل القرارات", Icons.Outlined.History),
+    ),
+    "الأدوات" to listOf(
+        SabbaqDrawerItem(DriverDestination.Simulator, "تجربة الطلب", Icons.Outlined.Visibility),
+        SabbaqDrawerItem(DriverDestination.Setup, "دليل الإعداد", Icons.Outlined.Checklist),
+        SabbaqDrawerItem(DriverDestination.Settings, "الإعدادات", Icons.Outlined.SettingsIcon),
+    ),
+    "الحساب" to listOf(
+        SabbaqDrawerItem(DriverDestination.Account, "حسابي", Icons.Outlined.AccountCircle),
+    ),
 )
 
 @Composable
@@ -562,99 +579,167 @@ private fun SabbaqDrawerSheet(
     onClose: () -> Unit,
 ) {
     val brand = LocalSabbaqBrand.current
+    val snapshot = remember(isAuthenticated) { if (isAuthenticated) SupabaseClient.subscriptionSnapshot() else null }
     ModalDrawerSheet(
         modifier = Modifier.widthIn(max = 320.dp),
         drawerContainerColor = MaterialTheme.colorScheme.surface,
-        drawerTonalElevation = 8.dp,
+        drawerTonalElevation = 0.dp,
+        drawerShape = RoundedCornerShape(topStart = 28.dp, bottomStart = 28.dp),
     ) {
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            color = brand.heroStart,
-            contentColor = brand.onHero,
+        // Header: brand on the hero gradient, close, and who is signed in at a glance.
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .background(Brush.linearGradient(listOf(brand.heroStart, brand.heroEnd)))
+                .padding(start = 20.dp, end = 12.dp, top = 22.dp, bottom = 20.dp),
         ) {
-            Column(Modifier.padding(horizontal = 24.dp, vertical = 28.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     SabbaqBrand(onHero = true)
-                    IconButton(
-                        onClick = onClose,
-                        modifier = Modifier.size(48.dp),
-                    ) {
-                        Icon(Icons.Outlined.Close, contentDescription = "إغلاق القائمة")
+                    IconButton(onClick = onClose, modifier = Modifier.size(44.dp)) {
+                        Icon(Icons.Outlined.Close, contentDescription = "إغلاق القائمة", tint = brand.onHero)
                     }
                 }
-                Text(
-                    if (isAuthenticated) "مسجل الدخول — إدارة عملك بثقة" else "استكشف سبّاق وسجّل الدخول للبدء",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = brand.onHeroMuted,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    when {
+                        isAdmin -> DrawerPill("إدارة", brand.onHero.copy(alpha = 0.18f), brand.onHero)
+                        snapshot?.state == LicenseState.ACTIVE -> DrawerPill("PRO", Color(0xFFE9BE45), Color(0xFF3A2A00))
+                        snapshot?.state == LicenseState.TRIAL -> DrawerPill("تجربة", brand.onHero.copy(alpha = 0.18f), brand.onHero)
+                    }
+                    Text(
+                        when {
+                            !isAuthenticated -> "استكشف سبّاق وسجّل الدخول للبدء"
+                            isAdmin -> "لوحة الإدارة"
+                            snapshot?.state == LicenseState.ACTIVE -> "مشترك — تابع عملك بثقة"
+                            snapshot?.state == LicenseState.TRIAL -> "فترتك التجريبية فعّالة"
+                            else -> "مسجل الدخول"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = brand.onHeroMuted,
+                    )
+                }
             }
         }
         Column(
             Modifier
                 .fillMaxWidth()
+                .weight(1f)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 12.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             if (isAuthenticated && !isAdmin) {
-                sabbaqDrawerItems.forEach { item ->
-                    NavigationDrawerItem(
-                        label = { Text(item.label) },
-                        selected = item.destination == activeDestination,
-                        onClick = { onOpenDriverDestination(item.destination) },
-                        icon = { Icon(item.icon, contentDescription = null) },
-                        modifier = Modifier.heightIn(min = 52.dp),
-                    )
+                sabbaqDrawerSections.forEach { (title, items) ->
+                    DrawerSectionTitle(title)
+                    items.forEach { item ->
+                        DrawerEntry(
+                            label = item.label,
+                            icon = item.icon,
+                            selected = item.destination == activeDestination,
+                            onClick = { onOpenDriverDestination(item.destination) },
+                        )
+                    }
                 }
-                HorizontalDivider(Modifier.padding(vertical = 8.dp))
             }
             if (isAdmin) {
-                NavigationDrawerItem(
-                    label = { Text("لوحة الإدارة") },
-                    selected = true,
-                    onClick = {},
-                    icon = { Icon(Icons.Outlined.Tune, contentDescription = null) },
-                    modifier = Modifier.heightIn(min = 52.dp),
-                )
-                HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                DrawerSectionTitle("الإدارة")
+                DrawerEntry("لوحة الإدارة", Icons.Outlined.Tune, selected = true, onClick = {})
             }
             if (!isAuthenticated) {
-                NavigationDrawerItem(
-                    label = { Text("تسجيل الدخول") },
-                    selected = false,
-                    onClick = onOpenLogin,
-                    icon = { Icon(Icons.Outlined.AccountCircle, contentDescription = null) },
-                    modifier = Modifier.heightIn(min = 52.dp),
-                )
+                DrawerEntry("تسجيل الدخول", Icons.Outlined.AccountCircle, selected = false, onClick = onOpenLogin)
             }
-            NavigationDrawerItem(
-                label = { Text("سياسة الخصوصية") },
-                selected = false,
-                onClick = onOpenPrivacy,
-                icon = { Icon(Icons.Outlined.Info, contentDescription = null) },
-                modifier = Modifier.heightIn(min = 52.dp),
-            )
-            NavigationDrawerItem(
-                label = { Text("طلب حذف الحساب") },
-                selected = false,
-                onClick = onOpenDeletion,
-                icon = { Icon(Icons.Outlined.Info, contentDescription = null) },
-                modifier = Modifier.heightIn(min = 52.dp),
-            )
-            if (isAuthenticated) {
-                HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                NavigationDrawerItem(
-                    label = { Text("تسجيل الخروج") },
-                    selected = false,
-                    onClick = onRequestLogout,
-                    icon = { Icon(Icons.AutoMirrored.Outlined.Logout, contentDescription = null) },
-                    modifier = Modifier.heightIn(min = 52.dp),
-                )
-            }
+            DrawerSectionTitle("الخصوصية")
+            DrawerEntry("سياسة الخصوصية", Icons.Outlined.PrivacyTip, selected = false, onClick = onOpenPrivacy)
+            DrawerEntry("طلب حذف الحساب", Icons.Outlined.DeleteOutline, selected = false, onClick = onOpenDeletion)
         }
+        // Footer: sign-out set apart, then the version.
+        Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (isAuthenticated) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                DrawerEntry("تسجيل الخروج", Icons.AutoMirrored.Outlined.Logout, selected = false, destructive = true, onClick = onRequestLogout)
+            }
+            Text(
+                "سبّاق ${BuildConfig.VERSION_NAME}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 12.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun DrawerSectionTitle(title: String) {
+    Text(
+        title,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 14.dp, end = 14.dp, top = 14.dp, bottom = 4.dp),
+    )
+}
+
+@Composable
+private fun DrawerPill(text: String, container: Color, content: Color) {
+    Surface(shape = RoundedCornerShape(50), color = container, contentColor = content) {
+        Text(text, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp))
+    }
+}
+
+/**
+ * One drawer row: a tinted icon badge and the label. The current page gets a filled pill and an
+ * accent bar at its leading edge; sign-out uses the error colours so it is never tapped by habit.
+ */
+@Composable
+private fun DrawerEntry(
+    label: String,
+    icon: ImageVector,
+    selected: Boolean,
+    onClick: () -> Unit,
+    destructive: Boolean = false,
+) {
+    val colors = MaterialTheme.colorScheme
+    val tint = when {
+        destructive -> colors.error
+        selected -> colors.primary
+        else -> colors.onSurfaceVariant
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 52.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(if (selected) colors.primaryContainer.copy(alpha = 0.7f) else Color.Transparent)
+            .selectable(selected = selected, role = Role.Tab, onClick = onClick)
+            .padding(horizontal = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Box(
+            Modifier
+                .size(width = 4.dp, height = 22.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(if (selected) colors.primary else Color.Transparent),
+        )
+        Box(
+            Modifier
+                .size(36.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(tint.copy(alpha = if (selected || destructive) 0.16f else 0.08f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
+        }
+        Text(
+            label,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+            color = if (destructive) colors.error else if (selected) colors.onPrimaryContainer else colors.onSurface,
+            modifier = Modifier.weight(1f),
+        )
     }
 }
