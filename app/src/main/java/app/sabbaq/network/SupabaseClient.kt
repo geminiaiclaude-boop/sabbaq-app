@@ -76,6 +76,7 @@ data class SubscriptionSnapshot(
  */
 object SupabaseClient {
     private const val MAX_RESPONSE_BYTES = 256 * 1024
+    private const val ADMIN_RESPONSE_BYTES = 2 * 1024 * 1024
     private const val MAX_TOKEN_LENGTH = 8 * 1024
     private const val MAX_ANON_KEY_LENGTH = 8 * 1024
     private const val MAX_EMAIL_LENGTH = 254
@@ -236,13 +237,15 @@ object SupabaseClient {
 
     enum class SupportSendResult { SENT, RATE_LIMITED, REJECTED, RETRY }
 
-    enum class FeatureFailure { OFFLINE, SESSION, UNAVAILABLE }
+    enum class FeatureFailure { OFFLINE, SESSION, UNAVAILABLE, REJECTED }
 
     class FeatureException(val kind: FeatureFailure) : Exception(kind.name) {
         companion object {
-            fun fromStatus(code: Int): FeatureException = FeatureException(
-                if (code == 401 || code == 403) FeatureFailure.SESSION else FeatureFailure.UNAVAILABLE,
-            )
+            fun fromStatus(code: Int): FeatureException = FeatureException(when (code) {
+                401, 403 -> FeatureFailure.SESSION
+                400, 409, 422 -> FeatureFailure.REJECTED
+                else -> FeatureFailure.UNAVAILABLE
+            })
         }
     }
 
@@ -276,15 +279,20 @@ object SupabaseClient {
      * screens can say what actually happened (no internet, session, service) instead of always
      * blaming the connection. An expired access token is renewed once and the call retried.
      */
-    private suspend fun <T> supportCall(path: String, body: JsonObject, handle: (HttpResponse) -> Result<T>): Result<T> {
+    private suspend fun <T> supportCall(path: String, body: JsonObject, handle: (HttpResponse) -> Result<T>): Result<T> =
+        featureCall({ token -> authenticatedRequest(endpoint("rest/v1/$path"), token, body.toString().toRequestBody(jsonMediaType)) }, handle)
+
+    private suspend fun <T> featureCall(build: (String) -> Request, maxBytes: Int = MAX_RESPONSE_BYTES, handle: (HttpResponse) -> Result<T>): Result<T> {
         if (refreshToken != null && SystemClock.elapsedRealtime() - accessIssuedAt > RENEW_AFTER_MILLIS) renewAccessToken()
         repeat(2) { attempt ->
             val session = sessions.snapshot() ?: return Result.failure(FeatureException(FeatureFailure.SESSION))
             val response = withContext(Dispatchers.IO) {
                 try {
-                    execute(authenticatedRequest(endpoint("rest/v1/$path"), session.token, body.toString().toRequestBody(jsonMediaType)))
+                    execute(build(session.token), maxBytes)
                 } catch (cancelled: CancellationException) {
                     throw cancelled
+                } catch (_: ResponseTooLargeException) {
+                    HttpResponse(599, "")
                 } catch (_: IOException) {
                     null
                 } catch (_: Exception) {
@@ -295,6 +303,71 @@ object SupabaseClient {
             return if (response.code == 401) Result.failure(FeatureException(FeatureFailure.SESSION)) else handle(response)
         }
         return Result.failure(FeatureException(FeatureFailure.SESSION))
+    }
+
+    private val ADMIN_NAME = Regex("^[a-z_]{3,48}$")
+
+    /**
+     * An administration RPC for the native admin screens. The server's require_admin() decides;
+     * the body comes back raw for the admin repository to parse.
+     */
+    suspend fun adminRpc(function: String, body: JsonObject = buildJsonObject { }): Result<String> {
+        if (!ADMIN_NAME.matches(function)) return Result.failure(FeatureException(FeatureFailure.REJECTED))
+        return featureCall({ token -> authenticatedRequest(endpoint("rest/v1/rpc/$function"), token, body.toString().toRequestBody(jsonMediaType)) }, ADMIN_RESPONSE_BYTES) { response ->
+            if (response.isSuccessful) Result.success(response.body) else Result.failure(FeatureException.fromStatus(response.code))
+        }
+    }
+
+    /** Rows of one admin read plus, when asked for, the exact number of matching rows on the server. */
+    data class AdminPage(val body: String, val total: Long?)
+
+    /**
+     * A read of an admin-visible table (RLS lets administrators select). [filters] are PostgREST
+     * column filters such as `revoked=eq.false`; [exactCount] asks the server for the full count
+     * so a capped response can never pass for a complete one.
+     */
+    suspend fun adminRead(
+        table: String,
+        select: String,
+        order: String,
+        limit: Int,
+        offset: Int = 0,
+        filters: Map<String, String> = emptyMap(),
+        exactCount: Boolean = false,
+    ): Result<AdminPage> {
+        if (!ADMIN_NAME.matches(table) || !Regex("^[a-z_,]{2,200}$").matches(select) || !Regex("^[a-z_]+\\.(asc|desc)$").matches(order) ||
+            filters.any { (column, condition) -> !ADMIN_NAME.matches(column) || !Regex("^(eq|is)\\.[a-z0-9_]{1,40}$").matches(condition) }) {
+            return Result.failure(FeatureException(FeatureFailure.REJECTED))
+        }
+        return featureCall({ token ->
+            val url = endpoint("rest/v1/$table").newBuilder()
+                .addQueryParameter("select", select)
+                .apply { filters.forEach { (column, condition) -> addQueryParameter(column, condition) } }
+                .addQueryParameter("order", order)
+                .addQueryParameter("limit", limit.coerceIn(1, 1001).toString())
+                .addQueryParameter("offset", offset.coerceAtLeast(0).toString())
+                .build()
+            requestBuilder(url).header("Authorization", "Bearer $token")
+                .apply { if (exactCount) header("Prefer", "count=exact") }
+                .get().build()
+        }, ADMIN_RESPONSE_BYTES) { response ->
+            if (!response.isSuccessful) return@featureCall Result.failure(FeatureException.fromStatus(response.code))
+            val total = response.contentRange?.substringAfter('/', "")?.toLongOrNull()
+            if (exactCount && total == null) Result.failure(FeatureException(FeatureFailure.UNAVAILABLE))
+            else Result.success(AdminPage(response.body, total))
+        }
+    }
+
+    /**
+     * Whether the signed-in account is an administrator right now. The native admin screen asks
+     * once on entry; every admin call is still checked by the server's require_admin().
+     */
+    suspend fun adminAccess(): Result<Boolean> {
+        val snapshot = sessions.snapshot() ?: return Result.failure(FeatureException(FeatureFailure.SESSION))
+        return adminRpc("is_admin").mapCatching { body ->
+            if (sessions.snapshot()?.generation != snapshot.generation) throw FeatureException(FeatureFailure.SESSION)
+            json.parseToJsonElement(body).jsonPrimitive.booleanOrNull ?: throw FeatureException(FeatureFailure.UNAVAILABLE)
+        }
     }
 
     /** يمكّن مسار تسجيل خروج مستقبلي من إبطال الجلسة الذاكرية صراحةً. */
@@ -407,18 +480,6 @@ object SupabaseClient {
         val context = appContext ?: return
         val token = refreshToken ?: return
         SessionVault.save(context, token, deviceId)
-    }
-
-    /** Only the trusted, local admin WebView may consume this short-lived token. */
-    suspend fun authorizedAdminWebSession(): Result<String> {
-        val snapshot = sessions.snapshot()
-            ?: return invalidInput("انتهت جلسة الإدارة؛ سجّل الدخول من جديد")
-        val authorization = isAdmin(snapshot.token)
-        if (authorization.isFailure) return Result.failure(authorization.exceptionOrNull()!!)
-        if (authorization.getOrNull() != true) return invalidInput("لا تملك صلاحية الإدارة")
-        val current = sessions.snapshot()
-        if (current?.generation != snapshot.generation || current.token != snapshot.token) return staleSessionFailure()
-        return Result.success(snapshot.token)
     }
 
     /**
@@ -1064,13 +1125,13 @@ object SupabaseClient {
         else -> null
     }
 
-    private fun execute(request: Request): HttpResponse = client.newCall(request).execute().use { response ->
-        HttpResponse(code = response.code, body = readResponseBody(response.body))
+    private fun execute(request: Request, maxBytes: Int = MAX_RESPONSE_BYTES): HttpResponse = client.newCall(request).execute().use { response ->
+        HttpResponse(code = response.code, body = readResponseBody(response.body, maxBytes), contentRange = response.header("Content-Range"))
     }
 
-    private fun readResponseBody(body: ResponseBody?): String {
+    private fun readResponseBody(body: ResponseBody?, maxBytes: Int): String {
         if (body == null) return ""
-        if (body.contentLength() > MAX_RESPONSE_BYTES) {
+        if (body.contentLength() > maxBytes) {
             throw ResponseTooLargeException()
         }
         body.byteStream().use { input ->
@@ -1079,7 +1140,7 @@ object SupabaseClient {
             while (true) {
                 val bytesRead = input.read(buffer)
                 if (bytesRead < 0) break
-                if (output.size() + bytesRead > MAX_RESPONSE_BYTES) {
+                if (output.size() + bytesRead > maxBytes) {
                     throw ResponseTooLargeException()
                 }
                 output.write(buffer, 0, bytesRead)
@@ -1133,7 +1194,7 @@ object SupabaseClient {
     private fun <T> staleSessionFailure(): Result<T> =
         Result.failure(ClientRequestException("أعد تسجيل الدخول لإكمال هذه الخطوة."))
 
-    private data class HttpResponse(val code: Int, val body: String) {
+    private data class HttpResponse(val code: Int, val body: String, val contentRange: String? = null) {
         val isSuccessful: Boolean get() = code in 200..299
     }
 

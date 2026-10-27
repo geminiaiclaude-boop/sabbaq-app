@@ -264,7 +264,7 @@ class MainActivity : ComponentActivity() {
                             })
                             AppState.LOGIN -> LoginScreen(onLoginSuccess = navigation::authenticated)
                             AppState.ADMIN_PANEL -> {
-                                if (BuildConfig.DIRECT_DISTRIBUTION) AdminScreen()
+                                if (BuildConfig.DIRECT_DISTRIBUTION) app.sabbaq.ui.admin.AdminPanel()
                                 else Text("لوحة الإدارة غير متاحة في هذه النسخة")
                             }
                             AppState.DRIVER_PANEL -> SettingsScreen(

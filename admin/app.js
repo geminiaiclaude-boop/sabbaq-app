@@ -29,8 +29,6 @@
         commercialPolicyLoaded: false,
         commercialPolicyLoading: false,
         profiles: null,
-        nativeAccessToken: null,
-        nativeSessionAccepting: false,
         idleTimer: null,
         signingOut: false,
         loginFailures: 0,
@@ -170,83 +168,24 @@
             return;
         }
 
-        installNativeSessionAcceptor();
         bindEvents();
         renderPagination('drivers');
         renderPagination('codes');
         void restoreInMemorySession();
     }
 
-    function createAdminClient(nativeAccessToken = null) {
-        const options = {
-            auth: {
-                persistSession: false,
-                autoRefreshToken: nativeAccessToken === null,
-                detectSessionInUrl: false
-            }
-        };
-        if (nativeAccessToken !== null) {
-            options.global = { headers: { Authorization: `Bearer ${nativeAccessToken}` } };
-        }
+    function createAdminClient() {
         return window.supabase.createClient(
             window.SABBAQ_CONFIG.supabaseUrl,
             window.SABBAQ_CONFIG.supabaseAnonKey,
-            options
-        );
-    }
-
-    function installNativeSessionAcceptor() {
-        if (isTrustedNativeBridgeOrigin()) window.SABBAQ_ACCEPT_NATIVE_SESSION = acceptNativeSession;
-    }
-
-    async function acceptNativeSession(nativeAccessToken) {
-        if (state.nativeSessionAccepting || state.nativeAccessToken !== null) return false;
-        state.nativeSessionAccepting = true;
-
-        try {
-            if (!isTrustedNativeBridgeOrigin() || !isValidNativeAccessToken(nativeAccessToken)) {
-                throw new Error('invalid_native_token');
+            {
+                auth: {
+                    persistSession: false,
+                    autoRefreshToken: true,
+                    detectSessionInUrl: false
+                }
             }
-            db = createAdminClient(nativeAccessToken);
-            state.nativeAccessToken = nativeAccessToken;
-
-            const access = await verifyAdminSession();
-            if (access !== 'authorized') throw new Error('native_admin_verification_failed');
-
-            state.adminAuthorized = true;
-            state.loginFailures = 0;
-            el.email.value = '';
-            el.password.value = '';
-            await enterDashboard();
-            delete window.SABBAQ_ACCEPT_NATIVE_SESSION;
-            return true;
-        } catch (_) {
-            clearNativeAccessState();
-            el.dashboard.hidden = true;
-            el.loginSection.hidden = false;
-            resetCommercialPolicyUi();
-            setNotice('تعذر التحقق من جلسة الإدارة الأصلية؛ استخدم دخول المشرف المصرّح به.', 'error');
-            return false;
-        } finally {
-            state.nativeSessionAccepting = false;
-        }
-    }
-
-    function isTrustedNativeBridgeOrigin() {
-        return window.location.origin === 'https://sabbaq.local';
-    }
-
-    function isValidNativeAccessToken(value) {
-        return typeof value === 'string'
-            && value.length >= 20
-            && value.length <= 8192
-            && !/[\u0000-\u001F\u007F\s]/.test(value);
-    }
-
-    function clearNativeAccessState() {
-        state.nativeAccessToken = null;
-        state.adminAuthorized = false;
-        db = createAdminClient();
+        );
     }
 
     function isValidConfiguration(config) {
@@ -408,9 +347,7 @@
         if (!navigator.onLine) return 'failure';
         let userResult;
         try {
-            userResult = state.nativeAccessToken === null
-                ? await db.auth.getUser()
-                : await db.auth.getUser(state.nativeAccessToken);
+            userResult = await db.auth.getUser();
         } catch (_) {
             return 'failure';
         }
@@ -461,16 +398,10 @@
         renderPagination('codes');
 
         try {
-            if (state.nativeAccessToken !== null) {
-                clearNativeAccessState();
-            } else {
-                const { error } = await db.auth.signOut();
-                if (error) await db.auth.signOut({ scope: 'local' });
-            }
+            const { error } = await db.auth.signOut();
+            if (error) await db.auth.signOut({ scope: 'local' });
         } catch (_) {
-            if (state.nativeAccessToken === null) {
-                try { await db.auth.signOut({ scope: 'local' }); } catch (_) { /* The in-memory UI is already cleared. */ }
-            }
+            try { await db.auth.signOut({ scope: 'local' }); } catch (_) { /* The in-memory UI is already cleared. */ }
         } finally {
             state.signingOut = false;
         }
@@ -501,25 +432,14 @@
             setNotice('لا يوجد اتصال بالشبكة؛ لا يمكن التحقق من الجلسة أو تنفيذ العملية.', 'error');
             return false;
         }
-        let userResult;
-        try {
-            userResult = state.nativeAccessToken === null
-                ? await db.auth.getUser()
-                : await db.auth.getUser(state.nativeAccessToken);
-        } catch (_) {
-            await signOut('تعذر التحقق من جلسة المشرف.');
-            return false;
-        }
-        const { data, error } = userResult;
-        if (error || !data.user) {
-            await signOut('انتهت الجلسة أو لم يعد الحساب مخوّلًا.');
-            return false;
-        }
+        // verifyAdminSession checks the user and the admin role together; one round per operation.
         const access = await verifyAdminSession();
         if (access !== 'authorized') {
             await signOut(access === 'forbidden'
                 ? 'انتهت صلاحية المشرف لهذا الحساب.'
-                : 'تعذر التحقق من صلاحية الإدارة؛ لم تُنفذ العملية.');
+                : access === 'unauthenticated'
+                    ? 'انتهت الجلسة أو لم يعد الحساب مخوّلًا.'
+                    : 'تعذر التحقق من صلاحية الإدارة؛ لم تُنفذ العملية.');
             return false;
         }
         refreshIdleDeadline();
@@ -584,7 +504,7 @@
         showSelectedProfile();
         setProfileFeedback(state.profiles.length
             ? 'الملفات المنشورة تتقدّم على الملفات المضمّنة في التطبيق فقط إذا كان رقم إصدارها أكبر.'
-            : 'لا توجد ملفات منشورة بعد؛ التطبيق يستعمل الملفات المضمّنة (الإصدار 2). الصق ملفًا برقم إصدار 3 أو أكبر لنشر إصلاح.', 'info');
+            : 'لا توجد ملفات منشورة بعد؛ التطبيق يستعمل الملفات المضمّنة (الإصدار 3). الصق ملفًا برقم إصدار 4 أو أكبر لنشر إصلاح.', 'info');
     }
 
     function showSelectedProfile() {
