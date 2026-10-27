@@ -71,7 +71,7 @@ object AdminInputs {
 
     /** UTF-8 with a byte-order mark so spreadsheet apps read the Arabic header correctly. */
     fun codesCsv(rows: List<AdminExportCode>): String =
-        "﻿" + (listOf(listOf<Any?>("الكود", "المدة (أيام)", "الدفعة")) + rows.map { listOf(it.code, it.days, it.batch) })
+        "\uFEFF" + (listOf(listOf<Any?>("الكود", "المدة (أيام)", "الدفعة")) + rows.map { listOf(it.code, it.days, it.batch) })
             .joinToString("\r\n") { row -> row.joinToString(",", transform = ::csvField) }
 
     fun androidRelease(api: Int?): String? {

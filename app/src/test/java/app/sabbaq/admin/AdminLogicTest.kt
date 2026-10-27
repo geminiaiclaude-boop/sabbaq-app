@@ -90,7 +90,7 @@ class AdminLogicTest {
         assertEquals("\"' \t@SUM(A1:A2)\"", AdminInputs.csvField(" \t@SUM(A1:A2)"))
         assertEquals("\"a\"\"b\"", AdminInputs.csvField("a\"b"))
         val csv = AdminInputs.codesCsv(listOf(AdminExportCode("ABC", 30, null)))
-        assertTrue(csv.startsWith("﻿\"الكود\""))
+        assertTrue(csv.startsWith("\uFEFF\"الكود\""))
         assertTrue(csv.endsWith("\r\n\"ABC\",\"30\",\"\""))
     }
 
