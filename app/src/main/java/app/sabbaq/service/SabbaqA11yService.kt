@@ -64,6 +64,7 @@ class SabbaqA11yService : AccessibilityService() {
             .onFailure { Log.w(TAG, "تعذر تهيئة سجل القرارات المحلي") }
         TelemetryRepository.serviceConnected = true
         LiveAcceptTest.onArmChanged = { lateReadHandler.post { applyPackageFilter() } }
+        warmUpGesturePath()
         loadProfiles()
         TelemetryRepository.trace(
             TelemetryStage.SERVICE_CONNECTED,
@@ -701,12 +702,28 @@ class SabbaqA11yService : AccessibilityService() {
     private fun performGesture(x: Int, y: Int): Boolean {
         if (!ServicesSafetyPolicy.canProcessOffers(Settings.isActive,
                 Settings.a11yDisclosureAccepted, SupabaseClient.hasValidLicense())) return false
+        // A few pixels off the exact centre and a short randomised hold: the tap lands like a
+        // finger press, not a pixel-perfect machine tap that some buttons swallow.
         val path = Path().apply {
-            moveTo(x.toFloat(), y.toFloat())
+            moveTo((x + (-3..3).random()).toFloat(), (y + (-3..3).random()).toFloat())
         }
-        val stroke = GestureDescription.StrokeDescription(path, 10, 50)
-        val gesture = GestureDescription.Builder().addStroke(stroke).build()
+        val hold = (40L..90L).random()
+        val gesture = GestureDescription.Builder()
+            .addStroke(GestureDescription.StrokeDescription(path, 0L, hold)).build()
         return dispatchGesture(gesture, null, null)
+    }
+
+    /**
+     * The first dispatchGesture after the service connects is slow because the gesture pipeline is
+     * cold. A one-shot 1 ms no-op at (1,1) warms it, so the first real accept tap is not the slow
+     * one: that tap's latency decides whether this driver's app wins the request.
+     */
+    private fun warmUpGesturePath() {
+        val path = Path().apply { moveTo(1f, 1f) }
+        val gesture = runCatching {
+            GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0L, 1L)).build()
+        }.getOrNull() ?: return
+        lateReadHandler.post { runCatching { dispatchGesture(gesture, null, null) } }
     }
 
     override fun onInterrupt() {
