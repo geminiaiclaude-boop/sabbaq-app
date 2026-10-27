@@ -11,6 +11,11 @@
 
     <!-- Phone makers' auto-start screens that PowerSetup opens (package visibility, Android 11+). -->
     <queries>
+        <!-- Launchable apps, to find a ride app under an unlisted package (RideAppScanner). -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
         <!-- Supported driver apps: shown as «مثبت» when present (SupportedPlatforms). -->
         <package android:name="ee.mtakso.driver" />
         <package android:name="me.com.easytaxista" />

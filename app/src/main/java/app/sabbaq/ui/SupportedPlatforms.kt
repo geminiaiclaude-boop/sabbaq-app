@@ -1,8 +1,6 @@
 package app.sabbaq.ui
 
 import android.content.Context
-import android.content.pm.PackageManager
-import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -33,6 +31,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.sabbaq.core.Profiles
+import app.sabbaq.service.ProfileRepository
+import app.sabbaq.service.RideAppScanner
 import app.sabbaq.ui.theme.sabbaqEntrance
 import app.sabbaq.ui.theme.tilt3D
 
@@ -61,17 +61,20 @@ internal object SupportedPlatforms {
     fun brandOf(profileName: String): String =
         profileName.replace(Regex("\\s+(Driver|Captain|Partner)$", RegexOption.IGNORE_CASE), "").trim()
 
-    fun isInstalled(context: Context, platform: SupportedPlatform): Boolean =
-        platform.packages.any { pkg ->
-            runCatching {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    context.packageManager.getPackageInfo(pkg, PackageManager.PackageInfoFlags.of(0))
-                } else {
-                    @Suppress("DEPRECATION") context.packageManager.getPackageInfo(pkg, 0)
-                }
-                true
-            }.getOrDefault(false)
+    /** Where a platform is on this phone, as far as Sabbaq's accessibility service is concerned. */
+    enum class Presence { READABLE, OTHER_PROFILE, UNKNOWN_PACKAGE, MISSING }
+
+    fun presence(context: Context): Map<String, Presence> {
+        val scan = RideAppScanner.scan(context, ProfileRepository.current())
+        return all.associate { platform ->
+            platform.id to when {
+                scan.readable(platform.id) -> Presence.READABLE
+                scan.otherProfile.any { it.provider == platform.id } -> Presence.OTHER_PROFILE
+                scan.unknownPackage.any { it.provider == platform.id } -> Presence.UNKNOWN_PACKAGE
+                else -> Presence.MISSING
+            }
         }
+    }
 }
 
 /**
@@ -83,8 +86,8 @@ internal fun SupportedPlatformsRow(modifier: Modifier = Modifier, detectInstalle
     val context = LocalContext.current
     val platforms = SupportedPlatforms.all
     if (platforms.isEmpty()) return
-    val installed = remember(detectInstalled) {
-        if (detectInstalled) platforms.associate { it.id to SupportedPlatforms.isInstalled(context, it) } else emptyMap()
+    val presence = remember(detectInstalled) {
+        if (detectInstalled) runCatching { SupportedPlatforms.presence(context) }.getOrDefault(emptyMap()) else emptyMap()
     }
     val colors = MaterialTheme.colorScheme
     Row(
@@ -94,7 +97,7 @@ internal fun SupportedPlatformsRow(modifier: Modifier = Modifier, detectInstalle
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         platforms.forEachIndexed { index, platform ->
-            val isInstalled = installed[platform.id] == true
+            val state = presence[platform.id] ?: SupportedPlatforms.Presence.MISSING
             Surface(
                 shape = RoundedCornerShape(20.dp),
                 color = if (onHero) Color.White.copy(alpha = 0.12f) else colors.surface,
@@ -118,15 +121,17 @@ internal fun SupportedPlatformsRow(modifier: Modifier = Modifier, detectInstalle
                         Text(platform.brand.take(1).uppercase(), style = MaterialTheme.typography.titleLarge, color = Color.White)
                     }
                     Text(platform.brand, style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.Center, maxLines = 1)
-                    if (detectInstalled) {
-                        if (isInstalled) {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                                Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = colors.primary, modifier = Modifier.size(14.dp))
-                                Text("مثبت", style = MaterialTheme.typography.labelSmall, color = colors.primary)
-                            }
-                        } else {
-                            Text("غير مثبت", style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
+                    if (detectInstalled) when (state) {
+                        SupportedPlatforms.Presence.READABLE -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = colors.primary, modifier = Modifier.size(14.dp))
+                            Text("مثبت", style = MaterialTheme.typography.labelSmall, color = colors.primary)
                         }
+                        SupportedPlatforms.Presence.OTHER_PROFILE ->
+                            Text("في ملف آخر", style = MaterialTheme.typography.labelSmall, color = colors.error, textAlign = TextAlign.Center)
+                        SupportedPlatforms.Presence.UNKNOWN_PACKAGE ->
+                            Text("إصدار غير مدعوم", style = MaterialTheme.typography.labelSmall, color = colors.error, textAlign = TextAlign.Center)
+                        SupportedPlatforms.Presence.MISSING ->
+                            Text("غير مثبت", style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
                     }
                 }
             }
@@ -138,13 +143,27 @@ internal fun SupportedPlatformsRow(modifier: Modifier = Modifier, detectInstalle
 @Composable
 internal fun SupportedPlatformsCard(modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    val anyInstalled = remember { SupportedPlatforms.all.any { SupportedPlatforms.isInstalled(context, it) } }
+    val presence = remember { runCatching { SupportedPlatforms.presence(context) }.getOrDefault(emptyMap()) }
+    fun brands(state: SupportedPlatforms.Presence) =
+        SupportedPlatforms.all.filter { presence[it.id] == state }.joinToString(" و") { it.brand }
+    val otherProfile = brands(SupportedPlatforms.Presence.OTHER_PROFILE)
+    val unknownPackage = brands(SupportedPlatforms.Presence.UNKNOWN_PACKAGE)
+    val anyReadable = presence.values.any { it == SupportedPlatforms.Presence.READABLE }
     SabbaqCard(
         title = "يعمل مع تطبيقات الرحلات",
-        subtitle = if (anyInstalled) "يتابع سبّاق الطلبات في التطبيقات المثبتة على جوالك."
-            else "لم نجد تطبيقًا مدعومًا على جوالك. ثبّت تطبيق السائق الذي تعمل عليه ليبدأ سبّاق بمتابعة طلباته.",
+        subtitle = if (anyReadable) "يتابع سبّاق الطلبات في التطبيقات المثبتة على جوالك."
+            else "لم نجد تطبيقًا مدعومًا يستطيع سبّاق قراءته. ثبّت تطبيق السائق الذي تعمل عليه في المساحة الأساسية للجوال.",
         modifier = modifier,
     ) {
         SupportedPlatformsRow(detectInstalled = true)
+        if (otherProfile.isNotEmpty()) SabbaqMessage(
+            "وجدنا $otherProfile كنسخة مزدوجة أو داخل ملف العمل أو المجلد الآمن. لا يستطيع أي تطبيق مساعد قراءة نسخة في ملف آخر؛ " +
+                "ثبّت التطبيق في المساحة الأساسية وسجّل الدخول منه ليبدأ سبّاق بقبول طلباته.",
+            isError = true,
+        )
+        if (unknownPackage.isNotEmpty()) SabbaqMessage(
+            "وجدنا $unknownPackage بإصدار لا يعرفه سبّاق بعد، وأُبلغت الإدارة تلقائيًا لإضافته دون تحديث التطبيق. راسل الدعم لتسريع ذلك.",
+            isError = true,
+        )
     }
 }

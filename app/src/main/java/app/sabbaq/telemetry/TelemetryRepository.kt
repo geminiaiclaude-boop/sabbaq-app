@@ -13,6 +13,8 @@ import app.sabbaq.core.TelemetryStage
 import app.sabbaq.core.TelemetryUploadPolicy
 import app.sabbaq.network.SupabaseClient
 import app.sabbaq.service.ProfileRepository
+import app.sabbaq.service.RideAppScanner
+import app.sabbaq.core.RideAppDiscovery
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -146,12 +148,37 @@ object TelemetryRepository {
     private fun heartbeat() {
         val id = correlation ?: return
         val app = appContext ?: return
-        val health = DeviceHealthProbe.read(app, serviceConnected, installedVersion("jeeny") != null)
+        val scan = runCatching { RideAppScanner.scan(app, ProfileRepository.current()) }.getOrNull()
+        val health = DeviceHealthProbe.read(
+            app,
+            serviceConnected,
+            targetInstalled = scan?.readable("jeeny") ?: (installedVersion("jeeny") != null),
+            targetInOtherProfile = scan?.otherProfile?.any { it.provider == "jeeny" } == true,
+            targetUnknownPackage = scan?.unknownPackage?.any { it.provider == "jeeny" } == true,
+        )
         val now = System.currentTimeMillis()
         val event = toEvent(id, TelemetryAggregator.Emission(
             TelemetryAggregator.Key(TelemetryStage.HEARTBEAT, health.primaryIssue(), "jeeny"), 1, health.flags()),
             null, null, now)
-        enqueue(listOfNotNull(event, crashEventOnce(id, app, now)))
+        enqueue(listOfNotNull(event, crashEventOnce(id, app, now)) + discoveryEvents(id, scan, now))
+    }
+
+    private val reportedDiscoveries = HashSet<String>()
+
+    /**
+     * Each ride app found where Sabbaq cannot read it (another profile, an unlisted package) is
+     * reported once per process with its package name, so the administration can add the package
+     * to the profile over the air or guide the driver to the readable copy.
+     */
+    private fun discoveryEvents(id: String, scan: RideAppScanner.Scan?, now: Long): List<OfferTelemetryEvent> {
+        scan ?: return emptyList()
+        val found = scan.otherProfile.map { it to "found_other_profile" } + scan.unknownPackage.map { it to "found_unknown_package" }
+        return found.mapNotNull { (candidate, reason) ->
+            val detail = RideAppDiscovery.detailFor(candidate.packageName) ?: return@mapNotNull null
+            if (!synchronized(reportedDiscoveries) { reportedDiscoveries.add("$reason:$detail") }) return@mapNotNull null
+            toEvent(id, TelemetryAggregator.Emission(
+                TelemetryAggregator.Key(TelemetryStage.PACKAGE_SEEN, reason, candidate.provider), 1, detail), null, null, now)
+        }
     }
 
     /**
