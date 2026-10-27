@@ -103,7 +103,9 @@ internal fun SubscriptionScreen(
 ) {
     val scope = rememberCoroutineScope()
     var profile by remember { mutableStateOf<SupabaseClient.AccountProfile?>(null) }
-    var showDeleteDialog by remember { mutableStateOf(false) }
+    // The account page starts asynchronous reads on first composition. Keep a destructive
+    // confirmation open if that work causes the screen to be recreated.
+    var showDeleteDialog by rememberSaveable { mutableStateOf(false) }
     var isDeleting by remember { mutableStateOf(false) }
     var deleteError by remember { mutableStateOf<String?>(null) }
 
