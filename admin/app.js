@@ -1262,6 +1262,7 @@
             const rows = Array.isArray(data) ? data : [];
             state.hasMore.drivers = rows.length > PAGE_SIZE;
             renderDrivers(rows.slice(0, PAGE_SIZE));
+            void loadDriverVersions(rows.slice(0, PAGE_SIZE).map((driver) => driver.id));
             setNotice(`تم تحميل ${Math.min(rows.length, PAGE_SIZE)} سجل من السائقين.`, 'success');
         } catch (_) {
             setNotice('تعذر تحميل بيانات السائقين. تحقق من الاتصال ثم أعد المحاولة.', 'error');
@@ -1275,7 +1276,7 @@
     function renderDrivers(rows) {
         el.driversList.replaceChildren();
         if (rows.length === 0) {
-            appendEmptyRow(el.driversList, 6, 'لا توجد سجلات في هذه الصفحة.');
+            appendEmptyRow(el.driversList, 7, 'لا توجد سجلات في هذه الصفحة.');
             return;
         }
         rows.forEach((driver) => {
@@ -1283,6 +1284,11 @@
             appendCell(row, displayValue(driver.full_name));
             appendCell(row, displayValue(driver.phone), 'ltr-cell');
             appendCell(row, displayValue(driver.status));
+            const versionCell = document.createElement('td');
+            versionCell.className = 'small-cell';
+            versionCell.dataset.versionFor = driver.id;
+            versionCell.textContent = '…';
+            row.append(versionCell);
             appendCell(row, formatDate(driver.pro_until), 'ltr-cell');
             appendCell(row, displayValue(driver.device_id, 'غير مرتبط'), 'small-cell');
             const actionCell = document.createElement('td');
@@ -1665,6 +1671,43 @@
         el.notificationFeedback.textContent = message;
         el.notificationFeedback.className = `policy-feedback policy-feedback--${type}`;
         el.notificationFeedback.hidden = false;
+    }
+
+    // The Sabbaq build each driver runs: version name and Android from the latest telemetry,
+    // the version code from the latest licence check, and when the driver was last seen.
+    async function loadDriverVersions(ids) {
+        const valid = ids.filter((id) => typeof id === 'string' && UUID_PATTERN.test(id));
+        if (valid.length === 0) return;
+        try {
+            const { data, error } = await db.rpc('admin_driver_versions', { p_drivers: valid });
+            if (error) throw error;
+            const byId = new Map((Array.isArray(data) ? data : []).map((row) => [row.driver_id, row]));
+            el.driversList.querySelectorAll('td[data-version-for]').forEach((cell) => {
+                cell.textContent = describeDriverVersion(byId.get(cell.dataset.versionFor));
+            });
+        } catch (error) {
+            if (isAuthorizationError(error)) await signOut('انتهت صلاحية جلسة المشرف.');
+            else el.driversList.querySelectorAll('td[data-version-for]').forEach((cell) => { cell.textContent = 'تعذر التحميل'; });
+        }
+    }
+
+    function describeDriverVersion(row) {
+        if (!row) return 'غير معروف';
+        const name = typeof row.version_name === 'string' && /^[A-Za-z0-9._-]{1,32}$/.test(row.version_name) ? row.version_name : null;
+        const code = Number.isInteger(Number(row.version_code)) && Number(row.version_code) > 0 ? Number(row.version_code) : null;
+        const android = androidRelease(Number(row.android_api));
+        const parts = [];
+        if (name) parts.push(code ? `${name} (${code})` : name);
+        else if (code) parts.push(`رمز ${code}`);
+        else parts.push('لم يتصل بعد');
+        if (android) parts.push(`أندرويد ${android}`);
+        if (row.last_seen_at) parts.push(`آخر ظهور ${formatDateTime(row.last_seen_at)}`);
+        return parts.join(' · ');
+    }
+
+    function androidRelease(api) {
+        const releases = { 26: '8', 27: '8.1', 28: '9', 29: '10', 30: '11', 31: '12', 32: '12L', 33: '13', 34: '14', 35: '15', 36: '16' };
+        return Number.isInteger(api) ? releases[api] || `API ${api}` : null;
     }
 
     async function resetDevice(id, button) {

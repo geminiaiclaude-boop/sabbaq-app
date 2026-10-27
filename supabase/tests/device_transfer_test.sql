@@ -83,3 +83,6 @@ reset role;
 
 -- In-app support conversation contract (kept here so the existing CI step runs it).
 \ir support_messages_test.sql
+
+-- Admin view of each driver's Sabbaq build (kept here so the existing CI step runs it).
+\ir driver_versions_test.sql

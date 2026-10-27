@@ -23,6 +23,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 
 /**
@@ -122,6 +123,33 @@ object TelemetryRepository {
     fun flushNow() {
         worker.launch { runCatching { drainCounters(); flush() } }
     }
+
+    /** What a manual send achieved, for the button that asked for it. */
+    sealed interface SendResult {
+        data class Sent(val events: Int) : SendResult
+        data object NoSession : SendResult
+        data object Retrying : SendResult
+        data object Rejected : SendResult
+    }
+
+    /**
+     * The driver's «إرسال التشخيص الآن»: adds a fresh heartbeat so support sees the phone's
+     * current state, uploads everything queued and reports the actual outcome.
+     */
+    suspend fun sendNow(): SendResult = worker.async {
+        runCatching {
+            drainCounters()
+            heartbeat()
+            val before = pending
+            flush()
+            when {
+                pending == 0 -> SendResult.Sent(before)
+                uploadState == UploadState.WAITING_FOR_SESSION -> SendResult.NoSession
+                uploadState == UploadState.BATCH_DROPPED -> SendResult.Rejected
+                else -> SendResult.Retrying
+            }
+        }.getOrDefault(SendResult.Retrying)
+    }.await()
 
     private fun startLoop() {
         if (loop?.isActive == true) return

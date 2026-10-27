@@ -10,6 +10,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -19,6 +20,7 @@ import app.sabbaq.core.TelemetryDiagnosis
 import app.sabbaq.core.TelemetryStage
 import app.sabbaq.telemetry.TelemetryRepository
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * On-device answer to "why is nothing happening": the funnel since the service started and
@@ -27,6 +29,9 @@ import kotlinx.coroutines.delay
 @Composable
 internal fun TelemetryDiagnosticsCard(modifier: Modifier = Modifier) {
     var status by remember { mutableStateOf(TelemetryRepository.status()) }
+    var sending by remember { mutableStateOf(false) }
+    var sendResult by remember { mutableStateOf<Pair<TelemetryRepository.SendResult, Long>?>(null) }
+    val scope = rememberCoroutineScope()
     LaunchedEffect(Unit) {
         while (true) {
             status = TelemetryRepository.status()
@@ -55,13 +60,38 @@ internal fun TelemetryDiagnosticsCard(modifier: Modifier = Modifier) {
                 )
             }
         Text(
-            "بانتظار الإرسال: ${status.pending} · ${uploadText(status.state)}",
+            "بانتظار الإرسال: ${status.pending} · ${uploadText(status.state)}" +
+                (status.lastUploadEpochMs?.let { " · آخر إرسال ${clock(it)}" } ?: ""),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        sendResult?.let { (result, at) ->
+            SabbaqMessage(
+                when (result) {
+                    is TelemetryRepository.SendResult.Sent ->
+                        "أُرسل التشخيص إلى فريق سبّاق الساعة ${clock(at)}. أرسل معرّف الدعم أو راسل الدعم ليُراجَع."
+                    TelemetryRepository.SendResult.NoSession -> "لم يُرسل: سجّل الدخول أولًا ثم أعد المحاولة."
+                    TelemetryRepository.SendResult.Rejected -> "رفض الخادم جزءًا من البيانات وحُذف؛ أُرسل الباقي. أعد المحاولة إن لزم."
+                    TelemetryRepository.SendResult.Retrying -> "تعذر الاتصال بالخادم الآن. سيُعاد الإرسال تلقائيًا، أو أعد المحاولة بعد التأكد من الإنترنت."
+                },
+                tone = if (result is TelemetryRepository.SendResult.Sent) SabbaqTone.Success else SabbaqTone.Error,
+            )
+        }
         SabbaqButton(
-            text = "إرسال التشخيص الآن",
-            onClick = { TelemetryRepository.flushNow() },
+            text = if (sendResult?.first is TelemetryRepository.SendResult.Sent) "إرسال مرة أخرى" else "إرسال التشخيص الآن",
+            onClick = {
+                if (!sending) scope.launch {
+                    sending = true
+                    try {
+                        sendResult = TelemetryRepository.sendNow() to System.currentTimeMillis()
+                        status = TelemetryRepository.status()
+                    } finally {
+                        sending = false
+                    }
+                }
+            },
+            busy = sending,
+            busyText = "جارٍ إرسال التشخيص…",
             style = SabbaqButtonStyle.Secondary,
             icon = Icons.Outlined.CloudUpload,
         )
@@ -130,6 +160,11 @@ private fun stageText(stage: TelemetryStage): String = when (stage) {
     TelemetryStage.APP_CRASH -> "انهيار التطبيق"
     TelemetryStage.PARSED, TelemetryStage.ACCEPT_DISPATCHED -> stage.name.lowercase()
 }
+
+private val clockFormat = java.time.format.DateTimeFormatter.ofPattern("HH:mm", SabbaqLocale)
+
+private fun clock(epochMs: Long): String =
+    java.time.Instant.ofEpochMilli(epochMs).atZone(java.time.ZoneId.systemDefault()).format(clockFormat)
 
 private fun uploadText(state: TelemetryRepository.UploadState): String = when (state) {
     TelemetryRepository.UploadState.IDLE -> "لم يُرسل بعد"

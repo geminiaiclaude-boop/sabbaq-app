@@ -269,3 +269,18 @@ test('صندوق الدعم: قائمة المحادثات والرد بمعرّ
     const newClientId = extractFunction(app, 'newClientId', 'setSupportFeedback');
     assert.match(newClientId(), /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
 });
+
+test('جدول السائقين يعرض إصدار سبّاق المثبت لكل سائق', () => {
+    const app = read(sourceAdmin, 'app.js');
+    const html = read(sourceAdmin, 'index.html');
+    assert.match(html, /<th scope="col">إصدار سبّاق<\/th>/);
+    assert.match(app, /db\.rpc\('admin_driver_versions', \{ p_drivers: valid \}\)/);
+    const describe = extractFunction(app, 'describeDriverVersion', 'androidRelease');
+    const android = extractFunction(app, 'androidRelease', 'resetDevice');
+    globalThis.androidRelease = android;
+    globalThis.formatDateTime = () => 'الآن';
+    assert.equal(describe({ version_name: '2.1.0', version_code: 9, android_api: 34 }), '2.1.0 (9) · أندرويد 14');
+    assert.equal(describe({ version_code: 7 }), 'رمز 7');
+    assert.equal(describe(undefined), 'غير معروف');
+    assert.equal(describe({ version_name: '<b>x</b>' }), 'لم يتصل بعد');
+});
