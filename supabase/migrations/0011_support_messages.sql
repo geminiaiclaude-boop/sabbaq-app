@@ -89,6 +89,10 @@ begin
     if p_app_version is not null and p_app_version !~ '^[A-Za-z0-9._-]{1,32}$' then raise exception 'invalid_message' using errcode = '22023'; end if;
     if p_correlation_id is not null and p_correlation_id !~ '^[a-f0-9]{16,64}$' then raise exception 'invalid_message' using errcode = '22023'; end if;
 
+    -- The thread row lock serializes this driver's sends, so concurrent requests cannot all pass
+    -- the hourly bound before any of them inserts.
+    insert into public.support_threads (driver_id) values (v_uid) on conflict (driver_id) do nothing;
+    select status into v_status from public.support_threads where driver_id = v_uid for update;
     select id into v_id from public.support_messages where driver_id = v_uid and client_id = p_client_id;
     if v_id is not null then return jsonb_build_object('id', v_id, 'duplicate', true); end if;
     if (select count(*) from public.support_messages
@@ -96,8 +100,6 @@ begin
         raise exception 'rate_limited' using errcode = 'PT429';
     end if;
 
-    insert into public.support_threads (driver_id) values (v_uid) on conflict (driver_id) do nothing;
-    select status into v_status from public.support_threads where driver_id = v_uid for update;
     insert into public.support_messages (driver_id, client_id, sender, body)
     values (v_uid, p_client_id, 'driver', v_body)
     on conflict (driver_id, client_id) do nothing
