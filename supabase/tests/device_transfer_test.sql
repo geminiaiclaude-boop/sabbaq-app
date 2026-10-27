@@ -80,3 +80,6 @@ reset role;
 
 -- In-app notification centre contract (kept here so the existing CI step runs it).
 \ir driver_notifications_test.sql
+
+-- In-app support conversation contract (kept here so the existing CI step runs it).
+\ir support_messages_test.sql

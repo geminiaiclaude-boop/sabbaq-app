@@ -166,7 +166,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 /** وجهات لوحة السائق؛ يمكن استدعاء الشاشة مباشرة إلى أي منها في معاينات/اختبارات الواجهة. */
-enum class DriverDestination { Dashboard, Filters, Simulator, Account, History, Setup, Settings }
+enum class DriverDestination { Dashboard, Filters, Simulator, Account, History, Setup, Settings, Support }
 
 private data class DriverStatus(val message: String, val isError: Boolean = false, val success: Boolean = false) {
     val tone: SabbaqTone get() = when {
@@ -789,6 +789,8 @@ fun SettingsScreen(
             DriverDestination.History -> DriverPage {
                 OfferDecisionLogScreen(onBack = { navigateTo(DriverDestination.Dashboard) })
             }
+
+            DriverDestination.Support -> SupportPage()
 
             DriverDestination.Account -> AccountPage(
                 licenseInMemory = licenseInMemory,

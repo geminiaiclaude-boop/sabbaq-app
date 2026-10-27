@@ -20,6 +20,7 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.NotificationsNone
+import androidx.compose.material.icons.outlined.SupportAgent
 import androidx.compose.material.icons.outlined.SystemUpdate
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material.icons.outlined.WorkspacePremium
@@ -64,6 +65,22 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.delay
+
+/** The top-bar support entry; the yellow count is unread replies from the administration. */
+@Composable
+internal fun SupportButton(unread: Int, onClick: () -> Unit) {
+    val brand = LocalSabbaqBrand.current
+    val description = if (unread > 0) "مراسلة الدعم، ردود جديدة: $unread" else "مراسلة الدعم"
+    IconButton(onClick = onClick, modifier = Modifier.size(52.dp).semantics { contentDescription = description }) {
+        BadgedBox(badge = {
+            if (unread > 0) Badge(containerColor = brand.signature, contentColor = brand.onSignature) {
+                Text(if (unread > 99) "99+" else "$unread", fontWeight = FontWeight.Bold)
+            }
+        }) {
+            Icon(Icons.Outlined.SupportAgent, contentDescription = null)
+        }
+    }
+}
 
 /** The top-bar bell; the yellow count says how many notifications are unread. */
 @Composable
@@ -240,6 +257,7 @@ internal fun actionLabel(action: NotificationAction): String = when (action) {
     NotificationAction.OPEN_SETUP -> "إكمال الإعداد"
     NotificationAction.OPEN_FILTERS -> "مراجعة الشروط"
     NotificationAction.UPDATE_APP -> "تحديث التطبيق"
+    NotificationAction.OPEN_SUPPORT -> "فتح المحادثة"
 }
 
 private val dayFormat = DateTimeFormatter.ofPattern("d MMMM", SabbaqLocale)

@@ -248,3 +248,24 @@ test('بث الإشعارات: إرسال لكل السائقين أو لسائ�
         assert.match(html, new RegExp(`value="${action}"`));
     }
 });
+
+test('صندوق الدعم: قائمة المحادثات والرد بمعرّف ثابت لا يتكرر، وربط بالتشخيص والسائقين', () => {
+    const app = read(sourceAdmin, 'app.js');
+    const html = read(sourceAdmin, 'index.html');
+    assert.match(html, /id="support-tab"[^>]*aria-controls="tab-support"/);
+    assert.match(html, /id="support-messages"[^>]*role="log"/);
+    assert.match(html, /id="support-reply" maxlength="1000"/);
+    assert.match(html, /value="open_support"/);
+    assert.match(app, /db\.rpc\('admin_support_threads', \{ p_status: filter === 'all' \? null : filter, p_limit: 200 \}\)/);
+    assert.match(app, /db\.rpc\('admin_support_thread', \{ p_driver: driverId, p_limit: 200 \}\)/);
+    assert.match(app, /db\.rpc\('admin_support_reply', \{ p_driver: driverId, p_client_id: state\.supportPendingReply, p_body: body \}\)/);
+    assert.match(app, /db\.rpc\('admin_support_set_status', \{ p_driver: driverId, p_status: next \}\)/);
+    // A retried reply reuses its client id until the server confirms it.
+    assert.match(app, /if \(!state\.supportPendingReply\) state\.supportPendingReply = newClientId\(\);/);
+    // Polling stops with the session and never runs while the page is hidden.
+    assert.match(app, /stopSupportPolling\(\);\s*state\.adminAuthorized = false;/);
+    assert.match(app, /if \(document\.hidden \|\| el\.dashboard\.hidden\) return;/);
+    assert.match(app, /message\.textContent = 'مراسلة'/);
+    const newClientId = extractFunction(app, 'newClientId', 'setSupportFeedback');
+    assert.match(newClientId(), /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+});

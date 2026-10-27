@@ -18,7 +18,8 @@ enum class NotificationAction(val wire: String) {
     OPEN_ACCOUNT("open_account"),
     OPEN_SETUP("open_setup"),
     OPEN_FILTERS("open_filters"),
-    UPDATE_APP("update_app");
+    UPDATE_APP("update_app"),
+    OPEN_SUPPORT("open_support");
 
     companion object {
         fun fromWire(value: String?): NotificationAction? = entries.firstOrNull { it.wire == value }

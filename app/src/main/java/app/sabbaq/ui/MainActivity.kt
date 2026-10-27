@@ -23,6 +23,9 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.material.icons.outlined.Checklist
 import androidx.compose.material.icons.outlined.DeleteOutline
@@ -42,6 +45,7 @@ import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.SettingsBrightness
 import androidx.compose.material.icons.outlined.Settings as SettingsIcon
+import androidx.compose.material.icons.outlined.SupportAgent
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.*
@@ -66,6 +70,7 @@ import app.sabbaq.network.SupabaseClient
 import app.sabbaq.notifications.NotificationAction
 import app.sabbaq.notifications.NotificationCenter
 import app.sabbaq.notifications.NotificationInbox
+import app.sabbaq.support.SupportRepository
 import app.sabbaq.service.KeeperService
 import app.sabbaq.stats.OfferDecisionLogStore
 import app.sabbaq.stats.OfferStatsStore
@@ -212,6 +217,7 @@ class MainActivity : ComponentActivity() {
                 stopService(Intent(this@MainActivity, KeeperService::class.java))
                 SupabaseClient.clearSession()
                 NotificationCenter.clear()
+                SupportRepository.clear()
                 filterSavePending = false
                 hasUnpersistedFilterChanges = false
                 driverDestinationRequest = null
@@ -388,11 +394,11 @@ internal fun SabbaqShell(
     onOpenLogin: () -> Unit = {},
     content: @Composable () -> Unit
 ) {
-    var showThemeMenu by remember { mutableStateOf(false) }
     var confirmLogout by remember { mutableStateOf(false) }
     var showNotifications by remember { mutableStateOf(false) }
     val isDriver = isAuthenticated && !isAdmin
     val inbox by NotificationCenter.state.collectAsState()
+    val support by SupportRepository.state.collectAsState()
     val context = LocalContext.current
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -403,7 +409,10 @@ internal fun SabbaqShell(
     // every return to the foreground.
     DisposableEffect(isDriver, lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            if (isDriver && event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) scope.launch { NotificationCenter.refresh() }
+            if (isDriver && event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) scope.launch {
+                NotificationCenter.refresh()
+                SupportRepository.refreshUnread()
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -452,6 +461,8 @@ internal fun SabbaqShell(
                     requestLogout()
                 },
                 logoutEnabled = allowLogout,
+                themeMode = themeMode,
+                onThemeChange = onThemeChange,
                 onClose = { closeDrawer() },
             )
         },
@@ -461,13 +472,10 @@ internal fun SabbaqShell(
             contentWindowInsets = WindowInsets.safeDrawing,
             topBar = {
                 if (showHeader) SabbaqTopBar(
-                    themeMode = themeMode,
                     onOpenDrawer = { scope.launch { drawerState.open() } },
-                    onThemeMenu = { showThemeMenu = true },
-                    themeMenuExpanded = showThemeMenu,
-                    onDismissThemeMenu = { showThemeMenu = false },
-                    onThemeChange = { showThemeMenu = false; onThemeChange(it) },
-                    showNotificationBell = isDriver,
+                    showDriverActions = isDriver,
+                    unreadSupport = support.unread,
+                    onOpenSupport = { onOpenDriverDestination(DriverDestination.Support) },
                     unreadNotifications = if (NotificationCenter.belongsToCurrentAccount(inbox)) NotificationInbox.unread(inbox) else 0,
                     onOpenNotifications = { showNotifications = true },
                 )
@@ -510,6 +518,7 @@ internal fun SabbaqShell(
                 NotificationAction.OPEN_ACCOUNT -> onOpenDriverDestination(DriverDestination.Account)
                 NotificationAction.OPEN_SETUP -> onOpenDriverDestination(DriverDestination.Setup)
                 NotificationAction.OPEN_FILTERS -> onOpenDriverDestination(DriverDestination.Filters)
+                NotificationAction.OPEN_SUPPORT -> onOpenDriverDestination(DriverDestination.Support)
                 NotificationAction.UPDATE_APP ->
                     PublicLinks.open(context, "https://play.google.com/store/apps/details?id=${BuildConfig.APPLICATION_ID}")
             }
@@ -520,13 +529,10 @@ internal fun SabbaqShell(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SabbaqTopBar(
-    themeMode: ThemeMode,
     onOpenDrawer: () -> Unit,
-    onThemeMenu: () -> Unit,
-    themeMenuExpanded: Boolean,
-    onDismissThemeMenu: () -> Unit,
-    onThemeChange: (ThemeMode) -> Unit,
-    showNotificationBell: Boolean,
+    showDriverActions: Boolean,
+    unreadSupport: Int,
+    onOpenSupport: () -> Unit,
     unreadNotifications: Int,
     onOpenNotifications: () -> Unit,
 ) {
@@ -548,32 +554,10 @@ private fun SabbaqTopBar(
                     actionIconContentColor = brand.onHero,
                 ),
                 actions = {
-                    Box {
-                        IconButton(onClick = onThemeMenu, modifier = Modifier.size(52.dp)) {
-                            Icon(
-                                when (themeMode) {
-                                    ThemeMode.DARK -> Icons.Outlined.DarkMode
-                                    ThemeMode.LIGHT -> Icons.Outlined.LightMode
-                                    ThemeMode.SYSTEM -> Icons.Outlined.SettingsBrightness
-                                },
-                                contentDescription = "تغيير مظهر التطبيق",
-                            )
-                        }
-                        DropdownMenu(expanded = themeMenuExpanded, onDismissRequest = onDismissThemeMenu) {
-                            ThemeMode.entries.forEach { item ->
-                                DropdownMenuItem(
-                                    text = { Text(when (item) {
-                                        ThemeMode.SYSTEM -> "حسب النظام"
-                                        ThemeMode.LIGHT -> "فاتح"
-                                        ThemeMode.DARK -> "داكن"
-                                    }) },
-                                    onClick = { onThemeChange(item) },
-                                    trailingIcon = { RadioButton(selected = item == themeMode, onClick = null) },
-                                )
-                            }
-                        }
+                    if (showDriverActions) {
+                        SupportButton(unread = unreadSupport, onClick = onOpenSupport)
+                        NotificationBell(unread = unreadNotifications, onClick = onOpenNotifications)
                     }
-                    if (showNotificationBell) NotificationBell(unread = unreadNotifications, onClick = onOpenNotifications)
                 },
             )
             Box(Modifier.fillMaxWidth().height(3.dp).background(brand.signature))
@@ -601,6 +585,7 @@ private val sabbaqDrawerSections = listOf(
     ),
     "الحساب" to listOf(
         SabbaqDrawerItem(DriverDestination.Account, "حسابي", Icons.Outlined.AccountCircle),
+        SabbaqDrawerItem(DriverDestination.Support, "مراسلة الدعم", Icons.Outlined.SupportAgent),
     ),
 )
 
@@ -615,6 +600,8 @@ private fun SabbaqDrawerSheet(
     onOpenDeletion: () -> Unit,
     onRequestLogout: () -> Unit,
     logoutEnabled: Boolean,
+    themeMode: ThemeMode,
+    onThemeChange: (ThemeMode) -> Unit,
     onClose: () -> Unit,
 ) {
     val brand = LocalSabbaqBrand.current
@@ -691,6 +678,8 @@ private fun SabbaqDrawerSheet(
             if (!isAuthenticated) {
                 DrawerEntry("تسجيل الدخول", Icons.Outlined.AccountCircle, selected = false, onClick = onOpenLogin)
             }
+            DrawerSectionTitle("المظهر")
+            DrawerThemeChooser(themeMode, onThemeChange)
             DrawerSectionTitle("الخصوصية")
             DrawerEntry("سياسة الخصوصية", Icons.Outlined.PrivacyTip, selected = false, onClick = onOpenPrivacy)
             DrawerEntry("طلب حذف الحساب", Icons.Outlined.DeleteOutline, selected = false, onClick = onOpenDeletion)
@@ -707,6 +696,29 @@ private fun SabbaqDrawerSheet(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 12.dp),
+            )
+        }
+    }
+}
+
+/** System / light / dark, one tap each; the choice is applied and saved immediately. */
+@Composable
+private fun DrawerThemeChooser(themeMode: ThemeMode, onThemeChange: (ThemeMode) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 10.dp).selectableGroup(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        listOf(
+            Triple(ThemeMode.SYSTEM, "تلقائي", Icons.Outlined.SettingsBrightness),
+            Triple(ThemeMode.LIGHT, "فاتح", Icons.Outlined.LightMode),
+            Triple(ThemeMode.DARK, "داكن", Icons.Outlined.DarkMode),
+        ).forEach { (mode, label, icon) ->
+            FilterChip(
+                selected = themeMode == mode,
+                onClick = { onThemeChange(mode) },
+                label = { Text(label) },
+                leadingIcon = { Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                modifier = Modifier.weight(1f).semantics { contentDescription = "مظهر $label" },
             )
         }
     }
