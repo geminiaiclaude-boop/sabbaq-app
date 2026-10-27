@@ -20,7 +20,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.CircleShape
@@ -28,9 +27,11 @@ import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -57,6 +58,12 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowLeft
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.size
@@ -78,6 +85,7 @@ import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.PrivacyTip
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Save
+import androidx.compose.material.icons.outlined.Settings as SettingsIcon
 import androidx.compose.material.icons.outlined.Stop
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.VerifiedUser
@@ -109,7 +117,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -134,6 +141,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import app.sabbaq.BuildConfig
 import app.sabbaq.Settings
+import app.sabbaq.ThemeMode
 import app.sabbaq.core.Filters
 import app.sabbaq.core.Offer
 import app.sabbaq.core.OfferEvaluator
@@ -143,7 +151,6 @@ import app.sabbaq.network.LicenseState
 import app.sabbaq.network.SubscriptionSnapshot
 import app.sabbaq.network.SupabaseClient
 import app.sabbaq.service.SabbaqA11yService
-import app.sabbaq.service.RuntimeStatusRepository
 import app.sabbaq.core.RuntimeStatusSnapshot
 import java.math.BigDecimal
 import java.util.Calendar
@@ -156,7 +163,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 /** وجهات لوحة السائق؛ يمكن استدعاء الشاشة مباشرة إلى أي منها في معاينات/اختبارات الواجهة. */
-enum class DriverDestination { Dashboard, Filters, Simulator, Account, History, Setup }
+enum class DriverDestination { Dashboard, Filters, Simulator, Account, History, Setup, Settings }
 
 private data class DriverStatus(val message: String, val isError: Boolean = false, val success: Boolean = false) {
     val tone: SabbaqTone get() = when {
@@ -175,12 +182,17 @@ private data class DriverNavItem(
 private val driverDestinations = listOf(
     DriverNavItem(DriverDestination.Dashboard, "حالة العمل", Icons.Outlined.Tune),
     DriverNavItem(DriverDestination.Filters, "طلبات تناسبك", Icons.Outlined.FilterAlt),
-    DriverNavItem(DriverDestination.Simulator, "تجربة الطلب", Icons.Outlined.Visibility),
+    DriverNavItem(DriverDestination.Settings, "الإعدادات", Icons.Outlined.SettingsIcon),
     DriverNavItem(DriverDestination.Account, "حسابي", Icons.Outlined.AccountCircle),
+    DriverNavItem(DriverDestination.Simulator, "تجربة الطلب", Icons.Outlined.Visibility),
     DriverNavItem(DriverDestination.History, "سجل القرارات", Icons.Outlined.Info),
 )
 
-private val bottomDriverDestinations = driverDestinations.filterNot { it.destination == DriverDestination.History }
+// Four tabs on phones; «تجربة الطلب» and «سجل القرارات» stay one tap away in the drawer and
+// in «الإعدادات ← المزيد».
+private val bottomDriverDestinations = driverDestinations.filter {
+    it.destination in setOf(DriverDestination.Dashboard, DriverDestination.Filters, DriverDestination.Settings, DriverDestination.Account)
+}
 
 /**
  * لوحة السائق الإنتاجية. الحواف الآمنة وapp bar والخروج يملكها SabbaqShell في MainActivity؛
@@ -203,6 +215,8 @@ fun SettingsScreen(
     navigationRequest: DriverDestination? = null,
     onDestinationChanged: (DriverDestination) -> Unit = {},
     onNavigationRequestHandled: () -> Unit = {},
+    themeMode: ThemeMode = Settings.themeMode,
+    onThemeChange: (ThemeMode) -> Unit = { Settings.themeMode = it },
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -229,7 +243,6 @@ fun SettingsScreen(
     var accountMessage by remember { mutableStateOf<DriverStatus?>(null) }
     var isSavingFilters by remember { mutableStateOf(false) }
     var isActive by remember { mutableStateOf(Settings.isActive) }
-    val runtimeSnapshot by RuntimeStatusRepository.snapshot.collectAsState()
     var accessibilityEnabled by remember(context) { mutableStateOf(context.isSabbaqAccessibilityEnabled()) }
     var notificationsEnabled by remember(context) { mutableStateOf(context.hasNotificationPermission()) }
     var batteryUnrestricted by remember(context) { mutableStateOf(PowerSetup.isBatteryUnrestricted(context)) }
@@ -291,14 +304,17 @@ fun SettingsScreen(
         subscriptionSnapshot = SupabaseClient.subscriptionSnapshot()
         val persistedActive = Settings.isActive
         if (persistedActive != isActive) isActive = persistedActive
-        if (persistedActive && (!a11y || !notifications || !licensed)) {
-            stopKeeper(
-                when {
-                    !a11y -> "توقفت متابعة الطلبات لأن إذن إمكانية الوصول لم يعد مفعّلًا."
-                    !notifications -> "توقفت متابعة الطلبات لأن إذن الإشعارات لم يعد مفعّلًا."
-                    else -> "توقفت متابعة الطلبات لأن حالة اشتراكك تحتاج إلى تحقق."
-                }
-            )
+        // KeeperService owns the license and accessibility lifecycle: it pauses while the lease
+        // cannot be renewed and resumes when accessibility comes back. Stopping here (which
+        // clears monitoringWanted) turned every coverage gap or accessibility blip seen while
+        // the dashboard was open into a permanent stop. Only a revoked notification permission,
+        // which the keeper also treats as fatal, ends monitoring from the screen.
+        if (persistedActive && !notifications) {
+            stopKeeper("توقفت متابعة الطلبات لأن إذن الإشعارات لم يعد مفعّلًا.")
+        } else if (persistedActive && !a11y) {
+            runtimeMessage = DriverStatus("إذن إمكانية الوصول مغلق؛ لن يُقبل أي طلب حتى تعيد تفعيله، وتُستأنف المتابعة تلقائيًا بعدها.", isError = true)
+        } else if (persistedActive && !licensed) {
+            runtimeMessage = DriverStatus("نتحقق من اشتراكك؛ تُستأنف المتابعة تلقائيًا عند عودة الاتصال.", isError = true)
         }
     }
 
@@ -322,9 +338,14 @@ fun SettingsScreen(
         refreshRuntimePrerequisites()
     }
 
-    fun updateDraft(next: FilterDraft) {
+    /**
+     * [stopIfActive] is false for the quick controls on «حالة العمل»: they are bounded steppers
+     * and switches whose value is validated before the debounced save, and the service reads
+     * the saved filters on the next offer, so a mid-shift adjustment applies without a restart.
+     */
+    fun updateDraft(next: FilterDraft, stopIfActive: Boolean = true) {
         if (next === draft) return
-        if (isActive) {
+        if (isActive && stopIfActive) {
             stopKeeper("أوقفنا متابعة الطلبات قبل تعديل شروطك؛ سيُحفظ التغيير تلقائيًا.")
         }
         draft = next
@@ -469,7 +490,9 @@ fun SettingsScreen(
         }
     }
 
-    BackHandler(enabled = destination == DriverDestination.Filters || destination == DriverDestination.History || destination == DriverDestination.Setup || destination == DriverDestination.Account) {
+    BackHandler(enabled = destination == DriverDestination.Filters || destination == DriverDestination.History ||
+        destination == DriverDestination.Setup || destination == DriverDestination.Account ||
+        destination == DriverDestination.Settings || destination == DriverDestination.Simulator) {
         if (returnToSetupAfterAction) {
             returnToSetupAfterAction = false
             navigateTo(DriverDestination.Setup)
@@ -592,8 +615,10 @@ fun SettingsScreen(
                 notificationsEnabled = notificationsEnabled,
                 licenseInMemory = licenseInMemory,
                 subscriptionSnapshot = subscriptionSnapshot,
-                filters = savedFilters,
-                runtime = runtimeSnapshot,
+                draft = draft,
+                draftErrors = draftValidation.errors,
+                filtersMessage = filtersMessage,
+                onQuickDraftChange = { updateDraft(it, stopIfActive = false) },
                 activeFilterCount = activeFilterCount(savedFilters),
                 message = runtimeMessage,
                 onToggle = { enabled -> if (enabled) requestActivation() else stopKeeper() },
@@ -720,6 +745,44 @@ fun SettingsScreen(
 
             DriverDestination.Simulator -> SimulatorPage(savedFilters = savedFilters)
 
+            DriverDestination.Settings -> DriverPage {
+                val openBattery = {
+                    runCatching { context.startActivity(PowerSetup.batteryIntent(context)) }
+                        .recoverCatching { context.startActivity(PowerSetup.appDetailsIntent(context)) }
+                    Unit
+                }
+                val openA11y = {
+                    if (onOpenA11y().isFailure) {
+                        runtimeMessage = DriverStatus("تعذر فتح إعدادات إمكانية الوصول. افتحها يدويًا من إعدادات الجهاز.", true)
+                    }
+                }
+                SettingsHubPage(
+                    permissions = listOf(
+                        ReadinessItem(Icons.Outlined.AccessibilityNew, "إذن متابعة الطلبات", accessibilityEnabled,
+                            "مفعّل", "ليقرأ الطلب ويقبل المطابق؛ بدونه لا يعمل", "تفعيل الإذن", openA11y),
+                        ReadinessItem(Icons.Outlined.Notifications, "تنبيهات حالة العمل", notificationsEnabled,
+                            "مفعّلة", "ليظهر لك دائمًا أن المتابعة تعمل", "السماح", onRequestNotificationPermission),
+                        ReadinessItem(Icons.Outlined.VerifiedUser, "حالة الاشتراك", licenseInMemory,
+                            "جاهز للعمل", "ابدأ تجربتك أو فعّل اشتراكك", "فتح حسابي") { navigateTo(DriverDestination.Account) },
+                    ),
+                    power = buildList {
+                        add(ReadinessItem(Icons.Outlined.BatteryChargingFull, "العمل دون قيود البطارية", batteryUnrestricted,
+                            "لن يوقفه توفير الطاقة", "قد يوقفه أندرويد عند قفل الشاشة", "السماح", openBattery))
+                        if (PowerSetup.needsAutostart()) add(ReadinessItem(Icons.Outlined.RestartAlt, "التشغيل التلقائي في جوالك", autostartDone,
+                            "مفعّل لسبّاق", "ليعود بعد إعادة تشغيل الجوال؛ فعّل «التشغيل التلقائي»", "فتح الإعداد") {
+                            runCatching { context.startActivity(PowerSetup.autostartIntent(context)) }
+                            Settings.autostartConfirmed = true
+                            autostartDone = true
+                        })
+                    },
+                    themeMode = themeMode,
+                    onThemeChange = onThemeChange,
+                    onOpenSimulator = { navigateTo(DriverDestination.Simulator) },
+                    onOpenHistory = { navigateTo(DriverDestination.History) },
+                    onOpenSetupGuide = { navigateTo(DriverDestination.Setup) },
+                )
+            }
+
             DriverDestination.History -> DriverPage {
                 OfferDecisionLogScreen(onBack = { navigateTo(DriverDestination.Dashboard) })
             }
@@ -833,64 +896,118 @@ private fun ActiveSubscriptionStatusCard(
     modifier: Modifier = Modifier,
 ) {
     val brand = LocalSabbaqBrand.current
+    val colors = MaterialTheme.colorScheme
     val state = snapshot?.state
-    val operational = state == LicenseState.ACTIVE || state == LicenseState.TRIAL
-    val title = when (state) {
-        LicenseState.ACTIVE -> "اشتراك فعّال"
-        LicenseState.TRIAL -> "تجربة فعّالة"
-        LicenseState.PENDING -> "الاشتراك بانتظار التفعيل"
-        LicenseState.EXPIRED -> "انتهى الاشتراك"
-        LicenseState.DEVICE_MISMATCH -> "الاشتراك مرتبط بجهاز آخر"
-        LicenseState.BANNED, LicenseState.REJECTED -> "الاشتراك غير متاح"
-        LicenseState.UNREGISTERED, null -> "حالة الاشتراك غير مؤكدة"
-    }
+    val isPro = state == LicenseState.ACTIVE
+    val isTrial = state == LicenseState.TRIAL
     val until = when (state) {
         LicenseState.ACTIVE -> snapshot?.proUntil
         LicenseState.TRIAL -> snapshot?.trialUntil
         else -> null
     }
-    val remainingDays = until?.let {
-        java.time.Duration.between(java.time.Instant.now(), it).toDays().coerceAtLeast(0)
+    val now = java.time.Instant.now()
+    val remaining = until?.let { java.time.Duration.between(now, it).coerceAtLeast(java.time.Duration.ZERO) }
+    val remainingDays = remaining?.toDays()
+    val endDate = until?.let {
+        java.time.format.DateTimeFormatter.ofPattern("d MMMM yyyy", java.util.Locale("ar"))
+            .withZone(java.time.ZoneId.systemDefault()).format(it)
     }
-    val subtitle = when {
-        state == null -> "حدّث حالة حسابك لمعرفة ما إذا كانت متابعة الطلبات متاحة."
-        operational && remainingDays == 0L -> "ينتهي خلال أقل من يوم؛ جدّد اشتراكك من حسابي."
-        operational && remainingDays != null -> "متاح لمتابعة الطلبات — متبقٍ ${ArabicCount.days(remainingDays.toInt())}."
-        state == LicenseState.PENDING -> "سنفعّل الوصول بعد اكتمال التحقق من الاشتراك."
-        else -> "افتح حسابي لمعرفة التفاصيل وتحديث حالة الاشتراك."
+    val title = when (state) {
+        LicenseState.ACTIVE -> "مشترك في سبّاق Pro"
+        LicenseState.TRIAL -> "فترة تجريبية مجانية"
+        LicenseState.PENDING -> "الاشتراك بانتظار التفعيل"
+        LicenseState.EXPIRED -> "انتهى اشتراكك"
+        LicenseState.DEVICE_MISMATCH -> "الاشتراك مرتبط بجهاز آخر"
+        LicenseState.BANNED, LicenseState.REJECTED -> "الاشتراك غير متاح"
+        LicenseState.UNREGISTERED, null -> "حالة الاشتراك غير مؤكدة"
     }
-    SabbaqCard(
-        title = title,
-        subtitle = subtitle,
-        icon = Icons.Outlined.VerifiedUser,
-        modifier = modifier,
+    val detail = when {
+        (isPro || isTrial) && remainingDays == 0L -> "ينتهي خلال أقل من يوم — جدّد الآن"
+        (isPro || isTrial) && remainingDays != null -> "متبقٍ ${ArabicCount.days(remainingDays.toInt())} · حتى $endDate"
+        isPro || isTrial -> "متابعة الطلبات متاحة"
+        state == LicenseState.PENDING -> "سنفعّل الوصول بعد اكتمال التحقق"
+        state == null -> "حدّث حالة حسابك من «حسابي»"
+        else -> "افتح «حسابي» للتجديد أو التفاصيل"
+    }
+    val endingSoon = (isPro || isTrial) && remainingDays != null && remainingDays <= 2
+    // Trial length is known, so its progress is shown; a paid period's start is not, so Pro shows the date only.
+    val trialProgress = if (isTrial && remaining != null) snapshot?.trialDays?.takeIf { it > 0 }?.let { days ->
+        (remaining.toMinutes().toFloat() / (days * 24 * 60f)).coerceIn(0f, 1f)
+    } else null
+
+    val background = when {
+        isPro -> Brush.linearGradient(listOf(brand.heroStart, brand.heroEnd))
+        isTrial -> Brush.linearGradient(listOf(colors.primaryContainer, colors.secondaryContainer))
+        else -> Brush.linearGradient(listOf(colors.errorContainer, colors.errorContainer))
+    }
+    val content = when {
+        isPro -> brand.onHero
+        isTrial -> colors.onPrimaryContainer
+        else -> colors.onErrorContainer
+    }
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.large)
+            .clickable(onClickLabel = "فتح حسابي", role = Role.Button, onClick = onOpenAccount)
+            .semantics(mergeDescendants = true) { stateDescription = "$title، $detail" },
+        shape = MaterialTheme.shapes.large,
+        color = Color.Transparent,
+        contentColor = content,
+        shadowElevation = if (isPro) 8.dp else 2.dp,
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    if (operational) "الحساب جاهز لتشغيل سبّاق" else "تحقق من حالة الوصول قبل بدء العمل",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (operational) brand.success else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                until?.let {
-                    Text(
-                        "ينتهي في ${it.toString().substringBefore('T')}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        Box(Modifier.background(background)) {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    MembershipBadge(isPro = isPro, isTrial = isTrial)
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                        Text(
+                            detail,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = when {
+                                endingSoon && isPro -> brand.heroAccent
+                                endingSoon -> colors.error
+                                else -> content.copy(alpha = 0.85f)
+                            },
+                            maxLines = 1,
+                        )
+                    }
+                    Icon(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, contentDescription = null, tint = content.copy(alpha = 0.8f))
+                }
+                trialProgress?.let { progress ->
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier.fillMaxWidth().height(4.dp).clip(CircleShape),
+                        color = colors.primary,
+                        trackColor = colors.primary.copy(alpha = 0.18f),
                     )
                 }
             }
-            SabbaqButton(
-                text = "حسابي",
-                onClick = onOpenAccount,
-                style = SabbaqButtonStyle.Text,
-                fillWidth = false,
-            )
         }
+    }
+}
+
+/** «PRO» in gold for members, «تجربة» for trial users, a warning mark otherwise. */
+@Composable
+private fun MembershipBadge(isPro: Boolean, isTrial: Boolean) {
+    val colors = MaterialTheme.colorScheme
+    val (label, fill, ink) = when {
+        isPro -> Triple("PRO", Brush.linearGradient(listOf(Color(0xFFF7D774), Color(0xFFD9A526))), Color(0xFF3A2A00))
+        isTrial -> Triple("تجربة", Brush.linearGradient(listOf(colors.primary, colors.primary)), colors.onPrimary)
+        else -> Triple("!", Brush.linearGradient(listOf(colors.error, colors.error)), colors.onError)
+    }
+    Box(
+        modifier = Modifier
+            .heightIn(min = 36.dp)
+            .widthIn(min = 52.dp)
+            .shadow(if (isPro) 6.dp else 0.dp, RoundedCornerShape(12.dp), spotColor = Color(0xFFD9A526))
+            .clip(RoundedCornerShape(12.dp))
+            .background(fill)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, style = MaterialTheme.typography.labelLarge, color = ink, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
     }
 }
 
@@ -905,9 +1022,11 @@ private fun DashboardPage(
     notificationsEnabled: Boolean,
     licenseInMemory: Boolean,
     subscriptionSnapshot: SubscriptionSnapshot?,
-    filters: Filters,
-    runtime: RuntimeStatusSnapshot,
     activeFilterCount: Int,
+    draft: FilterDraft,
+    draftErrors: Map<String, String>,
+    filtersMessage: DriverStatus?,
+    onQuickDraftChange: (FilterDraft) -> Unit,
     message: DriverStatus?,
     onToggle: (Boolean) -> Unit,
     onOpenA11y: () -> Unit,
@@ -959,8 +1078,18 @@ private fun DashboardPage(
         busyText = if (isRestoringSession) "جارٍ استعادة الجلسة" else "جارٍ التحقق من الاشتراك",
         modifier = Modifier.sabbaqEntrance(1),
     )
-    ActiveConditionsCockpit(filters, activeFilterCount, onOpenFilters, Modifier.sabbaqEntrance(2))
-    RuntimeStatusCard(runtime, Modifier.sabbaqEntrance(1))
+    ActiveConditionsCockpit(
+        draft = draft,
+        errors = draftErrors,
+        activeCount = activeFilterCount,
+        isActive = isActive,
+        saveMessage = filtersMessage,
+        onDraftChange = onQuickDraftChange,
+        onOpenFilters = onOpenFilters,
+        modifier = Modifier.sabbaqEntrance(2),
+    )
+    // «حالة التشغيل الفعلية» lives in «سجل القرارات» next to the statistics.
+    TelemetryDiagnosticsCard(Modifier.sabbaqEntrance(1))
     val missing = (readiness + power).filterNot { it.ready }
     if (missing.isNotEmpty()) MissingPermissionsCard(missing, Modifier.sabbaqEntrance(1))
     SabbaqAnimatedMessage(message?.message, message?.tone ?: SabbaqTone.Info)
@@ -1010,10 +1139,7 @@ private fun DashboardPage(
             "تلقائي إذا تركت المتابعة تعمل", "", "", {}))
     }
 
-    VoiceAlertsCard(Modifier.sabbaqEntrance(3))
-
-    OfferStatsCard(Modifier.sabbaqEntrance(4))
-
+    // Voice alerts live in «الإعدادات ← الصوت والتنبيهات»; statistics live in «سجل القرارات».
     SupportedPlatformsCard(Modifier.sabbaqEntrance(5))
 
     SabbaqCard(title = "أثناء وقت العمل", icon = Icons.Outlined.Info, modifier = Modifier.sabbaqEntrance(6)) {
@@ -1027,22 +1153,36 @@ private fun DashboardPage(
 }
 
 @Composable
-private fun RuntimeStatusCard(status: RuntimeStatusSnapshot, modifier: Modifier = Modifier) {
+internal fun RuntimeStatusCard(status: RuntimeStatusSnapshot, modifier: Modifier = Modifier) {
+    // Relative times ("قبل 12 ثانية") must keep moving even when no event updates the snapshot.
+    var now by remember { mutableStateOf(android.os.SystemClock.elapsedRealtime()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            now = android.os.SystemClock.elapsedRealtime()
+            delay(1_000)
+        }
+    }
     val state = when {
-        status.pausedReason != null -> "متوقفة: ${status.pausedReason}"
-        status.stale -> "قديمة؛ بانتظار حدث جديد"
-        status.active -> "تعمل"
+        status.pausedReason != null -> RuntimeLabels.pausedReason(status.pausedReason)
+        status.stale -> "لا نشاط حديث؛ افتح تطبيق النقل وتأكد أنه متصل"
+        status.active -> "تعمل وتراقب الطلبات"
         else -> "متوقفة"
     }
     SabbaqCard(title = "حالة التشغيل الفعلية", subtitle = state, icon = Icons.Outlined.Autorenew, modifier = modifier) {
-        Text("آخر حدث: ${status.lastEventMs?.toString() ?: "لا يوجد"}", style = MaterialTheme.typography.bodySmall)
-        Text("آخر عرض: ${status.lastOfferMs?.toString() ?: "لا يوجد"} · آخر قرار: ${status.lastDecisionMs?.toString() ?: "لا يوجد"}", style = MaterialTheme.typography.bodySmall)
-        Text("آخر نقرة: ${status.lastClickMs?.toString() ?: "لا يوجد"}", style = MaterialTheme.typography.bodySmall)
+        Text("آخر نشاط من تطبيق النقل: ${RuntimeLabels.relativeTime(status.lastEventMs, now)}", style = MaterialTheme.typography.bodySmall)
+        Text("آخر طلب: ${RuntimeLabels.relativeTime(status.lastOfferMs, now)} · آخر قرار: ${RuntimeLabels.relativeTime(status.lastDecisionMs, now)}", style = MaterialTheme.typography.bodySmall)
+        Text("آخر ضغط على قبول: ${RuntimeLabels.relativeTime(status.lastClickMs, now)}", style = MaterialTheme.typography.bodySmall)
         status.latestReport?.let { report ->
-            Text("تقرير القرار: ${report.score}/100 · الإشارات: ${report.availableSignals.joinToString().ifEmpty { "لا توجد" }}", style = MaterialTheme.typography.bodySmall)
-            Text("الأسباب: ${report.reasons.joinToString { it.name }}", style = MaterialTheme.typography.bodySmall)
+            Text("وضوح آخر طلب: ${report.score}/100", style = MaterialTheme.typography.bodySmall)
+            if (report.reasons.isNotEmpty()) {
+                Text("سبب عدم القبول: ${report.reasons.take(2).joinToString(" · ") { reasonArabic(it).removeSuffix(".") }}",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            }
         }
-        if (status.diagnostics.isNotEmpty()) Text("آخر المراحل: ${status.diagnostics.takeLast(5).joinToString { it.stage.name }}", style = MaterialTheme.typography.bodySmall)
+        if (status.diagnostics.isNotEmpty()) {
+            Text("آخر المراحل: ${status.diagnostics.takeLast(4).joinToString(" ← ") { RuntimeLabels.stage(it.stage) }}",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 
@@ -1077,74 +1217,49 @@ private fun SessionRestoreNotice(isRestoring: Boolean, onRetry: () -> Unit) {
     }
 }
 
+/**
+ * «شروط القيادة»: the four conditions drivers change most, editable in place with their own
+ * switches (the same components as «طلبات تناسبك», so both edit one draft). Everything else
+ * stays on the full page behind the button.
+ */
 @Composable
 private fun ActiveConditionsCockpit(
-    filters: Filters,
+    draft: FilterDraft,
+    errors: Map<String, String>,
     activeCount: Int,
+    isActive: Boolean,
+    saveMessage: DriverStatus?,
+    onDraftChange: (FilterDraft) -> Unit,
     onOpenFilters: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val fareRange = if (filters.isFareRangeEnabled && (!filters.minFare.isNullOrBlank() || !filters.maxFare.isNullOrBlank())) {
-        "${filters.minFare?.takeIf { it.isNotBlank() } ?: "بلا حد أدنى"} – ${filters.maxFare?.takeIf { it.isNotBlank() } ?: "بلا حد أعلى"}"
-    } else null
-    val pickupDistance = filters.maxPickupKm?.takeIf { filters.isPickupDistanceEnabled && it.isNotBlank() }
-    val pickupTimeActive = filters.isPickupTimeEnabled &&
-        ((filters.minPickupMinutes?.let { it > 0 } == true) || filters.maxPickupMinutes != null)
-    val pickupTime = if (pickupTimeActive) {
-        "${filters.minPickupMinutes?.toString() ?: "—"}–${filters.maxPickupMinutes?.toString() ?: "—"} دقيقة"
-    } else null
-    val override = filters.highFareOverrideAmount.takeIf { filters.highFareOverrideEnabled }
-
     SabbaqCard(
         title = "شروط القيادة",
-        subtitle = if (activeCount == 0) "لا توجد شروط اختيار فعالة بعد." else "${ArabicCount.conditions(activeCount)} فعالة؛ محفوظة على هذا الجهاز.",
+        subtitle = when {
+            activeCount == 0 -> "فعّل شرطًا واحدًا على الأقل لاختيار الطلبات."
+            isActive -> "${ArabicCount.conditions(activeCount)} فعّالة · أي تعديل هنا يُطبَّق فورًا دون إيقاف المتابعة."
+            else -> "${ArabicCount.conditions(activeCount)} فعّالة · تُحفظ التعديلات تلقائيًا."
+        },
         icon = Icons.Outlined.Tune,
         modifier = modifier,
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            CockpitMetric("نطاق السعر", fareRange ?: "غير مفعّل", fareRange != null, Modifier.weight(1f))
-            CockpitMetric("وقت الوصول", pickupTime ?: "غير مفعّل", pickupTimeActive, Modifier.weight(1f))
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            CockpitMetric("مسافة الوصول", pickupDistance?.let { "≤ $it كم" } ?: "غير مفعّل", pickupDistance != null, Modifier.weight(1f))
-            CockpitMetric("تجاوز عند السعر", override?.let { "من $it" } ?: "غير مفعّل", override != null, Modifier.weight(1f))
-        }
-        if (filters.acceptNoDestination) {
-            Text(
-                if (filters.isAcceptNoDestinationEffective) "الطلبات بلا وجهة: مفعّلة" else "الطلبات بلا وجهة: موقوفة مؤقتًا بسبب كلمات الاستثناء",
-                style = MaterialTheme.typography.bodySmall,
-                color = if (filters.isAcceptNoDestinationEffective) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
-            )
-        }
-        SabbaqButton("تعديل شروط القيادة", onClick = onOpenFilters, style = SabbaqButtonStyle.Secondary, icon = Icons.Outlined.FilterAlt)
+        FareRangeCondition(draft, errors, onDraftChange, keyPrefix = QUICK_PREFIX)
+        PickupTimeCondition(draft, errors, onDraftChange, keyPrefix = QUICK_PREFIX)
+        HighFareOverrideCondition(draft, errors, onDraftChange, keyPrefix = QUICK_PREFIX)
+        NoDestinationCondition(draft, onDraftChange, keyPrefix = QUICK_PREFIX)
+        SabbaqAnimatedMessage(saveMessage?.message, saveMessage?.tone ?: SabbaqTone.Info)
+        SabbaqButton(
+            "باقي الشروط في «طلبات تناسبك»",
+            onClick = onOpenFilters,
+            style = SabbaqButtonStyle.Secondary,
+            icon = Icons.Outlined.FilterAlt,
+        )
     }
 }
 
-@Composable
-private fun CockpitMetric(label: String, value: String, active: Boolean, modifier: Modifier = Modifier) {
-    val colors = MaterialTheme.colorScheme
-    Surface(
-        modifier = modifier,
-        shape = MaterialTheme.shapes.medium,
-        color = if (active) colors.primaryContainer.copy(alpha = 0.62f) else colors.surfaceVariant.copy(alpha = 0.5f),
-        border = BorderStroke(1.dp, if (active) colors.primary.copy(alpha = 0.18f) else colors.outlineVariant),
-    ) {
-        Column(
-            Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 9.dp),
-            verticalArrangement = Arrangement.spacedBy(3.dp),
-        ) {
-            Text(label, style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant, maxLines = 1)
-            Text(
-                value,
-                style = MaterialTheme.typography.titleSmall,
-                color = if (active) colors.onPrimaryContainer else colors.onSurfaceVariant,
-                maxLines = 1,
-            )
-        }
-    }
-}
+private const val QUICK_PREFIX = "quick-"
 
-private data class ReadinessItem(
+internal data class ReadinessItem(
     val icon: ImageVector,
     val title: String,
     val ready: Boolean,
@@ -1171,44 +1286,184 @@ private fun OperationHero(
     modifier: Modifier = Modifier,
 ) {
     val brand = LocalSabbaqBrand.current
-    SabbaqHeroSurface(modifier, sceneActive = isActive) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            if (isActive) LiveStatusMark(isActive = true)
-            else SabbaqProgressCoin(done = readyCount, total = totalCount,
-                modifier = Modifier.semantics { stateDescription = "جاهزية $readyCount من $totalCount" })
-            Column(modifier = Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite }) {
+    val reduced = LocalReducedMotion.current
+    val readiness = if (totalCount > 0) readyCount.toFloat() / totalCount else 0f
+    val ring by animateFloatAsState(
+        targetValue = if (isActive) 1f else readiness,
+        animationSpec = tween(SabbaqMotion.LONG, easing = SabbaqMotion.Emphasized),
+        label = "dial-ring",
+    )
+    // One 12 s clock drives the radar face: three times faster while monitoring runs, slow and
+    // dim while stopped, frozen under reduced motion.
+    val clock = if (reduced) null else rememberInfiniteTransition(label = "dial-clock").animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(12_000, easing = LinearEasing)),
+        label = "dial-clock-phase",
+    )
+    val sweepAngle = ((clock?.value ?: 0.15f) * (if (isActive) 3f else 1f) * 360f) % 360f
+
+    BoxWithConstraints(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        val dial = minOf(maxWidth, 340.dp)
+        Box(
+            modifier = Modifier
+                .size(dial)
+                .tilt3D(maxDegrees = 6f, idle = true)
+                .shadow(18.dp, CircleShape, ambientColor = brand.heroEnd, spotColor = brand.heroEnd)
+                .clip(CircleShape)
+                .background(Brush.radialGradient(listOf(brand.heroEnd, brand.heroStart))),
+            contentAlignment = Alignment.Center,
+        ) {
+            DialRadarFace(sweepAngle = sweepAngle, active = isActive, modifier = Modifier.matchParentSize())
+            Canvas(Modifier.matchParentSize()) {
+                val radius = size.minDimension / 2f
+                val bezel = 10.dp.toPx()
+                // Minute ticks: 60 marks, longer every five like a watch bezel.
+                for (i in 0 until 60) {
+                    val major = i % 5 == 0
+                    val angle = Math.toRadians(i * 6.0 - 90.0)
+                    val outer = radius - bezel
+                    val inner = outer - if (major) 9.dp.toPx() else 4.dp.toPx()
+                    drawLine(
+                        color = brand.onHero.copy(alpha = if (major) 0.55f else 0.22f),
+                        start = center + androidx.compose.ui.geometry.Offset((kotlin.math.cos(angle) * inner).toFloat(), (kotlin.math.sin(angle) * inner).toFloat()),
+                        end = center + androidx.compose.ui.geometry.Offset((kotlin.math.cos(angle) * outer).toFloat(), (kotlin.math.sin(angle) * outer).toFloat()),
+                        strokeWidth = if (major) 2.dp.toPx() else 1.dp.toPx(),
+                    )
+                }
+                // Readiness ring (stopped) / full live ring (running).
+                val ringWidth = 6.dp.toPx()
+                val inset = bezel / 2f + ringWidth / 2f - 2.dp.toPx()
+                val arcSize = androidx.compose.ui.geometry.Size(size.width - inset * 2, size.height - inset * 2)
+                val topLeft = androidx.compose.ui.geometry.Offset(inset, inset)
+                drawArc(brand.onHero.copy(alpha = 0.14f), -90f, 360f, false, topLeft, arcSize, style = Stroke(ringWidth))
+                drawArc(brand.heroAccent, -90f, 360f * ring, false, topLeft, arcSize,
+                    style = Stroke(ringWidth, cap = androidx.compose.ui.graphics.StrokeCap.Round))
+                // The bezel tip of the radar sweep: the dial's second hand.
+                if (isActive) {
+                    drawArc(
+                        brush = Brush.sweepGradient(listOf(Color.Transparent, brand.onHero.copy(alpha = 0.9f)), center),
+                        startAngle = sweepAngle - 90f - 36f, sweepAngle = 36f, useCenter = false,
+                        topLeft = topLeft, size = arcSize,
+                        style = Stroke(ringWidth, cap = androidx.compose.ui.graphics.StrokeCap.Round),
+                    )
+                }
+            }
+            Column(
+                modifier = Modifier
+                    .widthIn(max = dial * 0.72f)
+                    .semantics(mergeDescendants = false) { liveRegion = LiveRegionMode.Polite },
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                if (isActive) LiveStatusMark(isActive = true)
+                else SabbaqProgressCoin(done = readyCount, total = totalCount,
+                    modifier = Modifier.semantics { stateDescription = "جاهزية $readyCount من $totalCount" })
                 AnimatedContent(
                     targetState = isActive,
                     transitionSpec = { (fadeIn(tween(SabbaqMotion.MEDIUM)) togetherWith fadeOut(tween(SabbaqMotion.SHORT))) },
                     label = "hero-status",
                 ) { active ->
-                    Column {
-                        Text(if (active) "متابعة الطلبات تعمل" else "متابعة الطلبات متوقفة", style = MaterialTheme.typography.titleLarge)
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            if (active) "متابعة الطلبات تعمل" else "متابعة الطلبات متوقفة",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = brand.onHero,
+                            textAlign = TextAlign.Center,
+                        )
                         Text(
                             if (active) "تُطبّق شروطك المحفوظة وأوقات عملك."
-                            else if (readyCount < totalCount) "جاهزية $readyCount من $totalCount. أكمل البقية أدناه ليعمل بكامل طاقته."
-                            else "كل شيء جاهز ليعمل بكامل طاقته. ابدأ عندما تكون مستعدًا.",
-                            style = MaterialTheme.typography.bodyMedium,
+                            else if (readyCount < totalCount) "جاهزية $readyCount من $totalCount؛ أكمل البقية أدناه."
+                            else "كل شيء جاهز. ابدأ عندما تكون مستعدًا.",
+                            style = MaterialTheme.typography.bodySmall,
                             color = brand.onHeroMuted,
+                            textAlign = TextAlign.Center,
+                            maxLines = 2,
                         )
                     }
                 }
+                SabbaqButton(
+                    text = if (isActive) "إيقاف" else "ابدأ",
+                    onClick = { onToggle(!isActive) },
+                    enabled = isActive || canStart,
+                    busy = isChecking,
+                    busyText = busyText,
+                    icon = if (isActive) Icons.Outlined.Stop else Icons.Outlined.PlayArrow,
+                    fillWidth = false,
+                    modifier = Modifier.semantics {
+                        contentDescription = if (isActive) "إيقاف متابعة الطلبات" else "ابدأ متابعة الطلبات"
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isActive) brand.onHero.copy(alpha = 0.14f) else brand.onHero,
+                        contentColor = if (isActive) brand.onHero else brand.heroStart,
+                        disabledContainerColor = brand.onHero.copy(alpha = 0.24f),
+                        disabledContentColor = brand.onHero,
+                    ),
+                )
             }
         }
-        SabbaqButton(
-            text = if (isActive) "إيقاف متابعة الطلبات" else "ابدأ متابعة الطلبات",
-            onClick = { onToggle(!isActive) },
-            enabled = isActive || canStart,
-            busy = isChecking,
-            busyText = busyText,
-            icon = if (isActive) Icons.Outlined.Stop else Icons.Outlined.PlayArrow,
-            colors = ButtonDefaults.buttonColors(
-                containerColor = if (isActive) brand.onHero.copy(alpha = 0.14f) else brand.onHero,
-                contentColor = if (isActive) brand.onHero else brand.heroStart,
-                disabledContainerColor = brand.onHero.copy(alpha = 0.24f),
-                disabledContentColor = brand.onHero,
+    }
+}
+
+/**
+ * The dial's own 3D scene: a radar seen from above. Depth rings shade toward the rim, a lit
+ * cone sweeps with the second hand, and order blips flare as it passes (the matched one keeps a
+ * halo). A soft dark core behind the centre keeps the text readable over the motion.
+ */
+@Composable
+private fun DialRadarFace(sweepAngle: Float, active: Boolean, modifier: Modifier = Modifier) {
+    val brand = LocalSabbaqBrand.current
+    Canvas(modifier) {
+        val radius = size.minDimension / 2f
+        val accent = brand.heroAccent
+        val light = brand.onHero
+        val intensity = if (active) 1f else 0.45f
+
+        // Depth: the face is lit at the centre and falls into shadow toward the bezel.
+        drawCircle(Brush.radialGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.28f)), center, radius), radius, center)
+        for (ring in 1..4) {
+            val k = ring / 4.6f
+            drawCircle(accent.copy(alpha = 0.10f * intensity * (1.2f - k)), radius * k, center, style = Stroke(1.dp.toPx()))
+        }
+        drawLine(accent.copy(alpha = 0.08f * intensity), center.copy(x = center.x - radius * 0.86f), center.copy(x = center.x + radius * 0.86f), strokeWidth = 1.dp.toPx())
+        drawLine(accent.copy(alpha = 0.08f * intensity), center.copy(y = center.y - radius * 0.86f), center.copy(y = center.y + radius * 0.86f), strokeWidth = 1.dp.toPx())
+
+        // The sweep cone trailing behind the hand, in canvas angles (0° = 3 o'clock).
+        val handAngle = sweepAngle - 90f
+        drawArc(
+            brush = Brush.sweepGradient(
+                0f to Color.Transparent,
+                0.85f to Color.Transparent,
+                1f to accent.copy(alpha = 0.38f * intensity),
+                center = center,
             ),
+            startAngle = handAngle - 60f, sweepAngle = 60f, useCenter = true,
+            topLeft = center - androidx.compose.ui.geometry.Offset(radius * 0.86f, radius * 0.86f),
+            size = androidx.compose.ui.geometry.Size(radius * 1.72f, radius * 1.72f),
         )
+        rotate(handAngle + 90f, center) {
+            drawLine(
+                Brush.verticalGradient(listOf(accent.copy(alpha = 0.9f * intensity), Color.Transparent), startY = center.y - radius * 0.86f, endY = center.y),
+                start = center, end = center.copy(y = center.y - radius * 0.86f), strokeWidth = 2.dp.toPx(),
+                cap = androidx.compose.ui.graphics.StrokeCap.Round,
+            )
+        }
+
+        // Order blips: brightest right after the sweep passes them, fading over the next turn.
+        listOf(Triple(38f, 0.62f, false), Triple(152f, 0.74f, true), Triple(250f, 0.52f, false), Triple(318f, 0.80f, false)).forEach { (angle, dist, matched) ->
+            val since = ((sweepAngle - angle) % 360f + 360f) % 360f / 360f
+            val glow = (1f - since).let { it * it } * intensity
+            val rad = Math.toRadians(angle - 90.0)
+            val spot = center + androidx.compose.ui.geometry.Offset(
+                (kotlin.math.cos(rad) * radius * dist).toFloat(), (kotlin.math.sin(rad) * radius * dist).toFloat(),
+            )
+            val color = if (matched) accent else light
+            drawCircle(color.copy(alpha = 0.18f + 0.6f * glow), radius = (3.dp.toPx() + 3.dp.toPx() * glow), center = spot)
+            if (matched && active) drawCircle(accent.copy(alpha = 0.22f * (0.4f + glow)), radius = 11.dp.toPx(), center = spot, style = Stroke(1.5.dp.toPx()))
+        }
+
+        // Readability core behind the centred status, button and text.
+        drawCircle(Brush.radialGradient(listOf(brand.heroStart.copy(alpha = 0.78f), Color.Transparent), center, radius * 0.62f), radius * 0.62f, center)
     }
 }
 
@@ -1254,7 +1509,7 @@ private fun LiveStatusMark(isActive: Boolean) {
 
 /** One readiness requirement. The whole row is the action, so no extra button rows are needed. */
 @Composable
-private fun ReadinessRow(item: ReadinessItem) {
+internal fun ReadinessRow(item: ReadinessItem) {
     val tint by animateColorAsState(
         if (item.ready) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
         tween(SabbaqMotion.MEDIUM),
@@ -1652,13 +1907,6 @@ internal fun reasonArabic(code: ReasonCode): String = when (code) {
     ReasonCode.DESTINATION_ZONE_NOT_MATCHED -> "الوجهة خارج جميع مناطق الإدراج المحددة."
     ReasonCode.SMART_DESTINATION_MISMATCH -> "الوجهة أبعد من النطاق المحدد للوجهة المفضلة."
     ReasonCode.DESTINATION_CORRIDOR_MISMATCH -> "الوجهة خارج ممر الرحلة المحدد."
-}
-
-private fun redeemErrorMessage(error: Throwable?): String = when (error?.message) {
-    "الرمز غير صحيح أو استُخدم مسبقًا",
-    "محاولات كثيرة؛ يرجى الانتظار قبل المحاولة مجددًا",
-    "هذا الحساب مرتبط بجهاز آخر" -> "نُقل حسابك إلى جهاز آخر. سجّل الدخول هنا مجددًا لنقله إلى هذا الجهاز."
-    else -> "تعذر تفعيل الرمز. تحقق من الرمز واتصال الإنترنت ثم أعد المحاولة."
 }
 
 private fun Context.isSabbaqAccessibilityEnabled(): Boolean {

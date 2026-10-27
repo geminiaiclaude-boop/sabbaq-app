@@ -30,6 +30,7 @@ import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.SettingsBrightness
+import androidx.compose.material.icons.outlined.Settings as SettingsIcon
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.*
@@ -54,6 +55,7 @@ import app.sabbaq.network.SupabaseClient
 import app.sabbaq.service.KeeperService
 import app.sabbaq.stats.OfferDecisionLogStore
 import app.sabbaq.stats.OfferStatsStore
+import app.sabbaq.telemetry.TelemetryRepository
 import app.sabbaq.ui.theme.SabbaqDepthContent
 import app.sabbaq.ui.theme.SabbaqTheme
 import app.sabbaq.ui.theme.LocalSabbaqBrand
@@ -278,10 +280,13 @@ class MainActivity : ComponentActivity() {
                                 navigationRequest = driverDestinationRequest,
                                 onDestinationChanged = { activeDriverDestination = it },
                                 onNavigationRequestHandled = { driverDestinationRequest = null },
+                                themeMode = mode,
+                                onThemeChange = { mode = it; Settings.themeMode = it },
                                 onAccountDeleted = {
                                     val wiped = Settings.clearAccountData()
                                     val statsWiped = OfferStatsStore.clear(this@MainActivity)
                                     val historyWiped = OfferDecisionLogStore.clear(this@MainActivity)
+                                    TelemetryRepository.clearForAccountDeletion()
                                     endSession()
                                     permissionMessage = if (wiped && statsWiped && historyWiped) "حُذف حسابك وبياناته المرتبطة. شكرًا لاستخدامك سبّاق."
                                         else "حُذف حسابك من الخادم، لكن تعذّر مسح بعض الإعدادات المحلية. احذف بيانات التطبيق من إعدادات الجهاز لإكمال المسح."
@@ -537,6 +542,7 @@ private data class SabbaqDrawerItem(
 private val sabbaqDrawerItems = listOf(
     SabbaqDrawerItem(DriverDestination.Dashboard, "حالة العمل", Icons.Outlined.Home),
     SabbaqDrawerItem(DriverDestination.Filters, "طلبات تناسبك", Icons.Outlined.FilterAlt),
+    SabbaqDrawerItem(DriverDestination.Settings, "الإعدادات", Icons.Outlined.SettingsIcon),
     SabbaqDrawerItem(DriverDestination.Simulator, "تجربة الطلب", Icons.Outlined.Visibility),
     SabbaqDrawerItem(DriverDestination.Account, "حسابي", Icons.Outlined.AccountCircle),
     SabbaqDrawerItem(DriverDestination.History, "سجل القرارات", Icons.Outlined.Info),

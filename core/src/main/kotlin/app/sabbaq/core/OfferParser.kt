@@ -41,6 +41,7 @@ class OfferParser(private val profile: RideProfile, private val verifiedViewIdHi
 
     private val acceptLabels = profile.acceptLabels.map(Text::normalize).filter { it.isNotEmpty() }
     private val confirmLabels = profile.confirmLabels.map(Text::normalize).filter { it.isNotEmpty() }
+    private val weakConfirmLabels = profile.weakConfirmLabels.map(Text::normalize).filter { it.isNotEmpty() }
     private val acceptIds = profile.acceptViewIds.toSet()
     private val addressCues = profile.addressCues.map(Text::normalize).filter { it.isNotEmpty() }
 
@@ -67,15 +68,18 @@ class OfferParser(private val profile: RideProfile, private val verifiedViewIdHi
 
     fun parse(root: ScreenNode): ParsedScreen {
         val items = ArrayList<Item>()
-        var confirmed = false
+        var strongCue = false
+        var weakCue = false
         root.walk { node ->
             val label = Text.normalize(node.text).ifEmpty { Text.normalize(node.description) }
             if (label.isNotEmpty()) {
                 items += Item(label, node)
-                if (!confirmed && confirmLabels.any { Text.containsWord(label, it) }) confirmed = true
+                if (!strongCue && confirmLabels.any { Text.containsWord(label, it) }) strongCue = true
+                if (!weakCue && weakConfirmLabels.any { Text.containsWord(label, it) }) weakCue = true
             }
         }
         val accept = findAcceptControl(root)
+        val confirmed = strongCue || (weakCue && accept == null)
         val acceptNode = accept ?: return ParsedScreen(offer = null, acceptNode = null, confirmed = confirmed)
         // A confirmation state can retain an old accept control for a frame. Never
         // expose it as an actionable offer: the caller must not tap it again.
@@ -125,26 +129,27 @@ class OfferParser(private val profile: RideProfile, private val verifiedViewIdHi
 
     private fun readOffer(items: List<Item>): Offer {
         val fares = ArrayList<Pair<BigDecimal, String>>()
-        val distances = ArrayList<BigDecimal>()
-        val minutes = ArrayList<Int>()
+        val distances = ArrayList<Pair<BigDecimal, DistanceRole?>>()
+        val minutes = ArrayList<Pair<Int, DistanceRole?>>()
         val addresses = ArrayList<String>()
 
         items.forEachIndexed { index, item ->
             val text = item.text
             if (isLabel(text)) return@forEachIndexed
+            val role = roleCue(text)
 
             val unitSpans = ArrayList<IntRange>()
             kmRegex?.findAll(text)?.forEach { m ->
-                Text.parseNumber(m.groupValues[1])?.let { distances += it }
+                Text.parseNumber(m.groupValues[1])?.let { distances += it to role }
                 unitSpans += m.range
             }
             meterRegex?.findAll(text)?.forEach { m ->
                 if (unitSpans.none { it.overlaps(m.range) }) {
-                    Text.parseNumber(m.groupValues[1])?.let { distances += it.divide(THOUSAND, 3, RoundingMode.HALF_UP) }
+                    Text.parseNumber(m.groupValues[1])?.let { distances += it.divide(THOUSAND, 3, RoundingMode.HALF_UP) to role }
                     unitSpans += m.range
                 }
             }
-            readMinutes(text, unitSpans)?.let { minutes += it }
+            readMinutes(text, unitSpans)?.let { values -> values.forEach { minutes += it to role } }
 
             val currency = currencyRegex?.find(text)
             if (currency != null) {
@@ -167,8 +172,8 @@ class OfferParser(private val profile: RideProfile, private val verifiedViewIdHi
             FareSelect.MIN -> fares.minByOrNull { it.first }
             FareSelect.MAX -> fares.maxByOrNull { it.first }
         }
-        val (pickupKm, tripKm) = assign(distances, profile.distanceOrder, profile.singleDistanceRole)
-        val (pickupMin, tripMin) = assign(minutes, profile.minuteOrder, profile.singleMinuteRole)
+        val (pickupKm, tripKm) = assignWithCues(distances, profile.distanceOrder, profile.singleDistanceRole)
+        val (pickupMin, tripMin) = assignWithCues(minutes, profile.minuteOrder, profile.singleMinuteRole)
 
         return Offer(
             profileId = profile.id,
@@ -232,11 +237,43 @@ class OfferParser(private val profile: RideProfile, private val verifiedViewIdHi
     }
 
     private fun isLabel(text: String): Boolean =
-        acceptLabels.any { it == text } || confirmLabels.any { it == text }
+        acceptLabels.any { it == text } || confirmLabels.any { it == text } || weakConfirmLabels.any { it == text }
 
     private fun isAddress(text: String): Boolean {
         if (addressCues.any { Text.containsWord(text, it) }) return true
+        // Any long label used to count as an address, so "طلب رحلة" or "نقدي" faked a visible
+        // destination and skewed both the destination rule and the offer fingerprint.
+        if (NON_ADDRESS_CUES.any { Text.containsWord(text, it) } || roleCue(text) != null) return false
         return text.count { it.isLetter() } >= 6 && acceptLabels.none { Text.containsWord(text, it) }
+    }
+
+    /**
+     * The role a label states for its own values ("يبعد 4 دقائق" is pickup, "مسافة الرحلة 12 كم" is
+     * trip). Null when the label does not say, in which case screen order decides as before.
+     */
+    private fun roleCue(text: String): DistanceRole? {
+        val pickup = PICKUP_CUES.any { Text.containsWord(text, it) }
+        val trip = TRIP_CUES.any { Text.containsWord(text, it) }
+        return when {
+            pickup && !trip -> DistanceRole.PICKUP
+            trip && !pickup -> DistanceRole.TRIP
+            else -> null
+        }
+    }
+
+    /**
+     * Values whose label names their role are placed first; unlabelled values only fill a role
+     * still empty. Without cues this is exactly the positional [assign], so profiles that relied on
+     * order keep their behaviour while a lone "يبعد 2 كم" is no longer read as the trip distance.
+     */
+    private fun <T> assignWithCues(values: List<Pair<T, DistanceRole?>>, order: List<DistanceRole>, single: DistanceRole): Pair<T?, T?> {
+        if (values.none { it.second != null }) return assign(values.map { it.first }, order, single)
+        var pickup = values.firstOrNull { it.second == DistanceRole.PICKUP }?.first
+        var trip = values.firstOrNull { it.second == DistanceRole.TRIP }?.first
+        val unlabelled = values.filter { it.second == null }.map { it.first }.iterator()
+        if (pickup == null && unlabelled.hasNext()) pickup = unlabelled.next()
+        if (trip == null && unlabelled.hasNext()) trip = unlabelled.next()
+        return pickup to trip
     }
 
     private fun <T> assign(values: List<T>, order: List<DistanceRole>, single: DistanceRole): Pair<T?, T?> {
@@ -258,6 +295,12 @@ class OfferParser(private val profile: RideProfile, private val verifiedViewIdHi
     private data class TimeMatch(val range: IntRange, val number: String, val isHour: Boolean)
 
     private companion object {
+        val PICKUP_CUES = listOf("يبعد", "بعيد", "للوصول", "منك", "عنك", "away", "pickup", "pick-up", "pick up", "to pickup", "from you")
+        val TRIP_CUES = listOf("الرحلة", "رحلة", "المشوار", "مشوار", "الوجهة", "trip", "ride distance", "to destination", "dropoff", "drop-off")
+        val NON_ADDRESS_CUES = listOf(
+            "طلب", "عرض", "نقدي", "نقدا", "كاش", "بطاقة", "محفظة", "تقييم", "جديد",
+            "request", "offer", "cash", "card", "wallet", "rating", "new",
+        )
         val THOUSAND = BigDecimal(1000)
         val SIXTY = BigDecimal(60)
         val MAX_DURATION_MINUTES = BigDecimal(Int.MAX_VALUE)

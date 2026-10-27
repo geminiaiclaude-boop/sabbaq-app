@@ -269,7 +269,7 @@ class FilterDraft private constructor(
             return null
         }
         return value.toIntOrNull().also {
-            if (it == null) errors[field] = "العدد خارج نطاق Int المسموح."
+            if (it == null) errors[field] = "العدد أكبر من الحد المسموح."
         }
     }
 

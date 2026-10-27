@@ -111,7 +111,7 @@ internal fun SubscriptionScreen(
                         showDeleteDialog = false
                         onAccountDeleted()
                     },
-                    onFailure = { deleteError = it.message ?: "تعذر حذف الحساب الآن. حاول مجددًا بعد قليل." },
+                    onFailure = { deleteError = it.message?.takeIf { message -> message.any { ch -> ch in '؀'..'ۿ' } } ?: "تعذر حذف الحساب الآن. حاول مجددًا بعد قليل." },
                 )
             } catch (cancelled: CancellationException) {
                 throw cancelled

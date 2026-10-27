@@ -15,7 +15,9 @@ function extractFunction(source, name, nextName) {
     const start = source.indexOf(`function ${name}(`);
     const end = source.indexOf(`function ${nextName}(`, start);
     assert.ok(start >= 0 && end > start, `تعذر استخراج الدالة ${name}`);
-    return new Function(`${source.slice(start, end)}; return ${name};`)();
+    // The next function may be `async function …`; its `async` keyword must not be left behind.
+    const body = source.slice(start, end).replace(/\basync\s*$/, '');
+    return new Function(`${body}; return ${name};`)();
 }
 
 test('نسختا لوحة الإدارة متطابقتان', () => {
@@ -147,6 +149,59 @@ test('التحقق من إعداد Supabase وتحييد CSV يعملان بال
     assert.equal(toCsvField('=1+1'), `"'=1+1"`);
     assert.equal(toCsvField(' \t@SUM(A1:A2)'), `"' \t@SUM(A1:A2)"`);
     assert.equal(toCsvField('a"b'), '"a""b"');
+});
+
+test('تشخيص الشكوى يحدد السبب والإجراء: توجيه المستخدم أو تحديث التطبيق', () => {
+    const app = read(sourceAdmin, 'app.js');
+    const html = read(sourceAdmin, 'index.html');
+    assert.match(app, /db\.rpc\('admin_offer_telemetry_for_driver', \{ p_driver: driver\.id \}\)/);
+    assert.match(app, /db\.rpc\('admin_offer_telemetry_overview'\)/);
+    assert.match(html, /id="telemetry-overview"/);
+    const diagnose = extractFunction(app, 'diagnoseTelemetry', 'stageLabel');
+    const row = (stage, count, reason_code = null) => ({ stage, count, reason_code });
+    const beat = (reason_code, occurred_at = '2026-10-26T10:00:00Z') => ({ stage: 'HEARTBEAT', reason_code, occurred_at });
+
+    assert.equal(diagnose([], [], false).action, 'user');
+    const disabled = diagnose([row('HEARTBEAT', 3, 'a11y_disabled')], [beat('a11y_disabled')], true);
+    assert.equal(disabled.action, 'user');
+    assert.match(disabled.cause, /إمكانية الوصول/);
+    assert.equal(diagnose([row('HEARTBEAT', 1, 'battery_optimized')], [beat('battery_optimized')], true).action, 'user');
+    const unreadable = diagnose(
+        [row('HEARTBEAT', 1, 'healthy'), row('PACKAGE_SEEN', 50), row('ROOT_UNAVAILABLE', 40, 'active_other')],
+        [beat('healthy')], true);
+    assert.equal(unreadable.action, 'update');
+    assert.match(unreadable.cause, /غير قابلة للقراءة/);
+    const unrecognised = diagnose([row('HEARTBEAT', 1, 'healthy'), row('PACKAGE_SEEN', 50), row('SIGNAL_MISS', 50, 'cls_none')], [beat('healthy')], true);
+    assert.equal(unrecognised.action, 'update');
+    const rules = diagnose([row('HEARTBEAT', 1, 'healthy'), row('PACKAGE_SEEN', 9), row('OFFER_DETECTED', 3), row('REJECTED', 3, 'fare_too_low')], [beat('healthy')], true);
+    assert.equal(rules.action, 'user');
+    assert.match(rules.cause, /الحد الأدنى/);
+    const noDestination = diagnose([row('HEARTBEAT', 1, 'healthy'), row('PACKAGE_SEEN', 9), row('OFFER_DETECTED', 3),
+        row('REJECTED', 1, 'fare_too_low'), row('REJECTED', 5, 'destination_missing')], [beat('healthy')], true);
+    assert.match(noDestination.advice, /بلا وجهة/);
+    const keeper = diagnose([row('HEARTBEAT', 1, 'healthy'), row('PAUSED', 1, 'keeper_restore_timeout')],
+        [{ stage: 'PAUSED', reason_code: 'keeper_restore_timeout', occurred_at: '2026-10-26T11:00:00Z' }, beat('healthy')], true);
+    assert.equal(keeper.action, 'user');
+    assert.match(keeper.cause, /إعادة تشغيل/);
+    const working = diagnose([row('HEARTBEAT', 1, 'healthy'), row('PACKAGE_SEEN', 9), row('OFFER_DETECTED', 3),
+        row('DECISION_ACCEPTED', 2), row('CLICK_RESULT', 2, 'semantic'), row('CONFIRMATION_CONFIRMED', 2)], [beat('healthy')], true);
+    assert.equal(working.action, 'none');
+});
+
+test('نشر ملف تطبيق يرفض المحتوى غير الصالح أو الإصدار غير الأحدث', () => {
+    const app = read(sourceAdmin, 'app.js');
+    const html = read(sourceAdmin, 'index.html');
+    for (const id of ['profiles-tab', 'tab-profiles', 'profile-select', 'profile-body', 'profile-save']) {
+        assert.match(html, new RegExp(`id="${id}"`));
+    }
+    assert.match(app, /db\.rpc\('admin_upsert_profile', \{ p_body: draft\.body, p_enabled: el\.profileEnabled\.checked \}\)/);
+    const validate = extractFunction(app, 'validateProfileDraft', 'handleProfileSave');
+    const valid = { id: 'jeeny', version: 3, packages: ['me.com.easytaxista'], acceptLabels: ['قبول'], currencyTokens: ['sar'] };
+    assert.ok(validate(JSON.stringify(valid), [{ id: 'jeeny', version: 2 }]).body);
+    assert.match(validate('{bad', []).error, /JSON/);
+    assert.match(validate(JSON.stringify({ ...valid, version: 2 }), [{ id: 'jeeny', version: 2 }]).error, /ارفع رقم الإصدار/);
+    assert.match(validate(JSON.stringify({ ...valid, acceptLabels: [] }), []).error, /acceptLabels/);
+    assert.match(validate(JSON.stringify({ ...valid, id: 'Bad Id' }), []).error, /id/);
 });
 
 test('على الجوال لا تتحرك اللوحة أفقيًا: صفوف الجداول بطاقات تحمل أسماء أعمدتها', () => {

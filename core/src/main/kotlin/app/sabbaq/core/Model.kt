@@ -63,6 +63,12 @@ data class RideProfile(
     val acceptLabels: List<String>,
     val acceptViewIds: List<String> = emptyList(),
     val confirmLabels: List<String> = emptyList(),
+    /**
+     * Cues that also appear on offer cards (a decline/cancel button, "navigate", the pickup
+     * location line). They confirm an accepted ride only once no accept control is visible;
+     * as strong cues they used to mark real offers as active rides and suppress them.
+     */
+    val weakConfirmLabels: List<String> = emptyList(),
     val currencyTokens: List<String>,
     val kmUnits: List<String> = listOf("km", "كم", "كلم"),
     val meterUnits: List<String> = listOf("m", "متر", "مترا", "أمتار"),

@@ -17,12 +17,15 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.IBinder
+import android.os.SystemClock
 import android.util.Log
 import android.view.accessibility.AccessibilityManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import app.sabbaq.Settings
+import app.sabbaq.core.TelemetryStage
 import app.sabbaq.network.SupabaseClient
+import app.sabbaq.telemetry.TelemetryRepository
 import app.sabbaq.voice.VoiceAnnouncer
 import app.sabbaq.voice.VoiceKind
 import app.sabbaq.voice.VoiceLines
@@ -46,6 +49,7 @@ class KeeperService : Service() {
     private var offlineAlert: Job? = null
     private var offlineAnnounced = false
     private var monitoringLive = false
+    private var pausedForOutage = false
     private var accessibilityWasOn: Boolean? = null
     private var subscriptionWarnedFor: Instant? = null
     private var subscriptionWarnedLevel = 0
@@ -106,13 +110,10 @@ class KeeperService : Service() {
     private suspend fun monitor() {
         // After a restart the license lease is empty: resume the saved session first.
         val resuming = !SupabaseClient.hasValidLicense()
-        if (resuming) {
-            val restored = runCatching { SupabaseClient.restoreSession().getOrNull() == true }.getOrDefault(false)
-            if (!restored) {
-                stoppedOnItsOwn()
-                shutDown()
-                return
-            }
+        if (resuming && !restoreWithRetry()) {
+            stoppedOnItsOwn()
+            shutDown()
+            return
         }
         Settings.isActive = true
         monitoringLive = true
@@ -121,26 +122,126 @@ class KeeperService : Service() {
         registerNetworkCallback()
         checkAccessibility()
         warnIfSubscriptionEnding()
+        refreshProfiles(force = true)
         while (currentCoroutineContext().isActive) {
             delay(60_000)
             if (!checkStillAllowed()) break
+            refreshProfiles(force = false)
         }
+    }
+
+    /**
+     * After a reboot the service usually starts before Wi-Fi or mobile data is up. A network
+     * failure leaves the saved session intact, so keep retrying with backoff; only a definitive
+     * answer (refresh token refused, no saved session, license not valid) stops monitoring.
+     */
+    private suspend fun restoreWithRetry(): Boolean {
+        val deadline = SystemClock.elapsedRealtime() + RESTORE_RETRY_WINDOW_MILLIS
+        var backoff = RESTORE_FIRST_RETRY_MILLIS
+        while (currentCoroutineContext().isActive) {
+            val result = try {
+                SupabaseClient.restoreSession()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Result.failure(error)
+            }
+            if (result.getOrNull() == true) return true
+            if (result.isSuccess) {
+                TelemetryRepository.trace(TelemetryStage.PAUSED, "keeper_restore_refused")
+                return false
+            }
+            if (!Settings.monitoringWanted || SystemClock.elapsedRealtime() + backoff > deadline) {
+                TelemetryRepository.trace(TelemetryStage.PAUSED, "keeper_restore_timeout")
+                return false
+            }
+            TelemetryRepository.trace(TelemetryStage.PAUSED, "keeper_restore_retry")
+            delay(backoff)
+            backoff = (backoff * 2).coerceAtMost(RESTORE_MAX_RETRY_MILLIS)
+        }
+        return false
     }
 
     /** One license check; false when monitoring must stop. Network hiccups ride on the lease's grace. */
     private suspend fun checkStillAllowed(): Boolean {
-        runCatching { SupabaseClient.revalidateLicense() }
-        val allowed = Settings.monitoringWanted && Settings.a11yDisclosureAccepted &&
-            hasNotificationPermission() && SupabaseClient.hasValidLicense()
-        if (!allowed) {
+        val revalidation = try {
+            SupabaseClient.revalidateLicense()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+        val driverAllows = Settings.monitoringWanted && Settings.a11yDisclosureAccepted && hasNotificationPermission()
+        if (!driverAllows) {
+            TelemetryRepository.trace(TelemetryStage.PAUSED, when {
+                !Settings.monitoringWanted -> "keeper_stopped_by_driver"
+                !Settings.a11yDisclosureAccepted -> "keeper_disclosure_withdrawn"
+                else -> "keeper_notifications_denied"
+            })
             // A stop the driver chose (stop button, consent withdrawn) needs no alert.
             if (monitoringLive && Settings.monitoringWanted && Settings.a11yDisclosureAccepted) stoppedOnItsOwn()
             shutDown()
-        } else {
+            return false
+        }
+        if (SupabaseClient.hasValidLicense()) {
+            resumeAfterOutage()
             checkAccessibility()
             warnIfSubscriptionEnding()
+            return true
         }
-        return allowed
+        // The server answered and the license is not valid: a definitive stop.
+        if (revalidation.isSuccess) return stopForLicense()
+        // The 15-minute lease ran out without a server answer (no coverage, session renewal
+        // failed). Pause instead of stopping: the old behaviour shut monitoring down for good
+        // and a driver who drove through a dead zone lost every offer until reopening the app.
+        val restored = try {
+            SupabaseClient.restoreSession()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+        return when {
+            restored.getOrNull() == true -> { resumeAfterOutage(); true }
+            restored.isSuccess -> stopForLicense()
+            else -> { pauseForOutage(); true }
+        }
+    }
+
+    /** Picks up profile fixes published by the administration (at most every six hours). */
+    private suspend fun refreshProfiles(force: Boolean) {
+        try {
+            withContext(Dispatchers.IO) { ProfileRepository.refreshIfStale(force) }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // A failed fetch keeps the cached profiles; the next interval retries.
+        }
+    }
+
+    private fun stopForLicense(): Boolean {
+        TelemetryRepository.trace(TelemetryStage.PAUSED, "keeper_license_lost")
+        if (monitoringLive) stoppedOnItsOwn()
+        shutDown()
+        return false
+    }
+
+    /** Keeps the foreground service alive with the engine gated until the license is confirmed. */
+    private fun pauseForOutage() {
+        if (pausedForOutage) return
+        pausedForOutage = true
+        Settings.isActive = false
+        TelemetryRepository.trace(TelemetryStage.PAUSED, "keeper_waiting_network")
+        getSystemService(NotificationManager::class.java)?.notify(NOTIFICATION_ID, buildNotification(resuming = true, waitingForNetwork = true))
+    }
+
+    private fun resumeAfterOutage() {
+        if (!pausedForOutage) return
+        pausedForOutage = false
+        Settings.isActive = true
+        TelemetryRepository.trace(TelemetryStage.SERVICE_CONNECTED, "keeper_resumed")
+        updateNotification()
+        VoiceAnnouncer.announce(VoiceKind.Status, VoiceLines.RESUMED)
     }
 
     /** Monitoring stopped without the driver: say why, and leave a notification that opens the app. */
@@ -298,9 +399,17 @@ class KeeperService : Service() {
         android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE,
     )
 
-    private fun buildNotification(resuming: Boolean) = NotificationCompat.Builder(this, CHANNEL_ID)
-        .setContentTitle(if (resuming) "سبّاق يستأنف المتابعة…" else "سبّاق الطلبات مفعّل")
-        .setContentText(if (resuming) "نتحقق من اشتراكك ونعيد المتابعة تلقائيًا." else "يراقب العروض وفق الإعدادات التي اخترتها.")
+    private fun buildNotification(resuming: Boolean, waitingForNetwork: Boolean = false) = NotificationCompat.Builder(this, CHANNEL_ID)
+        .setContentTitle(when {
+            waitingForNetwork -> "سبّاق متوقف مؤقتًا"
+            resuming -> "سبّاق يستأنف المتابعة…"
+            else -> "سبّاق الطلبات مفعّل"
+        })
+        .setContentText(when {
+            waitingForNetwork -> "بانتظار الإنترنت لتأكيد اشتراكك؛ يعود تلقائيًا عند الاتصال."
+            resuming -> "نتحقق من اشتراكك ونعيد المتابعة تلقائيًا."
+            else -> "يراقب العروض وفق الإعدادات التي اخترتها."
+        })
         .setSmallIcon(app.sabbaq.R.drawable.ic_stat_sabbaq)
         .setColor(0xFF006B58.toInt())
         .setCategory(NotificationCompat.CATEGORY_SERVICE)
@@ -347,6 +456,9 @@ class KeeperService : Service() {
         private const val STOP_NOTIFICATION_ID = 1002
         private const val A11Y_NOTIFICATION_ID = 1003
         private const val OFFLINE_GRACE_MILLIS = 20_000L
+        private const val RESTORE_FIRST_RETRY_MILLIS = 5_000L
+        private const val RESTORE_MAX_RETRY_MILLIS = 60_000L
+        private const val RESTORE_RETRY_WINDOW_MILLIS = 20 * 60_000L
         private const val ACTION_STOP = "app.sabbaq.STOP_MONITORING"
 
         /** Starts monitoring if the driver left it on; safe to call from any context. */

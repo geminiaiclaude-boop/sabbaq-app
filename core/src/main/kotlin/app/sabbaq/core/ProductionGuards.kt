@@ -54,8 +54,10 @@ object RideAppAdapters {
 
 /** Bounded, deterministic structural fingerprint. It never returns screen text. */
 object ScreenChangeFingerprint {
-    const val MAX_NODES = 96
-    const val MAX_TEXT_CHARS = 2048
+    // Covers the whole bounded tree: with a smaller window a new offer card rendered after
+    // the first nodes left the fingerprint unchanged and the frame was dropped as stale.
+    const val MAX_NODES = 3000
+    const val MAX_TEXT_CHARS = 32768
 
     fun compute(packageName: String, windowToken: String?, root: ScreenNode): String {
         val digest = MessageDigest.getInstance("SHA-256")
@@ -85,7 +87,8 @@ object ScreenChangeFingerprint {
 enum class DiagnosticStage {
     PACKAGE_SEEN, EVENT_RECEIVED, SIGNAL_FOUND, SIGNAL_MISS, FRAME_INCOMPLETE,
     FARE_MISSING, REJECTED, ACCEPT_NODE_FOUND, CLICK_PATH, CONFIRMATION_CONFIRMED,
-    CONFIRMATION_TIMEOUT, STALE, WATCHDOG
+    CONFIRMATION_TIMEOUT, STALE, WATCHDOG, GATE_BLOCKED, ROOT_UNAVAILABLE, TREE_REJECTED,
+    OFFER_NOT_PARSED, OFFER_DETECTED,
 }
 
 data class DiagnosticEntry(val stage: DiagnosticStage, val atElapsedMs: Long, val reason: String? = null)

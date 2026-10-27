@@ -39,11 +39,21 @@ internal object SessionVault {
         val plain = String(cipher.doFinal(sealed, 12, sealed.size - 12), Charsets.UTF_8)
         val parts = plain.split(SEPARATOR)
         if (parts.size != 2 || parts.any { it.isBlank() }) null else Saved(parts[0], parts[1])
-    }.getOrElse {
-        // A key invalidated by the system (e.g. lock-screen reset) cannot open old data: start clean.
-        clear(context)
-        null
+    }.getOrElse { error ->
+        // A key invalidated by the system (e.g. lock-screen reset) or tampered data can never be
+        // opened again: start clean. Any other failure (a Keystore that is still starting right
+        // after boot) is transient; wiping then would sign the driver out on every unlucky reboot.
+        if (error is javax.crypto.AEADBadTagException || error is android.security.keystore.KeyPermanentlyInvalidatedException ||
+            error is java.security.UnrecoverableKeyException || error is IllegalArgumentException) {
+            clear(context)
+            null
+        } else {
+            throw VaultUnavailableException(error)
+        }
     }
+
+    /** The vault exists but could not be opened right now; the caller should retry, not sign out. */
+    class VaultUnavailableException(cause: Throwable) : Exception("session vault temporarily unavailable", cause)
 
     fun exists(context: Context): Boolean = runCatching { prefs(context).contains(FIELD) }.getOrDefault(false)
 

@@ -28,6 +28,7 @@
         commercialPolicy: null,
         commercialPolicyLoaded: false,
         commercialPolicyLoading: false,
+        profiles: null,
         nativeAccessToken: null,
         nativeSessionAccepting: false,
         idleTimer: null,
@@ -64,6 +65,16 @@
             telemetrySearch: document.getElementById('telemetry-search'),
             telemetryFeedback: document.getElementById('telemetry-feedback'),
             telemetryResults: document.getElementById('telemetry-results'),
+            telemetryOverview: document.getElementById('telemetry-overview'),
+            profilesTab: document.getElementById('profiles-tab'),
+            profilesPanel: document.getElementById('tab-profiles'),
+            profileForm: document.getElementById('profile-form'),
+            profileSelect: document.getElementById('profile-select'),
+            profileEnabled: document.getElementById('profile-enabled'),
+            profileReload: document.getElementById('profile-reload'),
+            profileSave: document.getElementById('profile-save'),
+            profileBody: document.getElementById('profile-body'),
+            profileFeedback: document.getElementById('profile-feedback'),
             refreshDrivers: document.getElementById('refresh-drivers'),
             refreshCodes: document.getElementById('refresh-codes'),
             driversPrevious: document.getElementById('drivers-previous'),
@@ -221,6 +232,11 @@
         el.commercialPolicyTab.addEventListener('click', () => { void showTab('commercial-policy'); });
         el.telemetryTab.addEventListener('click', () => { void showTab('telemetry'); });
         el.telemetryForm.addEventListener('submit', handleTelemetrySearch);
+        el.telemetryOverview.addEventListener('click', () => { void handleTelemetryOverview(); });
+        el.profilesTab.addEventListener('click', () => { void showTab('profiles'); });
+        el.profileSelect.addEventListener('change', showSelectedProfile);
+        el.profileReload.addEventListener('click', () => { void runWithButton(el.profileReload, loadProfiles); });
+        el.profileForm.addEventListener('submit', handleProfileSave);
         el.refreshDrivers.addEventListener('click', () => { void loadDrivers({ reset: true }); });
         el.refreshCodes.addEventListener('click', () => { void loadCodes({ reset: true }); });
         el.driversPrevious.addEventListener('click', () => { void movePage('drivers', -1); });
@@ -449,7 +465,7 @@
     }
 
     async function showTab(tabName) {
-        if (tabName !== 'drivers' && tabName !== 'codes' && tabName !== 'commercial-policy' && tabName !== 'telemetry') return;
+        if (!['drivers', 'codes', 'commercial-policy', 'telemetry', 'profiles'].includes(tabName)) return;
         state.activeTab = tabName;
         const showingDrivers = tabName === 'drivers';
         const showingCodes = tabName === 'codes';
@@ -457,17 +473,102 @@
         el.codesPanel.hidden = !showingCodes;
         el.commercialPolicyPanel.hidden = tabName !== 'commercial-policy';
         el.telemetryPanel.hidden = tabName !== 'telemetry';
+        el.profilesPanel.hidden = tabName !== 'profiles';
         el.driversTab.classList.toggle('active', showingDrivers);
         el.codesTab.classList.toggle('active', showingCodes);
         el.commercialPolicyTab.classList.toggle('active', tabName === 'commercial-policy');
         el.telemetryTab.classList.toggle('active', tabName === 'telemetry');
+        el.profilesTab.classList.toggle('active', tabName === 'profiles');
         el.driversTab.setAttribute('aria-selected', String(showingDrivers));
         el.codesTab.setAttribute('aria-selected', String(showingCodes));
         el.commercialPolicyTab.setAttribute('aria-selected', String(tabName === 'commercial-policy'));
         el.telemetryTab.setAttribute('aria-selected', String(tabName === 'telemetry'));
+        el.profilesTab.setAttribute('aria-selected', String(tabName === 'profiles'));
         if (showingDrivers) await loadDrivers();
         else if (showingCodes) await loadCodes();
         else if (tabName === 'commercial-policy' && !state.commercialPolicyLoaded) await loadCommercialPolicy({ announce: true });
+        else if (tabName === 'profiles' && !state.profiles) await loadProfiles();
+    }
+
+    async function loadProfiles() {
+        if (!await ensureActiveSession()) return;
+        setProfileFeedback('يجري تحميل ملفات التطبيقات…', 'info');
+        const { data, error } = await db.from('ride_profiles').select('id,version,enabled,updated_at,body').order('id');
+        if (error) {
+            if (isAuthorizationError(error)) await signOut('انتهت صلاحية جلسة المشرف.');
+            else setProfileFeedback('تعذر تحميل ملفات التطبيقات. تحقق من الاتصال.', 'error');
+            return;
+        }
+        state.profiles = Array.isArray(data) ? data : [];
+        el.profileSelect.replaceChildren();
+        state.profiles.forEach((profile) => {
+            const option = document.createElement('option');
+            option.value = profile.id;
+            option.textContent = `${profile.id} · الإصدار ${profile.version}${profile.enabled ? '' : ' · معطّل'}`;
+            el.profileSelect.append(option);
+        });
+        const empty = document.createElement('option');
+        empty.value = '';
+        empty.textContent = 'ملف جديد…';
+        el.profileSelect.append(empty);
+        showSelectedProfile();
+        setProfileFeedback(state.profiles.length
+            ? 'الملفات المنشورة تتقدّم على الملفات المضمّنة في التطبيق فقط إذا كان رقم إصدارها أكبر.'
+            : 'لا توجد ملفات منشورة بعد؛ التطبيق يستعمل الملفات المضمّنة (الإصدار 2). الصق ملفًا برقم إصدار 3 أو أكبر لنشر إصلاح.', 'info');
+    }
+
+    function showSelectedProfile() {
+        const selected = (state.profiles || []).find(profile => profile.id === el.profileSelect.value);
+        el.profileBody.value = selected ? JSON.stringify(selected.body, null, 2) : '';
+        el.profileEnabled.checked = selected ? selected.enabled === true : true;
+    }
+
+    // Mirrors admin_upsert_profile and core Profiles.isUsable so a bad edit is refused before
+    // it reaches the server, and a publish never silently loses to an equal or higher version.
+    function validateProfileDraft(text, published) {
+        let body;
+        try { body = JSON.parse(text); } catch (_) { return { error: 'المحتوى ليس JSON صالحًا.' }; }
+        if (!body || typeof body !== 'object' || Array.isArray(body)) return { error: 'الملف يجب أن يكون كائن JSON.' };
+        if (typeof body.id !== 'string' || !/^[a-z0-9_]{2,32}$/.test(body.id)) return { error: 'المعرّف id غير صالح.' };
+        if (!Number.isSafeInteger(body.version) || body.version < 1) return { error: 'رقم الإصدار version يجب أن يكون عددًا صحيحًا موجبًا.' };
+        for (const field of ['packages', 'acceptLabels', 'currencyTokens']) {
+            if (!Array.isArray(body[field]) || !body[field].some(value => typeof value === 'string' && value.trim())) {
+                return { error: `الحقل ${field} يجب أن يكون قائمة غير فارغة.` };
+            }
+        }
+        const current = (published || []).find(profile => profile.id === body.id);
+        if (current && body.version <= Number(current.version)) {
+            return { error: `ارفع رقم الإصدار فوق ${current.version}؛ لن يطبّق التطبيق إصدارًا مساويًا أو أقدم.` };
+        }
+        return { body };
+    }
+
+    async function handleProfileSave(event) {
+        event.preventDefault();
+        const draft = validateProfileDraft(el.profileBody.value, state.profiles);
+        if (draft.error) {
+            setProfileFeedback(draft.error, 'error');
+            return;
+        }
+        await runWithButton(el.profileSave, async () => {
+            if (!await ensureActiveSession()) return;
+            const { error } = await db.rpc('admin_upsert_profile', { p_body: draft.body, p_enabled: el.profileEnabled.checked });
+            if (error) {
+                if (isAuthorizationError(error)) await signOut('انتهت صلاحية جلسة المشرف.');
+                else setProfileFeedback('رفض الخادم الملف. تحقق من الحقول ورقم الإصدار ثم أعد المحاولة.', 'error');
+                return;
+            }
+            await loadProfiles();
+            el.profileSelect.value = draft.body.id;
+            showSelectedProfile();
+            setProfileFeedback(`نُشر ${draft.body.id} الإصدار ${draft.body.version}. يصل للسائقين خلال 6 ساعات أو عند تشغيل المتابعة.`, 'success');
+        });
+    }
+
+    function setProfileFeedback(message, type) {
+        el.profileFeedback.textContent = message;
+        el.profileFeedback.className = `policy-feedback policy-feedback--${type}`;
+        el.profileFeedback.hidden = false;
     }
 
     async function loadCommercialPolicy({ announce = true } = {}) {
@@ -583,29 +684,234 @@
         });
     }
 
+    async function diagnoseDriver(driver, button) {
+        if (typeof driver?.id !== 'string' || !UUID_PATTERN.test(driver.id)) {
+            setNotice('تعذر التحقق من معرّف السائق المحدد.', 'error');
+            return;
+        }
+        await runWithButton(button, async () => {
+            if (!await ensureActiveSession()) return;
+            await showTab('telemetry');
+            setTelemetryFeedback(`يجري تحميل تشخيص ${displayValue(driver.full_name, 'السائق')}…`, 'info');
+            el.telemetryResults.hidden = false;
+            el.telemetryResults.textContent = 'جارٍ التحميل…';
+            try {
+                const { data, error } = await db.rpc('admin_offer_telemetry_for_driver', { p_driver: driver.id });
+                if (error) throw error;
+                if (typeof data?.correlation_id === 'string') el.telemetryCorrelation.value = data.correlation_id;
+                renderTelemetry(data);
+            } catch (error) {
+                if (isAuthorizationError(error)) await signOut('انتهت صلاحية جلسة المشرف.');
+                else {
+                    setTelemetryFeedback('تعذر تحميل تشخيص هذا السائق. تحقق من الاتصال.', 'error');
+                    el.telemetryResults.textContent = 'لا تتوفر نتائج مؤكدة.';
+                }
+            }
+        });
+    }
+
+    async function handleTelemetryOverview() {
+        await runWithButton(el.telemetryOverview, async () => {
+            if (!await ensureActiveSession()) return;
+            el.telemetryResults.hidden = false;
+            el.telemetryResults.textContent = 'جارٍ التحميل…';
+            try {
+                const { data, error } = await db.rpc('admin_offer_telemetry_overview');
+                if (error) throw error;
+                renderTelemetryOverview(data);
+            } catch (error) {
+                if (isAuthorizationError(error)) await signOut('انتهت صلاحية جلسة المشرف.');
+                else {
+                    setTelemetryFeedback('تعذر تحميل نظرة الأسطول.', 'error');
+                    el.telemetryResults.textContent = 'لا تتوفر نتائج مؤكدة.';
+                }
+            }
+        });
+    }
+
     function renderTelemetry(data) {
         const events = Array.isArray(data?.events) ? data.events : [];
         const funnel = Array.isArray(data?.funnel) ? data.funnel : [];
         el.telemetryResults.replaceChildren();
+        const diagnosis = diagnoseTelemetry(funnel, events, data?.driver_has_telemetry !== false);
+        const verdict = document.createElement('div');
+        verdict.className = `policy-feedback policy-feedback--${diagnosis.action === 'none' ? 'success' : 'error'}`;
+        const cause = document.createElement('h4');
+        cause.textContent = `السبب: ${diagnosis.cause}`;
+        const action = document.createElement('p');
+        action.textContent = `${diagnosis.action === 'update' ? 'يحتاج تحديث التطبيق' : diagnosis.action === 'user' ? 'وجّه المستخدم' : 'الإجراء'}: ${diagnosis.advice}`;
+        verdict.append(cause, action);
+        el.telemetryResults.append(verdict);
         if (!events.length) {
-            el.telemetryResults.textContent = 'لا توجد أحداث ضمن نافذة الاحتفاظ لهذا المعرّف.';
-            setTelemetryFeedback('اكتمل البحث دون نتائج.', 'info');
+            setTelemetryFeedback('اكتمل البحث.', 'info');
             return;
         }
-        const heading = document.createElement('h4');
-        heading.textContent = `المسار (${events.length} حدث)`;
-        el.telemetryResults.append(heading);
-        const funnelText = document.createElement('p');
-        funnelText.textContent = `الفunnel: ${funnel.map(item => `${displayValue(item.stage)} (${item.count})`).join(' ← ')}`;
-        el.telemetryResults.append(funnelText);
-        const list = document.createElement('ol');
-        events.forEach((item) => {
+        const funnelHeading = document.createElement('h4');
+        funnelHeading.textContent = 'مراحل التوقف (المجموع خلال 7 أيام)';
+        const funnelList = document.createElement('ul');
+        funnel.forEach((item) => {
             const row = document.createElement('li');
-            row.textContent = `${formatDate(item.occurred_at)} · ${displayValue(item.stage)} · ${displayValue(item.reason_code, 'بدون سبب')}`;
+            row.textContent = `${stageLabel(item.stage)} · ${displayValue(item.reason_code, 'بدون سبب')} · ${Number(item.count) || 0}` +
+                (typeof item.detail === 'string' ? ` · ${item.detail}` : '');
+            funnelList.append(row);
+        });
+        const timelineHeading = document.createElement('h4');
+        timelineHeading.textContent = `آخر الأحداث (${events.length})`;
+        const list = document.createElement('ol');
+        events.slice(0, 100).forEach((item) => {
+            const row = document.createElement('li');
+            row.textContent = `${formatDateTime(item.occurred_at)} · ${stageLabel(item.stage)} · ${displayValue(item.reason_code, 'بدون سبب')}` +
+                ` ×${Number(item.event_count) || 1} · سبّاق ${displayValue(item.app_version)} · جيني ${displayValue(item.target_app_version, 'غير معروف')}` +
+                (Number.isFinite(Number(item.latency_ms)) && item.latency_ms !== null ? ` · زمن الاستجابة ${Number(item.latency_ms)} ملّي ثانية` : '');
             list.append(row);
         });
-        el.telemetryResults.append(list);
+        el.telemetryResults.append(funnelHeading, funnelList, timelineHeading, list);
         setTelemetryFeedback('تم تحميل بيانات metadata المسموح بها للمشرف.', 'success');
+    }
+
+    function renderTelemetryOverview(data) {
+        const funnel = Array.isArray(data?.funnel) ? data.funnel : [];
+        const devices = Array.isArray(data?.devices) ? data.devices : [];
+        el.telemetryResults.replaceChildren();
+        const heading = document.createElement('h4');
+        heading.textContent = `الأسطول خلال 24 ساعة: ${devices.length} جهاز`;
+        const response = data?.response_ms;
+        const responseLine = document.createElement('p');
+        responseLine.textContent = Number(response?.samples) > 0
+            ? `زمن الاستجابة من ظهور الطلب إلى الضغط: الوسيط ${Math.round(Number(response.p50))} ملّي ثانية · 90% أسرع من ${Math.round(Number(response.p90))} ملّي ثانية (${Number(response.samples)} عينة)`
+            : 'لا توجد عينات زمن استجابة بعد.';
+        el.telemetryResults.append(responseLine);
+        const funnelList = document.createElement('ul');
+        funnel.slice(0, 30).forEach((item) => {
+            const row = document.createElement('li');
+            row.textContent = `${stageLabel(item.stage)} · ${displayValue(item.reason_code, 'بدون سبب')} · ${Number(item.count) || 0} حدث · ${Number(item.devices) || 0} جهاز`;
+            funnelList.append(row);
+        });
+        const deviceList = document.createElement('ol');
+        devices.forEach((item) => {
+            const row = document.createElement('li');
+            row.textContent = `${displayValue(item.correlation_id)} · ${formatDateTime(item.last_seen)} · سبّاق ${displayValue(item.app_version)} · ${displayValue(item.last_heartbeat, 'بلا نبضة')}`;
+            deviceList.append(row);
+        });
+        el.telemetryResults.append(heading, funnelList, deviceList);
+        setTelemetryFeedback('تم تحميل نظرة الأسطول.', 'success');
+    }
+
+    // Mirrors core TelemetryDiagnosis: the earliest pipeline stop wins, and each verdict says
+    // whether support can fix it by guiding the driver or it needs an app release.
+    function diagnoseTelemetry(funnel, events, hasTelemetry) {
+        const rows = Array.isArray(funnel) ? funnel : [];
+        const total = (stage, reason) => rows
+            .filter(item => item.stage === stage && (reason === undefined || item.reason_code === reason))
+            .reduce((sum, item) => sum + (Number(item.count) || 0), 0);
+        const verdict = (cause, action, advice) => ({ cause, action, advice });
+        if (!hasTelemetry || rows.length === 0) {
+            return verdict('لا توجد بيانات تشخيص من جهاز هذا المستخدم', 'user',
+                'اطلب منه تحديث سبّاق لآخر إصدار، وفتحه مع تسجيل الدخول ودقيقتين من الاتصال بالإنترنت، ثم أعد البحث.');
+        }
+        const list = Array.isArray(events) ? events : [];
+        const crash = list.find(item => item.stage === 'APP_CRASH');
+        const heartbeat = list.find(item => item.stage === 'HEARTBEAT');
+        const healthVerdicts = {
+            a11y_disabled: ['خدمة إمكانية الوصول لسبّاق غير مفعّلة في إعدادات الهاتف', 'وجّهه: الإعدادات ← إمكانية الوصول ← التطبيقات المثبتة ← سبّاق ← تفعيل. في أندرويد 13+ قد يلزم أولًا «السماح بالإعدادات المقيدة» من معلومات التطبيق.'],
+            a11y_not_connected: ['الخدمة مفعّلة لكن النظام أوقفها', 'وجّهه: أطفئ خدمة سبّاق في إمكانية الوصول وأعد تشغيلها، ثم استثنِ سبّاق من تحسين البطارية وفعّل التشغيل التلقائي إن وُجد في الهاتف.'],
+            target_not_installed: ['تطبيق جيني للسائقين غير مثبت على الجهاز', 'اطلب منه تثبيت تطبيق جيني للسائقين وتسجيل الدخول فيه.'],
+            signed_out: ['المستخدم غير مسجل الدخول في سبّاق', 'اطلب منه فتح سبّاق وتسجيل الدخول.'],
+            license_invalid: ['الاشتراك غير صالح على هذا الجهاز', 'تحقق من اشتراكه في تبويب السائقين، ثم اطلب منه فتح سبّاق لتحديث الحالة.'],
+            disclosure_required: ['لم يوافق على إفصاح إمكانية الوصول', 'اطلب منه فتح سبّاق والموافقة على الإفصاح ثم تشغيل المتابعة.'],
+            monitoring_off: ['المتابعة متوقفة في سبّاق', 'اطلب منه الضغط على «تشغيل المتابعة» في لوحة التحكم.'],
+            background_restricted: ['النظام يقيّد عمل سبّاق في الخلفية', 'وجّهه: معلومات التطبيق ← البطارية ← «غير مقيد».'],
+            battery_optimized: ['تحسين البطارية مفعّل لسبّاق وقد يوقفه النظام', 'وجّهه: معلومات التطبيق ← البطارية ← «غير مقيد/بدون تحسين».'],
+            power_save: ['وضع توفير الطاقة مفعّل وقد يبطئ الرصد', 'اطلب منه إيقاف توفير الطاقة أثناء العمل.'],
+            notifications_off: ['إشعارات سبّاق متوقفة', 'وجّهه لتفعيل إشعارات سبّاق حتى يبقى يعمل في الخلفية.'],
+            offline: ['الجهاز بلا إنترنت', 'اطلب منه التأكد من الاتصال بالإنترنت.'],
+        };
+        const heartbeatIsLatest = heartbeat && !list.some(item => ['OFFER_DETECTED', 'CLICK_RESULT'].includes(item.stage)
+            && String(item.occurred_at) > String(heartbeat.occurred_at));
+        if (heartbeatIsLatest && healthVerdicts[heartbeat.reason_code]) {
+            const [cause, advice] = healthVerdicts[heartbeat.reason_code];
+            return verdict(cause, 'user', advice);
+        }
+        const keeperStop = list.find(item => item.stage === 'PAUSED' && typeof item.reason_code === 'string' && item.reason_code.startsWith('keeper_'));
+        const keeperVerdicts = {
+            keeper_restore_timeout: ['توقفت المتابعة بعد إعادة تشغيل الهاتف لعدم توفر الإنترنت لمدة طويلة', 'اطلب منه فتح سبّاق مرة واحدة مع اتصال بالإنترنت؛ تُستأنف المتابعة تلقائيًا.'],
+            keeper_waiting_network: ['المتابعة متوقفة مؤقتًا بانتظار الإنترنت لتجديد الاشتراك', 'تُستأنف تلقائيًا عند عودة الاتصال؛ اطلب منه التأكد من بيانات الجوال.'],
+            keeper_restore_refused: ['انتهت جلسة الدخول المحفوظة (خروج من جهاز آخر أو حذف الحساب)', 'اطلب منه تسجيل الدخول من جديد ثم تشغيل المتابعة.'],
+            keeper_license_lost: ['توقفت المتابعة لأن الاشتراك لم يعد صالحًا', 'تحقق من اشتراكه في تبويب السائقين وجدده إن لزم.'],
+            keeper_notifications_denied: ['توقفت المتابعة لأن إذن الإشعارات مسحوب', 'وجّهه لتفعيل إشعارات سبّاق ثم تشغيل المتابعة.'],
+            keeper_disclosure_withdrawn: ['سحب موافقة إفصاح إمكانية الوصول', 'اطلب منه الموافقة على الإفصاح ثم تشغيل المتابعة.'],
+        };
+        const keeperIsLatest = keeperStop && !list.some(item => ['PACKAGE_SEEN', 'OFFER_DETECTED', 'CLICK_RESULT', 'SERVICE_CONNECTED'].includes(item.stage)
+            && String(item.occurred_at) > String(keeperStop.occurred_at));
+        if (keeperIsLatest && keeperVerdicts[keeperStop.reason_code]) {
+            const [cause, advice] = keeperVerdicts[keeperStop.reason_code];
+            return verdict(cause, 'user', advice);
+        }
+        if (crash && (!heartbeat || String(crash.occurred_at) >= String(heartbeat.occurred_at))) {
+            return verdict(`انهيار في سبّاق (${displayValue(crash.reason_code)})`, 'update',
+                `عطل برمجي يلزمه إصلاح وتحديث؛ موضع العطل: ${displayValue(crash.detail, 'غير معروف')}. وجّه المستخدم مؤقتًا لإعادة فتح سبّاق.`);
+        }
+        const latestGate = list.find(item => item.stage === 'GATE_BLOCKED');
+        const latestProgress = list.find(item => ['PACKAGE_SEEN', 'SIGNAL_FOUND', 'SIGNAL_MISS', 'OFFER_DETECTED', 'CLICK_RESULT'].includes(item.stage));
+        const gateIsLatest = latestGate && (!latestProgress || String(latestGate.occurred_at) >= String(latestProgress.occurred_at));
+        if (gateIsLatest) {
+            if (latestGate.reason_code === 'disclosure_required') return verdict('لم يوافق على إفصاح إمكانية الوصول', 'user', 'اطلب منه فتح سبّاق والموافقة على الإفصاح ثم تشغيل المتابعة.');
+            if (latestGate.reason_code === 'service_paused') return verdict('المتابعة متوقفة في سبّاق', 'user', 'اطلب منه الضغط على «تشغيل المتابعة» في لوحة التحكم.');
+            if (latestGate.reason_code === 'license_invalid') return verdict('الاشتراك غير صالح على هذا الجهاز', 'user', 'تحقق من الاشتراك في تبويب السائقين، ثم اطلب منه إعادة تسجيل الدخول.');
+            if (['no_profiles', 'no_parser', 'no_adapter'].includes(latestGate.reason_code)) return verdict('ملفات التطبيقات المدعومة لم تُحمّل', 'update', 'عطل في الإصدار؛ يلزم إصلاح وتحديث التطبيق.');
+        }
+        if (total('OFFER_DETECTED') === 0) {
+            const rootMissing = total('ROOT_UNAVAILABLE');
+            const treeRejected = total('TREE_REJECTED');
+            const signalMiss = total('SIGNAL_MISS');
+            if (total('PACKAGE_SEEN') === 0) return verdict('لم يصل أي حدث من تطبيق جيني إلى سبّاق', 'user', 'تأكد أن جيني مفتوح ومتصل وأن خدمة إمكانية الوصول لسبّاق مفعّلة، ثم انتظر طلبًا.');
+            if (rootMissing > 0 && rootMissing >= treeRejected && rootMissing >= signalMiss) return verdict('نافذة الطلب في جيني غير قابلة للقراءة', 'update', 'سبب تقني (نافذة طافية/نظام)؛ يلزم إصلاح في التطبيق. السبب الدقيق في reason_code لمرحلة ROOT_UNAVAILABLE.');
+            if (treeRejected > 0 && treeRejected >= signalMiss) return verdict('شاشة جيني رُفضت أثناء القراءة', 'update', 'يلزم إصلاح في التطبيق؛ راجع reason_code لمرحلة TREE_REJECTED.');
+            if (total('OFFER_NOT_PARSED') > 0) return verdict('الطلب ظهر وتعذر استخراج تفاصيله', 'update', 'تغيّرت واجهة جيني؛ يلزم تحديث المحلل. راجع detail للمعالم المفقودة.');
+            if (signalMiss > 0) return verdict('الشاشة تُقرأ لكن الطلب لا يُتعرّف عليه', 'update', 'غالبًا تغيّرت تسميات جيني؛ detail يبيّن ما وُجد (a=زر قبول، f=أجرة، d=مسافة، t=وقت، p=عنوان، o=كلمة طلب، c=رحلة نشطة).');
+            return verdict('يعمل؛ لم يظهر طلب خلال الفترة', 'none', 'لا يلزم إجراء.');
+        }
+        if (total('DECISION_ACCEPTED') === 0) {
+            const topRejection = rows.filter(item => item.stage === 'REJECTED')
+                .sort((a, b) => (Number(b.count) || 0) - (Number(a.count) || 0))[0];
+            const rejectionAdvice = {
+                no_filters: ['لم يحدد المستخدم أي شرط، والقبول دون شروط غير مفعّل', 'اطلب منه اختيار شروط من «الشروط» أو تفعيل «قبول الطلبات دون شروط».'],
+                destination_missing: ['الطلبات لا تعرض الوجهة والمستخدم يشترط وجودها', 'جيني يخفي الوجهة غالبًا قبل القبول؛ اطلب منه تفعيل «قبول الطلبات بلا وجهة».'],
+                fare_too_low: ['أجرة الطلبات أقل من الحد الأدنى الذي حدده', 'راجع معه الحد الأدنى للأجرة.'],
+                fare_missing: ['الأجرة لا تُقرأ من الطلب وشرط الأجرة مفعّل', 'سبب تقني في قراءة الأجرة؛ يلزم تحديث المحلل، ومؤقتًا يمكنه تعطيل شرط الأجرة.'],
+                pickup_too_far: ['مسافة الوصول للراكب أبعد من حده', 'راجع معه أقصى مسافة للوصول.'],
+                pickup_too_long: ['وقت الوصول للراكب أطول من حده', 'راجع معه أقصى وقت للوصول.'],
+                per_km_too_low: ['العائد لكل كم أقل من حده', 'راجع معه حد العائد لكل كم.'],
+                outside_schedule: ['الطلبات تصل خارج أوقات العمل التي حددها', 'راجع معه جدول أوقات العمل.'],
+            };
+            const known = topRejection && rejectionAdvice[topRejection.reason_code];
+            if (known) return verdict(known[0], known[1].startsWith('سبب تقني') ? 'update' : 'user', known[1]);
+            return verdict('الطلبات تُرى وكلها ترفضها شروط المستخدم', 'user',
+                `راجع معه الشروط؛ أكثر سبب رفض: ${displayValue(topRejection?.reason_code, 'غير محدد')}.`);
+        }
+        if (total('CLICK_RESULT', 'semantic') + total('CLICK_RESULT', 'gesture') === 0) return verdict('تعذر الضغط على زر القبول', 'update', 'يلزم إصلاح في التطبيق؛ راجع reason_code لمرحلة CLICK_RESULT.');
+        if (total('CONFIRMATION_CONFIRMED') === 0 && total('CONFIRMATION_TIMEOUT') > 0) return verdict('أُرسل القبول ولم يتأكد في جيني', 'update', 'غالبًا ضغط في مكان غير صحيح أو طلب أخذه سائق آخر؛ راجع التسلسل الزمني.');
+        return verdict('التطبيق يقبل الطلبات', 'none', 'لا يلزم إجراء.');
+    }
+
+    function stageLabel(stage) {
+        const labels = {
+            EVENT_RECEIVED: 'حدث وارد', PACKAGE_SEEN: 'تطبيق مدعوم', GATE_BLOCKED: 'موقوف', ROOT_UNAVAILABLE: 'نافذة غير مقروءة',
+            TREE_REJECTED: 'شاشة مرفوضة', STALE: 'إطار مكرر', SIGNAL_MISS: 'لا طلب', SIGNAL_FOUND: 'إشارة طلب',
+            FRAME_INCOMPLETE: 'إطار ناقص', OFFER_NOT_PARSED: 'تعذر الاستخراج', OFFER_DETECTED: 'طلب مكتشف',
+            REJECTED: 'مرفوض بالشروط', DECISION_ACCEPTED: 'مطابق للشروط', ACCEPT_NODE: 'زر القبول', CLICK_RESULT: 'الضغط',
+            CONFIRMATION_CONFIRMED: 'قبول مؤكد', CONFIRMATION_TIMEOUT: 'قبول غير مؤكد', SERVICE_CONNECTED: 'الخدمة متصلة',
+            SERVICE_INTERRUPTED: 'الخدمة مقاطَعة', SERVICE_DESTROYED: 'الخدمة أُوقفت', HEARTBEAT: 'نبضة',
+            UPLOAD_REJECTED: 'رفض الإرسال', QUEUE_DROPPED: 'أحداث محذوفة', PAUSED: 'إيقاف مؤقت', APP_CRASH: 'انهيار التطبيق',
+        };
+        return labels[stage] || displayValue(stage);
+    }
+
+    function formatDateTime(value) {
+        if (!value) return 'غير محدد';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return 'غير محدد';
+        return new Intl.DateTimeFormat('ar-EG', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(date);
     }
 
     function setTelemetryFeedback(message, type) {
@@ -908,12 +1214,17 @@
             appendCell(row, formatDate(driver.pro_until), 'ltr-cell');
             appendCell(row, displayValue(driver.device_id, 'غير مرتبط'), 'small-cell');
             const actionCell = document.createElement('td');
+            const diagnose = document.createElement('button');
+            diagnose.type = 'button';
+            diagnose.className = 'btn-secondary';
+            diagnose.textContent = 'تشخيص الشكوى';
+            diagnose.addEventListener('click', () => { void diagnoseDriver(driver, diagnose); });
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'btn-danger';
             button.textContent = 'فك ربط الجهاز';
             button.addEventListener('click', () => { void resetDevice(driver.id, button); });
-            actionCell.append(button);
+            actionCell.append(diagnose, button);
             row.append(actionCell);
             el.driversList.append(row);
         });
