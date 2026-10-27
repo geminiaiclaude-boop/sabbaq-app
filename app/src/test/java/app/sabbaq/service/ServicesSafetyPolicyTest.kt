@@ -2,7 +2,9 @@ package app.sabbaq.service
 
 import android.view.accessibility.AccessibilityEvent
 import app.sabbaq.core.Bounds
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -37,11 +39,29 @@ class ServicesSafetyPolicyTest {
     }
 
     @Test
-    fun acceptsOnlyBoundsWhollyInsideTheScreen() {
-        assertTrue(ServicesSafetyPolicy.hasSafeGestureBounds(Bounds(10, 20, 110, 120), 200, 300))
-        assertFalse(ServicesSafetyPolicy.hasSafeGestureBounds(Bounds(-1, 20, 110, 120), 200, 300))
-        assertFalse(ServicesSafetyPolicy.hasSafeGestureBounds(Bounds(10, 20, 201, 120), 200, 300))
-        assertFalse(ServicesSafetyPolicy.hasSafeGestureBounds(Bounds(10, 20, 10, 120), 200, 300))
+    fun gestureTapsTheCentreOfTheVisiblePartOnly() {
+        assertEquals(60 to 70, ServicesSafetyPolicy.visibleTapPoint(Bounds(10, 20, 110, 120), 200, 300))
+        // Partly below the screen: the tap moves up into the visible part instead of being refused.
+        assertEquals(540 to 2350, ServicesSafetyPolicy.visibleTapPoint(Bounds(40, 2300, 1040, 2470), 1080, 2400))
+        // Only a 10px sliver on screen: too little to hit, so no tap.
+        assertNull(ServicesSafetyPolicy.visibleTapPoint(Bounds(-90, 20, 10, 120), 200, 300))
+        assertNull(ServicesSafetyPolicy.visibleTapPoint(Bounds(10, 2395, 110, 2500), 200, 2400))
+        assertNull(ServicesSafetyPolicy.visibleTapPoint(Bounds(10, 20, 10, 120), 200, 300))
+        assertNull(ServicesSafetyPolicy.visibleTapPoint(Bounds(10, 300, 110, 400), 200, 300))
+    }
+
+    @Test
+    fun semanticTargetNeedsOnlyToBeOnTheRealScreen() {
+        // A Jeeny accept button at the very bottom of a 1080x2400 screen: below the app area that
+        // displayMetrics reports (2400 minus the navigation bar), still on the real screen.
+        val bottomButton = Bounds(40, 2210, 1040, 2380)
+        assertTrue(ServicesSafetyPolicy.isOnScreen(bottomButton, 1080, 2400))
+        assertEquals(540 to 2295, ServicesSafetyPolicy.visibleTapPoint(bottomButton, 1080, 2400))
+        assertTrue(ServicesSafetyPolicy.isOnScreen(Bounds(40, 2300, 1040, 2470), 1080, 2400))
+        assertFalse(ServicesSafetyPolicy.isOnScreen(Bounds(40, 2400, 1040, 2570), 1080, 2400))
+        assertFalse(ServicesSafetyPolicy.isOnScreen(Bounds(-200, 10, 0, 60), 1080, 2400))
+        assertFalse(ServicesSafetyPolicy.isOnScreen(Bounds(10, 20, 10, 120), 1080, 2400))
+        assertFalse(ServicesSafetyPolicy.isOnScreen(Bounds(10, 20, 110, 120), 0, 2400))
     }
 
     @Test

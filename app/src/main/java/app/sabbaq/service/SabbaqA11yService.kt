@@ -5,10 +5,13 @@ import android.accessibilityservice.AccessibilityServiceInfo
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.graphics.Rect
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.util.DisplayMetrics
 import android.util.Log
+import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import app.sabbaq.Settings
@@ -390,12 +393,13 @@ class SabbaqA11yService : AccessibilityService() {
                 if (packageName == JEENY_PACKAGE && acceptNode.viewId != null && hasMatchingAcceptLabel(acceptNode)) {
                     jeenyHints?.learnVerified(acceptNode.viewId)
                 }
-                val display = resources.displayMetrics
+                val screen = realScreenSize()
                 val windowToken = lastJeenyWindowId?.toString() ?: packageName
                 dispatchRetry.begin(offer.fingerprint, windowToken)
-                val acquired = clickGate.tryAcquire(offer.fingerprint, nowMs) ||
-                    dispatchRetry.consumeRetry(offer.fingerprint, windowToken, nowMs)
-                val safeBounds = ServicesSafetyPolicy.hasSafeGestureBounds(acceptNode.bounds, display.widthPixels, display.heightPixels)
+                // Bounds first: a refused frame must not hold the click gate for the next frame of the same offer.
+                val safeBounds = ServicesSafetyPolicy.isOnScreen(acceptNode.bounds, screen.first, screen.second)
+                val acquired = verdict.accept && safeBounds && (clickGate.tryAcquire(offer.fingerprint, nowMs) ||
+                    dispatchRetry.consumeRetry(offer.fingerprint, windowToken, nowMs))
                 if (verdict.accept && (!safeBounds || !acquired)) {
                     recordDiagnostic(DiagnosticStage.CLICK_PATH, nowMs, if (!safeBounds) "unsafe_bounds" else "gate_suppressed", provider = provider)
                 }
@@ -493,17 +497,19 @@ class SabbaqA11yService : AccessibilityService() {
     private fun dispatchAcceptClick(root: AccessibilityNodeInfo, packageName: String, target: ScreenNode, liveTest: Boolean = false): ClickResult {
         // The live test taps only Sabbaq's own mock button, so it skips the monitoring and licence gate.
         if (!liveTest && !ServicesSafetyPolicy.canProcessOffers(Settings.isActive, Settings.a11yDisclosureAccepted, SupabaseClient.hasValidLicense())) return ClickResult.NOT_DISPATCHED
-        val exact = resolveLiveNode(root, target)
-        val exactResult = exact?.let { node ->
+        // The same button (path, id and label) where it is now: a card that slid a few pixels
+        // since the frame was parsed is still the same button.
+        var liveBounds: Bounds? = null
+        resolveLiveNode(root, target)?.let { node ->
             try {
-                if (isSafeClickable(node, root, packageName)) {
-                    if (runCatching { node.performAction(AccessibilityNodeInfo.ACTION_CLICK) }.getOrDefault(false)) return ClickResult.SEMANTIC
-                }
+                liveBounds = node.boundsInScreen().let { Bounds(it.left, it.top, it.right, it.bottom) }
+                if (isSafeClickable(node, root, packageName) &&
+                    runCatching { node.performAction(AccessibilityNodeInfo.ACTION_CLICK) }.getOrDefault(false)) return ClickResult.SEMANTIC
             } finally { node.recycle() }
-            null
         }
+        val anchor = liveBounds ?: target.bounds
         // A labelled child may be exposed while its clickable parent owns ACTION_CLICK.
-        val ancestor = resolveLiveClickableAncestor(root, target)
+        val ancestor = resolveLiveClickableAncestor(root, target, anchor)
         if (ancestor != null) {
             try {
                 if (isSafeClickable(ancestor, root, packageName) &&
@@ -512,9 +518,10 @@ class SabbaqA11yService : AccessibilityService() {
                 }
             } finally { ancestor.recycle() }
         }
-        // Coordinate fallback is last and uses the verified live target bounds only.
-        if (!ServicesSafetyPolicy.hasSafeGestureBounds(target.bounds, resources.displayMetrics.widthPixels, resources.displayMetrics.heightPixels)) return ClickResult.NOT_DISPATCHED
-        return if (performGesture(target.bounds)) ClickResult.GESTURE else ClickResult.NOT_DISPATCHED
+        // Coordinate fallback is last: the centre of the part of the live button that is on screen.
+        val screen = realScreenSize()
+        val point = ServicesSafetyPolicy.visibleTapPoint(anchor, screen.first, screen.second) ?: return ClickResult.NOT_DISPATCHED
+        return if (performGesture(point.first, point.second)) ClickResult.GESTURE else ClickResult.NOT_DISPATCHED
     }
 
     private fun isSafeClickable(node: AccessibilityNodeInfo, root: AccessibilityNodeInfo, packageName: String): Boolean =
@@ -522,16 +529,31 @@ class SabbaqA11yService : AccessibilityService() {
             node.isVisibleToUser && node.isEnabled && node.isClickable &&
             node.actionList.any { it.id == AccessibilityNodeInfo.ACTION_CLICK } &&
             node.boundsInScreen().let { rect ->
-                ServicesSafetyPolicy.hasSafeGestureBounds(
-                    Bounds(rect.left, rect.top, rect.right, rect.bottom),
-                    resources.displayMetrics.widthPixels,
-                    resources.displayMetrics.heightPixels,
-                )
+                val screen = realScreenSize()
+                ServicesSafetyPolicy.isOnScreen(Bounds(rect.left, rect.top, rect.right, rect.bottom), screen.first, screen.second)
             }
 
     private fun AccessibilityNodeInfo.boundsInScreen(): Rect = Rect().also { getBoundsInScreen(it) }
 
-    private fun resolveLiveClickableAncestor(root: AccessibilityNodeInfo, target: ScreenNode): AccessibilityNodeInfo? {
+    /**
+     * The whole physical screen, system bars included: getBoundsInScreen reports node bounds in
+     * these coordinates. resources.displayMetrics leaves the navigation bar out on most phones, so
+     * an accept button at the bottom of the screen looked off-screen and was never tapped.
+     */
+    @Suppress("DEPRECATION")
+    private fun realScreenSize(): Pair<Int, Int> {
+        val windowManager = runCatching { getSystemService(WindowManager::class.java) }.getOrNull()
+        if (windowManager != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            runCatching { windowManager.maximumWindowMetrics.bounds }.getOrNull()
+                ?.takeIf { it.width() > 0 && it.height() > 0 }?.let { return it.width() to it.height() }
+        }
+        val metrics = DisplayMetrics()
+        runCatching { windowManager?.defaultDisplay?.getRealMetrics(metrics) }
+        if (metrics.widthPixels > 0 && metrics.heightPixels > 0) return metrics.widthPixels to metrics.heightPixels
+        return resources.displayMetrics.let { it.widthPixels to it.heightPixels }
+    }
+
+    private fun resolveLiveClickableAncestor(root: AccessibilityNodeInfo, target: ScreenNode, bounds: Bounds): AccessibilityNodeInfo? {
         if (target.nodePath.isEmpty()) return null
         var current = root
         var owned = false
@@ -543,7 +565,6 @@ class SabbaqA11yService : AccessibilityService() {
                 current = child
                 owned = true
             }
-            val bounds = target.bounds
             if (!current.isClickable || current.packageName?.toString() != root.packageName?.toString()) return null
             val rect = current.boundsInScreen()
             if (rect.left > bounds.left || rect.top > bounds.top || rect.right < bounds.right || rect.bottom < bounds.bottom) return null
@@ -569,19 +590,18 @@ class SabbaqA11yService : AccessibilityService() {
             val sameLabel = Text.normalize(current.text?.toString()).ifEmpty {
                 Text.normalize(current.contentDescription?.toString())
             } == Text.normalize(target.text).ifEmpty { Text.normalize(target.description) }
-            if (current.viewIdResourceName != target.viewId || !sameLabel ||
-                Bounds(rect.left, rect.top, rect.right, rect.bottom) != target.bounds) return null
+            if (current.viewIdResourceName != target.viewId || !sameLabel || rect.isEmpty) return null
             return current.also { owned = false }
         } finally {
             if (owned) current.recycle()
         }
     }
 
-    private fun performGesture(bounds: Bounds): Boolean {
+    private fun performGesture(x: Int, y: Int): Boolean {
         if (!ServicesSafetyPolicy.canProcessOffers(Settings.isActive,
                 Settings.a11yDisclosureAccepted, SupabaseClient.hasValidLicense())) return false
         val path = Path().apply {
-            moveTo(bounds.centerX.toFloat(), bounds.centerY.toFloat())
+            moveTo(x.toFloat(), y.toFloat())
         }
         val stroke = GestureDescription.StrokeDescription(path, 10, 50)
         val gesture = GestureDescription.Builder().addStroke(stroke).build()

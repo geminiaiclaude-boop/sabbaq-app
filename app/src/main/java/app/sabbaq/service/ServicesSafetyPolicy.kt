@@ -10,6 +10,7 @@ import app.sabbaq.core.Bounds
 internal object ServicesSafetyPolicy {
     private const val POST_NOTIFICATIONS_API = 33
     private const val CONTENT_CHANGE_MIN_INTERVAL_MS = 25L
+    private const val MIN_TAP_PX = 16
 
     fun canProcessOffers(
         isExplicitlyEnabled: Boolean,
@@ -31,14 +32,33 @@ internal object ServicesSafetyPolicy {
     fun isSupportedPackage(packageName: CharSequence?, supportedPackages: Set<String>): Boolean =
         packageName?.toString()?.let(supportedPackages::contains) == true
 
-    fun hasSafeGestureBounds(bounds: Bounds, screenWidth: Int, screenHeight: Int): Boolean =
+    /**
+     * A node is a valid target for a semantic ACTION_CLICK when some of it is on the real screen:
+     * the action goes to the node itself, so a button still sliding in or touching the system bars
+     * is clickable.
+     */
+    fun isOnScreen(bounds: Bounds, screenWidth: Int, screenHeight: Int): Boolean =
         screenWidth > 0 &&
             screenHeight > 0 &&
             !bounds.isEmpty &&
-            bounds.left >= 0 &&
-            bounds.top >= 0 &&
-            bounds.right <= screenWidth &&
-            bounds.bottom <= screenHeight
+            bounds.right > 0 &&
+            bounds.bottom > 0 &&
+            bounds.left < screenWidth &&
+            bounds.top < screenHeight
+
+    /**
+     * Where a coordinate tap lands: the centre of the part of [bounds] that is on the real screen,
+     * or null when too little of it is visible to hit reliably. Never a point off the screen.
+     */
+    fun visibleTapPoint(bounds: Bounds, screenWidth: Int, screenHeight: Int): Pair<Int, Int>? {
+        if (!isOnScreen(bounds, screenWidth, screenHeight)) return null
+        val left = bounds.left.coerceAtLeast(0)
+        val top = bounds.top.coerceAtLeast(0)
+        val right = bounds.right.coerceAtMost(screenWidth)
+        val bottom = bounds.bottom.coerceAtMost(screenHeight)
+        if (right - left < MIN_TAP_PX || bottom - top < MIN_TAP_PX) return null
+        return (left + (right - left) / 2) to (top + (bottom - top) / 2)
+    }
 
     fun canRunForegroundService(
         isExplicitlyEnabled: Boolean,
