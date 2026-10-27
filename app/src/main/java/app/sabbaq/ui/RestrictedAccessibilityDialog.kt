@@ -71,22 +71,22 @@ fun RestrictedAccessibilityDialog(
                             fontWeight = FontWeight.Bold,
                         )
                         RestrictedSettingsStep(
-                            number = "١",
+                            number = "1",
                             icon = Icons.Outlined.Settings,
                             text = "افتح معلومات تطبيق سبّاق.",
                         )
                         RestrictedSettingsStep(
-                            number = "٢",
+                            number = "2",
                             icon = Icons.Outlined.MoreVert,
                             text = "اضغط النقاط الثلاث ⋮ أعلى الشاشة.",
                         )
                         RestrictedSettingsStep(
-                            number = "٣",
+                            number = "3",
                             icon = Icons.Outlined.LockOpen,
                             text = "اختر «السماح بالإعدادات المقيدة».",
                         )
                         RestrictedSettingsStep(
-                            number = "٤",
+                            number = "4",
                             icon = Icons.Outlined.AccessibilityNew,
                             text = "ارجع إلى إعدادات إمكانية الوصول وفعّل سبّاق.",
                         )

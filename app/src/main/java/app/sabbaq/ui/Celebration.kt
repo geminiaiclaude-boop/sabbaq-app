@@ -78,7 +78,6 @@ import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.util.Locale
 import kotlin.math.PI
 import kotlin.math.sin
 import kotlin.random.Random
@@ -145,7 +144,7 @@ internal object CelebrationCopy {
         until ?: return null
         val days = daysLeft(until, now)
         if (days <= 0) return null
-        val date = DateTimeFormatter.ofPattern("d MMMM yyyy", Locale("ar", "SA"))
+        val date = DateTimeFormatter.ofPattern("d MMMM yyyy", SabbaqLocale)
             .withZone(ZoneId.of("Asia/Riyadh"))
             .format(until)
         return "فعّال حتى $date · ${ArabicCount.days(days.toInt())}"

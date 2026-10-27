@@ -36,7 +36,7 @@ internal val SabbaqLightColors = lightColorScheme(
     surface = Color.White, onSurface = Color(0xFF1F1633),
     surfaceVariant = Color(0xFFEDE7F5), onSurfaceVariant = Color(0xFF5A5170),
     surfaceContainerLowest = Color.White, surfaceContainerLow = Color(0xFFF9F7FC),
-    surfaceContainer = Color(0xFFF2EDF8), surfaceContainerHigh = Color(0xFFE9E2F3),
+    surfaceContainer = Color(0xFFF2EDF8), surfaceContainerHigh = Color(0xFFE9E2F3), surfaceContainerHighest = Color(0xFFE2D9EF),
     outline = Color(0xFF7B7191), outlineVariant = Color(0xFFDDD5EA),
     error = Color(0xFFAE282F), onError = Color.White,
     errorContainer = Color(0xFFFFE8E8), onErrorContainer = Color(0xFF7B1720)
@@ -52,7 +52,7 @@ internal val SabbaqDarkColors = darkColorScheme(
     surface = Color(0xFF1C1430), onSurface = Color(0xFFECE6F5),
     surfaceVariant = Color(0xFF2C2244), onSurfaceVariant = Color(0xFFC9BEDD),
     surfaceContainerLowest = Color(0xFF120B1F), surfaceContainerLow = Color(0xFF1C1430),
-    surfaceContainer = Color(0xFF231A3A), surfaceContainerHigh = Color(0xFF2C2244),
+    surfaceContainer = Color(0xFF231A3A), surfaceContainerHigh = Color(0xFF2C2244), surfaceContainerHighest = Color(0xFF362B50),
     outline = Color(0xFF968BAD), outlineVariant = Color(0xFF3F3459),
     error = Color(0xFFFFB3B5), onError = Color(0xFF650F19),
     errorContainer = Color(0xFF731A24), onErrorContainer = Color(0xFFFFDADB)
@@ -115,7 +115,7 @@ fun SabbaqTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable
         MaterialTheme(
             colorScheme = if (darkTheme) SabbaqDarkColors else SabbaqLightColors,
             typography = SabbaqTypography,
-            shapes = Shapes(extraSmall = RoundedCornerShape(8.dp), small = RoundedCornerShape(12.dp),
+            shapes = Shapes(extraSmall = RoundedCornerShape(12.dp), small = RoundedCornerShape(12.dp),
                 medium = RoundedCornerShape(16.dp), large = RoundedCornerShape(24.dp), extraLarge = RoundedCornerShape(32.dp)),
             content = content
         )

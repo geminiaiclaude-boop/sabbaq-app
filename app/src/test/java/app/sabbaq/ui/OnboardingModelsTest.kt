@@ -91,9 +91,9 @@ class OnboardingModelsTest {
     @Test
     fun `sample makes the value tangible without treating gross fare as profit`() {
         val full = localDecisionPreview(DecisionSignal.entries.toSet())
-        assertTrue(full.contains("٤٥ ر.س"))
-        assertTrue(full.contains("٣ كم"))
-        assertTrue(full.contains("٢٫٥ ر.س قبل التكاليف"))
+        assertTrue(full.contains("45 ر.س"))
+        assertTrue(full.contains("3 كم"))
+        assertTrue(full.contains("2.5 ر.س قبل التكاليف"))
         assertFalse(localDecisionPreview(setOf(DecisionSignal.TRIP_DURATION)).contains("العائد لكل كم"))
     }
 

@@ -50,6 +50,9 @@ import app.sabbaq.network.PublicOffer
 import app.sabbaq.ui.theme.SabbaqMotion
 import app.sabbaq.ui.theme.sabbaqEntrance
 import app.sabbaq.ui.theme.tilt3D
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.shape.CircleShape
+import app.sabbaq.ui.theme.LocalSabbaqBrand
 
 /** What the driver came for, chosen before signing in; it only orders what we show after. */
 enum class AccessIntent { None, Trial, Subscribe, SignIn }
@@ -149,13 +152,13 @@ internal fun PurchaseSteps(offer: PublicOffer?, enabled: Boolean, onOpenPurchase
             return@Column
         }
         if (target.viaWhatsapp) {
-            PurchaseStep("١", "اضغط «اشترك عبر واتساب»؛ تُفتح محادثة مع الإدارة برسالة جاهزة.")
-            PurchaseStep("٢", "أكمل الدفع كما توضح لك الإدارة، ويصلك رمز التفعيل في المحادثة.")
+            PurchaseStep("1", "اضغط «اشترك عبر واتساب»؛ تُفتح محادثة مع الإدارة برسالة جاهزة.")
+            PurchaseStep("2", "أكمل الدفع كما توضح لك الإدارة، ويصلك رمز التفعيل في المحادثة.")
         } else {
-            PurchaseStep("١", "اضغط «اشترك الآن» وأكمل الدفع.")
-            PurchaseStep("٢", "يصلك رمز التفعيل بعد تأكيد الدفع.")
+            PurchaseStep("1", "اضغط «اشترك الآن» وأكمل الدفع.")
+            PurchaseStep("2", "يصلك رمز التفعيل بعد تأكيد الدفع.")
         }
-        PurchaseStep("٣", "الصق الرمز أدناه واضغط «تفعيل الوصول».")
+        PurchaseStep("3", "الصق الرمز أدناه واضغط «تفعيل الوصول».")
         SabbaqButton(
             text = if (target.viaWhatsapp) "اشترك عبر واتساب" else "اشترك الآن",
             onClick = { onOpenPurchase(target.url) },
@@ -167,11 +170,12 @@ internal fun PurchaseSteps(offer: PublicOffer?, enabled: Boolean, onOpenPurchase
 
 @Composable
 private fun PurchaseStep(number: String, text: String) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.secondaryContainer,
-            contentColor = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(28.dp)) {
+    val brand = LocalSabbaqBrand.current
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Surface(shape = CircleShape, color = brand.signature, contentColor = brand.onSignature,
+            shadowElevation = 3.dp, modifier = Modifier.size(30.dp)) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                Text(number, style = MaterialTheme.typography.labelLarge)
+                Text(number, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.ExtraBold)
             }
         }
         Text(text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))

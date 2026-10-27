@@ -1,7 +1,6 @@
 package app.sabbaq.ui
 
 import java.text.NumberFormat
-import java.util.Locale
 
 /** Stable destinations for the onboarding flow; callers must not depend on page numbers. */
 enum class OnboardingPage {
@@ -77,7 +76,7 @@ internal fun onboardingOfferCopy(
         )
     }
 
-    val price = NumberFormat.getNumberInstance(Locale.forLanguageTag("ar-SA")).apply {
+    val price = NumberFormat.getNumberInstance(SabbaqLocale).apply {
         minimumFractionDigits = 2
         maximumFractionDigits = 2
     }.format(validOffer.priceMinor / 100.0)
@@ -105,11 +104,11 @@ internal fun localDecisionPreview(selected: Set<DecisionSignal>): String {
     if (selected.isEmpty()) return "اختر تفصيلًا أو أكثر لتظهره في المثال."
     return buildString {
         append("في هذا المثال:\n")
-        if (DecisionSignal.DISPLAYED_FARE in selected) append("السعر الظاهر: ٤٥ ر.س\n")
-        if (DecisionSignal.PICKUP_DISTANCE in selected) append("مسافة الوصول: ٣ كم + مشوار ١٥ كم\n")
-        if (DecisionSignal.TRIP_DURATION in selected) append("مدة المشوار: ٣٠ دقيقة\n")
+        if (DecisionSignal.DISPLAYED_FARE in selected) append("السعر الظاهر: 45 ر.س\n")
+        if (DecisionSignal.PICKUP_DISTANCE in selected) append("مسافة الوصول: 3 كم + مشوار 15 كم\n")
+        if (DecisionSignal.TRIP_DURATION in selected) append("مدة المشوار: 30 دقيقة\n")
         if (DecisionSignal.DISPLAYED_FARE in selected && DecisionSignal.PICKUP_DISTANCE in selected)
-            append("العائد لكل كم مع الوصول: ٢٫٥ ر.س قبل التكاليف\n")
+            append("العائد لكل كم مع الوصول: 2.5 ر.س قبل التكاليف\n")
         append("لا يمثل طلبًا فعليًا ولا يغيّر إعداداتك.")
     }
 }

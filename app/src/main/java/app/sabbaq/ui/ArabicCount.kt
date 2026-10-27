@@ -1,5 +1,14 @@
 package app.sabbaq.ui
 
+import java.util.Locale
+
+/**
+ * Arabic month names with Western digits, the one numeral system used across the app
+ * (fares, steppers, counters); "ar-SA" alone switches some devices to Arabic-Indic digits
+ * and mixes "٠" with "0" on the same screen.
+ */
+internal val SabbaqLocale: Locale = Locale.forLanguageTag("ar-u-nu-latn")
+
 /**
  * Arabic counted-noun agreement for the few counts the UI shows. "1 شرط" or "2 شرط"
  * reads as machine output; Arabic changes the noun form with the number.

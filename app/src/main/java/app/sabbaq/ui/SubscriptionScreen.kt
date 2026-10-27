@@ -567,7 +567,7 @@ private fun ServerTimestampRow(label: String, value: Instant?) {
 }
 
 private fun formatSaudiDate(value: Instant): String =
-    DateTimeFormatter.ofPattern("dd MMMM yyyy، HH:mm", Locale("ar", "SA"))
+    DateTimeFormatter.ofPattern("dd MMMM yyyy، HH:mm", SabbaqLocale)
         .withZone(ZoneId.of("Asia/Riyadh"))
         .format(value)
 

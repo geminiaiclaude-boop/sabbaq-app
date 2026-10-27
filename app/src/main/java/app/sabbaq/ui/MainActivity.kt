@@ -217,15 +217,18 @@ class MainActivity : ComponentActivity() {
                 if (navigation.sessionRestoreStatus == SessionRestoreStatus.RESTORING)
                     navigation.startSessionRestore(this@MainActivity)
             }
+            val showHeader = navigation.route != AppState.WELCOME && !showVideoOpening && !showIntro
             SideEffect {
                 val style = if (dark) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
-                    else SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.argb(210, 20, 44, 55))
-                enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+                    else SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.argb(210, 31, 22, 51))
+                // The brand header is deep purple in both themes, so its status bar icons are light.
+                val statusStyle = if (showHeader) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT) else style
+                enableEdgeToEdge(statusBarStyle = statusStyle, navigationBarStyle = style)
             }
             SabbaqTheme(darkTheme = dark) {
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                     SabbaqShell(
-                        showHeader = navigation.route != AppState.WELCOME && !showVideoOpening && !showIntro,
+                        showHeader = showHeader,
                         themeMode = mode,
                         onThemeChange = { mode = it; Settings.themeMode = it },
                         isSavingFilters = filterSavePending,
@@ -494,52 +497,58 @@ private fun SabbaqTopBar(
     onRequestLogout: () -> Unit,
     allowLogout: Boolean,
 ) {
-    Surface(
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 3.dp,
-        shadowElevation = 2.dp,
-    ) {
-        TopAppBar(
-            navigationIcon = {
-                IconButton(onClick = onOpenDrawer, modifier = Modifier.size(52.dp)) {
-                    Icon(Icons.Outlined.Menu, contentDescription = "فتح القائمة الجانبية")
-                }
-            },
-            title = { SabbaqBrand(compact = true) },
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
-            actions = {
-                Box {
-                    IconButton(onClick = onThemeMenu, modifier = Modifier.size(52.dp)) {
-                        Icon(
-                            when (themeMode) {
-                                ThemeMode.DARK -> Icons.Outlined.DarkMode
-                                ThemeMode.LIGHT -> Icons.Outlined.LightMode
-                                ThemeMode.SYSTEM -> Icons.Outlined.SettingsBrightness
-                            },
-                            contentDescription = "تغيير مظهر التطبيق",
-                        )
+    val brand = LocalSabbaqBrand.current
+    // Deep purple brand header in both themes, finished by the signature yellow rule.
+    Surface(color = brand.heroStart, shadowElevation = 6.dp) {
+        Column(Modifier.background(Brush.horizontalGradient(listOf(brand.heroEnd, brand.heroStart)))) {
+            TopAppBar(
+                navigationIcon = {
+                    IconButton(onClick = onOpenDrawer, modifier = Modifier.size(52.dp)) {
+                        Icon(Icons.Outlined.Menu, contentDescription = "فتح القائمة الجانبية")
                     }
-                    DropdownMenu(expanded = themeMenuExpanded, onDismissRequest = onDismissThemeMenu) {
-                        ThemeMode.entries.forEach { item ->
-                            DropdownMenuItem(
-                                text = { Text(when (item) {
-                                    ThemeMode.SYSTEM -> "حسب النظام"
-                                    ThemeMode.LIGHT -> "فاتح"
-                                    ThemeMode.DARK -> "داكن"
-                                }) },
-                                onClick = { onThemeChange(item) },
-                                trailingIcon = { RadioButton(selected = item == themeMode, onClick = null) },
+                },
+                title = { SabbaqBrand(compact = true, onHero = true) },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    navigationIconContentColor = brand.onHero,
+                    titleContentColor = brand.onHero,
+                    actionIconContentColor = brand.onHero,
+                ),
+                actions = {
+                    Box {
+                        IconButton(onClick = onThemeMenu, modifier = Modifier.size(52.dp)) {
+                            Icon(
+                                when (themeMode) {
+                                    ThemeMode.DARK -> Icons.Outlined.DarkMode
+                                    ThemeMode.LIGHT -> Icons.Outlined.LightMode
+                                    ThemeMode.SYSTEM -> Icons.Outlined.SettingsBrightness
+                                },
+                                contentDescription = "تغيير مظهر التطبيق",
                             )
                         }
+                        DropdownMenu(expanded = themeMenuExpanded, onDismissRequest = onDismissThemeMenu) {
+                            ThemeMode.entries.forEach { item ->
+                                DropdownMenuItem(
+                                    text = { Text(when (item) {
+                                        ThemeMode.SYSTEM -> "حسب النظام"
+                                        ThemeMode.LIGHT -> "فاتح"
+                                        ThemeMode.DARK -> "داكن"
+                                    }) },
+                                    onClick = { onThemeChange(item) },
+                                    trailingIcon = { RadioButton(selected = item == themeMode, onClick = null) },
+                                )
+                            }
+                        }
                     }
-                }
-                if (isAuthenticated) {
-                    IconButton(onClick = onRequestLogout, enabled = allowLogout, modifier = Modifier.size(52.dp)) {
-                        Icon(Icons.AutoMirrored.Outlined.Logout, contentDescription = "تسجيل الخروج")
+                    if (isAuthenticated) {
+                        IconButton(onClick = onRequestLogout, enabled = allowLogout, modifier = Modifier.size(52.dp)) {
+                            Icon(Icons.AutoMirrored.Outlined.Logout, contentDescription = "تسجيل الخروج")
+                        }
                     }
-                }
-            },
-        )
+                },
+            )
+            Box(Modifier.fillMaxWidth().height(3.dp).background(brand.signature))
+        }
     }
 }
 
@@ -607,7 +616,7 @@ private fun SabbaqDrawerSheet(
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     when {
                         isAdmin -> DrawerPill("إدارة", brand.onHero.copy(alpha = 0.18f), brand.onHero)
-                        snapshot?.state == LicenseState.ACTIVE -> DrawerPill("PRO", Color(0xFFE9BE45), Color(0xFF3A2A00))
+                        snapshot?.state == LicenseState.ACTIVE -> DrawerPill("PRO", brand.signature, brand.onSignature)
                         snapshot?.state == LicenseState.TRIAL -> DrawerPill("تجربة", brand.onHero.copy(alpha = 0.18f), brand.onHero)
                     }
                     Text(

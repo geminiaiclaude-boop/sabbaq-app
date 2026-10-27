@@ -44,7 +44,6 @@ import app.sabbaq.ui.theme.sabbaqEntrance
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 /**
  * «سجل القرارات»: the statistics first (today, week, month and top rejection reasons), then
@@ -150,7 +149,7 @@ private fun platformName(profileId: String): String = when (profileId) {
     else -> profileId
 }
 
-private val rowTime = DateTimeFormatter.ofPattern("d MMM · HH:mm", Locale("ar"))
+private val rowTime = DateTimeFormatter.ofPattern("d MMM · HH:mm", SabbaqLocale)
 
 /** One decision as a compact list row: outcome icon, plain outcome, platform and time, reason. */
 @Composable

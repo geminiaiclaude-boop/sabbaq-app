@@ -14,6 +14,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -58,8 +59,12 @@ internal const val SABBAQ_TAGLINE = "أول من يلتقط الطلب المن�
 internal fun SabbaqBrand(compact: Boolean = false, onHero: Boolean = false) {
     val brand = LocalSabbaqBrand.current
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        val tile = RoundedCornerShape(if (compact) 12.dp else 18.dp)
         Image(painterResource(R.drawable.ic_launcher), contentDescription = null,
-            modifier = Modifier.size(if (compact) 40.dp else 56.dp).clip(RoundedCornerShape(if (compact) 12.dp else 18.dp)))
+            modifier = Modifier
+                .size(if (compact) 40.dp else 56.dp)
+                .clip(tile)
+                .then(if (onHero) Modifier.border(1.5.dp, brand.signature.copy(alpha = 0.9f), tile) else Modifier))
         Column {
             Text("سبّاق", style = if (compact) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineMedium,
                 color = if (onHero) brand.onHero else MaterialTheme.colorScheme.onBackground)
@@ -96,10 +101,10 @@ internal fun SabbaqCard(
     Card(modifier.fillMaxWidth().shadow(14.dp, shape, ambientColor = colors.primary.copy(alpha = 0.10f), spotColor = colors.primary.copy(alpha = 0.22f)),
         shape = shape,
         colors = CardDefaults.cardColors(containerColor = colors.surface),
-        border = BorderStroke(1.dp, colors.outlineVariant)) {
+        border = BorderStroke(1.dp, if (destructive) colors.error.copy(alpha = 0.35f) else colors.outlineVariant)) {
         Column(Modifier
-            .background(Brush.verticalGradient(listOf(colors.primary.copy(alpha = 0.035f), Color.Transparent), endY = 260f))
-            .padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            .background(Brush.verticalGradient(listOf((if (destructive) colors.error else colors.primary).copy(alpha = 0.04f), Color.Transparent), endY = 260f))
+            .padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (title != null) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (icon != null) SabbaqIconBadge(icon, destructive = destructive)
                 Column(Modifier.weight(1f)) {
@@ -181,7 +186,7 @@ internal fun SabbaqMessage(message: String, isError: Boolean = false, modifier: 
     val (container, content) = when (resolved) {
         SabbaqTone.Error -> colors.errorContainer to colors.onErrorContainer
         SabbaqTone.Success -> brand.successContainer to brand.onSuccessContainer
-        SabbaqTone.Info -> colors.secondaryContainer to colors.onSecondaryContainer
+        SabbaqTone.Info -> colors.primaryContainer to colors.onPrimaryContainer
     }
     val reduced = LocalReducedMotion.current
     val iconScale = remember(message, resolved) { Animatable(if (reduced || resolved == SabbaqTone.Info) 1f else 0.4f) }
@@ -289,8 +294,13 @@ internal fun SabbaqButton(
         SabbaqButtonStyle.Destructive -> Button(onClick, sized, active, interactionSource = interaction,
             colors = colors ?: ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error,
                 contentColor = MaterialTheme.colorScheme.onError), content = label)
-        SabbaqButtonStyle.Secondary -> OutlinedButton(onClick, sized, active, interactionSource = interaction,
-            colors = colors ?: ButtonDefaults.outlinedButtonColors(), content = label)
+        SabbaqButtonStyle.Secondary -> {
+            val scheme = MaterialTheme.colorScheme
+            val resolved = colors ?: ButtonDefaults.outlinedButtonColors(containerColor = scheme.primary.copy(alpha = 0.05f))
+            OutlinedButton(onClick, sized, active, interactionSource = interaction, colors = resolved,
+                border = BorderStroke(1.5.dp, if (active) resolved.contentColor.copy(alpha = 0.55f) else scheme.outlineVariant),
+                content = label)
+        }
         SabbaqButtonStyle.Text -> TextButton(onClick, sized, active, interactionSource = interaction,
             colors = colors ?: ButtonDefaults.textButtonColors(), content = label)
     }
