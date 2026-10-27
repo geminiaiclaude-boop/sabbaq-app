@@ -58,6 +58,7 @@
                         <button id="commercial-policy-tab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="tab-commercial-policy">سياسة العرض</button>
                         <button id="telemetry-tab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="tab-telemetry">تشخيص الشكاوى</button>
                         <button id="profiles-tab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="tab-profiles">ملفات التطبيقات</button>
+                        <button id="notifications-tab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="tab-notifications">إشعارات السائقين</button>
                     </nav>
                 </aside>
 
@@ -170,6 +171,41 @@
                         </form>
                         <div class="field"><label for="profile-body">محتوى الملف (JSON)</label><textarea id="profile-body" dir="ltr" rows="18" spellcheck="false"></textarea></div>
                         <p id="profile-feedback" class="policy-feedback" role="status" aria-live="polite" hidden></p>
+                    </section>
+                    <section id="tab-notifications" class="tab-content" role="tabpanel" aria-labelledby="notifications-tab" hidden>
+                        <div class="section-heading"><div><h3>إشعارات السائقين</h3><p>أرسل رسالة تظهر في مركز إشعارات التطبيق لكل السائقين أو لسائق واحد، وتصل كتنبيه على الجوال أثناء المتابعة.</p></div></div>
+                        <form id="notification-form" class="card notification-form" novalidate>
+                            <div class="notification-audience" aria-live="polite">
+                                <span>المستلم:</span>
+                                <strong id="notification-target">كل السائقين</strong>
+                                <button id="notification-target-clear" class="btn-secondary" type="button" hidden>إرسال للجميع بدلًا من ذلك</button>
+                            </div>
+                            <p class="field-hint">لاختيار سائق واحد اضغط «إرسال إشعار» بجانبه في تبويب السائقين.</p>
+                            <div class="field"><label for="notification-title">العنوان</label><input id="notification-title" maxlength="80" autocomplete="off" required></div>
+                            <div class="field"><label for="notification-body">النص</label><textarea id="notification-body" maxlength="500" rows="4" required></textarea><span id="notification-body-count" class="field-hint">0 / 500</span></div>
+                            <div class="notification-options">
+                                <div class="field"><label for="notification-kind">النوع</label><select id="notification-kind">
+                                    <option value="info">معلومة</option><option value="warning">تنبيه</option><option value="success">خبر سار</option><option value="account">الاشتراك</option><option value="update">تحديث التطبيق</option>
+                                </select></div>
+                                <div class="field"><label for="notification-action">زر في الإشعار</label><select id="notification-action">
+                                    <option value="">بدون زر</option><option value="open_account">فتح حسابي</option><option value="open_setup">إكمال الإعداد</option><option value="open_filters">مراجعة الشروط</option><option value="update_app">تحديث التطبيق</option>
+                                </select></div>
+                                <div class="field"><label for="notification-expiry">ينتهي بعد</label><select id="notification-expiry">
+                                    <option value="">لا ينتهي (يُحذف بعد 90 يومًا)</option><option value="1">يوم</option><option value="3">3 أيام</option><option value="7">أسبوع</option><option value="30">30 يومًا</option>
+                                </select></div>
+                            </div>
+                            <p id="notification-error" class="field-error" role="alert" hidden></p>
+                            <button id="notification-send" type="submit">إرسال الإشعار</button>
+                        </form>
+                        <p id="notification-feedback" class="policy-feedback" role="status" aria-live="polite" hidden></p>
+                        <div class="toolbar toolbar--list"><h4>الإشعارات المرسلة</h4><button id="refresh-notifications" class="btn-secondary" type="button">تحديث</button></div>
+                        <div class="table-wrapper" tabindex="0" role="region" aria-label="الإشعارات المرسلة">
+                            <table>
+                                <caption class="sr-only">الإشعارات المرسلة</caption>
+                                <thead><tr><th scope="col">الوقت</th><th scope="col">المستلم</th><th scope="col">العنوان</th><th scope="col">النوع</th><th scope="col">قرأه</th><th scope="col">إجراءات</th></tr></thead>
+                                <tbody id="notifications-list"></tbody>
+                            </table>
+                        </div>
                     </section>
                     <section id="tab-commercial-policy" class="tab-content" role="tabpanel" aria-labelledby="commercial-policy-tab" hidden>
                         <div class="section-heading">

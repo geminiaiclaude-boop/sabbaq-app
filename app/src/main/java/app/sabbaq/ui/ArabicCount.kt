@@ -46,6 +46,14 @@ internal object ArabicCount {
         else -> "$n إذنًا"
     }
 
+    /** Unread notifications with the adjective agreeing: "إشعار واحد غير مقروء" … "11 إشعارًا غير مقروء". */
+    fun unreadNotifications(n: Int): String = when {
+        n == 1 -> "إشعار واحد غير مقروء"
+        n == 2 -> "إشعاران غير مقروءين"
+        n in 3..10 -> "$n إشعارات غير مقروءة"
+        else -> "$n إشعارًا غير مقروء"
+    }
+
     /** Days: 1 → "يوم واحد", 2 → "يومان", 3..10 → "3 أيام", 11+ → "30 يومًا". */
     fun days(n: Int): String = when {
         n == 1 -> "يوم واحد"

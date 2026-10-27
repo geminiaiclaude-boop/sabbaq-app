@@ -231,3 +231,20 @@ test('على الجوال لا تتحرك اللوحة أفقيًا: صفوف ا
     // Tabs wrap instead of scrolling sideways.
     assert.doesNotMatch(css.slice(css.indexOf('/* ── Phone layout')), /overflow-x:\s*auto/);
 });
+
+test('بث الإشعارات: إرسال لكل السائقين أو لسائق واحد بتأكيد صريح، وعرض وحذف المرسل', () => {
+    const app = read(sourceAdmin, 'app.js');
+    const html = read(sourceAdmin, 'index.html');
+    assert.match(html, /id="notifications-tab"[^>]*aria-controls="tab-notifications"/);
+    assert.match(html, /id="notification-title" maxlength="80"/);
+    assert.match(html, /id="notification-body" maxlength="500"/);
+    assert.match(app, /db\.rpc\('admin_send_notification', \{\s*p_driver: target \? target\.id : null/);
+    assert.match(app, /db\.rpc\('admin_list_notifications', \{ p_limit: 100 \}\)/);
+    assert.match(app, /db\.rpc\('admin_delete_notification', \{ p_id: id \}\)/);
+    // A broadcast reaches every driver: it must never go out without a confirmation.
+    assert.match(app, /if \(!target && !window\.confirm\(/);
+    assert.match(app, /notify\.textContent = 'إرسال إشعار'/);
+    for (const action of ['open_account', 'open_setup', 'open_filters', 'update_app']) {
+        assert.match(html, new RegExp(`value="${action}"`));
+    }
+});

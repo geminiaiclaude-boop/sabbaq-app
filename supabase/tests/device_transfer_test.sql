@@ -77,3 +77,6 @@ reset role;
 
 -- Offer telemetry contract (kept here so the existing CI step runs it).
 \ir offer_telemetry_test.sql
+
+-- In-app notification centre contract (kept here so the existing CI step runs it).
+\ir driver_notifications_test.sql

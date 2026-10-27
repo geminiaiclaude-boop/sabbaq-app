@@ -19,6 +19,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.semantics.Role
@@ -62,6 +63,9 @@ import app.sabbaq.Settings
 import app.sabbaq.ThemeMode
 import app.sabbaq.network.LicenseState
 import app.sabbaq.network.SupabaseClient
+import app.sabbaq.notifications.NotificationAction
+import app.sabbaq.notifications.NotificationCenter
+import app.sabbaq.notifications.NotificationInbox
 import app.sabbaq.service.KeeperService
 import app.sabbaq.stats.OfferDecisionLogStore
 import app.sabbaq.stats.OfferStatsStore
@@ -207,6 +211,7 @@ class MainActivity : ComponentActivity() {
                 Settings.a11yDisclosureAccepted = false
                 stopService(Intent(this@MainActivity, KeeperService::class.java))
                 SupabaseClient.clearSession()
+                NotificationCenter.clear()
                 filterSavePending = false
                 hasUnpersistedFilterChanges = false
                 driverDestinationRequest = null
@@ -385,11 +390,25 @@ internal fun SabbaqShell(
 ) {
     var showThemeMenu by remember { mutableStateOf(false) }
     var confirmLogout by remember { mutableStateOf(false) }
+    var showNotifications by remember { mutableStateOf(false) }
+    val isDriver = isAuthenticated && !isAdmin
+    val inbox by NotificationCenter.state.collectAsState()
     val context = LocalContext.current
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val requestLogout = { confirmLogout = true }
     val closeDrawer = { scope.launch { drawerState.close() } }
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    // Server messages arrive while the app is open: sync on entering the driver panel and on
+    // every return to the foreground.
+    DisposableEffect(isDriver, lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (isDriver && event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) scope.launch { NotificationCenter.refresh() }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(isDriver) { if (!isDriver) showNotifications = false }
 
     BackHandler(enabled = drawerState.isOpen) {
         closeDrawer()
@@ -432,6 +451,7 @@ internal fun SabbaqShell(
                     closeDrawer()
                     requestLogout()
                 },
+                logoutEnabled = allowLogout,
                 onClose = { closeDrawer() },
             )
         },
@@ -442,14 +462,14 @@ internal fun SabbaqShell(
             topBar = {
                 if (showHeader) SabbaqTopBar(
                     themeMode = themeMode,
-                    isAuthenticated = isAuthenticated,
                     onOpenDrawer = { scope.launch { drawerState.open() } },
                     onThemeMenu = { showThemeMenu = true },
                     themeMenuExpanded = showThemeMenu,
                     onDismissThemeMenu = { showThemeMenu = false },
                     onThemeChange = { showThemeMenu = false; onThemeChange(it) },
-                    onRequestLogout = requestLogout,
-                    allowLogout = allowLogout,
+                    showNotificationBell = isDriver,
+                    unreadNotifications = NotificationInbox.unread(inbox),
+                    onOpenNotifications = { showNotifications = true },
                 )
             }
         ) { insets ->
@@ -482,20 +502,33 @@ internal fun SabbaqShell(
         } },
         dismissButton = { TextButton(onClick = { confirmLogout = false }) { Text("البقاء") } }
     )
+    if (showNotifications) NotificationsSheet(
+        onDismiss = { showNotifications = false },
+        onAction = { action ->
+            showNotifications = false
+            when (action) {
+                NotificationAction.OPEN_ACCOUNT -> onOpenDriverDestination(DriverDestination.Account)
+                NotificationAction.OPEN_SETUP -> onOpenDriverDestination(DriverDestination.Setup)
+                NotificationAction.OPEN_FILTERS -> onOpenDriverDestination(DriverDestination.Filters)
+                NotificationAction.UPDATE_APP ->
+                    PublicLinks.open(context, "https://play.google.com/store/apps/details?id=${BuildConfig.APPLICATION_ID}")
+            }
+        },
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SabbaqTopBar(
     themeMode: ThemeMode,
-    isAuthenticated: Boolean,
     onOpenDrawer: () -> Unit,
     onThemeMenu: () -> Unit,
     themeMenuExpanded: Boolean,
     onDismissThemeMenu: () -> Unit,
     onThemeChange: (ThemeMode) -> Unit,
-    onRequestLogout: () -> Unit,
-    allowLogout: Boolean,
+    showNotificationBell: Boolean,
+    unreadNotifications: Int,
+    onOpenNotifications: () -> Unit,
 ) {
     val brand = LocalSabbaqBrand.current
     // Deep purple brand header in both themes, finished by the signature yellow rule.
@@ -540,11 +573,7 @@ private fun SabbaqTopBar(
                             }
                         }
                     }
-                    if (isAuthenticated) {
-                        IconButton(onClick = onRequestLogout, enabled = allowLogout, modifier = Modifier.size(52.dp)) {
-                            Icon(Icons.AutoMirrored.Outlined.Logout, contentDescription = "تسجيل الخروج")
-                        }
-                    }
+                    if (showNotificationBell) NotificationBell(unread = unreadNotifications, onClick = onOpenNotifications)
                 },
             )
             Box(Modifier.fillMaxWidth().height(3.dp).background(brand.signature))
@@ -585,6 +614,7 @@ private fun SabbaqDrawerSheet(
     onOpenPrivacy: () -> Unit,
     onOpenDeletion: () -> Unit,
     onRequestLogout: () -> Unit,
+    logoutEnabled: Boolean,
     onClose: () -> Unit,
 ) {
     val brand = LocalSabbaqBrand.current
@@ -669,7 +699,8 @@ private fun SabbaqDrawerSheet(
         Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             if (isAuthenticated) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                DrawerEntry("تسجيل الخروج", Icons.AutoMirrored.Outlined.Logout, selected = false, destructive = true, onClick = onRequestLogout)
+                DrawerEntry("تسجيل الخروج", Icons.AutoMirrored.Outlined.Logout, selected = false, destructive = true,
+                    enabled = logoutEnabled, onClick = onRequestLogout)
             }
             Text(
                 "سبّاق ${BuildConfig.VERSION_NAME}",
@@ -710,6 +741,7 @@ private fun DrawerEntry(
     selected: Boolean,
     onClick: () -> Unit,
     destructive: Boolean = false,
+    enabled: Boolean = true,
 ) {
     val colors = MaterialTheme.colorScheme
     val tint = when {
@@ -723,7 +755,8 @@ private fun DrawerEntry(
             .heightIn(min = 52.dp)
             .clip(RoundedCornerShape(16.dp))
             .background(if (selected) colors.primaryContainer.copy(alpha = 0.7f) else Color.Transparent)
-            .selectable(selected = selected, role = Role.Tab, onClick = onClick)
+            .selectable(selected = selected, enabled = enabled, role = Role.Tab, onClick = onClick)
+            .alpha(if (enabled) 1f else 0.45f)
             .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),

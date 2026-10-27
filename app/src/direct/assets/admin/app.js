@@ -34,13 +34,18 @@
         idleTimer: null,
         signingOut: false,
         loginFailures: 0,
-        loginBlockedUntil: 0
+        loginBlockedUntil: 0,
+        notificationDriver: null,
+        notificationsLoaded: false
     };
     const el = {};
 
     document.addEventListener('DOMContentLoaded', initialize);
 
     const WHATSAPP_PATTERN = /^[1-9]\d{7,14}$/;
+    const NOTIFICATION_KINDS = { info: 'معلومة', warning: 'تنبيه', success: 'خبر سار', account: 'الاشتراك', update: 'تحديث التطبيق' };
+    const NOTIFICATION_ACTIONS = new Set(['', 'open_account', 'open_setup', 'open_filters', 'update_app']);
+    const NOTIFICATION_EXPIRY_DAYS = new Set(['', '1', '3', '7', '30']);
 
     function initialize() {
         Object.assign(el, {
@@ -107,7 +112,23 @@
             commercialPolicyFeedback: document.getElementById('commercial-policy-feedback'),
             policyUpdatedAt: document.getElementById('policy-updated-at'),
             saveCommercialPolicy: document.getElementById('save-commercial-policy'),
-            retryCommercialPolicy: document.getElementById('retry-commercial-policy')
+            retryCommercialPolicy: document.getElementById('retry-commercial-policy'),
+            notificationsTab: document.getElementById('notifications-tab'),
+            notificationsPanel: document.getElementById('tab-notifications'),
+            notificationForm: document.getElementById('notification-form'),
+            notificationTarget: document.getElementById('notification-target'),
+            notificationTargetClear: document.getElementById('notification-target-clear'),
+            notificationTitle: document.getElementById('notification-title'),
+            notificationBody: document.getElementById('notification-body'),
+            notificationBodyCount: document.getElementById('notification-body-count'),
+            notificationKind: document.getElementById('notification-kind'),
+            notificationAction: document.getElementById('notification-action'),
+            notificationExpiry: document.getElementById('notification-expiry'),
+            notificationError: document.getElementById('notification-error'),
+            notificationSend: document.getElementById('notification-send'),
+            notificationFeedback: document.getElementById('notification-feedback'),
+            refreshNotifications: document.getElementById('refresh-notifications'),
+            notificationsList: document.getElementById('notifications-list')
         });
 
         if (!isValidConfiguration(window.SABBAQ_CONFIG)) {
@@ -237,6 +258,15 @@
         el.profileSelect.addEventListener('change', showSelectedProfile);
         el.profileReload.addEventListener('click', () => { void runWithButton(el.profileReload, loadProfiles); });
         el.profileForm.addEventListener('submit', handleProfileSave);
+        el.notificationsTab.addEventListener('click', () => { void showTab('notifications'); });
+        el.notificationForm.addEventListener('submit', handleNotificationSend);
+        el.notificationTargetClear.addEventListener('click', () => setNotificationTarget(null));
+        el.refreshNotifications.addEventListener('click', () => { void runWithButton(el.refreshNotifications, loadNotifications); });
+        el.notificationBody.addEventListener('input', () => {
+            el.notificationBodyCount.textContent = `${el.notificationBody.value.length} / 500`;
+            el.notificationError.hidden = true;
+        });
+        el.notificationTitle.addEventListener('input', () => { el.notificationError.hidden = true; });
         el.refreshDrivers.addEventListener('click', () => { void loadDrivers({ reset: true }); });
         el.refreshCodes.addEventListener('click', () => { void loadCodes({ reset: true }); });
         el.driversPrevious.addEventListener('click', () => { void movePage('drivers', -1); });
@@ -465,7 +495,7 @@
     }
 
     async function showTab(tabName) {
-        if (!['drivers', 'codes', 'commercial-policy', 'telemetry', 'profiles'].includes(tabName)) return;
+        if (!['drivers', 'codes', 'commercial-policy', 'telemetry', 'profiles', 'notifications'].includes(tabName)) return;
         state.activeTab = tabName;
         const showingDrivers = tabName === 'drivers';
         const showingCodes = tabName === 'codes';
@@ -474,20 +504,24 @@
         el.commercialPolicyPanel.hidden = tabName !== 'commercial-policy';
         el.telemetryPanel.hidden = tabName !== 'telemetry';
         el.profilesPanel.hidden = tabName !== 'profiles';
+        el.notificationsPanel.hidden = tabName !== 'notifications';
         el.driversTab.classList.toggle('active', showingDrivers);
         el.codesTab.classList.toggle('active', showingCodes);
         el.commercialPolicyTab.classList.toggle('active', tabName === 'commercial-policy');
         el.telemetryTab.classList.toggle('active', tabName === 'telemetry');
         el.profilesTab.classList.toggle('active', tabName === 'profiles');
+        el.notificationsTab.classList.toggle('active', tabName === 'notifications');
         el.driversTab.setAttribute('aria-selected', String(showingDrivers));
         el.codesTab.setAttribute('aria-selected', String(showingCodes));
         el.commercialPolicyTab.setAttribute('aria-selected', String(tabName === 'commercial-policy'));
         el.telemetryTab.setAttribute('aria-selected', String(tabName === 'telemetry'));
         el.profilesTab.setAttribute('aria-selected', String(tabName === 'profiles'));
+        el.notificationsTab.setAttribute('aria-selected', String(tabName === 'notifications'));
         if (showingDrivers) await loadDrivers();
         else if (showingCodes) await loadCodes();
         else if (tabName === 'commercial-policy' && !state.commercialPolicyLoaded) await loadCommercialPolicy({ announce: true });
         else if (tabName === 'profiles' && !state.profiles) await loadProfiles();
+        else if (tabName === 'notifications' && !state.notificationsLoaded) await loadNotifications();
     }
 
     async function loadProfiles() {
@@ -1219,16 +1253,156 @@
             diagnose.className = 'btn-secondary';
             diagnose.textContent = 'تشخيص الشكوى';
             diagnose.addEventListener('click', () => { void diagnoseDriver(driver, diagnose); });
+            const notify = document.createElement('button');
+            notify.type = 'button';
+            notify.className = 'btn-secondary';
+            notify.textContent = 'إرسال إشعار';
+            notify.addEventListener('click', () => { void notifyDriver(driver); });
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'btn-danger';
             button.textContent = 'فك ربط الجهاز';
             button.addEventListener('click', () => { void resetDevice(driver.id, button); });
-            actionCell.append(diagnose, button);
+            actionCell.append(diagnose, notify, button);
             row.append(actionCell);
             el.driversList.append(row);
         });
         labelCells(el.driversList);
+    }
+
+    async function notifyDriver(driver) {
+        if (typeof driver?.id !== 'string' || !UUID_PATTERN.test(driver.id)) {
+            setNotice('تعذر التحقق من معرّف السائق المحدد.', 'error');
+            return;
+        }
+        setNotificationTarget({ id: driver.id, name: displayValue(driver.full_name, 'سائق') });
+        await showTab('notifications');
+        el.notificationTitle.focus();
+    }
+
+    function setNotificationTarget(driver) {
+        state.notificationDriver = driver;
+        el.notificationTarget.textContent = driver ? driver.name : 'كل السائقين';
+        el.notificationTargetClear.hidden = !driver;
+        el.notificationSend.textContent = driver ? `إرسال إلى ${driver.name}` : 'إرسال لكل السائقين';
+    }
+
+    function readNotificationValues() {
+        const title = el.notificationTitle.value.trim();
+        const body = el.notificationBody.value.trim();
+        const kind = el.notificationKind.value;
+        const action = el.notificationAction.value;
+        const expiry = el.notificationExpiry.value;
+        if (title.length < 2 || title.length > 80) return { error: 'العنوان بين حرفين و80 حرفًا.', field: el.notificationTitle };
+        if (body.length < 2 || body.length > 500) return { error: 'النص بين حرفين و500 حرف.', field: el.notificationBody };
+        if (!Object.hasOwn(NOTIFICATION_KINDS, kind) || !NOTIFICATION_ACTIONS.has(action) || !NOTIFICATION_EXPIRY_DAYS.has(expiry)) {
+            return { error: 'اختيار غير صالح؛ أعد تحميل الصفحة.', field: el.notificationKind };
+        }
+        const expiresAt = expiry ? new Date(Date.now() + Number(expiry) * 24 * 60 * 60 * 1000).toISOString() : null;
+        return { title, body, kind, action: action || null, expiresAt };
+    }
+
+    async function handleNotificationSend(event) {
+        event.preventDefault();
+        const values = readNotificationValues();
+        if (values.error) {
+            el.notificationError.textContent = values.error;
+            el.notificationError.hidden = false;
+            values.field.focus();
+            return;
+        }
+        const target = state.notificationDriver;
+        if (!target && !window.confirm('سيصل هذا الإشعار إلى كل السائقين. هل تريد الإرسال؟')) return;
+        await runWithButton(el.notificationSend, async () => {
+            if (!await ensureActiveSession()) return;
+            try {
+                const { error } = await db.rpc('admin_send_notification', {
+                    p_driver: target ? target.id : null,
+                    p_title: values.title,
+                    p_body: values.body,
+                    p_kind: values.kind,
+                    p_action: values.action,
+                    p_expires_at: values.expiresAt
+                });
+                if (error) throw error;
+                setNotificationFeedback(target ? `أُرسل الإشعار إلى ${target.name}.` : 'أُرسل الإشعار لكل السائقين.', 'success');
+                el.notificationForm.reset();
+                el.notificationBodyCount.textContent = '0 / 500';
+                setNotificationTarget(null);
+                await loadNotifications();
+            } catch (error) {
+                if (isAuthorizationError(error)) await signOut('انتهت صلاحية جلسة المشرف.');
+                else setNotificationFeedback(error?.code === '22023'
+                    ? 'رفض الخادم الإشعار: تحقق من العنوان والنص والمستلم.'
+                    : 'تعذر إرسال الإشعار. تحقق من الاتصال ثم أعد المحاولة.', 'error');
+            }
+        });
+    }
+
+    async function loadNotifications() {
+        if (!await ensureActiveSession()) return;
+        el.notificationsList.replaceChildren();
+        appendEmptyRow(el.notificationsList, 6, 'جارٍ التحميل…');
+        try {
+            const { data, error } = await db.rpc('admin_list_notifications', { p_limit: 100 });
+            if (error) throw error;
+            state.notificationsLoaded = true;
+            renderNotifications(Array.isArray(data) ? data : []);
+        } catch (error) {
+            if (isAuthorizationError(error)) await signOut('انتهت صلاحية جلسة المشرف.');
+            else {
+                el.notificationsList.replaceChildren();
+                appendEmptyRow(el.notificationsList, 6, 'تعذر تحميل الإشعارات المرسلة.');
+            }
+        }
+    }
+
+    function renderNotifications(rows) {
+        el.notificationsList.replaceChildren();
+        if (rows.length === 0) {
+            appendEmptyRow(el.notificationsList, 6, 'لم يُرسل أي إشعار بعد.');
+            return;
+        }
+        rows.forEach((item) => {
+            const row = document.createElement('tr');
+            appendCell(row, formatDateTime(item.created_at), 'ltr-cell');
+            appendCell(row, item.driver_id ? displayValue(item.driver_name, 'سائق') : 'كل السائقين');
+            appendCell(row, displayValue(item.title));
+            appendCell(row, NOTIFICATION_KINDS[item.kind] || 'معلومة');
+            appendCell(row, String(Number.isFinite(Number(item.read_count)) ? Number(item.read_count) : 0));
+            const actionCell = document.createElement('td');
+            const remove = document.createElement('button');
+            remove.type = 'button';
+            remove.className = 'btn-danger';
+            remove.textContent = 'حذف';
+            remove.addEventListener('click', () => { void deleteNotification(item.id, remove); });
+            actionCell.append(remove);
+            row.append(actionCell);
+            el.notificationsList.append(row);
+        });
+        labelCells(el.notificationsList);
+    }
+
+    async function deleteNotification(id, button) {
+        if (typeof id !== 'string' || !UUID_PATTERN.test(id)) return;
+        if (!window.confirm('سيختفي هذا الإشعار من تطبيقات السائقين. هل تريد الحذف؟')) return;
+        await runWithButton(button, async () => {
+            if (!await ensureActiveSession()) return;
+            try {
+                const { error } = await db.rpc('admin_delete_notification', { p_id: id });
+                if (error) throw error;
+                setNotificationFeedback('حُذف الإشعار.', 'success');
+                await loadNotifications();
+            } catch (error) {
+                await handleOperationError(error, 'تعذر حذف الإشعار.');
+            }
+        });
+    }
+
+    function setNotificationFeedback(message, type) {
+        el.notificationFeedback.textContent = message;
+        el.notificationFeedback.className = `policy-feedback policy-feedback--${type}`;
+        el.notificationFeedback.hidden = false;
     }
 
     async function resetDevice(id, button) {

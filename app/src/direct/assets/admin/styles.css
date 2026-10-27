@@ -889,6 +889,29 @@ button:active:not(:disabled) {
     }
 }
 
+.notification-form {
+    display: grid;
+    gap: 14px;
+    margin-block-end: 20px;
+}
+
+.notification-audience {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    padding: 10px 14px;
+    border-inline-start: 4px solid var(--accent);
+    border-radius: 12px;
+    background: var(--primary-soft);
+}
+
+.notification-options {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+}
+
 @media (prefers-color-scheme: dark) {
     :root {
         --bg: #120B1F;

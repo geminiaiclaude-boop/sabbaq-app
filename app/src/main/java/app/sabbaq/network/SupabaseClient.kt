@@ -21,6 +21,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -179,6 +180,35 @@ object SupabaseClient {
                 ?: return@networkCall Result.failure(ClientRequestException("استجابة ملفات التطبيقات غير صالحة"))
             val bodies = JsonArray(rows.mapNotNull { (it as? JsonObject)?.get("body") as? JsonObject })
             Result.success(buildJsonObject { put("profiles", bodies) }.toString())
+        }
+    }
+
+    /** The signed-in driver's notifications (own and broadcasts) as the raw `my_notifications` array. */
+    suspend fun fetchNotifications(): Result<String> {
+        if (refreshToken != null && SystemClock.elapsedRealtime() - accessIssuedAt > RENEW_AFTER_MILLIS) renewAccessToken()
+        val session = sessions.snapshot()
+            ?: return Result.failure(ClientRequestException("انتهت الجلسة؛ سجّل الدخول من جديد"))
+        return networkCall {
+            val request = authenticatedRequest(endpoint("rest/v1/rpc/my_notifications"), session.token,
+                buildJsonObject { put("p_limit", 50) }.toString().toRequestBody(jsonMediaType))
+            val response = execute(request)
+            if (response.code == 401) return@networkCall Result.failure(ClientRequestException("انتهت الجلسة"))
+            if (!response.isSuccessful) return@networkCall httpFailure("قراءة الإشعارات", response)
+            Result.success(response.body)
+        }
+    }
+
+    /** Sends read receipts; ids the server does not show to this driver are ignored there. */
+    suspend fun markNotificationsRead(ids: Collection<String>): Result<Unit> {
+        if (ids.isEmpty()) return Result.success(Unit)
+        val session = sessions.snapshot()
+            ?: return Result.failure(ClientRequestException("انتهت الجلسة؛ سجّل الدخول من جديد"))
+        return networkCall {
+            val request = authenticatedRequest(endpoint("rest/v1/rpc/mark_notifications_read"), session.token,
+                buildJsonObject { put("p_ids", JsonArray(ids.take(200).map { JsonPrimitive(it) })) }.toString().toRequestBody(jsonMediaType))
+            val response = execute(request)
+            if (!response.isSuccessful) return@networkCall httpFailure("تحديث الإشعارات", response)
+            Result.success(Unit)
         }
     }
 

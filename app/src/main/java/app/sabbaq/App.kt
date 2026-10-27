@@ -2,6 +2,7 @@ package app.sabbaq
 
 import android.app.Application
 import app.sabbaq.network.SupabaseClient
+import app.sabbaq.notifications.NotificationCenter
 import app.sabbaq.service.KeeperService
 import app.sabbaq.service.ProfileRepository
 import app.sabbaq.stats.OfferDecisionLogStore
@@ -14,6 +15,7 @@ class App : Application() {
         CrashLog.install(this)
         Settings.init(this)
         runCatching { OfferDecisionLogStore.init(this) }
+        runCatching { NotificationCenter.init(this) }
         runCatching { ProfileRepository.init(this) }
         runCatching { TelemetryRepository.init(this) }
         SupabaseClient.init(this)

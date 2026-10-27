@@ -14,6 +14,7 @@ import android.view.accessibility.AccessibilityNodeInfo
 import app.sabbaq.Settings
 import app.sabbaq.core.*
 import app.sabbaq.network.SupabaseClient
+import app.sabbaq.notifications.NotificationCenter
 import app.sabbaq.stats.DecisionLogOutcome
 import app.sabbaq.stats.OfferDecisionLogStore
 import app.sabbaq.stats.OfferStatsStore
@@ -264,6 +265,7 @@ class SabbaqA11yService : AccessibilityService() {
                         if (packageName == JEENY_PACKAGE) jeenyPipeline.markConfirmationResolved()
                         pendingHistoryProfileId?.let { profileId -> runCatching { OfferDecisionLogStore.recordOutcome(profileId, DecisionLogOutcome.ACCEPTED_CONFIRMED) } }
                         runCatching { OfferStatsStore.recordAcceptedConfirmed() }
+                        runCatching { NotificationCenter.postAcceptedRide(pendingVoiceDetails?.first, pendingVoiceDetails?.second) }
                         pendingVoiceDetails?.let { (fare, pickupKm) -> OfferEvents.accepted(fare, pickupKm) }
                         pendingVoiceDetails = null
                     }
