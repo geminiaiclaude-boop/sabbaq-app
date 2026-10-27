@@ -89,6 +89,11 @@ object OfferStatsStore {
         }
     }
 
+    /** Seen and accepted offers on one local day; null when nothing was recorded that day. */
+    fun totalsFor(date: LocalDate): Pair<Long, Long>? = synchronized(lock) {
+        daily[date]?.let { it.visibleOffers to it.acceptedOffers }
+    }
+
     fun recordAcceptedConfirmed() = synchronized(lock) {
         val today = LocalDate.now()
         rollLocked(today)

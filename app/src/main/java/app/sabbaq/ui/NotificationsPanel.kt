@@ -54,6 +54,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.sabbaq.BuildConfig
 import app.sabbaq.notifications.AppNotification
+import app.sabbaq.notifications.InboxState
 import app.sabbaq.notifications.NotificationAction
 import app.sabbaq.notifications.NotificationCenter
 import app.sabbaq.notifications.NotificationKind
@@ -87,7 +88,9 @@ internal fun NotificationBell(unread: Int, onClick: () -> Unit) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun NotificationsSheet(onDismiss: () -> Unit, onAction: (NotificationAction) -> Unit) {
-    val inbox by NotificationCenter.state.collectAsState()
+    val stored by NotificationCenter.state.collectAsState()
+    // Another account's inbox is never shown, not even for the moment before the sync replaces it.
+    val inbox = if (NotificationCenter.belongsToCurrentAccount(stored)) stored else InboxState()
     var refreshing by remember { mutableStateOf(true) }
     var syncFailed by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {

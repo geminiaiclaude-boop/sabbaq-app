@@ -468,7 +468,7 @@ internal fun SabbaqShell(
                     onDismissThemeMenu = { showThemeMenu = false },
                     onThemeChange = { showThemeMenu = false; onThemeChange(it) },
                     showNotificationBell = isDriver,
-                    unreadNotifications = NotificationInbox.unread(inbox),
+                    unreadNotifications = if (NotificationCenter.belongsToCurrentAccount(inbox)) NotificationInbox.unread(inbox) else 0,
                     onOpenNotifications = { showNotifications = true },
                 )
             }

@@ -1,8 +1,6 @@
 package app.sabbaq.notifications
 
-import app.sabbaq.network.LicenseState
 import java.time.Instant
-import java.time.ZoneOffset
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -51,6 +49,9 @@ data class InboxState(
     val items: List<AppNotification> = emptyList(),
     val pendingReadIds: Set<String> = emptySet(),
     val dismissedIds: Set<String> = emptySet(),
+    /** [app.sabbaq.network.SupabaseClient.accountKey] of the account this inbox belongs to. */
+    val owner: String? = null,
+    val account: AccountMark = AccountMark(),
 )
 
 /** Pure inbox rules; [NotificationCenter] owns persistence, threading and the network. */
@@ -58,7 +59,6 @@ object NotificationInbox {
     const val MAX_ITEMS = 100
     const val RETENTION_MS = 30L * 24 * 60 * 60 * 1000
     const val DEFAULT_DEDUPE_WINDOW_MS = 10L * 60 * 1000
-    private const val ENDING_SOON_MS = 2L * 24 * 60 * 60 * 1000
     private const val MAX_DISMISSED_LOCAL = 50
     private const val LOCAL_PREFIX = "local:"
 
@@ -157,25 +157,6 @@ object NotificationInbox {
                 )
             }.getOrNull()
         }
-    }
-
-    /** A reminder while the trial or subscription has two days or less left; one per end date. */
-    fun subscriptionReminder(state: LicenseState?, validUntil: Instant?, now: Long): AppNotification? {
-        if (state == null || validUntil == null || !state.isValidState) return null
-        val left = validUntil.toEpochMilli() - now
-        if (left <= 0 || left > ENDING_SOON_MS) return null
-        val trial = state == LicenseState.TRIAL
-        val day = validUntil.atOffset(ZoneOffset.UTC).toLocalDate()
-        return AppNotification(
-            id = "local:sub-ending:$day",
-            title = if (trial) "تنتهي تجربتك قريبًا" else "ينتهي اشتراكك قريبًا",
-            body = if (trial) "اشترك قبل انتهاء التجربة حتى لا تتوقف متابعة الطلبات."
-                else "جدّد اشتراكك قبل انتهائه حتى لا تتوقف متابعة الطلبات.",
-            kind = NotificationKind.ACCOUNT,
-            action = NotificationAction.OPEN_ACCOUNT,
-            createdAtEpochMs = now,
-            dedupeKey = "sub-ending:$day",
-        )
     }
 
     private fun kindFromWire(value: String?): NotificationKind = when (value) {

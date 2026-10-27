@@ -4,8 +4,6 @@ import app.sabbaq.network.LicenseState
 import java.time.Instant
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -54,7 +52,7 @@ class NotificationInboxTest {
         val dismissed = NotificationInbox.dismiss(merged, "s1")
         val again = NotificationInbox.mergeServer(dismissed, listOf(server("s1")), now)
         assertTrue(again.items.isEmpty())
-        val reminder = NotificationInbox.subscriptionReminder(LicenseState.TRIAL, Instant.ofEpochMilli(now + 3_600_000), now)!!
+        val reminder = NotificationRules.endingSoon(LicenseState.TRIAL, Instant.ofEpochMilli(now + 3_600_000), now)!!
         val withReminder = NotificationInbox.addLocal(again, reminder, now)
         val noReminder = NotificationInbox.dismiss(withReminder, reminder.id)
         assertTrue(NotificationInbox.addLocal(noReminder, reminder, now + 60_000, Long.MAX_VALUE).items.isEmpty())
@@ -93,17 +91,5 @@ class NotificationInboxTest {
         assertNull(parsed[1].action)
         assertTrue(parsed[1].read)
         assertTrue(NotificationInbox.parseServer(json, "{oops").isEmpty())
-    }
-
-    @Test
-    fun `subscription reminder only in the last two days of a valid licence`() {
-        val soon = Instant.ofEpochMilli(now + 24 * 3_600_000L)
-        assertNotNull(NotificationInbox.subscriptionReminder(LicenseState.ACTIVE, soon, now))
-        assertNull(NotificationInbox.subscriptionReminder(LicenseState.ACTIVE, Instant.ofEpochMilli(now + 5 * 24 * 3_600_000L), now))
-        assertNull(NotificationInbox.subscriptionReminder(LicenseState.EXPIRED, soon, now))
-        assertNull(NotificationInbox.subscriptionReminder(LicenseState.ACTIVE, Instant.ofEpochMilli(now - 1), now))
-        val trial = NotificationInbox.subscriptionReminder(LicenseState.TRIAL, soon, now)!!
-        assertEquals(NotificationAction.OPEN_ACCOUNT, trial.action)
-        assertFalse(trial.read)
     }
 }

@@ -133,6 +133,26 @@ object SupabaseClient {
 
     fun hasRedeemableSession(): Boolean = sessions.snapshot()?.deviceId != null
 
+    /** True when the last license answer named a minimum version newer than this build. */
+    @Volatile var appUpdateRequired: Boolean = false
+        private set
+
+    /**
+     * A stable, non-reversible key for the signed-in account (SHA-256 of the token's `sub`), so
+     * device-local data such as the notification inbox is never shown to another account. Read
+     * locally from the current token; null without a session.
+     */
+    fun accountKey(): String? {
+        val token = sessions.snapshot()?.token ?: return null
+        val payload = token.split('.').getOrNull(1) ?: return null
+        val subject = runCatching {
+            val claims = json.parseToJsonElement(String(java.util.Base64.getUrlDecoder().decode(payload.padEnd((payload.length + 3) / 4 * 4, '=')), Charsets.UTF_8))
+            (claims as? JsonObject)?.get("sub")?.jsonPrimitive?.contentOrNull
+        }.getOrNull()?.takeIf { it.isNotBlank() } ?: return null
+        return java.security.MessageDigest.getInstance("SHA-256").digest(subject.toByteArray(Charsets.UTF_8))
+            .joinToString("") { byte -> "%02x".format(Locale.ROOT, byte.toInt() and 0xff) }
+    }
+
     /** فحص محلي فقط؛ لا ينفّذ اتصالًا من مسار أحداث إمكانية الوصول. */
     fun hasValidLicense(): Boolean = sessions.hasValidLicense()
 
@@ -876,6 +896,7 @@ object SupabaseClient {
         val status = parseLicenseStatus(body)
             ?: return Result.failure(ClientRequestException("استجابة حالة الترخيص غير صالحة"))
         if (!sessions.updateSubscriptionIfMatches(token, status)) return staleSessionFailure()
+        appUpdateRequired = status.minimumVersionCode?.let { it > BuildConfig.VERSION_CODE } == true
 
         if (!status.state.canBindCandidateDevice) {
             sessions.invalidateLicenseIfMatches(token)

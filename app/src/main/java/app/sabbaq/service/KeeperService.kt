@@ -25,9 +25,8 @@ import androidx.core.app.ServiceCompat
 import app.sabbaq.Settings
 import app.sabbaq.core.TelemetryStage
 import app.sabbaq.network.SupabaseClient
-import app.sabbaq.notifications.NotificationAction
 import app.sabbaq.notifications.NotificationCenter
-import app.sabbaq.notifications.NotificationKind
+import app.sabbaq.notifications.NotificationTemplates
 import app.sabbaq.telemetry.TelemetryRepository
 import app.sabbaq.voice.VoiceAnnouncer
 import app.sabbaq.voice.VoiceKind
@@ -285,7 +284,7 @@ class KeeperService : Service() {
         VoiceAnnouncer.announce(VoiceKind.Problem, VoiceRules.line(cause))
         val stopText = VoiceRules.line(cause).removePrefix("توقف سبّاق. ")
         notifyAlert(STOP_NOTIFICATION_ID, "توقفت متابعة الطلبات", stopText)
-        NotificationCenter.post("توقفت متابعة الطلبات", stopText, NotificationKind.WARNING, NotificationAction.OPEN_SETUP, dedupeKey = "monitoring-stopped")
+        NotificationCenter.post(NotificationTemplates.monitoringStopped(stopText, System.currentTimeMillis()))
     }
 
     /** The engine cannot accept anything while its permission is off: warn once per change. */
@@ -296,8 +295,7 @@ class KeeperService : Service() {
         if (!on && before != false) {
             VoiceAnnouncer.announce(VoiceKind.Problem, VoiceLines.ACCESSIBILITY_OFF)
             notifyAlert(A11Y_NOTIFICATION_ID, "إذن متابعة الطلبات مغلق", "لن يقبل سبّاق أي طلب حتى تفعّله. اضغط لفتح التطبيق.")
-            NotificationCenter.post("إذن متابعة الطلبات مغلق", "لن يقبل سبّاق أي طلب حتى تفعّل الإذن من الإعداد.",
-                NotificationKind.WARNING, NotificationAction.OPEN_SETUP, dedupeKey = "accessibility-off")
+            NotificationCenter.post(NotificationTemplates.accessibilityOff(System.currentTimeMillis()))
         } else if (on && before == false) {
             VoiceAnnouncer.announce(VoiceKind.Problem, VoiceLines.ACCESSIBILITY_BACK)
             runCatching { getSystemService(NotificationManager::class.java)?.cancel(A11Y_NOTIFICATION_ID) }
