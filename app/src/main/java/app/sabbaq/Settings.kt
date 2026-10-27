@@ -17,6 +17,9 @@ object Settings {
     @Volatile
     private var cachedFilters: Filters? = null
 
+    /** Saved filters may carry fields a later release removed; they must not reset the rest. */
+    private val storedJson = Json { ignoreUnknownKeys = true }
+
     fun init(context: Context) {
         synchronized(this) {
             preferences = context.applicationContext.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
@@ -37,7 +40,7 @@ object Settings {
             cachedFilters ?: run {
                 val stored = prefs().getString(KEY_FILTERS, null)
                 val value = try {
-                    stored?.let { Json.decodeFromString<Filters>(it) } ?: Filters()
+                    stored?.let { storedJson.decodeFromString<Filters>(it) } ?: Filters()
                 } catch (_: Exception) {
                     Filters()
                 }

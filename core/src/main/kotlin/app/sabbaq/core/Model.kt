@@ -94,8 +94,6 @@ data class Offer(
     val tripMinutes: Int?,
     val addresses: List<String>,
     val texts: List<String>,
-    /** Coordinates supplied by a trusted platform adapter or an explicit local alias. */
-    val destinationPoint: GeoPoint? = null,
 ) {
     /** Parser-provided address lines contain pickup and destination when both are visible. */
     val destinationAvailable: Boolean get() = addresses.size >= 2

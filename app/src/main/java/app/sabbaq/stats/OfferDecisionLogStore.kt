@@ -36,7 +36,10 @@ object OfferDecisionLogStore {
         if (prefs == null) {
             prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             val raw = prefs?.getString(KEY, null)?.takeIf { it.length <= MAX_CHARS }
-            entries = runCatching { raw?.let { json.decodeFromString<List<OfferDecisionLogEntry>>(it) }.orEmpty() }
+            entries = runCatching {
+                raw?.let { json.decodeFromString<List<OfferDecisionLogEntry>>(StoredReasonCodes.dropRetired(json, it, "reasons")) }
+                    .orEmpty()
+            }
                 .getOrDefault(emptyList())
                 .filter { it.timestampEpochMs <= System.currentTimeMillis() &&
                     System.currentTimeMillis() - it.timestampEpochMs <= MAX_AGE_MS }

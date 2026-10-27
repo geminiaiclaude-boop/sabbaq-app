@@ -120,7 +120,10 @@ object OfferStatsStore {
     private fun loadLocked() {
         val raw = preferences?.getString(KEY_DAILY_AGGREGATES, null)
             ?.takeIf { it.length <= MAX_SERIALIZED_CHARS }
-        val decoded = runCatching { raw?.let { json.decodeFromString<List<OfferStatsDay>>(it) }.orEmpty() }
+        val decoded = runCatching {
+            raw?.let { json.decodeFromString<List<OfferStatsDay>>(StoredReasonCodes.dropRetired(json, it, "rejectionsByReason")) }
+                .orEmpty()
+        }
             .getOrDefault(emptyList())
         daily = decoded.mapNotNull { row ->
             runCatching {

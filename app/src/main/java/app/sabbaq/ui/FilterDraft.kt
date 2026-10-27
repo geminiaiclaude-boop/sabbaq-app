@@ -41,10 +41,6 @@ class FilterDraft private constructor(
     private val original: Filters,
     private val initialExcludeKeywords: String,
     val combination: FilterCombination = FilterCombination.ALL,
-    val destinationZones: String = "",
-    val destinationAliases: String = "",
-    val smartDestination: String = "",
-    val destinationCorridor: String = "",
 ) {
     /**
      * نسخة immutable مناسبة لتحديث حقل واحد من واجهة Compose من دون كشف [original].
@@ -75,10 +71,6 @@ class FilterDraft private constructor(
         perKmBasis: PerKmBasis = this.perKmBasis,
         scheduleEnabled: Boolean = this.scheduleEnabled,
         combination: FilterCombination = this.combination,
-        destinationZones: String = this.destinationZones,
-        destinationAliases: String = this.destinationAliases,
-        smartDestination: String = this.smartDestination,
-        destinationCorridor: String = this.destinationCorridor,
     ): FilterDraft = FilterDraft(
         minFare = minFare,
         maxFare = maxFare,
@@ -107,10 +99,6 @@ class FilterDraft private constructor(
         original = original,
         initialExcludeKeywords = initialExcludeKeywords,
         combination = combination,
-        destinationZones = destinationZones,
-        destinationAliases = destinationAliases,
-        smartDestination = smartDestination,
-        destinationCorridor = destinationCorridor,
     )
 
     /**
@@ -158,11 +146,6 @@ class FilterDraft private constructor(
             errors["excludeKeywords"] = "الكلمات المستبعدة أطول من الحد المسموح."
         }
 
-        val zones = DestinationRuleTextCodec.parseZones(destinationZones, errors)
-        val aliases = DestinationRuleTextCodec.parseAliases(destinationAliases, errors)
-        val target = DestinationRuleTextCodec.parseTarget(smartDestination, errors)
-        val corridor = DestinationRuleTextCodec.parseCorridor(destinationCorridor, errors)
-
         val schedule = if (scheduleEnabled) {
             val start = scheduleMinute("scheduleStart", scheduleStart, allowEndOfDay = false, errors = errors)
             val end = scheduleMinute("scheduleEnd", scheduleEnd, allowEndOfDay = true, errors = errors)
@@ -201,10 +184,6 @@ class FilterDraft private constructor(
                 scheduleStartMinute = if (scheduleEnabled) schedule!!.start else original.scheduleStartMinute,
                 scheduleEndMinute = if (scheduleEnabled) schedule!!.end else original.scheduleEndMinute,
                 combination = combination,
-                destinationZones = zones,
-                destinationAliases = aliases,
-                smartDestination = target,
-                destinationCorridor = corridor,
             ),
             errors = emptyMap(),
         )
@@ -351,10 +330,6 @@ class FilterDraft private constructor(
                 original = filters,
                 initialExcludeKeywords = keywordText,
                 combination = filters.combination,
-                destinationZones = DestinationRuleTextCodec.formatZones(filters.destinationZones),
-                destinationAliases = DestinationRuleTextCodec.formatAliases(filters.destinationAliases),
-                smartDestination = DestinationRuleTextCodec.formatTarget(filters.smartDestination),
-                destinationCorridor = DestinationRuleTextCodec.formatCorridor(filters.destinationCorridor),
             )
         }
 

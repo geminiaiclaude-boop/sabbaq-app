@@ -205,49 +205,6 @@ internal fun AdvancedFiltersEditor(
 
         HighFareOverrideCondition(draft, errors, onDraftChange)
 
-        FilterGroup(
-            title = "المناطق والوجهة الذكية والممر",
-            subtitle = "مطابقة جغرافية محلية بإحداثيات صريحة؛ لا تُرسل العناوين إلى خدمة خارجية.",
-            hasError = errors.keys.any { it in setOf("destinationZones", "destinationAliases", "smartDestination", "destinationCorridor") },
-            filledCount = listOf(draft.destinationZones, draft.destinationAliases, draft.smartDestination, draft.destinationCorridor).count(String::isNotBlank),
-        ) {
-            Text(
-                "سبّاق لا يستخرج إحداثيات من عرض جيني تلقائيًا. أضف ربطًا محليًا لعبارات الوجهة بإحداثياتها. عند تفعيل قاعدة جغرافية وعدم تطابق عبارة مع ربط واحد واضح، يُرفض العرض بسبب «وجهة جغرافية غير معروفة» لا بتخمين الموقع.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            DraftField(
-                value = draft.destinationZones,
-                label = "المناطق: include أو exclude|الاسم|latitude|longitude|radius بالمتر — سطر لكل منطقة",
-                error = errors["destinationZones"],
-                keyboardType = KeyboardType.Text,
-                singleLine = false,
-                onValueChange = { onDraftChange(draft.copy(destinationZones = it)) },
-            )
-            DraftField(
-                value = draft.destinationAliases,
-                label = "ربط عبارة الوجهة بالإحداثيات: العبارة|latitude|longitude — سطر لكل ربط",
-                error = errors["destinationAliases"],
-                keyboardType = KeyboardType.Text,
-                singleLine = false,
-                onValueChange = { onDraftChange(draft.copy(destinationAliases = it)) },
-            )
-            DraftField(
-                value = draft.smartDestination,
-                label = "وجهة مفضلة اختيارية: latitude,longitude|radius بالمتر",
-                error = errors["smartDestination"],
-                keyboardType = KeyboardType.Text,
-                onValueChange = { onDraftChange(draft.copy(smartDestination = it)) },
-            )
-            DraftField(
-                value = draft.destinationCorridor,
-                label = "ممر اختياري: العرض بالمتر|lat,lon;lat,lon;… (نقطتان فأكثر)",
-                error = errors["destinationCorridor"],
-                keyboardType = KeyboardType.Text,
-                onValueChange = { onDraftChange(draft.copy(destinationCorridor = it)) },
-            )
-        }
-
         NoDestinationCondition(draft, onDraftChange)
 
         FilterGroup(

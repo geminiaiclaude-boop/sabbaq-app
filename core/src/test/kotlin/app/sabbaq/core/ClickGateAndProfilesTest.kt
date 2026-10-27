@@ -3,11 +3,10 @@ package app.sabbaq.core
 import java.math.BigDecimal
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class ClickGateAndZonesTest {
+class ClickGateAndProfilesTest {
     @Test
     fun sameOfferIsClickedOnce() {
         val gate = ClickGate(perOfferSuppressMs = 60_000, minIntervalMs = 1_000)
@@ -64,23 +63,6 @@ class ClickGateAndZonesTest {
         assertTrue(gate.tryAcquire("a", 1_500))
         assertFalse(gate.release("a", 1_000))
         assertFalse(gate.tryAcquire("a", 1_501))
-    }
-
-    @Test
-    fun zoneHitUsesGreatCircleDistance() {
-        val airport = ExcludeZone("1", "airport", 31.7226, 35.9932, 3_000)
-        assertEquals("airport", Zones.firstHit(listOf(airport), 31.7300, 35.9900)?.name)
-        assertNull(Zones.firstHit(listOf(airport), 31.9539, 35.9106))
-        assertNull(Zones.firstHit(listOf(airport.copy(enabled = false)), 31.7300, 35.9900))
-    }
-
-    @Test
-    fun invalidCoordinatesAndNegativeRadiiCannotCreateZoneHits() {
-        val airport = ExcludeZone("1", "airport", 31.7226, 35.9932, 3_000)
-        assertTrue(Zones.distanceMeters(Double.NaN, 0.0, 0.0, 0.0).isInfinite())
-        assertNull(Zones.firstHit(listOf(airport), Double.POSITIVE_INFINITY, 35.9932))
-        assertNull(Zones.firstHit(listOf(airport.copy(radiusMeters = -1)), 31.7226, 35.9932))
-        assertNull(Zones.firstHit(listOf(airport.copy(lat = 91.0)), 31.7226, 35.9932))
     }
 
     @Test
