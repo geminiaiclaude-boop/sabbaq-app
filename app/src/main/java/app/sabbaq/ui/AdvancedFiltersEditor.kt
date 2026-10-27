@@ -313,15 +313,9 @@ internal fun FareRangeCondition(draft: FilterDraft, errors: Map<String, String>,
         subtitle = "أدنى وأعلى أجرة للطلب",
         enabled = draft.fareRangeEnabled,
         testKey = keyPrefix + "fare-range",
-        onEnabledChange = { enabled ->
-            onDraftChange(draft.copy(
-                fareRangeEnabled = enabled,
-                minFare = if (enabled) draft.minFare.ifBlank { "0" } else draft.minFare,
-                maxFare = if (enabled) upperDefault(draft.minFare, draft.maxFare, "100") else draft.maxFare,
-            ))
-        },
+        onEnabledChange = { onDraftChange(draft.withFareRange(it)) },
     ) {
-        if (draft.fareRangeEnabled || keyPrefix.isEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ProStepperValue(
                 label = "أدنى سعر", value = draft.minFare, unit = "",
                 step = "1", keyboardType = KeyboardType.Decimal, error = errors["minFare"],
@@ -345,16 +339,9 @@ internal fun PickupTimeCondition(draft: FilterDraft, errors: Map<String, String>
         subtitle = "أقل وأقصى وقت للوصول إلى الراكب",
         enabled = draft.pickupTimeEnabled,
         testKey = keyPrefix + "pickup-time",
-        onEnabledChange = { enabled ->
-            val lower = if (enabled) draft.minPickupMinutes.ifBlank { "0" } else draft.minPickupMinutes
-            onDraftChange(draft.copy(
-                pickupTimeEnabled = enabled,
-                minPickupMinutes = lower,
-                maxPickupMinutes = if (enabled) upperDefault(lower, draft.maxPickupMinutes, "30") else draft.maxPickupMinutes,
-            ))
-        },
+        onEnabledChange = { onDraftChange(draft.withPickupTime(it)) },
     ) {
-        if (draft.pickupTimeEnabled || keyPrefix.isEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ProStepperValue(
                 label = "أقل وقت", value = draft.minPickupMinutes, unit = "دقيقة",
                 step = "5", keyboardType = KeyboardType.Number, error = errors["minPickupMinutes"],
@@ -384,31 +371,50 @@ internal fun HighFareOverrideCondition(draft: FilterDraft, errors: Map<String, S
                 Icon(Icons.Outlined.Info, contentDescription = "شرح تجاوز الوقت عند سعر")
             }
         },
-        onEnabledChange = { enabled ->
-            onDraftChange(draft.copy(
-                highFareOverrideEnabled = enabled,
-                highFareOverrideAmount = if (enabled) draft.highFareOverrideAmount.ifBlank { "35" } else draft.highFareOverrideAmount,
-            ))
-        },
+        onEnabledChange = { onDraftChange(draft.withHighFareOverride(it)) },
     ) {
-        if (draft.highFareOverrideEnabled || keyPrefix.isEmpty()) ProStepperValue(
+        ProStepperValue(
             label = "يبدأ التجاوز من", value = draft.highFareOverrideAmount, unit = "سعر الطلب",
             step = "1", keyboardType = KeyboardType.Decimal, error = errors["highFareOverrideAmount"],
             testKey = keyPrefix + "high-fare-amount",
             onValueChange = { onDraftChange(draft.copy(highFareOverrideAmount = it)) },
         )
     }
-    if (showHelp) {
-        AlertDialog(
-            onDismissRequest = { showHelp = false },
-            title = { Text("تجاوز الوقت عند سعر") },
-            text = {
-                Text("إذا كان سعر الطلب ظاهرًا ويبلغ العتبة أو يتجاوزها، يتجاوز سبّاق الحد الأقصى لوقت الوصول ومدة الرحلة ومسافة الوصول فقط. تبقى حدود الوقت الدنيا وحدود السعر والعائد والكلمات المستثناة وشروط السلامة الأخرى مطبّقة. إذا لم يظهر السعر فلا يحدث تجاوز.")
-            },
-            confirmButton = { TextButton(onClick = { showHelp = false }) { Text("فهمت") } },
-        )
-    }
+    if (showHelp) HighFareOverrideHelp { showHelp = false }
 }
+
+@Composable
+internal fun HighFareOverrideHelp(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("تجاوز الوقت عند سعر") },
+        text = {
+            Text("إذا كان سعر الطلب ظاهرًا ويبلغ العتبة أو يتجاوزها، يتجاوز سبّاق الحد الأقصى لوقت الوصول ومدة الرحلة ومسافة الوصول فقط. تبقى حدود الوقت الدنيا وحدود السعر والعائد والكلمات المستثناة وشروط السلامة الأخرى مطبّقة. إذا لم يظهر السعر فلا يحدث تجاوز.")
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("فهمت") } },
+    )
+}
+
+/** Toggle rules shared by the full page and the quick card: switching on fills sensible bounds. */
+internal fun FilterDraft.withFareRange(enabled: Boolean): FilterDraft = copy(
+    fareRangeEnabled = enabled,
+    minFare = if (enabled) minFare.ifBlank { "0" } else minFare,
+    maxFare = if (enabled) upperDefault(minFare, maxFare, "100") else maxFare,
+)
+
+internal fun FilterDraft.withPickupTime(enabled: Boolean): FilterDraft {
+    val lower = if (enabled) minPickupMinutes.ifBlank { "0" } else minPickupMinutes
+    return copy(
+        pickupTimeEnabled = enabled,
+        minPickupMinutes = lower,
+        maxPickupMinutes = if (enabled) upperDefault(lower, maxPickupMinutes, "30") else maxPickupMinutes,
+    )
+}
+
+internal fun FilterDraft.withHighFareOverride(enabled: Boolean): FilterDraft = copy(
+    highFareOverrideEnabled = enabled,
+    highFareOverrideAmount = if (enabled) highFareOverrideAmount.ifBlank { "35" } else highFareOverrideAmount,
+)
 
 @Composable
 internal fun NoDestinationCondition(draft: FilterDraft, onDraftChange: (FilterDraft) -> Unit, keyPrefix: String = "") {
@@ -422,8 +428,7 @@ internal fun NoDestinationCondition(draft: FilterDraft, onDraftChange: (FilterDr
         testKey = keyPrefix + "no-destination",
         onEnabledChange = { onDraftChange(draft.copy(acceptNoDestination = it)) },
     ) {
-        // The full page explains the rule; the dashboard card stays one line per condition.
-        if (keyPrefix.isEmpty()) Text(
+        Text(
             if (hasExcludedWords) "الكلمات المستثناة لها الأولوية ولا يمكن تجاوزها بهذا الخيار."
             else "لا يتجاوز هذا الخيار السعر الأدنى أو الكلمات المحظورة أو شروط الوصول؛ فعّل شرط انتقاء آخر قبل بدء المتابعة.",
             style = MaterialTheme.typography.bodySmall,

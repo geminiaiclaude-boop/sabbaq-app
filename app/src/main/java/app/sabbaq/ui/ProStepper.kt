@@ -34,6 +34,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -174,41 +175,119 @@ internal fun ProStepperValue(
     }
 
     if (showEditor) {
-        val valid = isValidNumber(editorValue, keyboardType)
-        AlertDialog(
-            onDismissRequest = { showEditor = false },
-            title = { Text("تعديل $label") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    OutlinedTextField(
-                        value = editorValue,
-                        onValueChange = { editorValue = it.take(if (keyboardType == KeyboardType.Number) 10 else 32) },
-                        label = { Text(label) },
-                        supportingText = {
-                            Text(
-                                if (editorValue.isBlank()) "اتركه فارغًا لإلغاء هذا الحد."
-                                else if (!valid) "أدخل رقمًا غير سالب صالحًا."
-                                else "يمكنك التعديل مباشرة أو استخدام زري الزيادة والنقصان.",
-                            )
-                        },
-                        isError = !valid,
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
-                        modifier = Modifier.fillMaxWidth().testTag("filter-stepper-$testKey-editor"),
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    enabled = valid,
-                    onClick = {
-                        onValueChange(editorValue.trim())
-                        showEditor = false
+        StepperEditorDialog(label, editorValue, keyboardType, testKey,
+            onEditorChange = { editorValue = it },
+            onApply = { onValueChange(it); showEditor = false },
+            onDismiss = { showEditor = false })
+    }
+}
+
+@Composable
+private fun StepperEditorDialog(
+    label: String,
+    editorValue: String,
+    keyboardType: KeyboardType,
+    testKey: String,
+    onEditorChange: (String) -> Unit,
+    onApply: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val valid = isValidNumber(editorValue, keyboardType)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("تعديل $label") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                OutlinedTextField(
+                    value = editorValue,
+                    onValueChange = { onEditorChange(it.take(if (keyboardType == KeyboardType.Number) 10 else 32)) },
+                    label = { Text(label) },
+                    supportingText = {
+                        Text(
+                            if (editorValue.isBlank()) "اتركه فارغًا لإلغاء هذا الحد."
+                            else if (!valid) "أدخل رقمًا غير سالب صالحًا."
+                            else "يمكنك التعديل مباشرة أو استخدام زري الزيادة والنقصان.",
+                        )
                     },
-                ) { Text("تطبيق") }
-            },
-            dismissButton = { TextButton(onClick = { showEditor = false }) { Text("إلغاء") } },
-        )
+                    isError = !valid,
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+                    modifier = Modifier.fillMaxWidth().testTag("filter-stepper-$testKey-editor"),
+                )
+            }
+        },
+        confirmButton = { TextButton(enabled = valid, onClick = { onApply(editorValue.trim()) }) { Text("تطبيق") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("إلغاء") } },
+    )
+}
+
+/**
+ * Dashboard-sized stepper: label inside the field, 36 dp tall, small −/+ buttons. Same value
+ * rules, step and editor dialog as [ProStepperValue]; [dimmed] shows the condition is off while
+ * keeping its stored value visible and editable.
+ */
+@Composable
+internal fun CompactStepperValue(
+    label: String,
+    value: String,
+    unit: String,
+    step: String,
+    keyboardType: KeyboardType,
+    onValueChange: (String) -> Unit,
+    testKey: String,
+    modifier: Modifier = Modifier,
+    error: String? = null,
+    dimmed: Boolean = false,
+) {
+    var showEditor by rememberSaveable(testKey) { mutableStateOf(false) }
+    var editorValue by rememberSaveable(testKey) { mutableStateOf(value) }
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        modifier = modifier.alpha(if (dimmed) 0.5f else 1f),
+        shape = MaterialTheme.shapes.small,
+        color = colors.surfaceVariant.copy(alpha = 0.55f),
+        border = BorderStroke(1.dp, if (error != null) colors.error else colors.outlineVariant),
+    ) {
+        Row(Modifier.heightIn(min = 40.dp), verticalAlignment = Alignment.CenterVertically) {
+            CompactStepButton("تقليل $label", Icons.Outlined.Remove, "filter-stepper-$testKey-decrement") {
+                onValueChange(stepValue(value, step, keyboardType, direction = -1))
+            }
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(role = Role.Button) { editorValue = value; showEditor = true }
+                    .testTag("filter-stepper-$testKey-value")
+                    .semantics {
+                        contentDescription = "تعديل $label"
+                        stateDescription = if (value.isBlank()) "غير محدد" else "$value $unit"
+                    },
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(label, style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant, maxLines = 1)
+                Text(
+                    (value.ifBlank { "—" }) + if (unit.isNotBlank() && value.isNotBlank()) " $unit" else "",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                )
+            }
+            CompactStepButton("زيادة $label", Icons.Outlined.Add, "filter-stepper-$testKey-increment") {
+                onValueChange(stepValue(value, step, keyboardType, direction = 1))
+            }
+        }
+    }
+    if (showEditor) {
+        StepperEditorDialog(label, editorValue, keyboardType, testKey,
+            onEditorChange = { editorValue = it },
+            onApply = { onValueChange(it); showEditor = false },
+            onDismiss = { showEditor = false })
+    }
+}
+
+@Composable
+private fun CompactStepButton(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, testTag: String, onClick: () -> Unit) {
+    IconButton(onClick = onClick, modifier = Modifier.size(36.dp).testTag(testTag).semantics { contentDescription = label }) {
+        Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
     }
 }
 

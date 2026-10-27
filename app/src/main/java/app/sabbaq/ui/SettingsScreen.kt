@@ -1243,10 +1243,7 @@ private fun ActiveConditionsCockpit(
         icon = Icons.Outlined.Tune,
         modifier = modifier,
     ) {
-        FareRangeCondition(draft, errors, onDraftChange, keyPrefix = QUICK_PREFIX)
-        PickupTimeCondition(draft, errors, onDraftChange, keyPrefix = QUICK_PREFIX)
-        HighFareOverrideCondition(draft, errors, onDraftChange, keyPrefix = QUICK_PREFIX)
-        NoDestinationCondition(draft, onDraftChange, keyPrefix = QUICK_PREFIX)
+        QuickConditionsPanel(draft, errors, onDraftChange)
         SabbaqAnimatedMessage(saveMessage?.message, saveMessage?.tone ?: SabbaqTone.Info)
         SabbaqButton(
             "باقي الشروط في «طلبات تناسبك»",
@@ -1256,8 +1253,6 @@ private fun ActiveConditionsCockpit(
         )
     }
 }
-
-private const val QUICK_PREFIX = "quick-"
 
 internal data class ReadinessItem(
     val icon: ImageVector,
