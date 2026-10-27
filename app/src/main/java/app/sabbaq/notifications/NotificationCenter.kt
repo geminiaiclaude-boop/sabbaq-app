@@ -31,6 +31,9 @@ object NotificationCenter {
     private var prefs: SharedPreferences? = null
     private val _state = MutableStateFlow(InboxState())
     val state: StateFlow<InboxState> = _state.asStateFlow()
+    private val _lastFailure = MutableStateFlow<SupabaseClient.FeatureFailure?>(null)
+    /** Why the last server sync failed, or null after a successful one. */
+    val lastFailure: StateFlow<SupabaseClient.FeatureFailure?> = _lastFailure.asStateFlow()
 
     fun init(context: Context) = synchronized(lock) {
         if (prefs != null) return@synchronized
@@ -95,7 +98,12 @@ object NotificationCenter {
             (changes + listOfNotNull(summary)).forEach { inbox = NotificationInbox.addLocal(inbox, it, now, Long.MAX_VALUE) }
             inbox.copy(account = summaryMark)
         }
-        val fetched = SupabaseClient.fetchNotifications().getOrNull() ?: return@withLock false
+        val result = SupabaseClient.fetchNotifications()
+        val fetched = result.getOrNull() ?: run {
+            _lastFailure.value = SupabaseClient.featureFailureOf(result.exceptionOrNull())
+            return@withLock false
+        }
+        _lastFailure.value = null
         if (SupabaseClient.accountKey() != key) return@withLock false
         val server = NotificationInbox.parseServer(json, fetched)
         update { NotificationInbox.mergeServer(owned(it, key), server, System.currentTimeMillis()) }

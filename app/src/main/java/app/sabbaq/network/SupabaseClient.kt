@@ -204,18 +204,8 @@ object SupabaseClient {
     }
 
     /** The signed-in driver's notifications (own and broadcasts) as the raw `my_notifications` array. */
-    suspend fun fetchNotifications(): Result<String> {
-        if (refreshToken != null && SystemClock.elapsedRealtime() - accessIssuedAt > RENEW_AFTER_MILLIS) renewAccessToken()
-        val session = sessions.snapshot()
-            ?: return Result.failure(ClientRequestException("انتهت الجلسة؛ سجّل الدخول من جديد"))
-        return networkCall {
-            val request = authenticatedRequest(endpoint("rest/v1/rpc/my_notifications"), session.token,
-                buildJsonObject { put("p_limit", 50) }.toString().toRequestBody(jsonMediaType))
-            val response = execute(request)
-            if (response.code == 401) return@networkCall Result.failure(ClientRequestException("انتهت الجلسة"))
-            if (!response.isSuccessful) return@networkCall httpFailure("قراءة الإشعارات", response)
-            Result.success(response.body)
-        }
+    suspend fun fetchNotifications(): Result<String> = supportCall("rpc/my_notifications", buildJsonObject { put("p_limit", 50) }) { response ->
+        if (response.isSuccessful) Result.success(response.body) else Result.failure(FeatureException.fromStatus(response.code))
     }
 
     /** Sends read receipts; ids the server does not show to this driver are ignored there. */
@@ -234,17 +224,30 @@ object SupabaseClient {
 
     /** The signed-in driver's support conversation (`support_my_thread`); reading it clears the reply badge. */
     suspend fun fetchSupportThread(): Result<String> = supportCall("rpc/support_my_thread", buildJsonObject { put("p_limit", 100) }) { response ->
-        if (!response.isSuccessful) httpFailure("قراءة محادثة الدعم", response) else Result.success(response.body)
+        if (response.isSuccessful) Result.success(response.body) else Result.failure(FeatureException.fromStatus(response.code))
     }
 
     /** Unread administration replies, for the top-bar badge; marks nothing read. */
     suspend fun fetchSupportUnread(): Result<Int> = supportCall("rpc/support_unread", buildJsonObject { }) { response ->
-        if (!response.isSuccessful) httpFailure("قراءة رسائل الدعم", response)
+        if (!response.isSuccessful) Result.failure(FeatureException.fromStatus(response.code))
         else response.body.trim().toIntOrNull()?.let { Result.success(it.coerceAtLeast(0)) }
-            ?: Result.failure(ClientRequestException("استجابة الدعم غير صالحة"))
+            ?: Result.failure(FeatureException(FeatureFailure.UNAVAILABLE))
     }
 
     enum class SupportSendResult { SENT, RATE_LIMITED, REJECTED, RETRY }
+
+    enum class FeatureFailure { OFFLINE, SESSION, UNAVAILABLE }
+
+    class FeatureException(val kind: FeatureFailure) : Exception(kind.name) {
+        companion object {
+            fun fromStatus(code: Int): FeatureException = FeatureException(
+                if (code == 401 || code == 403) FeatureFailure.SESSION else FeatureFailure.UNAVAILABLE,
+            )
+        }
+    }
+
+    fun featureFailureOf(error: Throwable?): FeatureFailure =
+        (error as? FeatureException)?.kind ?: FeatureFailure.UNAVAILABLE
 
     /**
      * Sends one support message. Idempotent on [clientId], so a retry after a lost response is
@@ -268,14 +271,30 @@ object SupabaseClient {
         }.getOrDefault(SupportSendResult.RETRY)
     }
 
+    /**
+     * Calls for the notification and support layers. Failures carry a [FeatureFailure] so the
+     * screens can say what actually happened (no internet, session, service) instead of always
+     * blaming the connection. An expired access token is renewed once and the call retried.
+     */
     private suspend fun <T> supportCall(path: String, body: JsonObject, handle: (HttpResponse) -> Result<T>): Result<T> {
         if (refreshToken != null && SystemClock.elapsedRealtime() - accessIssuedAt > RENEW_AFTER_MILLIS) renewAccessToken()
-        val session = sessions.snapshot()
-            ?: return Result.failure(ClientRequestException("انتهت الجلسة؛ سجّل الدخول من جديد"))
-        return networkCall {
-            val response = execute(authenticatedRequest(endpoint("rest/v1/$path"), session.token, body.toString().toRequestBody(jsonMediaType)))
-            if (response.code == 401) Result.failure(ClientRequestException("انتهت الجلسة")) else handle(response)
+        repeat(2) { attempt ->
+            val session = sessions.snapshot() ?: return Result.failure(FeatureException(FeatureFailure.SESSION))
+            val response = withContext(Dispatchers.IO) {
+                try {
+                    execute(authenticatedRequest(endpoint("rest/v1/$path"), session.token, body.toString().toRequestBody(jsonMediaType)))
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: IOException) {
+                    null
+                } catch (_: Exception) {
+                    HttpResponse(599, "")
+                }
+            } ?: return Result.failure(FeatureException(FeatureFailure.OFFLINE))
+            if (response.code == 401 && attempt == 0 && refreshToken != null && renewAccessToken()) return@repeat
+            return if (response.code == 401) Result.failure(FeatureException(FeatureFailure.SESSION)) else handle(response)
         }
+        return Result.failure(FeatureException(FeatureFailure.SESSION))
     }
 
     /** يمكّن مسار تسجيل خروج مستقبلي من إبطال الجلسة الذاكرية صراحةً. */

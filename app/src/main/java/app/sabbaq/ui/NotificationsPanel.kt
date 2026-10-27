@@ -110,6 +110,7 @@ internal fun NotificationsSheet(onDismiss: () -> Unit, onAction: (NotificationAc
     val inbox = if (NotificationCenter.belongsToCurrentAccount(stored)) stored else InboxState()
     var refreshing by remember { mutableStateOf(true) }
     var syncFailed by remember { mutableStateOf(false) }
+    val failure by NotificationCenter.lastFailure.collectAsState()
     LaunchedEffect(Unit) {
         syncFailed = !NotificationCenter.refresh()
         refreshing = false
@@ -141,7 +142,7 @@ internal fun NotificationsSheet(onDismiss: () -> Unit, onAction: (NotificationAc
             if (refreshing) LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 20.dp))
             if (syncFailed) {
                 SabbaqMessage(
-                    "تعذر جلب رسائل الإدارة الآن؛ المعروض محفوظ على جهازك وسيُحدَّث عند الاتصال.",
+                    featureFailureText(failure, "رسائل الإدارة") + " المعروض محفوظ على جوالك.",
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
                 )
             }
@@ -246,6 +247,13 @@ private fun kindStyle(kind: NotificationKind): Triple<ImageVector, Color, Color>
         NotificationKind.UPDATE -> Triple(Icons.Outlined.SystemUpdate, colors.primaryContainer, colors.onPrimaryContainer)
         NotificationKind.INFO -> Triple(Icons.Outlined.Info, colors.surfaceVariant, colors.onSurfaceVariant)
     }
+}
+
+/** What the driver should know when the notification or support service could not be reached. */
+internal fun featureFailureText(failure: app.sabbaq.network.SupabaseClient.FeatureFailure?, what: String): String = when (failure) {
+    app.sabbaq.network.SupabaseClient.FeatureFailure.OFFLINE -> "لا يوجد اتصال بالإنترنت؛ تعذر تحديث $what. ستُحدَّث تلقائيًا عند عودة الاتصال."
+    app.sabbaq.network.SupabaseClient.FeatureFailure.SESSION -> "انتهت جلسة الدخول؛ تعذر تحديث $what. أغلق سبّاق وافتحه، أو سجّل الدخول من جديد."
+    else -> "خدمة $what غير متاحة مؤقتًا من الخادم، والإنترنت لديك يعمل. نعيد المحاولة تلقائيًا."
 }
 
 /** A store page exists only for the Play build; the direct build updates through the administration. */

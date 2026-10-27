@@ -21,6 +21,7 @@ data class SupportUiState(
     val loaded: Boolean = false,
     val loading: Boolean = false,
     val loadFailed: Boolean = false,
+    val failure: SupabaseClient.FeatureFailure? = null,
 )
 
 /**
@@ -54,15 +55,18 @@ object SupportRepository {
             bindOwner(key)
             _state.value = _state.value.copy(loading = true, loadFailed = false)
         }
-        val body = SupabaseClient.fetchSupportThread().getOrNull()
-        val parsed = body?.let { SupportConversation.parseThread(json, it) }
+        val response = SupabaseClient.fetchSupportThread()
+        val parsed = response.getOrNull()?.let { SupportConversation.parseThread(json, it) }
+        val failure = if (parsed != null) null
+            else if (response.isFailure) SupabaseClient.featureFailureOf(response.exceptionOrNull())
+            else SupabaseClient.FeatureFailure.UNAVAILABLE
         synchronized(lock) {
             if (parsed != null && SupabaseClient.accountKey() == key) {
                 thread = parsed
                 outbox = SupportConversation.reconcile(outbox, parsed)
                 persist()
             }
-            publish(loading = false, loadFailed = parsed == null, unread = if (parsed != null) 0 else _state.value.unread)
+            publish(loading = false, loadFailed = parsed == null, unread = if (parsed != null) 0 else _state.value.unread, failure = failure)
         }
         flushLocked(key)
         parsed != null
@@ -90,6 +94,8 @@ object SupportRepository {
             publish()
         }
         syncMutex.withLock { flushLocked(key) }
+        // Picks up the automatic acknowledgement the server adds to a new conversation.
+        refresh()
         return true
     }
 
@@ -166,6 +172,7 @@ object SupportRepository {
         loading: Boolean = _state.value.loading,
         loadFailed: Boolean = _state.value.loadFailed,
         unread: Int = _state.value.unread,
+        failure: SupabaseClient.FeatureFailure? = _state.value.failure,
     ) {
         _state.value = SupportUiState(
             messages = SupportConversation.timeline(thread, outbox.pending),
@@ -174,6 +181,7 @@ object SupportRepository {
             loaded = _state.value.loaded || (!loading && !loadFailed),
             loading = loading,
             loadFailed = loadFailed,
+            failure = if (loadFailed) failure else null,
         )
     }
 

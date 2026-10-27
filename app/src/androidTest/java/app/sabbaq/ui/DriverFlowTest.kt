@@ -64,15 +64,15 @@ class DriverFlowTest {
         var continued = false
         show { OnboardingScreen(onContinue = { continued = true }) }
 
-        compose.onNodeWithText("التالي").performScrollTo().performClick()
+        compose.onNodeWithText("التالي").performClick()
         waitForText("أنت تحدد، وسبّاق يتابع")
-        compose.onNodeWithText("كيف يعمل؟").performScrollTo().performClick()
+        compose.onNodeWithText("كيف يعمل؟").performClick()
         waitForText("تفاصيل المثال")
-        compose.onNodeWithText("رجوع").performScrollTo().performClick()
+        compose.onNodeWithText("رجوع").performClick()
         waitForText("أنت تحدد، وسبّاق يتابع")
-        compose.onNodeWithText("رجوع").performScrollTo().performClick()
+        compose.onNodeWithText("رجوع").performClick()
         waitForText("طلبات على مقاس شروطك")
-        compose.onNodeWithText("تخطي الجولة").performScrollTo().performClick()
+        compose.onNodeWithText("تخطي الجولة").performClick()
         compose.runOnIdle { assertTrue(continued) }
     }
 
