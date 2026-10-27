@@ -11,6 +11,8 @@ object Text {
     private val bidiMarks = Regex("[\\u200B-\\u200F\\u202A-\\u202E\\u2066-\\u2069\\u061C\\uFEFF]")
     private val spaces = Regex("[\\s\\u00A0\\u202F]+")
     private val tatweel = Regex("\\u0640")
+    // Harakat, tanween, shadda, sukun and superscript alef: Jeeny writes «يبعُد», profiles say «يبعد».
+    private val harakat = Regex("[\\u064B-\\u065F\\u0670]")
 
     fun normalize(raw: String?): String {
         if (raw.isNullOrEmpty()) return ""
@@ -27,7 +29,7 @@ object Text {
                 }
             )
         }
-        val stripped = tatweel.replace(bidiMarks.replace(sb.toString(), ""), "")
+        val stripped = harakat.replace(tatweel.replace(bidiMarks.replace(sb.toString(), ""), ""), "")
         return spaces.replace(stripped, " ").trim().lowercase()
     }
 

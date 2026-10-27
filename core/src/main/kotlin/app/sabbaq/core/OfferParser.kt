@@ -45,7 +45,10 @@ class OfferParser(private val profile: RideProfile, private val verifiedViewIdHi
     private val acceptIds = profile.acceptViewIds.toSet()
     private val addressCues = profile.addressCues.map(Text::normalize).filter { it.isNotEmpty() }
 
-    private val currencyRegex = tokenRegex(profile.currencyTokens)
+    private val currencyRegex = tokenRegex(profile.currencyTokens + UNIVERSAL_CURRENCY_TOKENS)
+    private val fareCues = profile.fareCues.map(Text::normalize).filter { it.isNotEmpty() }
+    /** A lone amount, optionally with one sign drawn by an icon font (private use) or a currency symbol. */
+    private val loneAmountRegex = Regex("^[\\p{Sc}\\p{So}\\p{Co}]?\\s*(${Text.NUMBER})\\s*[\\p{Sc}\\p{So}\\p{Co}]?$")
     private val numberRegex = Regex("(${Text.NUMBER})")
     private val kmRegex = unitRegex(profile.kmUnits)
     private val meterRegex = unitRegex(profile.meterUnits)
@@ -167,6 +170,8 @@ class OfferParser(private val profile: RideProfile, private val verifiedViewIdHi
             if (currency == null && unitSpans.isEmpty() && isAddress(text)) addresses += text
         }
 
+        // The currency may be an icon (no text at all): take the amount labelled as earnings.
+        if (fares.isEmpty()) cuedAmount(items)?.let { fares += it to "" }
         val fare = when (profile.fareSelect) {
             FareSelect.FIRST -> fares.firstOrNull()
             FareSelect.MIN -> fares.minByOrNull { it.first }
@@ -187,6 +192,29 @@ class OfferParser(private val profile: RideProfile, private val verifiedViewIdHi
             texts = items.map { it.text },
         )
     }
+
+    /**
+     * The amount next to an earnings label: in the label itself ("ستربح 5.84") or in the next one
+     * or two labels when they are a lone amount. Distances and times are never taken as fares.
+     */
+    private fun cuedAmount(items: List<Item>): BigDecimal? {
+        items.forEachIndexed { index, item ->
+            if (fareCues.none { Text.containsWord(item.text, it) }) return@forEachIndexed
+            loneAmountIn(item.text.substringAfterCue())?.let { return it }
+            for (next in index + 1..minOf(index + 2, items.lastIndex)) {
+                loneAmountIn(items[next].text)?.let { return it }
+            }
+        }
+        return null
+    }
+
+    private fun String.substringAfterCue(): String {
+        val cue = fareCues.filter { Text.containsWord(this, it) }.maxByOrNull { it.length } ?: return this
+        return substringAfter(cue).trim()
+    }
+
+    private fun loneAmountIn(text: String): BigDecimal? =
+        loneAmountRegex.matchEntire(text.trim())?.groupValues?.get(1)?.let(Text::parseNumber)?.takeIf { it.signum() > 0 }
 
     private fun readMinutes(text: String, unitSpans: MutableList<IntRange>): List<Int>? {
         val hours = hourRegex?.findAll(text)?.filter { m -> unitSpans.none { it.overlaps(m.range) } }?.toList().orEmpty()

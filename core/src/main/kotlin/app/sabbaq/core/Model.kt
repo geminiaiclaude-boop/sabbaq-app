@@ -80,9 +80,24 @@ data class RideProfile(
     val singleMinuteRole: DistanceRole = DistanceRole.PICKUP,
     val fareSelect: FareSelect = FareSelect.FIRST,
     val addressCues: List<String> = emptyList(),
+    /** Labels next to the amount the driver gets ("ستربح 5.84"), used when the currency is an icon. */
+    val fareCues: List<String> = DEFAULT_FARE_CUES,
     val version: Int = 1,
     val enabled: Boolean = true,
 )
+
+/** Generic earnings and price labels; a profile may replace them over the air. */
+val DEFAULT_FARE_CUES = listOf(
+    "ستربح", "سوف تربح", "تربح", "الأرباح", "صافي الأرباح", "الربح", "الأجرة", "الاجرة", "السعر", "التكلفة",
+    "you will earn", "you'll earn", "earn", "earnings", "fare", "price",
+)
+
+/**
+ * Currency signs every profile understands, whatever its own list says: the Saudi riyal sign
+ * (U+20C1, used by Jeeny since 2025) and the older riyal ligature (U+FDFC). A profile served over
+ * the air without them can therefore never hide the fare again.
+ */
+val UNIVERSAL_CURRENCY_TOKENS = listOf("\u20C1", "\uFDFC")
 
 data class Offer(
     val profileId: String,

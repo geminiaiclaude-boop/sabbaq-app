@@ -7,9 +7,9 @@
       "acceptLabels": ["accept", "accept offer", "accept the offer", "accept ride", "aceptar", "قبول", "قبول الطلب", "قبول العرض", "قبول الرحلة"],
       "confirmLabels": ["arrived at pickup", "arrived at pickup location", "cancel ride", "end ride", "وصلت إلى نقطة الانطلاق", "وصلت الى نقطة الانطلاق", "إلغاء الرحلة", "إنهاء الرحلة"],
       "weakConfirmLabels": ["pickup passenger", "pick up passenger", "navigate", "التنقل", "عرض الاتجاهات"],
-      "currencyTokens": ["jd", "jod", "د.أ", "د.ا", "دينار", "sar", "s.a.r", "ر.س", "ر س", "ريال", "usd", "$", "€", "eur"],
+      "currencyTokens": ["jd", "jod", "د.أ", "د.ا", "دينار", "sar", "s.a.r", "ر.س", "ر س", "ريال", "رس", "⃁", "﷼", "usd", "$", "€", "eur"],
       "addressCues": ["street", "st.", "avenue", "road", "gate", "شارع", "طريق", "حي", "منطقة", "بوابة", "مخرج", "دوار"],
-      "version": 2
+      "version": 3
     },
     {
       "id": "jeeny",
@@ -18,9 +18,9 @@
       "acceptLabels": ["accept", "accept offer", "accept the offer", "قبول", "قبول الطلب", "قبول العرض"],
       "confirmLabels": ["arrived at pickup", "arrived at pickup location", "drop off passenger", "dropoff passenger", "in progress", "cancel ride", "end ride", "وصلت إلى نقطة الإقلاع", "وصلت إلى نقطة الانطلاق", "إلغاء المشوار", "الغاء المشوار", "إنهاء المشوار", "انهاء المشوار", "جارٍ التوصيل", "في التوصيل"],
       "weakConfirmLabels": ["pickup location", "navigate", "موقع الإقلال", "نقطة الاقلال", "عرض الاتجاهات", "عرض الإتجاهات"],
-      "currencyTokens": ["jd", "jod", "د.أ", "د.ا", "دينار", "sar", "s.a.r", "ر.س", "ر س", "ريال", "usd", "$"],
+      "currencyTokens": ["jd", "jod", "د.أ", "د.ا", "دينار", "sar", "s.a.r", "ر.س", "ر س", "ريال", "رس", "⃁", "﷼", "usd", "$"],
       "addressCues": ["street", "st.", "avenue", "road", "gate", "شارع", "طريق", "حي", "منطقة", "بوابة", "مخرج", "دوار"],
-      "version": 2
+      "version": 3
     },
     {
       "id": "petra",
@@ -31,7 +31,7 @@
       "weakConfirmLabels": ["navigate", "cancel", "التنقل", "إلغاء"],
       "currencyTokens": ["jd", "jod", "د.أ", "د.ا", "دينار", "usd", "$"],
       "addressCues": ["street", "st.", "avenue", "road", "gate", "شارع", "طريق", "حي", "منطقة", "بوابة", "مخرج", "دوار"],
-      "version": 2
+      "version": 3
     }
   ]
 }
