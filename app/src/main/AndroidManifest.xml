@@ -45,6 +45,10 @@
         android:theme="@style/Theme.Sabbaq">
 
         <activity
+            android:name=".ui.LiveAcceptTestActivity"
+            android:exported="false"
+            android:label="@string/live_accept_test_title" />
+        <activity
             android:name=".ui.MainActivity"
             android:exported="true"
             android:windowSoftInputMode="adjustResize">

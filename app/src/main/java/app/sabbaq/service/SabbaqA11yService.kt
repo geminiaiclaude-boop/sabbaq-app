@@ -57,6 +57,7 @@ class SabbaqA11yService : AccessibilityService() {
         runCatching { OfferDecisionLogStore.init(applicationContext) }
             .onFailure { Log.w(TAG, "تعذر تهيئة سجل القرارات المحلي") }
         TelemetryRepository.serviceConnected = true
+        LiveAcceptTest.onArmChanged = { lateReadHandler.post { applyPackageFilter() } }
         loadProfiles()
         TelemetryRepository.trace(
             TelemetryStage.SERVICE_CONNECTED,
@@ -90,6 +91,24 @@ class SabbaqA11yService : AccessibilityService() {
         if (parsersByPackage.isEmpty()) {
             Log.w(TAG, "لا توجد ملفات تعريف صالحة لخدمة الإتاحة")
         }
+        applyPackageFilter()
+    }
+
+    /**
+     * Narrows the events Android delivers to the packages of the profiles in effect, so a package
+     * the administration adds over the air takes effect without a release (the manifest list is
+     * only the starting point), plus Sabbaq's own window while a live acceptance test runs. An
+     * empty set would mean "every app", so it is never applied.
+     */
+    private fun applyPackageFilter() {
+        val info = serviceInfo ?: return
+        val packages = parsersByPackage.keys +
+            (if (LiveAcceptTest.isArmed()) setOf(applicationContext.packageName) else emptySet())
+        if (packages.isEmpty()) return
+        val wanted = packages.sorted().toTypedArray()
+        if (info.packageNames?.sorted()?.toTypedArray()?.contentEquals(wanted) == true) return
+        info.packageNames = wanted
+        runCatching { serviceInfo = info }.onFailure { Log.w(TAG, "تعذر تحديث تطبيقات المتابعة") }
     }
 
     private fun canReadWindows(): Boolean =
@@ -111,6 +130,11 @@ class SabbaqA11yService : AccessibilityService() {
             runtimeStatus.lifecycle(false, "disclosure_required")
             Settings.isActive = false
             recordDiagnostic(DiagnosticStage.GATE_BLOCKED, eventNow, "disclosure_required", provider = provider)
+            return
+        }
+        // The live acceptance test runs on Sabbaq's own window, with or without monitoring on.
+        if (eventPackage == applicationContext.packageName) {
+            if (LiveAcceptTest.isArmed(eventNow)) handleLiveAcceptTest(eventNow)
             return
         }
         if (!Settings.isActive) {
@@ -152,6 +176,42 @@ class SabbaqA11yService : AccessibilityService() {
             return
         }
         processPackage(packageName)
+    }
+
+    /**
+     * One step of the live acceptance test: the real live-tree read, the parser with the Jeeny
+     * rules in effect, the real tap path and confirmation detection, on the mock offer that
+     * Sabbaq draws. It never touches the production pipeline state, statistics or history.
+     */
+    private fun handleLiveAcceptTest(now: Long) {
+        LiveAcceptTest.reach(LiveAcceptProbe.Step.EVENT, now)
+        val own = applicationContext.packageName
+        val (root, _) = targetRoot(own)
+        if (root == null) return
+        try {
+            val screen = root.toScreenNode()
+            LiveAcceptTest.reach(LiveAcceptProbe.Step.READ)
+            val profile = LiveAcceptProbe.profile(ProfileRepository.current().firstOrNull { it.id == JEENY_PROVIDER }, own)
+            val parsed = OfferParser(profile).parse(screen)
+            if (parsed.confirmed) {
+                LiveAcceptTest.reach(LiveAcceptProbe.Step.CONFIRMED)
+                return
+            }
+            val offer = parsed.offer
+            if (offer?.fare != null && offer.pickupKm != null) LiveAcceptTest.reach(LiveAcceptProbe.Step.PARSED)
+            val accept = parsed.acceptNode ?: return
+            LiveAcceptTest.reach(LiveAcceptProbe.Step.ACCEPT_FOUND)
+            if (LiveAcceptProbe.Step.PARSED !in LiveAcceptTest.state.value.reached || LiveAcceptTest.hasDispatched()) return
+            when (dispatchAcceptClick(root, own, accept, liveTest = true)) {
+                ClickResult.SEMANTIC -> LiveAcceptTest.reach(LiveAcceptProbe.Step.DISPATCHED, method = LiveAcceptProbe.Method.SEMANTIC)
+                ClickResult.GESTURE -> LiveAcceptTest.reach(LiveAcceptProbe.Step.DISPATCHED, method = LiveAcceptProbe.Method.GESTURE)
+                ClickResult.NOT_DISPATCHED -> LiveAcceptTest.refuseDispatch()
+            }
+        } catch (_: Exception) {
+            Log.i(TAG, "live acceptance test frame rejected")
+        } finally {
+            root.recycle()
+        }
     }
 
     /** Jeeny has its own cheap signal -> full frame -> two late capture pipeline. */
@@ -422,8 +482,9 @@ class SabbaqA11yService : AccessibilityService() {
      * acceptance, but retrying could accept twice. Gesture fallback is only for an
      * explicit ACTION_CLICK=false response from a still-matching live node.
      */
-    private fun dispatchAcceptClick(root: AccessibilityNodeInfo, packageName: String, target: ScreenNode): ClickResult {
-        if (!ServicesSafetyPolicy.canProcessOffers(Settings.isActive, Settings.a11yDisclosureAccepted, SupabaseClient.hasValidLicense())) return ClickResult.NOT_DISPATCHED
+    private fun dispatchAcceptClick(root: AccessibilityNodeInfo, packageName: String, target: ScreenNode, liveTest: Boolean = false): ClickResult {
+        // The live test taps only Sabbaq's own mock button, so it skips the monitoring and licence gate.
+        if (!liveTest && !ServicesSafetyPolicy.canProcessOffers(Settings.isActive, Settings.a11yDisclosureAccepted, SupabaseClient.hasValidLicense())) return ClickResult.NOT_DISPATCHED
         val exact = resolveLiveNode(root, target)
         val exactResult = exact?.let { node ->
             try {
@@ -573,6 +634,7 @@ class SabbaqA11yService : AccessibilityService() {
     }
 
     override fun onDestroy() {
+        LiveAcceptTest.onArmChanged = null
         TelemetryRepository.serviceConnected = false
         TelemetryRepository.trace(TelemetryStage.SERVICE_DESTROYED, "destroyed")
         TelemetryRepository.flushNow()

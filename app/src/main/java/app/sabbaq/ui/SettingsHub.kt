@@ -19,8 +19,10 @@ import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.PrivacyTip
 import androidx.compose.material.icons.outlined.RecordVoiceOver
+import androidx.compose.material.icons.outlined.TaskAlt
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.HorizontalDivider
@@ -187,8 +189,9 @@ internal fun SettingsHubPage(
         }
 
         SettingsSection.Diagnostics -> {
-            TelemetryDiagnosticsCard(Modifier.sabbaqEntrance(0))
-            SupportIdCard(Modifier.sabbaqEntrance(1))
+            LiveAcceptTestEntry(Modifier.sabbaqEntrance(0))
+            TelemetryDiagnosticsCard(Modifier.sabbaqEntrance(1))
+            SupportIdCard(Modifier.sabbaqEntrance(2))
         }
 
         SettingsSection.Platforms -> SupportedPlatformsCard(Modifier.sabbaqEntrance(0))
@@ -207,6 +210,24 @@ internal fun SettingsHubPage(
                 }
             }
         }
+    }
+}
+
+/** Opens the live acceptance test: proves on this phone that Sabbaq can read and accept an offer. */
+@Composable
+internal fun LiveAcceptTestEntry(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    SabbaqCard(
+        title = "اختبار القبول الحي",
+        subtitle = "يتأكد خلال ثوانٍ أن سبّاق يقرأ الطلب ويضغط القبول على جوالك، ويحدد الخطوة المتعطلة إن وُجدت.",
+        icon = Icons.Outlined.TaskAlt,
+        modifier = modifier,
+    ) {
+        SabbaqButton(
+            text = "ابدأ الاختبار",
+            onClick = { runCatching { context.startActivity(android.content.Intent(context, LiveAcceptTestActivity::class.java)) } },
+            icon = Icons.Outlined.PlayArrow,
+        )
     }
 }
 
