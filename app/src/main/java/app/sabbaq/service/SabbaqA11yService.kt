@@ -52,6 +52,7 @@ class SabbaqA11yService : AccessibilityService() {
     private var profileRevision = -1
     private var firstSeenFingerprint: String? = null
     private var firstSeenAtMs = 0L
+    private var gestureWarmed = false
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -64,7 +65,6 @@ class SabbaqA11yService : AccessibilityService() {
             .onFailure { Log.w(TAG, "تعذر تهيئة سجل القرارات المحلي") }
         TelemetryRepository.serviceConnected = true
         LiveAcceptTest.onArmChanged = { lateReadHandler.post { applyPackageFilter() } }
-        warmUpGesturePath()
         loadProfiles()
         TelemetryRepository.trace(
             TelemetryStage.SERVICE_CONNECTED,
@@ -171,6 +171,7 @@ class SabbaqA11yService : AccessibilityService() {
             return
         }
         recordDiagnostic(DiagnosticStage.PACKAGE_SEEN, eventNow, provider = provider)
+        warmUpGestureOnce()
         if (packageName == JEENY_PACKAGE) {
             liveness.targetEvent(eventNow)
             handleJeenyEvent(event)
@@ -718,12 +719,19 @@ class SabbaqA11yService : AccessibilityService() {
      * cold. A one-shot 1 ms no-op at (1,1) warms it, so the first real accept tap is not the slow
      * one: that tap's latency decides whether this driver's app wins the request.
      */
-    private fun warmUpGesturePath() {
-        val path = Path().apply { moveTo(1f, 1f) }
+    private fun warmUpGestureOnce() {
+        if (gestureWarmed) return
+        if (!ServicesSafetyPolicy.canProcessOffers(Settings.isActive, Settings.a11yDisclosureAccepted, SupabaseClient.hasValidLicense())) return
+        gestureWarmed = true
         val gesture = runCatching {
-            GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0L, 1L)).build()
+            GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(Path().apply { moveTo(1f, 1f) }, 0L, 1L)).build()
         }.getOrNull() ?: return
-        lateReadHandler.post { runCatching { dispatchGesture(gesture, null, null) } }
+        // Re-check at dispatch time: the gate may have closed between the event and this runnable.
+        lateReadHandler.post {
+            if (ServicesSafetyPolicy.canProcessOffers(Settings.isActive, Settings.a11yDisclosureAccepted, SupabaseClient.hasValidLicense())) {
+                runCatching { dispatchGesture(gesture, null, null) }
+            }
+        }
     }
 
     override fun onInterrupt() {
