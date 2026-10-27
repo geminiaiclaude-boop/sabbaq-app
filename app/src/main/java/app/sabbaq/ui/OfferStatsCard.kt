@@ -16,6 +16,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -25,10 +26,10 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import app.sabbaq.core.OfferStatsTotals
 import app.sabbaq.core.ReasonCode
 import app.sabbaq.stats.OfferStatsStore
+import app.sabbaq.ui.theme.LocalSabbaqBrand
 import java.text.NumberFormat
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 @Composable
 internal fun OfferStatsCard(modifier: Modifier = Modifier) {
@@ -43,9 +44,9 @@ internal fun OfferStatsCard(modifier: Modifier = Modifier) {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     val snapshot by OfferStatsStore.snapshots.collectAsState()
-    val numberFormat = NumberFormat.getIntegerInstance(Locale("ar", "SA"))
+    val numberFormat = NumberFormat.getIntegerInstance(SabbaqLocale)
     val displayDate = runCatching {
-        LocalDate.parse(snapshot.date).format(DateTimeFormatter.ofPattern("d MMMM yyyy", Locale("ar")))
+        LocalDate.parse(snapshot.date).format(DateTimeFormatter.ofPattern("d MMMM yyyy", SabbaqLocale))
     }.getOrDefault(snapshot.date)
 
     SabbaqCard(
@@ -95,18 +96,18 @@ private fun PeriodStatsPanel(label: String, totals: OfferStatsTotals, numberForm
         Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                StatValue("مرئي", totals.visibleOffers, numberFormat, Modifier.weight(1f))
-                StatValue("مرفوض", totals.rejectedOffers, numberFormat, Modifier.weight(1f))
-                StatValue("مقبول", totals.acceptedOffers, numberFormat, Modifier.weight(1f))
+                StatValue("مرئي", totals.visibleOffers, numberFormat, MaterialTheme.colorScheme.primary, Modifier.weight(1f))
+                StatValue("مرفوض", totals.rejectedOffers, numberFormat, MaterialTheme.colorScheme.onSurfaceVariant, Modifier.weight(1f))
+                StatValue("مقبول", totals.acceptedOffers, numberFormat, LocalSabbaqBrand.current.success, Modifier.weight(1f))
             }
         }
     }
 }
 
 @Composable
-private fun StatValue(label: String, count: Long, numberFormat: NumberFormat, modifier: Modifier = Modifier) {
+private fun StatValue(label: String, count: Long, numberFormat: NumberFormat, tint: Color, modifier: Modifier = Modifier) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(numberFormat.format(count), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text(numberFormat.format(count), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, color = tint)
         Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
@@ -133,9 +134,4 @@ private fun ReasonCode.displayName(): String = when (this) {
     ReasonCode.TRIP_MIN_TOO_SHORT -> "وقت الرحلة أقصر من الحد"
     ReasonCode.TRIP_MIN_TOO_LONG -> "وقت الرحلة أطول من الحد"
     ReasonCode.EXCLUDED_KEYWORD -> "كلمة مستبعدة"
-    ReasonCode.DESTINATION_GEO_UNKNOWN -> "إحداثيات الوجهة غير معروفة"
-    ReasonCode.DESTINATION_ZONE_EXCLUDED -> "داخل منطقة مستبعدة"
-    ReasonCode.DESTINATION_ZONE_NOT_MATCHED -> "خارج مناطق الإدراج"
-    ReasonCode.SMART_DESTINATION_MISMATCH -> "خارج الوجهة المفضلة"
-    ReasonCode.DESTINATION_CORRIDOR_MISMATCH -> "خارج ممر الرحلة"
 }

@@ -21,6 +21,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -132,6 +133,26 @@ object SupabaseClient {
 
     fun hasRedeemableSession(): Boolean = sessions.snapshot()?.deviceId != null
 
+    /** True when the last license answer named a minimum version newer than this build. */
+    @Volatile var appUpdateRequired: Boolean = false
+        private set
+
+    /**
+     * A stable, non-reversible key for the signed-in account (SHA-256 of the token's `sub`), so
+     * device-local data such as the notification inbox is never shown to another account. Read
+     * locally from the current token; null without a session.
+     */
+    fun accountKey(): String? {
+        val token = sessions.snapshot()?.token ?: return null
+        val payload = token.split('.').getOrNull(1) ?: return null
+        val subject = runCatching {
+            val claims = json.parseToJsonElement(String(java.util.Base64.getUrlDecoder().decode(payload.padEnd((payload.length + 3) / 4 * 4, '=')), Charsets.UTF_8))
+            (claims as? JsonObject)?.get("sub")?.jsonPrimitive?.contentOrNull
+        }.getOrNull()?.takeIf { it.isNotBlank() } ?: return null
+        return java.security.MessageDigest.getInstance("SHA-256").digest(subject.toByteArray(Charsets.UTF_8))
+            .joinToString("") { byte -> "%02x".format(Locale.ROOT, byte.toInt() and 0xff) }
+    }
+
     /** فحص محلي فقط؛ لا ينفّذ اتصالًا من مسار أحداث إمكانية الوصول. */
     fun hasValidLicense(): Boolean = sessions.hasValidLicense()
 
@@ -179,6 +200,81 @@ object SupabaseClient {
                 ?: return@networkCall Result.failure(ClientRequestException("استجابة ملفات التطبيقات غير صالحة"))
             val bodies = JsonArray(rows.mapNotNull { (it as? JsonObject)?.get("body") as? JsonObject })
             Result.success(buildJsonObject { put("profiles", bodies) }.toString())
+        }
+    }
+
+    /** The signed-in driver's notifications (own and broadcasts) as the raw `my_notifications` array. */
+    suspend fun fetchNotifications(): Result<String> {
+        if (refreshToken != null && SystemClock.elapsedRealtime() - accessIssuedAt > RENEW_AFTER_MILLIS) renewAccessToken()
+        val session = sessions.snapshot()
+            ?: return Result.failure(ClientRequestException("انتهت الجلسة؛ سجّل الدخول من جديد"))
+        return networkCall {
+            val request = authenticatedRequest(endpoint("rest/v1/rpc/my_notifications"), session.token,
+                buildJsonObject { put("p_limit", 50) }.toString().toRequestBody(jsonMediaType))
+            val response = execute(request)
+            if (response.code == 401) return@networkCall Result.failure(ClientRequestException("انتهت الجلسة"))
+            if (!response.isSuccessful) return@networkCall httpFailure("قراءة الإشعارات", response)
+            Result.success(response.body)
+        }
+    }
+
+    /** Sends read receipts; ids the server does not show to this driver are ignored there. */
+    suspend fun markNotificationsRead(ids: Collection<String>): Result<Unit> {
+        if (ids.isEmpty()) return Result.success(Unit)
+        val session = sessions.snapshot()
+            ?: return Result.failure(ClientRequestException("انتهت الجلسة؛ سجّل الدخول من جديد"))
+        return networkCall {
+            val request = authenticatedRequest(endpoint("rest/v1/rpc/mark_notifications_read"), session.token,
+                buildJsonObject { put("p_ids", JsonArray(ids.take(200).map { JsonPrimitive(it) })) }.toString().toRequestBody(jsonMediaType))
+            val response = execute(request)
+            if (!response.isSuccessful) return@networkCall httpFailure("تحديث الإشعارات", response)
+            Result.success(Unit)
+        }
+    }
+
+    /** The signed-in driver's support conversation (`support_my_thread`); reading it clears the reply badge. */
+    suspend fun fetchSupportThread(): Result<String> = supportCall("rpc/support_my_thread", buildJsonObject { put("p_limit", 100) }) { response ->
+        if (!response.isSuccessful) httpFailure("قراءة محادثة الدعم", response) else Result.success(response.body)
+    }
+
+    /** Unread administration replies, for the top-bar badge; marks nothing read. */
+    suspend fun fetchSupportUnread(): Result<Int> = supportCall("rpc/support_unread", buildJsonObject { }) { response ->
+        if (!response.isSuccessful) httpFailure("قراءة رسائل الدعم", response)
+        else response.body.trim().toIntOrNull()?.let { Result.success(it.coerceAtLeast(0)) }
+            ?: Result.failure(ClientRequestException("استجابة الدعم غير صالحة"))
+    }
+
+    enum class SupportSendResult { SENT, RATE_LIMITED, REJECTED, RETRY }
+
+    /**
+     * Sends one support message. Idempotent on [clientId], so a retry after a lost response is
+     * safe. REJECTED means the server refused the content (retrying unchanged cannot help);
+     * RETRY covers network and server faults.
+     */
+    suspend fun sendSupportMessage(clientId: String, body: String, appVersion: String?, correlationId: String?): SupportSendResult {
+        val payload = buildJsonObject {
+            put("p_client_id", clientId)
+            put("p_body", body)
+            appVersion?.let { put("p_app_version", it) }
+            correlationId?.let { put("p_correlation_id", it) }
+        }
+        return supportCall("rpc/support_send", payload) { response ->
+            Result.success(when {
+                response.isSuccessful -> SupportSendResult.SENT
+                response.code == 429 -> SupportSendResult.RATE_LIMITED
+                response.code == 400 || response.code == 422 -> SupportSendResult.REJECTED
+                else -> SupportSendResult.RETRY
+            })
+        }.getOrDefault(SupportSendResult.RETRY)
+    }
+
+    private suspend fun <T> supportCall(path: String, body: JsonObject, handle: (HttpResponse) -> Result<T>): Result<T> {
+        if (refreshToken != null && SystemClock.elapsedRealtime() - accessIssuedAt > RENEW_AFTER_MILLIS) renewAccessToken()
+        val session = sessions.snapshot()
+            ?: return Result.failure(ClientRequestException("انتهت الجلسة؛ سجّل الدخول من جديد"))
+        return networkCall {
+            val response = execute(authenticatedRequest(endpoint("rest/v1/$path"), session.token, body.toString().toRequestBody(jsonMediaType)))
+            if (response.code == 401) Result.failure(ClientRequestException("انتهت الجلسة")) else handle(response)
         }
     }
 
@@ -531,7 +627,10 @@ object SupabaseClient {
     }
 
     /** هوية الدخول للعرض فقط، مقنّعة قبل مغادرة العميل الشبكي ولا تُخزَّن. */
-    suspend fun accountIdentity(): Result<String> {
+    /** What the account page shows about who is signed in; [identity] is already masked. */
+    data class AccountProfile(val identity: String, val displayName: String?, val viaGoogle: Boolean)
+
+    suspend fun accountIdentity(): Result<AccountProfile> {
         val session = sessions.snapshot()
             ?: return Result.failure(ClientRequestException("انتهت الجلسة؛ سجّل الدخول من جديد"))
         return networkCall {
@@ -546,7 +645,11 @@ object SupabaseClient {
             val label = AccountIdentityMask.phone(user["phone"]?.jsonPrimitive?.contentOrNull)
                 ?: AccountIdentityMask.email(user["email"]?.jsonPrimitive?.contentOrNull)
                 ?: return@networkCall Result.failure(ClientRequestException("لا تتوفر بيانات دخول لعرضها."))
-            Result.success(label)
+            val metadata = user["user_metadata"] as? JsonObject
+            val name = (metadata?.get("full_name") ?: metadata?.get("name"))?.jsonPrimitive?.contentOrNull
+                ?.trim()?.filter { !it.isISOControl() }?.take(40)?.takeIf { it.length >= 2 }
+            val provider = (user["app_metadata"] as? JsonObject)?.get("provider")?.jsonPrimitive?.contentOrNull
+            Result.success(AccountProfile(label, name, viaGoogle = provider == "google"))
         }
     }
 
@@ -846,6 +949,7 @@ object SupabaseClient {
         val status = parseLicenseStatus(body)
             ?: return Result.failure(ClientRequestException("استجابة حالة الترخيص غير صالحة"))
         if (!sessions.updateSubscriptionIfMatches(token, status)) return staleSessionFailure()
+        appUpdateRequired = status.minimumVersionCode?.let { it > BuildConfig.VERSION_CODE } == true
 
         if (!status.state.canBindCandidateDevice) {
             sessions.invalidateLicenseIfMatches(token)

@@ -209,7 +209,7 @@ class DriverFlowTest {
         compose.onNodeWithTag("filter-switch-no-destination").performScrollTo().performClick()
         compose.waitUntil(timeoutMillis = 10_000) { Settings.filters.acceptNoDestination }
 
-        compose.onNodeWithText("الكلمات المستثناة").performScrollTo().performClick()
+        // Condition groups are open by default; the field is reachable without expanding anything.
         compose.onNodeWithText("كلمات لا تناسبك").performScrollTo().performTextInput("airport")
         compose.waitUntil(timeoutMillis = 10_000) { Settings.filters.excludeKeywords == listOf("airport") }
         compose.onNodeWithTag("filter-switch-no-destination").performScrollTo().assertIsNotEnabled()

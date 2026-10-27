@@ -6,12 +6,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
@@ -34,6 +33,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -41,47 +41,63 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.sabbaq.core.Text as CoreText
 import java.math.BigDecimal
 
+/**
+ * One condition in its compact form: a title line, then one row with the inputs and the
+ * switch. Inputs stay visible (dimmed while the condition is off) so the stored value is seen
+ * before switching it on. [framed] draws it as its own card; unframed rows sit inside a
+ * shared card, as on «حالة العمل».
+ */
 @Composable
 internal fun ProConditionCard(
     title: String,
-    subtitle: String,
+    subtitle: String?,
     enabled: Boolean,
     onEnabledChange: (Boolean) -> Unit,
+    testKey: String,
     modifier: Modifier = Modifier,
     switchEnabled: Boolean = true,
-    testKey: String,
+    framed: Boolean = true,
     headerAction: (@Composable () -> Unit)? = null,
-    content: @Composable () -> Unit,
+    footer: (@Composable () -> Unit)? = null,
+    inputs: @Composable RowScope.(dimmed: Boolean) -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = colors.surface),
-        border = BorderStroke(
-            1.dp,
-            if (enabled && switchEnabled) colors.primary.copy(alpha = 0.38f) else colors.outlineVariant,
-        ),
-    ) {
+    val body = @Composable {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = if (framed) Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp) else Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (enabled) colors.onSurface else colors.onSurfaceVariant,
+                    maxLines = 1,
+                )
+                if (subtitle != null) {
+                    Text(
+                        subtitle,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                }
+                headerAction?.invoke()
+            }
             Row(
-                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                    Text(subtitle, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
-                }
-                headerAction?.invoke()
+                inputs(!enabled)
                 Switch(
                     checked = enabled,
                     enabled = switchEnabled,
@@ -94,140 +110,130 @@ internal fun ProConditionCard(
                         },
                 )
             }
-            content()
+            footer?.invoke()
         }
     }
+    if (!framed) {
+        Box(modifier) { body() }
+        return
+    }
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(containerColor = colors.surface),
+        border = BorderStroke(
+            1.dp,
+            if (enabled && switchEnabled) colors.primary.copy(alpha = 0.38f) else colors.outlineVariant,
+        ),
+    ) { body() }
 }
 
 @Composable
-internal fun ProStepperValue(
+private fun StepperEditorDialog(
+    label: String,
+    editorValue: String,
+    keyboardType: KeyboardType,
+    testKey: String,
+    onEditorChange: (String) -> Unit,
+    onApply: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val valid = isValidNumber(editorValue, keyboardType)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("تعديل $label") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                OutlinedTextField(
+                    value = editorValue,
+                    onValueChange = { onEditorChange(it.take(if (keyboardType == KeyboardType.Number) 10 else 32)) },
+                    label = { Text(label) },
+                    supportingText = {
+                        Text(
+                            if (editorValue.isBlank()) "اتركه فارغًا لإلغاء هذا الحد."
+                            else if (!valid) "أدخل رقمًا غير سالب صالحًا."
+                            else "يمكنك التعديل مباشرة أو استخدام زري الزيادة والنقصان.",
+                        )
+                    },
+                    isError = !valid,
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+                    modifier = Modifier.fillMaxWidth().testTag("filter-stepper-$testKey-editor"),
+                )
+            }
+        },
+        confirmButton = { TextButton(enabled = valid, onClick = { onApply(editorValue.trim()) }) { Text("تطبيق") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("إلغاء") } },
+    )
+}
+
+/**
+ * Compact stepper: label inside the field, 36 dp tall, small −/+ buttons. Same value
+ * rules, step and editor dialog everywhere; [dimmed] shows the condition is off while
+ * keeping its stored value visible and editable.
+ */
+@Composable
+internal fun CompactStepperValue(
     label: String,
     value: String,
     unit: String,
     step: String,
     keyboardType: KeyboardType,
-    error: String? = null,
     onValueChange: (String) -> Unit,
     testKey: String,
     modifier: Modifier = Modifier,
+    error: String? = null,
+    dimmed: Boolean = false,
 ) {
     var showEditor by rememberSaveable(testKey) { mutableStateOf(false) }
     var editorValue by rememberSaveable(testKey) { mutableStateOf(value) }
     val colors = MaterialTheme.colorScheme
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(label, style = MaterialTheme.typography.labelMedium, color = colors.onSurfaceVariant, maxLines = 1)
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.medium,
-            color = colors.surfaceVariant.copy(alpha = 0.55f),
-            border = BorderStroke(1.dp, if (error != null) colors.error else colors.outlineVariant),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 52.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(0.dp),
+    Surface(
+        modifier = modifier.alpha(if (dimmed) 0.5f else 1f),
+        shape = MaterialTheme.shapes.small,
+        color = colors.surfaceVariant.copy(alpha = 0.55f),
+        border = BorderStroke(1.dp, if (error != null) colors.error else colors.outlineVariant),
+    ) {
+        Row(Modifier.heightIn(min = 40.dp), verticalAlignment = Alignment.CenterVertically) {
+            CompactStepButton("تقليل $label", Icons.Outlined.Remove, "filter-stepper-$testKey-decrement") {
+                onValueChange(stepValue(value, step, keyboardType, direction = -1))
+            }
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(role = Role.Button) { editorValue = value; showEditor = true }
+                    .testTag("filter-stepper-$testKey-value")
+                    .semantics {
+                        contentDescription = "تعديل $label"
+                        stateDescription = if (value.isBlank()) "غير محدد" else "$value $unit"
+                    },
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                StepperButton(
-                    label = "تقليل $label",
-                    icon = Icons.Outlined.Remove,
-                    testTag = "filter-stepper-$testKey-decrement",
-                    onClick = { onValueChange(stepValue(value, step, keyboardType, direction = -1)) },
-                )
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .heightIn(min = 48.dp)
-                        .clickable(role = Role.Button) {
-                            editorValue = value
-                            showEditor = true
-                        }
-                        .testTag("filter-stepper-$testKey-value")
-                        .semantics {
-                            contentDescription = "تعديل $label"
-                            stateDescription = if (value.isBlank()) "غير محدد" else "$value $unit"
-                        },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                        Text(
-                            value.ifBlank { "—" },
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center,
-                            maxLines = 1,
-                            color = if (value.isBlank()) colors.onSurfaceVariant else colors.onSurface,
-                        )
-                        if (unit.isNotBlank()) {
-                            Text(unit, style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant, maxLines = 1)
-                        }
-                    }
-                }
-                StepperButton(
-                    label = "زيادة $label",
-                    icon = Icons.Outlined.Add,
-                    testTag = "filter-stepper-$testKey-increment",
-                    onClick = { onValueChange(stepValue(value, step, keyboardType, direction = 1)) },
+                Text(label, style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant, maxLines = 1)
+                Text(
+                    (value.ifBlank { "—" }) + if (unit.isNotBlank() && value.isNotBlank()) " $unit" else "",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
                 )
             }
+            CompactStepButton("زيادة $label", Icons.Outlined.Add, "filter-stepper-$testKey-increment") {
+                onValueChange(stepValue(value, step, keyboardType, direction = 1))
+            }
         }
-        error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = colors.error) }
     }
-
     if (showEditor) {
-        val valid = isValidNumber(editorValue, keyboardType)
-        AlertDialog(
-            onDismissRequest = { showEditor = false },
-            title = { Text("تعديل $label") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    OutlinedTextField(
-                        value = editorValue,
-                        onValueChange = { editorValue = it.take(if (keyboardType == KeyboardType.Number) 10 else 32) },
-                        label = { Text(label) },
-                        supportingText = {
-                            Text(
-                                if (editorValue.isBlank()) "اتركه فارغًا لإلغاء هذا الحد."
-                                else if (!valid) "أدخل رقمًا غير سالب صالحًا."
-                                else "يمكنك التعديل مباشرة أو استخدام زري الزيادة والنقصان.",
-                            )
-                        },
-                        isError = !valid,
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
-                        modifier = Modifier.fillMaxWidth().testTag("filter-stepper-$testKey-editor"),
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    enabled = valid,
-                    onClick = {
-                        onValueChange(editorValue.trim())
-                        showEditor = false
-                    },
-                ) { Text("تطبيق") }
-            },
-            dismissButton = { TextButton(onClick = { showEditor = false }) { Text("إلغاء") } },
-        )
+        StepperEditorDialog(label, editorValue, keyboardType, testKey,
+            onEditorChange = { editorValue = it },
+            onApply = { onValueChange(it); showEditor = false },
+            onDismiss = { showEditor = false })
     }
 }
 
 @Composable
-private fun StepperButton(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, testTag: String, onClick: () -> Unit) {
-    IconButton(
-        onClick = onClick,
-        modifier = Modifier.size(48.dp).testTag(testTag).semantics { contentDescription = label },
-    ) {
-        Surface(
-            modifier = Modifier.size(32.dp),
-            shape = CircleShape,
-            color = MaterialTheme.colorScheme.primaryContainer,
-            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(18.dp))
-            }
-        }
+private fun CompactStepButton(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, testTag: String, onClick: () -> Unit) {
+    IconButton(onClick = onClick, modifier = Modifier.size(36.dp).testTag(testTag).semantics { contentDescription = label }) {
+        Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
     }
 }
 

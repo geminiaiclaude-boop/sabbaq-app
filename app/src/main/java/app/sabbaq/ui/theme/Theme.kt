@@ -23,35 +23,37 @@ val TajawalFontFamily = FontFamily(
     Font(R.font.tajawal_extrabold, FontWeight.ExtraBold)
 )
 
+// Royal purple carries actions and structure; signal yellow is the accent (selected chips,
+// badges, highlights); green is reserved for confirmations.
 internal val SabbaqLightColors = lightColorScheme(
-    primary = Color(0xFF006B58), onPrimary = Color.White,
-    primaryContainer = Color(0xFFC6F3E5), onPrimaryContainer = Color(0xFF00382E),
-    secondary = Color(0xFF244B60), onSecondary = Color.White,
-    secondaryContainer = Color(0xFFD5E9F3), onSecondaryContainer = Color(0xFF143448),
-    tertiary = Color(0xFF795900), onTertiary = Color.White,
-    tertiaryContainer = Color(0xFFFFE6A7), onTertiaryContainer = Color(0xFF493400),
-    background = Color(0xFFF3F7F8), onBackground = Color(0xFF142C37),
-    surface = Color.White, onSurface = Color(0xFF142C37),
-    surfaceVariant = Color(0xFFE6EFF0), onSurfaceVariant = Color(0xFF4C626B),
-    surfaceContainerLowest = Color.White, surfaceContainerLow = Color(0xFFF5F9FA),
-    surfaceContainer = Color(0xFFEDF3F4), surfaceContainerHigh = Color(0xFFE4ECEE),
-    outline = Color(0xFF70838B), outlineVariant = Color(0xFFD5E1E4),
+    primary = Color(0xFF4E2A84), onPrimary = Color.White,
+    primaryContainer = Color(0xFFECE3FA), onPrimaryContainer = Color(0xFF2A1250),
+    secondary = Color(0xFF6B4E00), onSecondary = Color.White,
+    secondaryContainer = Color(0xFFFFE27A), onSecondaryContainer = Color(0xFF2A1250),
+    tertiary = Color(0xFF137A38), onTertiary = Color.White,
+    tertiaryContainer = Color(0xFFD7F5DF), onTertiaryContainer = Color(0xFF0B3D1E),
+    background = Color(0xFFF5F2FA), onBackground = Color(0xFF1F1633),
+    surface = Color.White, onSurface = Color(0xFF1F1633),
+    surfaceVariant = Color(0xFFEDE7F5), onSurfaceVariant = Color(0xFF5A5170),
+    surfaceContainerLowest = Color.White, surfaceContainerLow = Color(0xFFF9F7FC),
+    surfaceContainer = Color(0xFFF2EDF8), surfaceContainerHigh = Color(0xFFE9E2F3), surfaceContainerHighest = Color(0xFFE2D9EF),
+    outline = Color(0xFF7B7191), outlineVariant = Color(0xFFDDD5EA),
     error = Color(0xFFAE282F), onError = Color.White,
     errorContainer = Color(0xFFFFE8E8), onErrorContainer = Color(0xFF7B1720)
 )
 internal val SabbaqDarkColors = darkColorScheme(
-    primary = Color(0xFF82DFC3), onPrimary = Color(0xFF00382E),
-    primaryContainer = Color(0xFF005443), onPrimaryContainer = Color(0xFFC6F3E5),
-    secondary = Color(0xFFA7CEE2), onSecondary = Color(0xFF103747),
-    secondaryContainer = Color(0xFF244B60), onSecondaryContainer = Color(0xFFD5E9F3),
-    tertiary = Color(0xFFF1CC7C), onTertiary = Color(0xFF493400),
-    tertiaryContainer = Color(0xFF634A00), onTertiaryContainer = Color(0xFFFFE6A7),
-    background = Color(0xFF081A22), onBackground = Color(0xFFE1EDF0),
-    surface = Color(0xFF112A35), onSurface = Color(0xFFE1EDF0),
-    surfaceVariant = Color(0xFF223E49), onSurfaceVariant = Color(0xFFB7CBD1),
-    surfaceContainerLowest = Color(0xFF081A22), surfaceContainerLow = Color(0xFF112A35),
-    surfaceContainer = Color(0xFF17333E), surfaceContainerHigh = Color(0xFF223E49),
-    outline = Color(0xFF8CA6B0), outlineVariant = Color(0xFF35515D),
+    primary = Color(0xFFD3BFFF), onPrimary = Color(0xFF2A1250),
+    primaryContainer = Color(0xFF3E2270), onPrimaryContainer = Color(0xFFECE3FA),
+    secondary = Color(0xFFFFD54A), onSecondary = Color(0xFF2A1F00),
+    secondaryContainer = Color(0xFF5A4300), onSecondaryContainer = Color(0xFFFFE27A),
+    tertiary = Color(0xFF7FDE9C), onTertiary = Color(0xFF0B3D1E),
+    tertiaryContainer = Color(0xFF0D4A2D), onTertiaryContainer = Color(0xFFD7F5DF),
+    background = Color(0xFF120B1F), onBackground = Color(0xFFECE6F5),
+    surface = Color(0xFF1C1430), onSurface = Color(0xFFECE6F5),
+    surfaceVariant = Color(0xFF2C2244), onSurfaceVariant = Color(0xFFC9BEDD),
+    surfaceContainerLowest = Color(0xFF120B1F), surfaceContainerLow = Color(0xFF1C1430),
+    surfaceContainer = Color(0xFF231A3A), surfaceContainerHigh = Color(0xFF2C2244), surfaceContainerHighest = Color(0xFF362B50),
+    outline = Color(0xFF968BAD), outlineVariant = Color(0xFF3F3459),
     error = Color(0xFFFFB3B5), onError = Color(0xFF650F19),
     errorContainer = Color(0xFF731A24), onErrorContainer = Color(0xFFFFDADB)
 )
@@ -83,17 +85,22 @@ data class SabbaqBrandColors(
     val success: Color,
     val successContainer: Color,
     val onSuccessContainer: Color,
+    /** Signal yellow fill for badges, accent bars and highlight strips, with its ink. */
+    val signature: Color,
+    val onSignature: Color,
 )
 
 internal val SabbaqLightBrand = SabbaqBrandColors(
-    heroStart = Color(0xFF0F3442), heroEnd = Color(0xFF00594A),
-    onHero = Color.White, onHeroMuted = Color(0xFFCFE6E0), heroAccent = Color(0xFF82DFC3),
-    success = Color(0xFF006B3F), successContainer = Color(0xFFD3F5E2), onSuccessContainer = Color(0xFF00391F),
+    heroStart = Color(0xFF341862), heroEnd = Color(0xFF56298F),
+    onHero = Color.White, onHeroMuted = Color(0xFFE4D9F5), heroAccent = Color(0xFFFFD21F),
+    success = Color(0xFF137A38), successContainer = Color(0xFFD7F5DF), onSuccessContainer = Color(0xFF0B3D1E),
+    signature = Color(0xFFFFD21F), onSignature = Color(0xFF2A1250),
 )
 internal val SabbaqDarkBrand = SabbaqBrandColors(
-    heroStart = Color(0xFF0C2A35), heroEnd = Color(0xFF004638),
-    onHero = Color(0xFFE9F4F2), onHeroMuted = Color(0xFFB4CFC9), heroAccent = Color(0xFF82DFC3),
-    success = Color(0xFF8CDDB1), successContainer = Color(0xFF0D4A2D), onSuccessContainer = Color(0xFFD3F5E2),
+    heroStart = Color(0xFF22103F), heroEnd = Color(0xFF3E1F70),
+    onHero = Color(0xFFF3EEFB), onHeroMuted = Color(0xFFD3C6EA), heroAccent = Color(0xFFFFD21F),
+    success = Color(0xFF7FDE9C), successContainer = Color(0xFF0D4A2D), onSuccessContainer = Color(0xFFD7F5DF),
+    signature = Color(0xFFFFD21F), onSignature = Color(0xFF2A1250),
 )
 
 val LocalSabbaqBrand = staticCompositionLocalOf { SabbaqLightBrand }
@@ -108,7 +115,7 @@ fun SabbaqTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable
         MaterialTheme(
             colorScheme = if (darkTheme) SabbaqDarkColors else SabbaqLightColors,
             typography = SabbaqTypography,
-            shapes = Shapes(extraSmall = RoundedCornerShape(8.dp), small = RoundedCornerShape(12.dp),
+            shapes = Shapes(extraSmall = RoundedCornerShape(12.dp), small = RoundedCornerShape(12.dp),
                 medium = RoundedCornerShape(16.dp), large = RoundedCornerShape(24.dp), extraLarge = RoundedCornerShape(32.dp)),
             content = content
         )

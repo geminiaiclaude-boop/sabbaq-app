@@ -311,7 +311,7 @@ private fun DecisionPreviewPage(
     }
     SabbaqCard(
         title = "هل يستحق هذا المشوار؟",
-        subtitle = "مثال توضيحي: أجرة ٤٥ ر.س لمشوار ١٥ كم.",
+        subtitle = "مثال توضيحي: أجرة 45 ر.س لمشوار 15 كم.",
         modifier = Modifier.sabbaqEntrance(1),
     ) {
         SabbaqSectionTitle(

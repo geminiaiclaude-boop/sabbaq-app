@@ -34,13 +34,25 @@
         idleTimer: null,
         signingOut: false,
         loginFailures: 0,
-        loginBlockedUntil: 0
+        loginBlockedUntil: 0,
+        notificationDriver: null,
+        notificationsLoaded: false,
+        supportSelected: null,
+        supportSelectedStatus: 'open',
+        supportCorrelation: null,
+        supportPendingReply: null,
+        supportTimer: null
     };
     const el = {};
 
     document.addEventListener('DOMContentLoaded', initialize);
 
     const WHATSAPP_PATTERN = /^[1-9]\d{7,14}$/;
+    const NOTIFICATION_KINDS = { info: 'معلومة', warning: 'تنبيه', success: 'خبر سار', account: 'الاشتراك', update: 'تحديث التطبيق' };
+    const NOTIFICATION_ACTIONS = new Set(['', 'open_account', 'open_setup', 'open_filters', 'update_app', 'open_support']);
+    const SUPPORT_POLL_MS = 20 * 1000;
+    const SUPPORT_FILTERS = new Set(['open', 'closed', 'all']);
+    const NOTIFICATION_EXPIRY_DAYS = new Set(['', '1', '3', '7', '30']);
 
     function initialize() {
         Object.assign(el, {
@@ -107,7 +119,39 @@
             commercialPolicyFeedback: document.getElementById('commercial-policy-feedback'),
             policyUpdatedAt: document.getElementById('policy-updated-at'),
             saveCommercialPolicy: document.getElementById('save-commercial-policy'),
-            retryCommercialPolicy: document.getElementById('retry-commercial-policy')
+            retryCommercialPolicy: document.getElementById('retry-commercial-policy'),
+            notificationsTab: document.getElementById('notifications-tab'),
+            notificationsPanel: document.getElementById('tab-notifications'),
+            notificationForm: document.getElementById('notification-form'),
+            notificationTarget: document.getElementById('notification-target'),
+            notificationTargetClear: document.getElementById('notification-target-clear'),
+            notificationTitle: document.getElementById('notification-title'),
+            notificationBody: document.getElementById('notification-body'),
+            notificationBodyCount: document.getElementById('notification-body-count'),
+            notificationKind: document.getElementById('notification-kind'),
+            notificationAction: document.getElementById('notification-action'),
+            notificationExpiry: document.getElementById('notification-expiry'),
+            notificationError: document.getElementById('notification-error'),
+            notificationSend: document.getElementById('notification-send'),
+            notificationFeedback: document.getElementById('notification-feedback'),
+            refreshNotifications: document.getElementById('refresh-notifications'),
+            notificationsList: document.getElementById('notifications-list'),
+            supportTab: document.getElementById('support-tab'),
+            supportTabBadge: document.getElementById('support-tab-badge'),
+            supportPanel: document.getElementById('tab-support'),
+            supportFilter: document.getElementById('support-filter'),
+            refreshSupport: document.getElementById('refresh-support'),
+            supportFeedback: document.getElementById('support-feedback'),
+            supportThreads: document.getElementById('support-threads'),
+            supportConversation: document.getElementById('support-conversation'),
+            supportDriverName: document.getElementById('support-driver-name'),
+            supportDriverMeta: document.getElementById('support-driver-meta'),
+            supportDiagnose: document.getElementById('support-diagnose'),
+            supportToggleStatus: document.getElementById('support-toggle-status'),
+            supportMessages: document.getElementById('support-messages'),
+            supportReplyForm: document.getElementById('support-reply-form'),
+            supportReply: document.getElementById('support-reply'),
+            supportSend: document.getElementById('support-send')
         });
 
         if (!isValidConfiguration(window.SABBAQ_CONFIG)) {
@@ -237,6 +281,22 @@
         el.profileSelect.addEventListener('change', showSelectedProfile);
         el.profileReload.addEventListener('click', () => { void runWithButton(el.profileReload, loadProfiles); });
         el.profileForm.addEventListener('submit', handleProfileSave);
+        el.notificationsTab.addEventListener('click', () => { void showTab('notifications'); });
+        el.supportTab.addEventListener('click', () => { void showTab('support'); });
+        el.supportFilter.addEventListener('change', () => { void loadSupportThreads(); });
+        el.refreshSupport.addEventListener('click', () => { void runWithButton(el.refreshSupport, refreshSupport); });
+        el.supportReplyForm.addEventListener('submit', handleSupportReply);
+        el.supportReply.addEventListener('input', () => { state.supportPendingReply = null; });
+        el.supportToggleStatus.addEventListener('click', () => { void runWithButton(el.supportToggleStatus, toggleSupportStatus); });
+        el.supportDiagnose.addEventListener('click', () => { void diagnoseSupportThread(); });
+        el.notificationForm.addEventListener('submit', handleNotificationSend);
+        el.notificationTargetClear.addEventListener('click', () => setNotificationTarget(null));
+        el.refreshNotifications.addEventListener('click', () => { void runWithButton(el.refreshNotifications, loadNotifications); });
+        el.notificationBody.addEventListener('input', () => {
+            el.notificationBodyCount.textContent = `${el.notificationBody.value.length} / 500`;
+            el.notificationError.hidden = true;
+        });
+        el.notificationTitle.addEventListener('input', () => { el.notificationError.hidden = true; });
         el.refreshDrivers.addEventListener('click', () => { void loadDrivers({ reset: true }); });
         el.refreshCodes.addEventListener('click', () => { void loadCodes({ reset: true }); });
         el.driversPrevious.addEventListener('click', () => { void movePage('drivers', -1); });
@@ -379,12 +439,14 @@
         setNotice('تم التحقق من جلسة المشرف. ستنتهي الجلسة بعد 15 دقيقة من عدم النشاط.', 'success');
         await loadCommercialPolicy({ announce: false });
         await showTab('drivers');
+        startSupportPolling();
     }
 
     async function signOut(message) {
         if (state.signingOut) return;
         state.signingOut = true;
         clearTimeout(state.idleTimer);
+        stopSupportPolling();
         state.adminAuthorized = false;
         el.driversList.replaceChildren();
         el.codesList.replaceChildren();
@@ -465,7 +527,7 @@
     }
 
     async function showTab(tabName) {
-        if (!['drivers', 'codes', 'commercial-policy', 'telemetry', 'profiles'].includes(tabName)) return;
+        if (!['drivers', 'codes', 'commercial-policy', 'telemetry', 'profiles', 'notifications', 'support'].includes(tabName)) return;
         state.activeTab = tabName;
         const showingDrivers = tabName === 'drivers';
         const showingCodes = tabName === 'codes';
@@ -474,20 +536,28 @@
         el.commercialPolicyPanel.hidden = tabName !== 'commercial-policy';
         el.telemetryPanel.hidden = tabName !== 'telemetry';
         el.profilesPanel.hidden = tabName !== 'profiles';
+        el.notificationsPanel.hidden = tabName !== 'notifications';
+        el.supportPanel.hidden = tabName !== 'support';
         el.driversTab.classList.toggle('active', showingDrivers);
         el.codesTab.classList.toggle('active', showingCodes);
         el.commercialPolicyTab.classList.toggle('active', tabName === 'commercial-policy');
         el.telemetryTab.classList.toggle('active', tabName === 'telemetry');
         el.profilesTab.classList.toggle('active', tabName === 'profiles');
+        el.notificationsTab.classList.toggle('active', tabName === 'notifications');
+        el.supportTab.classList.toggle('active', tabName === 'support');
         el.driversTab.setAttribute('aria-selected', String(showingDrivers));
         el.codesTab.setAttribute('aria-selected', String(showingCodes));
         el.commercialPolicyTab.setAttribute('aria-selected', String(tabName === 'commercial-policy'));
         el.telemetryTab.setAttribute('aria-selected', String(tabName === 'telemetry'));
         el.profilesTab.setAttribute('aria-selected', String(tabName === 'profiles'));
+        el.notificationsTab.setAttribute('aria-selected', String(tabName === 'notifications'));
+        el.supportTab.setAttribute('aria-selected', String(tabName === 'support'));
         if (showingDrivers) await loadDrivers();
         else if (showingCodes) await loadCodes();
         else if (tabName === 'commercial-policy' && !state.commercialPolicyLoaded) await loadCommercialPolicy({ announce: true });
         else if (tabName === 'profiles' && !state.profiles) await loadProfiles();
+        else if (tabName === 'notifications' && !state.notificationsLoaded) await loadNotifications();
+        else if (tabName === 'support') await refreshSupport();
     }
 
     async function loadProfiles() {
@@ -816,6 +886,8 @@
             a11y_disabled: ['خدمة إمكانية الوصول لسبّاق غير مفعّلة في إعدادات الهاتف', 'وجّهه: الإعدادات ← إمكانية الوصول ← التطبيقات المثبتة ← سبّاق ← تفعيل. في أندرويد 13+ قد يلزم أولًا «السماح بالإعدادات المقيدة» من معلومات التطبيق.'],
             a11y_not_connected: ['الخدمة مفعّلة لكن النظام أوقفها', 'وجّهه: أطفئ خدمة سبّاق في إمكانية الوصول وأعد تشغيلها، ثم استثنِ سبّاق من تحسين البطارية وفعّل التشغيل التلقائي إن وُجد في الهاتف.'],
             target_not_installed: ['تطبيق جيني للسائقين غير مثبت على الجهاز', 'اطلب منه تثبيت تطبيق جيني للسائقين وتسجيل الدخول فيه.'],
+            target_other_profile: ['تطبيق جيني مثبت في ملف آخر (نسخة مزدوجة أو ملف عمل أو مجلد آمن) لا يستطيع سبّاق قراءته', 'وجّهه: ثبّت جيني في المساحة الأساسية للجوال وسجّل الدخول منه، واترك النسخة المزدوجة.'],
+            target_unknown_package: ['جيني مثبت بحزمة لا يعرفها ملف التطبيقات', 'أضف الحزمة الظاهرة في حدث PACKAGE_SEEN إلى ملف جيني في تبويب «ملفات التطبيقات»؛ يصل للسائقين دون إصدار جديد.'],
             signed_out: ['المستخدم غير مسجل الدخول في سبّاق', 'اطلب منه فتح سبّاق وتسجيل الدخول.'],
             license_invalid: ['الاشتراك غير صالح على هذا الجهاز', 'تحقق من اشتراكه في تبويب السائقين، ثم اطلب منه فتح سبّاق لتحديث الحالة.'],
             disclosure_required: ['لم يوافق على إفصاح إمكانية الوصول', 'اطلب منه فتح سبّاق والموافقة على الإفصاح ثم تشغيل المتابعة.'],
@@ -1190,6 +1262,7 @@
             const rows = Array.isArray(data) ? data : [];
             state.hasMore.drivers = rows.length > PAGE_SIZE;
             renderDrivers(rows.slice(0, PAGE_SIZE));
+            void loadDriverVersions(rows.slice(0, PAGE_SIZE).map((driver) => driver.id));
             setNotice(`تم تحميل ${Math.min(rows.length, PAGE_SIZE)} سجل من السائقين.`, 'success');
         } catch (_) {
             setNotice('تعذر تحميل بيانات السائقين. تحقق من الاتصال ثم أعد المحاولة.', 'error');
@@ -1203,7 +1276,7 @@
     function renderDrivers(rows) {
         el.driversList.replaceChildren();
         if (rows.length === 0) {
-            appendEmptyRow(el.driversList, 6, 'لا توجد سجلات في هذه الصفحة.');
+            appendEmptyRow(el.driversList, 7, 'لا توجد سجلات في هذه الصفحة.');
             return;
         }
         rows.forEach((driver) => {
@@ -1211,6 +1284,11 @@
             appendCell(row, displayValue(driver.full_name));
             appendCell(row, displayValue(driver.phone), 'ltr-cell');
             appendCell(row, displayValue(driver.status));
+            const versionCell = document.createElement('td');
+            versionCell.className = 'small-cell';
+            versionCell.dataset.versionFor = driver.id;
+            versionCell.textContent = '…';
+            row.append(versionCell);
             appendCell(row, formatDate(driver.pro_until), 'ltr-cell');
             appendCell(row, displayValue(driver.device_id, 'غير مرتبط'), 'small-cell');
             const actionCell = document.createElement('td');
@@ -1219,16 +1297,417 @@
             diagnose.className = 'btn-secondary';
             diagnose.textContent = 'تشخيص الشكوى';
             diagnose.addEventListener('click', () => { void diagnoseDriver(driver, diagnose); });
+            const notify = document.createElement('button');
+            notify.type = 'button';
+            notify.className = 'btn-secondary';
+            notify.textContent = 'إرسال إشعار';
+            notify.addEventListener('click', () => { void notifyDriver(driver); });
+            const message = document.createElement('button');
+            message.type = 'button';
+            message.className = 'btn-secondary';
+            message.textContent = 'مراسلة';
+            message.addEventListener('click', () => { void messageDriver(driver); });
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'btn-danger';
             button.textContent = 'فك ربط الجهاز';
             button.addEventListener('click', () => { void resetDevice(driver.id, button); });
-            actionCell.append(diagnose, button);
+            actionCell.append(diagnose, notify, message, button);
             row.append(actionCell);
             el.driversList.append(row);
         });
         labelCells(el.driversList);
+    }
+
+    // ---- Support inbox
+    function startSupportPolling() {
+        stopSupportPolling();
+        void refreshSupportBadge();
+        state.supportTimer = setInterval(() => {
+            if (document.hidden || el.dashboard.hidden) return;
+            if (state.activeTab === 'support') void refreshSupport({ quiet: true });
+            else void refreshSupportBadge();
+        }, SUPPORT_POLL_MS);
+    }
+
+    function stopSupportPolling() {
+        if (state.supportTimer) clearInterval(state.supportTimer);
+        state.supportTimer = null;
+        state.supportSelected = null;
+        state.supportPendingReply = null;
+        el.supportThreads.replaceChildren();
+        el.supportMessages.replaceChildren();
+        el.supportConversation.hidden = true;
+        el.supportTabBadge.hidden = true;
+    }
+
+    async function refreshSupport({ quiet = false } = {}) {
+        await loadSupportThreads({ quiet });
+        if (state.supportSelected) await openSupportThread(state.supportSelected, { quiet: true, reloadList: false });
+    }
+
+    async function refreshSupportBadge() {
+        try {
+            const { data, error } = await db.rpc('admin_support_threads', { p_status: 'open', p_limit: 200 });
+            if (error) throw error;
+            renderSupportBadge(Array.isArray(data) ? data : []);
+        } catch (error) {
+            if (isAuthorizationError(error)) await signOut('انتهت صلاحية جلسة المشرف.');
+        }
+    }
+
+    function renderSupportBadge(rows) {
+        const unread = rows.reduce((sum, row) => sum + (Number.isFinite(Number(row.admin_unread)) ? Number(row.admin_unread) : 0), 0);
+        el.supportTabBadge.textContent = unread > 99 ? '99+' : String(unread);
+        el.supportTabBadge.hidden = unread === 0;
+        el.supportTab.setAttribute('aria-label', unread > 0 ? `الدعم، ${unread} رسالة غير مقروءة` : 'الدعم');
+    }
+
+    async function loadSupportThreads({ quiet = false } = {}) {
+        if (!await ensureActiveSession()) return;
+        const filter = SUPPORT_FILTERS.has(el.supportFilter.value) ? el.supportFilter.value : 'open';
+        try {
+            const { data, error } = await db.rpc('admin_support_threads', { p_status: filter === 'all' ? null : filter, p_limit: 200 });
+            if (error) throw error;
+            const rows = Array.isArray(data) ? data : [];
+            renderSupportThreads(rows);
+            if (filter === 'open') renderSupportBadge(rows);
+            else void refreshSupportBadge();
+        } catch (error) {
+            if (isAuthorizationError(error)) await signOut('انتهت صلاحية جلسة المشرف.');
+            else if (!quiet) setSupportFeedback('تعذر تحميل المحادثات. تحقق من الاتصال.', 'error');
+        }
+    }
+
+    function renderSupportThreads(rows) {
+        el.supportThreads.replaceChildren();
+        if (rows.length === 0) {
+            const empty = document.createElement('li');
+            empty.className = 'field-hint';
+            empty.textContent = 'لا توجد محادثات في هذا العرض.';
+            el.supportThreads.append(empty);
+            return;
+        }
+        rows.forEach((row) => {
+            if (typeof row?.driver_id !== 'string' || !UUID_PATTERN.test(row.driver_id)) return;
+            const item = document.createElement('li');
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'support-thread';
+            button.setAttribute('aria-current', String(row.driver_id === state.supportSelected));
+            const name = document.createElement('span');
+            name.className = 'support-thread__name';
+            name.textContent = displayValue(row.driver_name, 'سائق');
+            const preview = document.createElement('span');
+            preview.className = 'support-thread__preview';
+            const last = row.last_message && typeof row.last_message.body === 'string' ? row.last_message : null;
+            preview.textContent = last ? `${last.sender === 'admin' ? 'أنت: ' : ''}${last.body}` : 'لا رسائل';
+            const meta = document.createElement('span');
+            meta.className = 'support-thread__unread';
+            const unread = Number(row.admin_unread) || 0;
+            meta.textContent = `${formatDateTime(row.last_message_at)}${unread > 0 ? ` · ${unread} جديدة` : ''}${row.status === 'closed' ? ' · مغلقة' : ''}`;
+            button.append(name, preview, meta);
+            button.addEventListener('click', () => { void openSupportThread(row.driver_id); });
+            item.append(button);
+            el.supportThreads.append(item);
+        });
+    }
+
+    async function messageDriver(driver) {
+        if (typeof driver?.id !== 'string' || !UUID_PATTERN.test(driver.id)) {
+            setNotice('تعذر التحقق من معرّف السائق المحدد.', 'error');
+            return;
+        }
+        state.supportSelected = driver.id;
+        await showTab('support');
+        el.supportReply.focus();
+    }
+
+    async function openSupportThread(driverId, { quiet = false, reloadList = true } = {}) {
+        if (typeof driverId !== 'string' || !UUID_PATTERN.test(driverId)) return;
+        if (!await ensureActiveSession()) return;
+        if (state.supportSelected !== driverId) state.supportPendingReply = null;
+        state.supportSelected = driverId;
+        try {
+            const { data, error } = await db.rpc('admin_support_thread', { p_driver: driverId, p_limit: 200 });
+            if (error) throw error;
+            if (state.supportSelected !== driverId) return;
+            renderSupportThread(data);
+            if (reloadList) await loadSupportThreads({ quiet: true });
+        } catch (error) {
+            if (isAuthorizationError(error)) await signOut('انتهت صلاحية جلسة المشرف.');
+            else if (!quiet) setSupportFeedback('تعذر فتح المحادثة.', 'error');
+        }
+    }
+
+    function renderSupportThread(data) {
+        const messages = Array.isArray(data?.messages) ? data.messages : [];
+        state.supportSelectedStatus = data?.status === 'closed' ? 'closed' : 'open';
+        state.supportCorrelation = typeof data?.last_correlation_id === 'string' && /^[a-f0-9]{16,64}$/.test(data.last_correlation_id)
+            ? data.last_correlation_id : null;
+        el.supportConversation.hidden = false;
+        el.supportDriverName.textContent = displayValue(data?.driver_name, 'سائق');
+        const meta = [displayValue(data?.driver_phone, ''), data?.last_app_version ? `الإصدار ${displayValue(data.last_app_version)}` : '']
+            .filter(Boolean).join(' · ');
+        el.supportDriverMeta.textContent = meta || 'لا توجد بيانات إضافية';
+        el.supportDiagnose.disabled = !state.supportCorrelation;
+        el.supportToggleStatus.textContent = state.supportSelectedStatus === 'closed' ? 'إعادة فتح المحادثة' : 'إغلاق المحادثة';
+        const wasAtBottom = el.supportMessages.scrollHeight - el.supportMessages.scrollTop - el.supportMessages.clientHeight < 40;
+        el.supportMessages.replaceChildren();
+        if (messages.length === 0) {
+            const empty = document.createElement('p');
+            empty.className = 'field-hint';
+            empty.textContent = 'لا رسائل بعد. يمكنك بدء المحادثة مع السائق.';
+            el.supportMessages.append(empty);
+        }
+        messages.forEach((message) => {
+            if (typeof message?.body !== 'string') return;
+            const bubble = document.createElement('div');
+            bubble.className = `support-bubble support-bubble--${message.sender === 'admin' ? 'admin' : 'driver'}`;
+            bubble.textContent = message.body;
+            const time = document.createElement('span');
+            time.className = 'support-bubble__time';
+            time.textContent = `${message.sender === 'admin' ? 'الإدارة' : 'السائق'} · ${formatDateTime(message.created_at)}`;
+            bubble.append(time);
+            el.supportMessages.append(bubble);
+        });
+        if (wasAtBottom || messages.length < 3) el.supportMessages.scrollTop = el.supportMessages.scrollHeight;
+    }
+
+    async function handleSupportReply(event) {
+        event.preventDefault();
+        const driverId = state.supportSelected;
+        const body = el.supportReply.value.trim();
+        if (!driverId) return;
+        if (body.length < 1 || body.length > 1000) {
+            setSupportFeedback('اكتب ردًا بين حرف و1000 حرف.', 'error');
+            el.supportReply.focus();
+            return;
+        }
+        // The same id is reused until the server confirms, so a retried click never duplicates.
+        if (!state.supportPendingReply) state.supportPendingReply = newClientId();
+        await runWithButton(el.supportSend, async () => {
+            if (!await ensureActiveSession()) return;
+            try {
+                const { error } = await db.rpc('admin_support_reply', { p_driver: driverId, p_client_id: state.supportPendingReply, p_body: body });
+                if (error) throw error;
+                state.supportPendingReply = null;
+                el.supportReply.value = '';
+                setSupportFeedback('أُرسل الرد وسيصل السائق كإشعار.', 'success');
+                await openSupportThread(driverId, { quiet: true });
+            } catch (error) {
+                if (isAuthorizationError(error)) await signOut('انتهت صلاحية جلسة المشرف.');
+                else setSupportFeedback('تعذر إرسال الرد. أعد المحاولة؛ لن يتكرر الرد.', 'error');
+            }
+        });
+    }
+
+    async function toggleSupportStatus() {
+        const driverId = state.supportSelected;
+        if (!driverId || !await ensureActiveSession()) return;
+        const next = state.supportSelectedStatus === 'closed' ? 'open' : 'closed';
+        try {
+            const { error } = await db.rpc('admin_support_set_status', { p_driver: driverId, p_status: next });
+            if (error) throw error;
+            setSupportFeedback(next === 'closed' ? 'أُغلقت المحادثة. ستُفتح تلقائيًا إذا كتب السائق.' : 'أُعيد فتح المحادثة.', 'success');
+            await refreshSupport({ quiet: true });
+        } catch (error) {
+            await handleOperationError(error, 'تعذر تغيير حالة المحادثة.');
+        }
+    }
+
+    async function diagnoseSupportThread() {
+        if (!state.supportCorrelation) return;
+        await showTab('telemetry');
+        el.telemetryCorrelation.value = state.supportCorrelation;
+        el.telemetryForm.requestSubmit();
+    }
+
+    function newClientId() {
+        if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+        const bytes = crypto.getRandomValues(new Uint8Array(16));
+        bytes[6] = (bytes[6] & 0x0f) | 0x40;
+        bytes[8] = (bytes[8] & 0x3f) | 0x80;
+        const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+        return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+    }
+
+    function setSupportFeedback(message, type) {
+        el.supportFeedback.textContent = message;
+        el.supportFeedback.className = `policy-feedback policy-feedback--${type}`;
+        el.supportFeedback.hidden = false;
+    }
+
+    async function notifyDriver(driver) {
+        if (typeof driver?.id !== 'string' || !UUID_PATTERN.test(driver.id)) {
+            setNotice('تعذر التحقق من معرّف السائق المحدد.', 'error');
+            return;
+        }
+        setNotificationTarget({ id: driver.id, name: displayValue(driver.full_name, 'سائق') });
+        await showTab('notifications');
+        el.notificationTitle.focus();
+    }
+
+    function setNotificationTarget(driver) {
+        state.notificationDriver = driver;
+        el.notificationTarget.textContent = driver ? driver.name : 'كل السائقين';
+        el.notificationTargetClear.hidden = !driver;
+        el.notificationSend.textContent = driver ? `إرسال إلى ${driver.name}` : 'إرسال لكل السائقين';
+    }
+
+    function readNotificationValues() {
+        const title = el.notificationTitle.value.trim();
+        const body = el.notificationBody.value.trim();
+        const kind = el.notificationKind.value;
+        const action = el.notificationAction.value;
+        const expiry = el.notificationExpiry.value;
+        if (title.length < 2 || title.length > 80) return { error: 'العنوان بين حرفين و80 حرفًا.', field: el.notificationTitle };
+        if (body.length < 2 || body.length > 500) return { error: 'النص بين حرفين و500 حرف.', field: el.notificationBody };
+        if (!Object.hasOwn(NOTIFICATION_KINDS, kind) || !NOTIFICATION_ACTIONS.has(action) || !NOTIFICATION_EXPIRY_DAYS.has(expiry)) {
+            return { error: 'اختيار غير صالح؛ أعد تحميل الصفحة.', field: el.notificationKind };
+        }
+        const expiresAt = expiry ? new Date(Date.now() + Number(expiry) * 24 * 60 * 60 * 1000).toISOString() : null;
+        return { title, body, kind, action: action || null, expiresAt };
+    }
+
+    async function handleNotificationSend(event) {
+        event.preventDefault();
+        const values = readNotificationValues();
+        if (values.error) {
+            el.notificationError.textContent = values.error;
+            el.notificationError.hidden = false;
+            values.field.focus();
+            return;
+        }
+        const target = state.notificationDriver;
+        if (!target && !window.confirm('سيصل هذا الإشعار إلى كل السائقين. هل تريد الإرسال؟')) return;
+        await runWithButton(el.notificationSend, async () => {
+            if (!await ensureActiveSession()) return;
+            try {
+                const { error } = await db.rpc('admin_send_notification', {
+                    p_driver: target ? target.id : null,
+                    p_title: values.title,
+                    p_body: values.body,
+                    p_kind: values.kind,
+                    p_action: values.action,
+                    p_expires_at: values.expiresAt
+                });
+                if (error) throw error;
+                setNotificationFeedback(target ? `أُرسل الإشعار إلى ${target.name}.` : 'أُرسل الإشعار لكل السائقين.', 'success');
+                el.notificationForm.reset();
+                el.notificationBodyCount.textContent = '0 / 500';
+                setNotificationTarget(null);
+                await loadNotifications();
+            } catch (error) {
+                if (isAuthorizationError(error)) await signOut('انتهت صلاحية جلسة المشرف.');
+                else setNotificationFeedback(error?.code === '22023'
+                    ? 'رفض الخادم الإشعار: تحقق من العنوان والنص والمستلم.'
+                    : 'تعذر إرسال الإشعار. تحقق من الاتصال ثم أعد المحاولة.', 'error');
+            }
+        });
+    }
+
+    async function loadNotifications() {
+        if (!await ensureActiveSession()) return;
+        el.notificationsList.replaceChildren();
+        appendEmptyRow(el.notificationsList, 6, 'جارٍ التحميل…');
+        try {
+            const { data, error } = await db.rpc('admin_list_notifications', { p_limit: 100 });
+            if (error) throw error;
+            state.notificationsLoaded = true;
+            renderNotifications(Array.isArray(data) ? data : []);
+        } catch (error) {
+            if (isAuthorizationError(error)) await signOut('انتهت صلاحية جلسة المشرف.');
+            else {
+                el.notificationsList.replaceChildren();
+                appendEmptyRow(el.notificationsList, 6, 'تعذر تحميل الإشعارات المرسلة.');
+            }
+        }
+    }
+
+    function renderNotifications(rows) {
+        el.notificationsList.replaceChildren();
+        if (rows.length === 0) {
+            appendEmptyRow(el.notificationsList, 6, 'لم يُرسل أي إشعار بعد.');
+            return;
+        }
+        rows.forEach((item) => {
+            const row = document.createElement('tr');
+            appendCell(row, formatDateTime(item.created_at), 'ltr-cell');
+            appendCell(row, item.driver_id ? displayValue(item.driver_name, 'سائق') : 'كل السائقين');
+            appendCell(row, displayValue(item.title));
+            appendCell(row, NOTIFICATION_KINDS[item.kind] || 'معلومة');
+            appendCell(row, String(Number.isFinite(Number(item.read_count)) ? Number(item.read_count) : 0));
+            const actionCell = document.createElement('td');
+            const remove = document.createElement('button');
+            remove.type = 'button';
+            remove.className = 'btn-danger';
+            remove.textContent = 'حذف';
+            remove.addEventListener('click', () => { void deleteNotification(item.id, remove); });
+            actionCell.append(remove);
+            row.append(actionCell);
+            el.notificationsList.append(row);
+        });
+        labelCells(el.notificationsList);
+    }
+
+    async function deleteNotification(id, button) {
+        if (typeof id !== 'string' || !UUID_PATTERN.test(id)) return;
+        if (!window.confirm('سيختفي هذا الإشعار من تطبيقات السائقين. هل تريد الحذف؟')) return;
+        await runWithButton(button, async () => {
+            if (!await ensureActiveSession()) return;
+            try {
+                const { error } = await db.rpc('admin_delete_notification', { p_id: id });
+                if (error) throw error;
+                setNotificationFeedback('حُذف الإشعار.', 'success');
+                await loadNotifications();
+            } catch (error) {
+                await handleOperationError(error, 'تعذر حذف الإشعار.');
+            }
+        });
+    }
+
+    function setNotificationFeedback(message, type) {
+        el.notificationFeedback.textContent = message;
+        el.notificationFeedback.className = `policy-feedback policy-feedback--${type}`;
+        el.notificationFeedback.hidden = false;
+    }
+
+    // The Sabbaq build each driver runs: version name and Android from the latest telemetry,
+    // the version code from the latest licence check, and when the driver was last seen.
+    async function loadDriverVersions(ids) {
+        const valid = ids.filter((id) => typeof id === 'string' && UUID_PATTERN.test(id));
+        if (valid.length === 0) return;
+        try {
+            const { data, error } = await db.rpc('admin_driver_versions', { p_drivers: valid });
+            if (error) throw error;
+            const byId = new Map((Array.isArray(data) ? data : []).map((row) => [row.driver_id, row]));
+            el.driversList.querySelectorAll('td[data-version-for]').forEach((cell) => {
+                cell.textContent = describeDriverVersion(byId.get(cell.dataset.versionFor));
+            });
+        } catch (error) {
+            if (isAuthorizationError(error)) await signOut('انتهت صلاحية جلسة المشرف.');
+            else el.driversList.querySelectorAll('td[data-version-for]').forEach((cell) => { cell.textContent = 'تعذر التحميل'; });
+        }
+    }
+
+    function describeDriverVersion(row) {
+        if (!row) return 'غير معروف';
+        const name = typeof row.version_name === 'string' && /^[A-Za-z0-9._-]{1,32}$/.test(row.version_name) ? row.version_name : null;
+        const code = Number.isInteger(Number(row.version_code)) && Number(row.version_code) > 0 ? Number(row.version_code) : null;
+        const android = androidRelease(Number(row.android_api));
+        const parts = [];
+        if (name) parts.push(code ? `${name} (${code})` : name);
+        else if (code) parts.push(`رمز ${code}`);
+        else parts.push('لم يتصل بعد');
+        if (android) parts.push(`أندرويد ${android}`);
+        if (row.last_seen_at) parts.push(`آخر ظهور ${formatDateTime(row.last_seen_at)}`);
+        return parts.join(' · ');
+    }
+
+    function androidRelease(api) {
+        const releases = { 26: '8', 27: '8.1', 28: '9', 29: '10', 30: '11', 31: '12', 32: '12L', 33: '13', 34: '14', 35: '15', 36: '16' };
+        return Number.isInteger(api) ? releases[api] || `API ${api}` : null;
     }
 
     async function resetDevice(id, button) {

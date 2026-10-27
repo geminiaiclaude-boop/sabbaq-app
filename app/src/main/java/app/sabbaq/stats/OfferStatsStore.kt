@@ -89,6 +89,11 @@ object OfferStatsStore {
         }
     }
 
+    /** Seen and accepted offers on one local day; null when nothing was recorded that day. */
+    fun totalsFor(date: LocalDate): Pair<Long, Long>? = synchronized(lock) {
+        daily[date]?.let { it.visibleOffers to it.acceptedOffers }
+    }
+
     fun recordAcceptedConfirmed() = synchronized(lock) {
         val today = LocalDate.now()
         rollLocked(today)
@@ -120,7 +125,10 @@ object OfferStatsStore {
     private fun loadLocked() {
         val raw = preferences?.getString(KEY_DAILY_AGGREGATES, null)
             ?.takeIf { it.length <= MAX_SERIALIZED_CHARS }
-        val decoded = runCatching { raw?.let { json.decodeFromString<List<OfferStatsDay>>(it) }.orEmpty() }
+        val decoded = runCatching {
+            raw?.let { json.decodeFromString<List<OfferStatsDay>>(StoredReasonCodes.dropRetired(json, it, "rejectionsByReason")) }
+                .orEmpty()
+        }
             .getOrDefault(emptyList())
         daily = decoded.mapNotNull { row ->
             runCatching {

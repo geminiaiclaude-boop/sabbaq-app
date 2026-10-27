@@ -231,3 +231,56 @@ test('على الجوال لا تتحرك اللوحة أفقيًا: صفوف ا
     // Tabs wrap instead of scrolling sideways.
     assert.doesNotMatch(css.slice(css.indexOf('/* ── Phone layout')), /overflow-x:\s*auto/);
 });
+
+test('بث الإشعارات: إرسال لكل السائقين أو لسائق واحد بتأكيد صريح، وعرض وحذف المرسل', () => {
+    const app = read(sourceAdmin, 'app.js');
+    const html = read(sourceAdmin, 'index.html');
+    assert.match(html, /id="notifications-tab"[^>]*aria-controls="tab-notifications"/);
+    assert.match(html, /id="notification-title" maxlength="80"/);
+    assert.match(html, /id="notification-body" maxlength="500"/);
+    assert.match(app, /db\.rpc\('admin_send_notification', \{\s*p_driver: target \? target\.id : null/);
+    assert.match(app, /db\.rpc\('admin_list_notifications', \{ p_limit: 100 \}\)/);
+    assert.match(app, /db\.rpc\('admin_delete_notification', \{ p_id: id \}\)/);
+    // A broadcast reaches every driver: it must never go out without a confirmation.
+    assert.match(app, /if \(!target && !window\.confirm\(/);
+    assert.match(app, /notify\.textContent = 'إرسال إشعار'/);
+    for (const action of ['open_account', 'open_setup', 'open_filters', 'update_app']) {
+        assert.match(html, new RegExp(`value="${action}"`));
+    }
+});
+
+test('صندوق الدعم: قائمة المحادثات والرد بمعرّف ثابت لا يتكرر، وربط بالتشخيص والسائقين', () => {
+    const app = read(sourceAdmin, 'app.js');
+    const html = read(sourceAdmin, 'index.html');
+    assert.match(html, /id="support-tab"[^>]*aria-controls="tab-support"/);
+    assert.match(html, /id="support-messages"[^>]*role="log"/);
+    assert.match(html, /id="support-reply" maxlength="1000"/);
+    assert.match(html, /value="open_support"/);
+    assert.match(app, /db\.rpc\('admin_support_threads', \{ p_status: filter === 'all' \? null : filter, p_limit: 200 \}\)/);
+    assert.match(app, /db\.rpc\('admin_support_thread', \{ p_driver: driverId, p_limit: 200 \}\)/);
+    assert.match(app, /db\.rpc\('admin_support_reply', \{ p_driver: driverId, p_client_id: state\.supportPendingReply, p_body: body \}\)/);
+    assert.match(app, /db\.rpc\('admin_support_set_status', \{ p_driver: driverId, p_status: next \}\)/);
+    // A retried reply reuses its client id until the server confirms it.
+    assert.match(app, /if \(!state\.supportPendingReply\) state\.supportPendingReply = newClientId\(\);/);
+    // Polling stops with the session and never runs while the page is hidden.
+    assert.match(app, /stopSupportPolling\(\);\s*state\.adminAuthorized = false;/);
+    assert.match(app, /if \(document\.hidden \|\| el\.dashboard\.hidden\) return;/);
+    assert.match(app, /message\.textContent = 'مراسلة'/);
+    const newClientId = extractFunction(app, 'newClientId', 'setSupportFeedback');
+    assert.match(newClientId(), /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+});
+
+test('جدول السائقين يعرض إصدار سبّاق المثبت لكل سائق', () => {
+    const app = read(sourceAdmin, 'app.js');
+    const html = read(sourceAdmin, 'index.html');
+    assert.match(html, /<th scope="col">إصدار سبّاق<\/th>/);
+    assert.match(app, /db\.rpc\('admin_driver_versions', \{ p_drivers: valid \}\)/);
+    const describe = extractFunction(app, 'describeDriverVersion', 'androidRelease');
+    const android = extractFunction(app, 'androidRelease', 'resetDevice');
+    globalThis.androidRelease = android;
+    globalThis.formatDateTime = () => 'الآن';
+    assert.equal(describe({ version_name: '2.1.0', version_code: 9, android_api: 34 }), '2.1.0 (9) · أندرويد 14');
+    assert.equal(describe({ version_code: 7 }), 'رمز 7');
+    assert.equal(describe(undefined), 'غير معروف');
+    assert.equal(describe({ version_name: '<b>x</b>' }), 'لم يتصل بعد');
+});

@@ -36,11 +36,15 @@ class JeenyFrameClassifier(
 
     fun assess(root: ScreenNode): JeenyFrameAssessment {
         val labels = ArrayList<Pair<ScreenNode, String>>()
+        // Unlabelled clickable containers too: Jeeny's accept button is a clickable frame (it
+        // carries the countdown bar) whose «قبول العرض» text sits in a child view.
+        val clickables = ArrayList<ScreenNode>()
         var scanned = 0
         var chars = 0
         root.walk { node ->
             if (scanned >= maxNodes || chars >= maxTextChars) return@walk
             scanned++
+            if (node.clickable) clickables += node
             val label = Text.normalize(node.text).ifEmpty { Text.normalize(node.description) }
             if (label.isNotEmpty()) {
                 val bounded = label.take(maxTextChars - chars)
@@ -51,15 +55,13 @@ class JeenyFrameClassifier(
         val all = labels.map { it.second }
         val accept = labels.firstOrNull { (node, label) ->
             node.clickable && isAcceptLabel(label)
-        } ?: labels.firstOrNull { (node, _) ->
-            node.clickable && containsAcceptLabel(node, labels)
-        }
+        }?.first ?: clickables.firstOrNull { containsAcceptLabel(it, labels) }
         val strongCue = all.any { label -> strongConfirmCues.any { Text.containsWord(label, it) } }
         // Same rule as OfferParser: cues that also appear on offer cards count only once the
         // accept control is gone, otherwise a real offer is classified as an active ride.
         val weakCue = all.any { label -> weakConfirmCues.any { Text.containsWord(label, it) } }
         val confirmed = strongCue || (weakCue && accept == null)
-        val hasFare = all.any { hasCurrencyAndNumber(it) }
+        val hasFare = all.any { hasCurrencyAndNumber(it) } || hasCuedAmount(all)
         val hasDistance = all.any { kmRegex.containsMatchIn(it) || meterRegex.containsMatchIn(it) }
         val hasTime = all.any { minuteRegex.containsMatchIn(it) || hourRegex.containsMatchIn(it) }
         val hasPickup = all.any { label -> pickupCues.any { Text.containsWord(label, it) } }
@@ -83,11 +85,17 @@ class JeenyFrameClassifier(
             "p" to (hasPickup || hasAddress), "o" to hasOfferLabel, "c" to confirmed,
         ).joinToString(",") { (key, present) -> key + if (present) "1" else "0" } +
             ",n$scanned,cap${if (capped) 1 else 0}"
-        return JeenyFrameAssessment(classification, score.coerceIn(MIN_SCORE, MAX_SCORE), features, scanned, accept?.first?.nodePath, flags)
+        return JeenyFrameAssessment(classification, score.coerceIn(MIN_SCORE, MAX_SCORE), features, scanned, accept?.nodePath, flags)
     }
 
     private fun hasCurrencyAndNumber(label: String): Boolean =
-        currencyRegex.any { Text.containsWord(label, it) } && numberRegex.containsMatchIn(label)
+        currencyRegex.any { label.contains(it) && (it.length == 1 || Text.containsWord(label, it)) } && numberRegex.containsMatchIn(label)
+
+    /** An earnings label followed by a lone amount: the fare when the currency is an icon. */
+    private fun hasCuedAmount(all: List<String>): Boolean = all.indices.any { index ->
+        fareCues.any { Text.containsWord(all[index], it) } &&
+            (index..minOf(index + 2, all.lastIndex)).any { loneAmount.containsMatchIn(all[it]) }
+    }
 
     private fun isAcceptLabel(label: String): Boolean =
         label.length <= 48 && acceptLabels.any { it == label || Text.containsWord(label, it) && label.length <= it.length + 16 }
@@ -101,13 +109,15 @@ class JeenyFrameClassifier(
         .map(Text::normalize).filter { it.isNotEmpty() }.distinct()
     private val weakConfirmCues = (profile.weakConfirmLabels + "active")
         .map(Text::normalize).filter { it.isNotEmpty() }.distinct()
-    private val currencyRegex = profile.currencyTokens.map(Text::normalize).filter { it.isNotEmpty() }
+    private val currencyRegex = (profile.currencyTokens + UNIVERSAL_CURRENCY_TOKENS).map(Text::normalize).filter { it.isNotEmpty() }
+    private val fareCues = profile.fareCues.map(Text::normalize).filter { it.isNotEmpty() }
+    private val loneAmount = Regex("(?:^|\\s)[\\p{Sc}\\p{So}\\p{Co}]?\\s*(?:${Text.NUMBER})\\s*[\\p{Sc}\\p{So}\\p{Co}]?$")
     private val numberRegex = Regex(Text.NUMBER)
     private val kmRegex = Regex("(${Text.NUMBER})\\s*(?:${Text.tokenAlternation(profile.kmUnits)})(?![\\p{L}])")
     private val meterRegex = Regex("(${Text.NUMBER})\\s*(?:${Text.tokenAlternation(profile.meterUnits)})(?![\\p{L}])")
     private val minuteRegex = Regex("(${Text.NUMBER})\\s*(?:${Text.tokenAlternation(profile.minuteUnits)})(?![\\p{L}])")
     private val hourRegex = Regex("(${Text.NUMBER})\\s*(?:${Text.tokenAlternation(profile.hourUnits)})(?![\\p{L}])")
-    private val pickupCues = listOf("pickup", "pick up", "from", "passenger", "الإقلاع", "الانطلاق", "الاقلال", "الراكب")
+    private val pickupCues = listOf("pickup", "pick up", "from", "passenger", "away", "الإقلاع", "الانطلاق", "الاقلال", "الراكب", "يبعد", "منك", "للوصول")
     private val offerLabels = listOf("offer", "ride request", "request", "طلب", "عرض", "رحلة", "مشوار")
 
     companion object {

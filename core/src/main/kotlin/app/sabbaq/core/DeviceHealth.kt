@@ -18,10 +18,16 @@ data class DeviceHealth(
     val notificationsEnabled: Boolean,
     val powerSaveMode: Boolean,
     val networkAvailable: Boolean,
+    /** A supported ride app was found only in another profile (dual app, work profile, secure folder). */
+    val targetInOtherProfile: Boolean = false,
+    /** A ride app was found under a package the profiles do not list yet. */
+    val targetUnknownPackage: Boolean = false,
 ) {
     fun primaryIssue(): String = when {
         !accessibilityEnabled -> "a11y_disabled"
         !serviceConnected -> "a11y_not_connected"
+        !targetInstalled && targetInOtherProfile -> "target_other_profile"
+        !targetInstalled && targetUnknownPackage -> "target_unknown_package"
         !targetInstalled -> "target_not_installed"
         !signedIn -> "signed_out"
         // Without network the 15-minute license lease cannot be renewed, so an invalid license
@@ -42,6 +48,6 @@ data class DeviceHealth(
         "a11y" to accessibilityEnabled, "svc" to serviceConnected, "act" to monitoringActive,
         "dis" to disclosureAccepted, "ses" to signedIn, "lic" to licenseValid, "tgt" to targetInstalled,
         "bat" to batteryUnrestricted, "bg" to backgroundRestricted, "ntf" to notificationsEnabled,
-        "pwr" to powerSaveMode, "net" to networkAvailable,
+        "pwr" to powerSaveMode, "net" to networkAvailable, "oth" to targetInOtherProfile, "unk" to targetUnknownPackage,
     ).joinToString(",") { (key, on) -> "$key=${if (on) 1 else 0}" }
 }

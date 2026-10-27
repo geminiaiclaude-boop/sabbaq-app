@@ -21,6 +21,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
@@ -103,6 +104,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
@@ -132,6 +134,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
@@ -163,7 +166,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 /** وجهات لوحة السائق؛ يمكن استدعاء الشاشة مباشرة إلى أي منها في معاينات/اختبارات الواجهة. */
-enum class DriverDestination { Dashboard, Filters, Simulator, Account, History, Setup, Settings }
+enum class DriverDestination { Dashboard, Filters, Simulator, Account, History, Setup, Settings, Support }
 
 private data class DriverStatus(val message: String, val isError: Boolean = false, val success: Boolean = false) {
     val tone: SabbaqTone get() = when {
@@ -207,6 +210,7 @@ fun SettingsScreen(
     initialDestination: DriverDestination = DriverDestination.Dashboard,
     onFilterSaveStateChanged: (isSaving: Boolean, hasUnpersistedChanges: Boolean) -> Unit = { _, _ -> },
     onAccountDeleted: () -> Unit = {},
+    onRequestLogout: () -> Unit = {},
     /** Opens the setup guide first for a driver who has not finished or dismissed it. */
     autoSetupGuide: Boolean = true,
     isRestoringSession: Boolean = false,
@@ -787,6 +791,8 @@ fun SettingsScreen(
                 OfferDecisionLogScreen(onBack = { navigateTo(DriverDestination.Dashboard) })
             }
 
+            DriverDestination.Support -> SupportPage()
+
             DriverDestination.Account -> AccountPage(
                 licenseInMemory = licenseInMemory,
                 message = accountMessage,
@@ -802,6 +808,8 @@ fun SettingsScreen(
                     if (isActive) stopKeeper()
                     onAccountDeleted()
                 },
+                onOpenSupport = { navigateTo(DriverDestination.Support) },
+                onSignOut = onRequestLogout,
             )
         }
         }
@@ -856,14 +864,32 @@ private fun DriverNavigationShell(
                 modifier = Modifier.fillMaxSize(),
                 contentWindowInsets = WindowInsets(0, 0, 0, 0),
                 bottomBar = {
-                    NavigationBar(windowInsets = WindowInsets(0, 0, 0, 0)) {
-                        bottomDriverDestinations.forEach { item ->
-                            NavigationBarItem(
-                                selected = destination == item.destination,
-                                onClick = { onDestinationSelected(item.destination) },
-                                icon = { navIcon(item) },
-                                label = { Text(item.label) },
-                            )
+                    val colors = MaterialTheme.colorScheme
+                    Column {
+                        HorizontalDivider(color = colors.outlineVariant)
+                        NavigationBar(
+                            windowInsets = WindowInsets(0, 0, 0, 0),
+                            containerColor = colors.surface,
+                            tonalElevation = 0.dp,
+                        ) {
+                            bottomDriverDestinations.forEach { item ->
+                                val selected = destination == item.destination
+                                NavigationBarItem(
+                                    selected = selected,
+                                    onClick = { onDestinationSelected(item.destination) },
+                                    icon = { navIcon(item) },
+                                    label = {
+                                        Text(item.label, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
+                                    },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = colors.onSecondaryContainer,
+                                        selectedTextColor = colors.primary,
+                                        indicatorColor = colors.secondaryContainer,
+                                        unselectedIconColor = colors.onSurfaceVariant,
+                                        unselectedTextColor = colors.onSurfaceVariant,
+                                    ),
+                                )
+                            }
                         }
                     }
                 },
@@ -909,7 +935,7 @@ private fun ActiveSubscriptionStatusCard(
     val remaining = until?.let { java.time.Duration.between(now, it).coerceAtLeast(java.time.Duration.ZERO) }
     val remainingDays = remaining?.toDays()
     val endDate = until?.let {
-        java.time.format.DateTimeFormatter.ofPattern("d MMMM yyyy", java.util.Locale("ar"))
+        java.time.format.DateTimeFormatter.ofPattern("d MMMM yyyy", SabbaqLocale)
             .withZone(java.time.ZoneId.systemDefault()).format(it)
     }
     val title = when (state) {
@@ -1007,7 +1033,7 @@ private fun MembershipBadge(isPro: Boolean, isTrial: Boolean) {
             .padding(horizontal = 10.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, style = MaterialTheme.typography.labelLarge, color = ink, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+        Text(label, style = MaterialTheme.typography.labelLarge, color = ink, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -1243,10 +1269,7 @@ private fun ActiveConditionsCockpit(
         icon = Icons.Outlined.Tune,
         modifier = modifier,
     ) {
-        FareRangeCondition(draft, errors, onDraftChange, keyPrefix = QUICK_PREFIX)
-        PickupTimeCondition(draft, errors, onDraftChange, keyPrefix = QUICK_PREFIX)
-        HighFareOverrideCondition(draft, errors, onDraftChange, keyPrefix = QUICK_PREFIX)
-        NoDestinationCondition(draft, onDraftChange, keyPrefix = QUICK_PREFIX)
+        QuickConditionsPanel(draft, errors, onDraftChange)
         SabbaqAnimatedMessage(saveMessage?.message, saveMessage?.tone ?: SabbaqTone.Info)
         SabbaqButton(
             "باقي الشروط في «طلبات تناسبك»",
@@ -1256,8 +1279,6 @@ private fun ActiveConditionsCockpit(
         )
     }
 }
-
-private const val QUICK_PREFIX = "quick-"
 
 internal data class ReadinessItem(
     val icon: ImageVector,
@@ -1311,6 +1332,7 @@ private fun OperationHero(
                 .tilt3D(maxDegrees = 6f, idle = true)
                 .shadow(18.dp, CircleShape, ambientColor = brand.heroEnd, spotColor = brand.heroEnd)
                 .clip(CircleShape)
+                .border(2.dp, brand.signature.copy(alpha = 0.6f), CircleShape)
                 .background(Brush.radialGradient(listOf(brand.heroEnd, brand.heroStart))),
             contentAlignment = Alignment.Center,
         ) {
@@ -1394,8 +1416,8 @@ private fun OperationHero(
                         contentDescription = if (isActive) "إيقاف متابعة الطلبات" else "ابدأ متابعة الطلبات"
                     },
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isActive) brand.onHero.copy(alpha = 0.14f) else brand.onHero,
-                        contentColor = if (isActive) brand.onHero else brand.heroStart,
+                        containerColor = if (isActive) brand.onHero.copy(alpha = 0.14f) else brand.signature,
+                        contentColor = if (isActive) brand.onHero else brand.onSignature,
                         disabledContainerColor = brand.onHero.copy(alpha = 0.24f),
                         disabledContentColor = brand.onHero,
                     ),
@@ -1748,12 +1770,12 @@ private fun SimulatorPage(savedFilters: Filters) {
                 Switch(checked = hasDestination, onCheckedChange = { hasDestination = it; result = null })
             }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                PreviewField(pickupKm, "مسافة الوصول (كم)", KeyboardType.Decimal, Modifier.weight(1f)) { pickupKm = it; result = null }
-                PreviewField(pickupMinutes, "وقت الوصول (دقائق)", KeyboardType.Number, Modifier.weight(1f)) { pickupMinutes = it; result = null }
+                PreviewField(pickupKm, "مسافة الوصول", KeyboardType.Decimal, Modifier.weight(1f), unit = "كم") { pickupKm = it; result = null }
+                PreviewField(pickupMinutes, "وقت الوصول", KeyboardType.Number, Modifier.weight(1f), unit = "د") { pickupMinutes = it; result = null }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                PreviewField(tripKm, "مسافة الرحلة (كم)", KeyboardType.Decimal, Modifier.weight(1f)) { tripKm = it; result = null }
-                PreviewField(tripMinutes, "مدة الرحلة (دقائق)", KeyboardType.Number, Modifier.weight(1f)) { tripMinutes = it; result = null }
+                PreviewField(tripKm, "مسافة الرحلة", KeyboardType.Decimal, Modifier.weight(1f), unit = "كم") { tripKm = it; result = null }
+                PreviewField(tripMinutes, "مدة الرحلة", KeyboardType.Number, Modifier.weight(1f), unit = "د") { tripMinutes = it; result = null }
             }
             PreviewField(offerText, "كلمات في وصف الطلب (اختياري)", KeyboardType.Text, singleLine = false) { offerText = it; result = null }
             SabbaqButton(text = "اعرف هل يناسبك", onClick = ::evaluate, enabled = hasInput, icon = Icons.Outlined.Visibility)
@@ -1778,13 +1800,15 @@ private fun PreviewField(
     label: String,
     keyboardType: KeyboardType,
     modifier: Modifier = Modifier.fillMaxWidth(),
+    unit: String? = null,
     singleLine: Boolean = true,
     onValueChange: (String) -> Unit,
 ) {
     OutlinedTextField(
         value = value,
         onValueChange = { onValueChange(it.take(2048)) },
-        label = { Text(label) },
+        label = { Text(label, maxLines = 1) },
+        suffix = unit?.let { { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) } },
         singleLine = singleLine,
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = if (singleLine) ImeAction.Next else ImeAction.Default),
         modifier = modifier,
@@ -1824,6 +1848,8 @@ private fun AccountPage(
     onLicenseChanged: (Boolean) -> Unit,
     onMessage: (DriverStatus?) -> Unit,
     onAccountDeleted: () -> Unit,
+    onOpenSupport: () -> Unit,
+    onSignOut: () -> Unit,
 ) {
     SubscriptionScreen(
         licenseInMemory = licenseInMemory,
@@ -1834,6 +1860,8 @@ private fun AccountPage(
             onMessage(nextMessage?.let { DriverStatus(it, isError) })
         },
         onAccountDeleted = onAccountDeleted,
+        onOpenSupport = onOpenSupport,
+        onSignOut = onSignOut,
     )
 }
 
@@ -1846,9 +1874,6 @@ private fun activeFilterCount(filters: Filters): Int = buildList {
     if (filters.isTripTimeEnabled && ((filters.minTripMinutes?.let { it > 0 } == true) || filters.maxTripMinutes != null)) add(Unit)
     if (filters.excludeKeywords.any { it.isNotBlank() }) add(Unit)
     if (filters.scheduleEnabled) add(Unit)
-    if (filters.destinationZones.any { it.enabled }) add(Unit)
-    if (filters.smartDestination != null) add(Unit)
-    if (filters.destinationCorridor != null) add(Unit)
 }.size
 
 internal fun parsePreviewDecimal(raw: String): BigDecimal? {
@@ -1902,11 +1927,6 @@ internal fun reasonArabic(code: ReasonCode): String = when (code) {
     ReasonCode.TRIP_MIN_TOO_LONG -> "مدة الرحلة أطول مما حددته."
     ReasonCode.TRIP_MIN_TOO_SHORT -> "مدة الرحلة أقصر مما حددته."
     ReasonCode.EXCLUDED_KEYWORD -> "وصف الطلب يحتوي كلمة لا تناسبك."
-    ReasonCode.DESTINATION_GEO_UNKNOWN -> "تعذر تحديد إحداثيات الوجهة من الربط المحلي؛ لم يخمّن سبّاق موقعًا."
-    ReasonCode.DESTINATION_ZONE_EXCLUDED -> "الوجهة تقع داخل منطقة استبعاد محددة."
-    ReasonCode.DESTINATION_ZONE_NOT_MATCHED -> "الوجهة خارج جميع مناطق الإدراج المحددة."
-    ReasonCode.SMART_DESTINATION_MISMATCH -> "الوجهة أبعد من النطاق المحدد للوجهة المفضلة."
-    ReasonCode.DESTINATION_CORRIDOR_MISMATCH -> "الوجهة خارج ممر الرحلة المحدد."
 }
 
 private fun Context.isSabbaqAccessibilityEnabled(): Boolean {

@@ -16,6 +16,21 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.background
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.material.icons.outlined.Checklist
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.PrivacyTip
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.verticalScroll
@@ -25,12 +40,12 @@ import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.FilterAlt
 import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.SettingsBrightness
 import androidx.compose.material.icons.outlined.Settings as SettingsIcon
+import androidx.compose.material.icons.outlined.SupportAgent
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.*
@@ -52,6 +67,10 @@ import app.sabbaq.Settings
 import app.sabbaq.ThemeMode
 import app.sabbaq.network.LicenseState
 import app.sabbaq.network.SupabaseClient
+import app.sabbaq.notifications.NotificationAction
+import app.sabbaq.notifications.NotificationCenter
+import app.sabbaq.notifications.NotificationInbox
+import app.sabbaq.support.SupportRepository
 import app.sabbaq.service.KeeperService
 import app.sabbaq.stats.OfferDecisionLogStore
 import app.sabbaq.stats.OfferStatsStore
@@ -160,6 +179,7 @@ class MainActivity : ComponentActivity() {
             var filterSavePending by remember { mutableStateOf(false) }
             var hasUnpersistedFilterChanges by remember { mutableStateOf(false) }
             var driverDestinationRequest by rememberSaveable { mutableStateOf<DriverDestination?>(null) }
+            var logoutRequests by remember { mutableIntStateOf(0) }
             var activeDriverDestination by rememberSaveable { mutableStateOf(DriverDestination.Dashboard) }
             // The cinematic clip precedes the existing logo intro once per install/update.
             var showVideoOpening by rememberSaveable {
@@ -197,6 +217,8 @@ class MainActivity : ComponentActivity() {
                 Settings.a11yDisclosureAccepted = false
                 stopService(Intent(this@MainActivity, KeeperService::class.java))
                 SupabaseClient.clearSession()
+                NotificationCenter.clear()
+                SupportRepository.clear()
                 filterSavePending = false
                 hasUnpersistedFilterChanges = false
                 driverDestinationRequest = null
@@ -207,15 +229,18 @@ class MainActivity : ComponentActivity() {
                 if (navigation.sessionRestoreStatus == SessionRestoreStatus.RESTORING)
                     navigation.startSessionRestore(this@MainActivity)
             }
+            val showHeader = navigation.route != AppState.WELCOME && !showVideoOpening && !showIntro
             SideEffect {
                 val style = if (dark) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
-                    else SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.argb(210, 20, 44, 55))
-                enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+                    else SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.argb(210, 31, 22, 51))
+                // The brand header is deep purple in both themes, so its status bar icons are light.
+                val statusStyle = if (showHeader) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT) else style
+                enableEdgeToEdge(statusBarStyle = statusStyle, navigationBarStyle = style)
             }
             SabbaqTheme(darkTheme = dark) {
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                     SabbaqShell(
-                        showHeader = navigation.route != AppState.WELCOME && !showVideoOpening && !showIntro,
+                        showHeader = showHeader,
                         themeMode = mode,
                         onThemeChange = { mode = it; Settings.themeMode = it },
                         isSavingFilters = filterSavePending,
@@ -227,6 +252,7 @@ class MainActivity : ComponentActivity() {
                         activeDriverDestination = activeDriverDestination,
                         onOpenDriverDestination = { driverDestinationRequest = it },
                         onOpenLogin = { if (navigation.route == AppState.WELCOME) navigation.welcomeFinished(false) },
+                        logoutRequests = logoutRequests,
                     ) {
                         SabbaqDepthContent(target = navigation.route, order = { it.ordinal }, label = "app-route") { route ->
                         when (route) {
@@ -278,6 +304,7 @@ class MainActivity : ComponentActivity() {
                                     hasUnpersistedFilterChanges = unpersisted
                                 },
                                 navigationRequest = driverDestinationRequest,
+                                onRequestLogout = { logoutRequests++ },
                                 onDestinationChanged = { activeDriverDestination = it },
                                 onNavigationRequestHandled = { driverDestinationRequest = null },
                                 themeMode = mode,
@@ -368,15 +395,35 @@ internal fun SabbaqShell(
     activeDriverDestination: DriverDestination? = null,
     onOpenDriverDestination: (DriverDestination) -> Unit = {},
     onOpenLogin: () -> Unit = {},
+    logoutRequests: Int = 0,
     content: @Composable () -> Unit
 ) {
-    var showThemeMenu by remember { mutableStateOf(false) }
     var confirmLogout by remember { mutableStateOf(false) }
+    var showNotifications by remember { mutableStateOf(false) }
+    val isDriver = isAuthenticated && !isAdmin
+    val inbox by NotificationCenter.state.collectAsState()
+    val support by SupportRepository.state.collectAsState()
     val context = LocalContext.current
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val requestLogout = { confirmLogout = true }
+    // Pages ask for sign-out through this counter so every path shares the one confirmation.
+    LaunchedEffect(logoutRequests) { if (logoutRequests > 0 && allowLogout) confirmLogout = true }
     val closeDrawer = { scope.launch { drawerState.close() } }
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    // Server messages arrive while the app is open: sync on entering the driver panel and on
+    // every return to the foreground.
+    DisposableEffect(isDriver, lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (isDriver && event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) scope.launch {
+                NotificationCenter.refresh()
+                SupportRepository.refreshUnread()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(isDriver) { if (!isDriver) showNotifications = false }
 
     BackHandler(enabled = drawerState.isOpen) {
         closeDrawer()
@@ -419,6 +466,9 @@ internal fun SabbaqShell(
                     closeDrawer()
                     requestLogout()
                 },
+                logoutEnabled = allowLogout,
+                themeMode = themeMode,
+                onThemeChange = onThemeChange,
                 onClose = { closeDrawer() },
             )
         },
@@ -428,15 +478,12 @@ internal fun SabbaqShell(
             contentWindowInsets = WindowInsets.safeDrawing,
             topBar = {
                 if (showHeader) SabbaqTopBar(
-                    themeMode = themeMode,
-                    isAuthenticated = isAuthenticated,
                     onOpenDrawer = { scope.launch { drawerState.open() } },
-                    onThemeMenu = { showThemeMenu = true },
-                    themeMenuExpanded = showThemeMenu,
-                    onDismissThemeMenu = { showThemeMenu = false },
-                    onThemeChange = { showThemeMenu = false; onThemeChange(it) },
-                    onRequestLogout = requestLogout,
-                    allowLogout = allowLogout,
+                    showDriverActions = isDriver,
+                    unreadSupport = support.unread,
+                    onOpenSupport = { onOpenDriverDestination(DriverDestination.Support) },
+                    unreadNotifications = if (NotificationCenter.belongsToCurrentAccount(inbox)) NotificationInbox.unread(inbox) else 0,
+                    onOpenNotifications = { showNotifications = true },
                 )
             }
         ) { insets ->
@@ -469,67 +516,58 @@ internal fun SabbaqShell(
         } },
         dismissButton = { TextButton(onClick = { confirmLogout = false }) { Text("البقاء") } }
     )
+    if (showNotifications) NotificationsSheet(
+        onDismiss = { showNotifications = false },
+        onAction = { action ->
+            showNotifications = false
+            when (action) {
+                NotificationAction.OPEN_ACCOUNT -> onOpenDriverDestination(DriverDestination.Account)
+                NotificationAction.OPEN_SETUP -> onOpenDriverDestination(DriverDestination.Setup)
+                NotificationAction.OPEN_FILTERS -> onOpenDriverDestination(DriverDestination.Filters)
+                NotificationAction.OPEN_SUPPORT -> onOpenDriverDestination(DriverDestination.Support)
+                NotificationAction.UPDATE_APP ->
+                    PublicLinks.open(context, "https://play.google.com/store/apps/details?id=${BuildConfig.APPLICATION_ID}")
+            }
+        },
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SabbaqTopBar(
-    themeMode: ThemeMode,
-    isAuthenticated: Boolean,
     onOpenDrawer: () -> Unit,
-    onThemeMenu: () -> Unit,
-    themeMenuExpanded: Boolean,
-    onDismissThemeMenu: () -> Unit,
-    onThemeChange: (ThemeMode) -> Unit,
-    onRequestLogout: () -> Unit,
-    allowLogout: Boolean,
+    showDriverActions: Boolean,
+    unreadSupport: Int,
+    onOpenSupport: () -> Unit,
+    unreadNotifications: Int,
+    onOpenNotifications: () -> Unit,
 ) {
-    Surface(
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 3.dp,
-        shadowElevation = 2.dp,
-    ) {
-        TopAppBar(
-            navigationIcon = {
-                IconButton(onClick = onOpenDrawer, modifier = Modifier.size(52.dp)) {
-                    Icon(Icons.Outlined.Menu, contentDescription = "فتح القائمة الجانبية")
-                }
-            },
-            title = { SabbaqBrand(compact = true) },
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
-            actions = {
-                Box {
-                    IconButton(onClick = onThemeMenu, modifier = Modifier.size(52.dp)) {
-                        Icon(
-                            when (themeMode) {
-                                ThemeMode.DARK -> Icons.Outlined.DarkMode
-                                ThemeMode.LIGHT -> Icons.Outlined.LightMode
-                                ThemeMode.SYSTEM -> Icons.Outlined.SettingsBrightness
-                            },
-                            contentDescription = "تغيير مظهر التطبيق",
-                        )
+    val brand = LocalSabbaqBrand.current
+    // Deep purple brand header in both themes, finished by the signature yellow rule.
+    Surface(color = brand.heroStart, shadowElevation = 6.dp) {
+        Column(Modifier.background(Brush.horizontalGradient(listOf(brand.heroEnd, brand.heroStart)))) {
+            TopAppBar(
+                navigationIcon = {
+                    IconButton(onClick = onOpenDrawer, modifier = Modifier.size(52.dp)) {
+                        Icon(Icons.Outlined.Menu, contentDescription = "فتح القائمة الجانبية")
                     }
-                    DropdownMenu(expanded = themeMenuExpanded, onDismissRequest = onDismissThemeMenu) {
-                        ThemeMode.entries.forEach { item ->
-                            DropdownMenuItem(
-                                text = { Text(when (item) {
-                                    ThemeMode.SYSTEM -> "حسب النظام"
-                                    ThemeMode.LIGHT -> "فاتح"
-                                    ThemeMode.DARK -> "داكن"
-                                }) },
-                                onClick = { onThemeChange(item) },
-                                trailingIcon = { RadioButton(selected = item == themeMode, onClick = null) },
-                            )
-                        }
+                },
+                title = { SabbaqBrand(compact = true, onHero = true) },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    navigationIconContentColor = brand.onHero,
+                    titleContentColor = brand.onHero,
+                    actionIconContentColor = brand.onHero,
+                ),
+                actions = {
+                    if (showDriverActions) {
+                        SupportButton(unread = unreadSupport, onClick = onOpenSupport)
+                        NotificationBell(unread = unreadNotifications, onClick = onOpenNotifications)
                     }
-                }
-                if (isAuthenticated) {
-                    IconButton(onClick = onRequestLogout, enabled = allowLogout, modifier = Modifier.size(52.dp)) {
-                        Icon(Icons.AutoMirrored.Outlined.Logout, contentDescription = "تسجيل الخروج")
-                    }
-                }
-            },
-        )
+                },
+            )
+            Box(Modifier.fillMaxWidth().height(3.dp).background(brand.signature))
+        }
     }
 }
 
@@ -539,14 +577,22 @@ private data class SabbaqDrawerItem(
     val icon: ImageVector,
 )
 
-private val sabbaqDrawerItems = listOf(
-    SabbaqDrawerItem(DriverDestination.Dashboard, "حالة العمل", Icons.Outlined.Home),
-    SabbaqDrawerItem(DriverDestination.Filters, "طلبات تناسبك", Icons.Outlined.FilterAlt),
-    SabbaqDrawerItem(DriverDestination.Settings, "الإعدادات", Icons.Outlined.SettingsIcon),
-    SabbaqDrawerItem(DriverDestination.Simulator, "تجربة الطلب", Icons.Outlined.Visibility),
-    SabbaqDrawerItem(DriverDestination.Account, "حسابي", Icons.Outlined.AccountCircle),
-    SabbaqDrawerItem(DriverDestination.History, "سجل القرارات", Icons.Outlined.Info),
-    SabbaqDrawerItem(DriverDestination.Setup, "دليل الإعداد", Icons.Outlined.Tune),
+/** Drawer sections in the order a driver uses them: work, tools, account. */
+private val sabbaqDrawerSections = listOf(
+    "العمل" to listOf(
+        SabbaqDrawerItem(DriverDestination.Dashboard, "حالة العمل", Icons.Outlined.Home),
+        SabbaqDrawerItem(DriverDestination.Filters, "طلبات تناسبك", Icons.Outlined.FilterAlt),
+        SabbaqDrawerItem(DriverDestination.History, "سجل القرارات", Icons.Outlined.History),
+    ),
+    "الأدوات" to listOf(
+        SabbaqDrawerItem(DriverDestination.Simulator, "تجربة الطلب", Icons.Outlined.Visibility),
+        SabbaqDrawerItem(DriverDestination.Setup, "دليل الإعداد", Icons.Outlined.Checklist),
+        SabbaqDrawerItem(DriverDestination.Settings, "الإعدادات", Icons.Outlined.SettingsIcon),
+    ),
+    "الحساب" to listOf(
+        SabbaqDrawerItem(DriverDestination.Account, "حسابي", Icons.Outlined.AccountCircle),
+        SabbaqDrawerItem(DriverDestination.Support, "مراسلة الدعم", Icons.Outlined.SupportAgent),
+    ),
 )
 
 @Composable
@@ -559,102 +605,201 @@ private fun SabbaqDrawerSheet(
     onOpenPrivacy: () -> Unit,
     onOpenDeletion: () -> Unit,
     onRequestLogout: () -> Unit,
+    logoutEnabled: Boolean,
+    themeMode: ThemeMode,
+    onThemeChange: (ThemeMode) -> Unit,
     onClose: () -> Unit,
 ) {
     val brand = LocalSabbaqBrand.current
+    val snapshot = remember(isAuthenticated) { if (isAuthenticated) SupabaseClient.subscriptionSnapshot() else null }
     ModalDrawerSheet(
         modifier = Modifier.widthIn(max = 320.dp),
         drawerContainerColor = MaterialTheme.colorScheme.surface,
-        drawerTonalElevation = 8.dp,
+        drawerTonalElevation = 0.dp,
+        drawerShape = RoundedCornerShape(topStart = 28.dp, bottomStart = 28.dp),
     ) {
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            color = brand.heroStart,
-            contentColor = brand.onHero,
+        // Header: brand on the hero gradient, close, and who is signed in at a glance.
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .background(Brush.linearGradient(listOf(brand.heroStart, brand.heroEnd)))
+                .padding(start = 20.dp, end = 12.dp, top = 22.dp, bottom = 20.dp),
         ) {
-            Column(Modifier.padding(horizontal = 24.dp, vertical = 28.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     SabbaqBrand(onHero = true)
-                    IconButton(
-                        onClick = onClose,
-                        modifier = Modifier.size(48.dp),
-                    ) {
-                        Icon(Icons.Outlined.Close, contentDescription = "إغلاق القائمة")
+                    IconButton(onClick = onClose, modifier = Modifier.size(44.dp)) {
+                        Icon(Icons.Outlined.Close, contentDescription = "إغلاق القائمة", tint = brand.onHero)
                     }
                 }
-                Text(
-                    if (isAuthenticated) "مسجل الدخول — إدارة عملك بثقة" else "استكشف سبّاق وسجّل الدخول للبدء",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = brand.onHeroMuted,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    when {
+                        isAdmin -> DrawerPill("إدارة", brand.onHero.copy(alpha = 0.18f), brand.onHero)
+                        snapshot?.state == LicenseState.ACTIVE -> DrawerPill("PRO", brand.signature, brand.onSignature)
+                        snapshot?.state == LicenseState.TRIAL -> DrawerPill("تجربة", brand.onHero.copy(alpha = 0.18f), brand.onHero)
+                    }
+                    Text(
+                        when {
+                            !isAuthenticated -> "استكشف سبّاق وسجّل الدخول للبدء"
+                            isAdmin -> "لوحة الإدارة"
+                            snapshot?.state == LicenseState.ACTIVE -> "مشترك — تابع عملك بثقة"
+                            snapshot?.state == LicenseState.TRIAL -> "فترتك التجريبية فعّالة"
+                            else -> "مسجل الدخول"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = brand.onHeroMuted,
+                    )
+                }
             }
         }
         Column(
             Modifier
                 .fillMaxWidth()
+                .weight(1f)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 12.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             if (isAuthenticated && !isAdmin) {
-                sabbaqDrawerItems.forEach { item ->
-                    NavigationDrawerItem(
-                        label = { Text(item.label) },
-                        selected = item.destination == activeDestination,
-                        onClick = { onOpenDriverDestination(item.destination) },
-                        icon = { Icon(item.icon, contentDescription = null) },
-                        modifier = Modifier.heightIn(min = 52.dp),
-                    )
+                sabbaqDrawerSections.forEach { (title, items) ->
+                    DrawerSectionTitle(title)
+                    items.forEach { item ->
+                        DrawerEntry(
+                            label = item.label,
+                            icon = item.icon,
+                            selected = item.destination == activeDestination,
+                            onClick = { onOpenDriverDestination(item.destination) },
+                        )
+                    }
                 }
-                HorizontalDivider(Modifier.padding(vertical = 8.dp))
             }
             if (isAdmin) {
-                NavigationDrawerItem(
-                    label = { Text("لوحة الإدارة") },
-                    selected = true,
-                    onClick = {},
-                    icon = { Icon(Icons.Outlined.Tune, contentDescription = null) },
-                    modifier = Modifier.heightIn(min = 52.dp),
-                )
-                HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                DrawerSectionTitle("الإدارة")
+                DrawerEntry("لوحة الإدارة", Icons.Outlined.Tune, selected = true, onClick = {})
             }
             if (!isAuthenticated) {
-                NavigationDrawerItem(
-                    label = { Text("تسجيل الدخول") },
-                    selected = false,
-                    onClick = onOpenLogin,
-                    icon = { Icon(Icons.Outlined.AccountCircle, contentDescription = null) },
-                    modifier = Modifier.heightIn(min = 52.dp),
-                )
+                DrawerEntry("تسجيل الدخول", Icons.Outlined.AccountCircle, selected = false, onClick = onOpenLogin)
             }
-            NavigationDrawerItem(
-                label = { Text("سياسة الخصوصية") },
-                selected = false,
-                onClick = onOpenPrivacy,
-                icon = { Icon(Icons.Outlined.Info, contentDescription = null) },
-                modifier = Modifier.heightIn(min = 52.dp),
-            )
-            NavigationDrawerItem(
-                label = { Text("طلب حذف الحساب") },
-                selected = false,
-                onClick = onOpenDeletion,
-                icon = { Icon(Icons.Outlined.Info, contentDescription = null) },
-                modifier = Modifier.heightIn(min = 52.dp),
-            )
-            if (isAuthenticated) {
-                HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                NavigationDrawerItem(
-                    label = { Text("تسجيل الخروج") },
-                    selected = false,
-                    onClick = onRequestLogout,
-                    icon = { Icon(Icons.AutoMirrored.Outlined.Logout, contentDescription = null) },
-                    modifier = Modifier.heightIn(min = 52.dp),
-                )
-            }
+            DrawerSectionTitle("المظهر")
+            DrawerThemeChooser(themeMode, onThemeChange)
+            DrawerSectionTitle("الخصوصية")
+            DrawerEntry("سياسة الخصوصية", Icons.Outlined.PrivacyTip, selected = false, onClick = onOpenPrivacy)
+            DrawerEntry("طلب حذف الحساب", Icons.Outlined.DeleteOutline, selected = false, onClick = onOpenDeletion)
         }
+        // Footer: sign-out set apart, then the version.
+        Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (isAuthenticated) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                DrawerEntry("تسجيل الخروج", Icons.AutoMirrored.Outlined.Logout, selected = false, destructive = true,
+                    enabled = logoutEnabled, onClick = onRequestLogout)
+            }
+            Text(
+                "سبّاق ${BuildConfig.VERSION_NAME}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 12.dp),
+            )
+        }
+    }
+}
+
+/** System / light / dark, one tap each; the choice is applied and saved immediately. */
+@Composable
+private fun DrawerThemeChooser(themeMode: ThemeMode, onThemeChange: (ThemeMode) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 10.dp).selectableGroup(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        listOf(
+            Triple(ThemeMode.SYSTEM, "تلقائي", Icons.Outlined.SettingsBrightness),
+            Triple(ThemeMode.LIGHT, "فاتح", Icons.Outlined.LightMode),
+            Triple(ThemeMode.DARK, "داكن", Icons.Outlined.DarkMode),
+        ).forEach { (mode, label, icon) ->
+            FilterChip(
+                selected = themeMode == mode,
+                onClick = { onThemeChange(mode) },
+                label = { Text(label) },
+                leadingIcon = { Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                modifier = Modifier.weight(1f).semantics { contentDescription = "مظهر $label" },
+            )
+        }
+    }
+}
+
+@Composable
+private fun DrawerSectionTitle(title: String) {
+    Text(
+        title,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 14.dp, end = 14.dp, top = 14.dp, bottom = 4.dp),
+    )
+}
+
+@Composable
+private fun DrawerPill(text: String, container: Color, content: Color) {
+    Surface(shape = RoundedCornerShape(50), color = container, contentColor = content) {
+        Text(text, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp))
+    }
+}
+
+/**
+ * One drawer row: a tinted icon badge and the label. The current page gets a filled pill and an
+ * accent bar at its leading edge; sign-out uses the error colours so it is never tapped by habit.
+ */
+@Composable
+private fun DrawerEntry(
+    label: String,
+    icon: ImageVector,
+    selected: Boolean,
+    onClick: () -> Unit,
+    destructive: Boolean = false,
+    enabled: Boolean = true,
+) {
+    val colors = MaterialTheme.colorScheme
+    val tint = when {
+        destructive -> colors.error
+        selected -> colors.primary
+        else -> colors.onSurfaceVariant
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 52.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(if (selected) colors.primaryContainer.copy(alpha = 0.7f) else Color.Transparent)
+            .selectable(selected = selected, enabled = enabled, role = Role.Tab, onClick = onClick)
+            .alpha(if (enabled) 1f else 0.45f)
+            .padding(horizontal = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Box(
+            Modifier
+                .size(width = 4.dp, height = 22.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(if (selected) colors.primary else Color.Transparent),
+        )
+        Box(
+            Modifier
+                .size(36.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(tint.copy(alpha = if (selected || destructive) 0.16f else 0.08f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
+        }
+        Text(
+            label,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+            color = if (destructive) colors.error else if (selected) colors.onPrimaryContainer else colors.onSurface,
+            modifier = Modifier.weight(1f),
+        )
     }
 }

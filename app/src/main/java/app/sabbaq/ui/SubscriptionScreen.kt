@@ -4,18 +4,15 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.material.icons.Icons
-import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DeleteForever
@@ -26,17 +23,12 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.input.ImeAction
-import app.sabbaq.ui.theme.sabbaqEntrance
 import androidx.compose.material.icons.outlined.PrivacyTip
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.VerifiedUser
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -49,7 +41,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import app.sabbaq.BuildConfig
@@ -60,11 +51,8 @@ import androidx.compose.material.icons.outlined.WorkspacePremium
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.heading
 import app.sabbaq.ui.theme.LocalSabbaqBrand
-import app.sabbaq.ui.theme.tilt3D
 import app.sabbaq.network.LicenseState
 import app.sabbaq.network.PublicOffer
 import app.sabbaq.network.SubscriptionSnapshot
@@ -77,6 +65,23 @@ import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.outlined.Logout
+import androidx.compose.material.icons.outlined.Fingerprint
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Smartphone
+import androidx.compose.material.icons.outlined.SupportAgent
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 
 /**
  * شاشة اشتراك لا تنشئ صلاحية محلية: كل الحالة والتواريخ المعروضة صادرة من آخر
@@ -93,10 +98,14 @@ internal fun SubscriptionScreen(
     onLicenseChanged: (Boolean) -> Unit,
     onMessage: (String?, Boolean) -> Unit,
     onAccountDeleted: () -> Unit = {},
+    onOpenSupport: (() -> Unit)? = null,
+    onSignOut: (() -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
-    var identity by remember { mutableStateOf<String?>(null) }
-    var showDeleteDialog by remember { mutableStateOf(false) }
+    var profile by remember { mutableStateOf<SupabaseClient.AccountProfile?>(null) }
+    // The account page starts asynchronous reads on first composition. Keep a destructive
+    // confirmation open if that work causes the screen to be recreated.
+    var showDeleteDialog by rememberSaveable { mutableStateOf(false) }
     var isDeleting by remember { mutableStateOf(false) }
     var deleteError by remember { mutableStateOf<String?>(null) }
 
@@ -125,7 +134,7 @@ internal fun SubscriptionScreen(
 
     LaunchedEffect(Unit) {
         // للعرض فقط: فشل القراءة لا يغيّر الوصول ولا يظهر خطأ؛ تبقى البطاقة بلا معرّف.
-        identity = SupabaseClient.accountIdentity().getOrNull()
+        profile = SupabaseClient.accountIdentity().getOrNull()
     }
 
     if (showDeleteDialog) {
@@ -138,11 +147,6 @@ internal fun SubscriptionScreen(
     }
     val context = LocalContext.current
     val isDirectDistribution = BuildConfig.DIRECT_DISTRIBUTION
-    @Suppress("DEPRECATION")
-    val clipboard = LocalClipboardManager.current
-    val correlationId = TelemetryRepository.currentCorrelationId()
-    var correlationCopied by rememberSaveable { mutableStateOf(false) }
-
     var snapshot by remember { mutableStateOf(SupabaseClient.subscriptionSnapshot()) }
     var offer by remember { mutableStateOf<PublicOffer?>(null) }
     var isLoadingOffer by remember { mutableStateOf(false) }
@@ -293,30 +297,31 @@ internal fun SubscriptionScreen(
         if (isDirectDistribution) loadOffer()
     }
 
+    // A paying subscriber is never sold to: no trial, no purchase steps. Until the server
+    // answers, a device that already saw this account subscribed is treated as subscribed.
+    val subscribed = snapshot?.state == LicenseState.ACTIVE ||
+        (snapshot == null && Settings.knownSubscriber)
+
     Column(
         modifier = Modifier
             .widthIn(max = 900.dp)
             .fillMaxWidth()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp, vertical = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        SabbaqSectionTitle(
-            title = "اشتراكك في سبّاق",
-            subtitle = "تابع تجربتك ومدة اشتراكك من مكان واحد.",
-        )
-
-        LicenseStatusCard(
+        AccountHeader(
+            profile = profile,
             snapshot = snapshot,
             leaseInMemory = licenseInMemory,
+            periodDays = if (snapshot?.state == LicenseState.TRIAL) snapshot?.trialDays else offer?.subscriptionDays,
             isRefreshing = isRefreshingLicense,
             onRefresh = { scope.launch { refreshLicense(showResult = true) } },
         )
 
-        // A paying subscriber is never sold to: no trial, no purchase steps. Until the server
-        // answers, a device that already saw this account subscribed is treated as subscribed.
-        val subscribed = snapshot?.state == LicenseState.ACTIVE ||
-            (snapshot == null && Settings.knownSubscriber)
+        SabbaqAnimatedMessage(externalMessage, if (externalMessageIsError) SabbaqTone.Error else SabbaqTone.Info)
+
+        AccountSectionHeader("الاشتراك")
         if (!subscribed) TrialCard(
             snapshot = snapshot,
             isStarting = isStartingTrial,
@@ -324,7 +329,6 @@ internal fun SubscriptionScreen(
             hasBoundSession = SupabaseClient.hasRedeemableSession(),
             onStart = ::beginTrial,
         )
-
         if (isDirectDistribution) {
             DirectDistributionCard(
                 offer = offer,
@@ -353,58 +357,18 @@ internal fun SubscriptionScreen(
             PlayInformationCard()
         }
 
-        SabbaqAnimatedMessage(externalMessage, if (externalMessageIsError) SabbaqTone.Error else SabbaqTone.Info)
+        AccountSectionHeader("الجهاز والتطبيق")
+        DeviceCard(leaseInMemory = licenseInMemory, state = snapshot?.state)
 
-        SabbaqCard(title = "معلومات حسابك", icon = Icons.Outlined.PrivacyTip, modifier = Modifier.sabbaqEntrance(3)) {
-            identity?.let {
-                Text(
-                    "تسجيل الدخول بـ: $it",
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.semantics { contentDescription = "الحساب المسجّل: $it" },
-                )
-            }
-            Text(
-                "نستخدم بيانات حسابك لتأكيد هويتك وحماية الوصول إليه.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            SabbaqLegalLinks()
-        }
-
-        correlationId?.let { id ->
-            SabbaqCard(
-                title = "التشخيص والدعم",
-                subtitle = "معرّف آمن لمساعدة الدعم في ربط شكواك دون عرض بياناتك أو تفاصيل تقنية.",
-                icon = Icons.Outlined.Info,
-                modifier = Modifier.sabbaqEntrance(4),
-            ) {
-                Text(
-                    "انسخ هذا المعرّف وأرسله للدعم عند الإبلاغ عن مشكلة:",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    id,
-                    style = MaterialTheme.typography.titleSmall.copy(textDirection = TextDirection.Ltr),
-                    modifier = Modifier.semantics { contentDescription = "معرّف الدعم: $id" },
-                )
-                SabbaqButton(
-                    text = if (correlationCopied) "تم نسخ معرّف الدعم" else "نسخ معرّف الدعم",
-                    onClick = {
-                        clipboard.setText(AnnotatedString(id))
-                        correlationCopied = true
-                    },
-                    style = SabbaqButtonStyle.Secondary,
-                    icon = Icons.Outlined.ContentCopy,
-                )
-            }
-        }
-
+        AccountSectionHeader("المساعدة")
+        HelpCard(onOpenSupport = onOpenSupport)
         CrashReportCard()
 
-        SabbaqCard(title = "حذف الحساب", icon = Icons.Outlined.DeleteForever, modifier = Modifier.sabbaqEntrance(5), destructive = true) {
+        AccountSectionHeader("الخصوصية والأمان")
+        PrivacyCard(identity = profile?.identity, onSignOut = onSignOut)
+        SabbaqCard(title = "حذف الحساب", icon = Icons.Outlined.DeleteForever, destructive = true) {
             Text(
-                "يحذف حسابك واشتراكك وشروطك وبيانات الجهاز المرتبطة نهائيًا. لا يمكن التراجع عن الحذف، ولا تُستعاد مدة اشتراك متبقية.",
+                "يحذف حسابك واشتراكك وشروطك ومحادثاتك وبيانات الجهاز المرتبطة نهائيًا. لا يمكن التراجع عن الحذف، ولا تُستعاد مدة اشتراك متبقية.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -415,6 +379,234 @@ internal fun SubscriptionScreen(
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
                 icon = Icons.Outlined.DeleteForever,
             )
+        }
+    }
+}
+
+/**
+ * Who is signed in and where their access stands, at a glance: avatar, name and masked sign-in,
+ * the plan badge, days left with a bar for the period, and when the server last confirmed it.
+ */
+@Composable
+private fun AccountHeader(
+    profile: SupabaseClient.AccountProfile?,
+    snapshot: SubscriptionSnapshot?,
+    leaseInMemory: Boolean,
+    periodDays: Int?,
+    isRefreshing: Boolean,
+    onRefresh: () -> Unit,
+) {
+    val brand = LocalSabbaqBrand.current
+    val status = snapshot?.state?.let(::licenseStatePresentation)
+    val until = when (snapshot?.state) {
+        LicenseState.TRIAL -> snapshot?.trialUntil ?: snapshot?.validUntil
+        LicenseState.ACTIVE -> snapshot?.proUntil ?: snapshot?.validUntil
+        else -> null
+    }
+    val now = Instant.now()
+    val daysLeft = until?.let { CelebrationCopy.daysLeft(it, now) }
+    SabbaqHeroSurface(scene = false) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            Box(Modifier.size(56.dp).clip(CircleShape).background(brand.signature), contentAlignment = Alignment.Center) {
+                val initial = profile?.displayName?.firstOrNull { it.isLetter() }
+                if (initial != null) Text(initial.toString(), style = MaterialTheme.typography.headlineSmall, color = brand.onSignature)
+                else Icon(Icons.Outlined.Person, contentDescription = null, tint = brand.onSignature, modifier = Modifier.size(30.dp))
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    profile?.displayName ?: "حسابك في سبّاق",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = brand.onHero,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.semantics { heading() },
+                )
+                profile?.let {
+                    Text(
+                        (if (it.viaGoogle) "عبر Google · " else "") + it.identity,
+                        style = MaterialTheme.typography.bodySmall.copy(textDirection = TextDirection.Content),
+                        color = brand.onHeroMuted,
+                        modifier = Modifier.semantics { contentDescription = "الحساب المسجّل: ${it.identity}" },
+                    )
+                }
+            }
+            PlanBadge(snapshot?.state)
+        }
+        Text(
+            when {
+                snapshot == null -> "حدّث الحالة لمعرفة مدة اشتراكك وخيارات تجربتك."
+                status?.isOperational == true && leaseInMemory -> CelebrationCopy.validity(until, now) ?: status?.label.orEmpty()
+                status?.isOperational == true -> "تعذر تأكيد اشتراكك على هذا الجوال الآن. حدّث الحالة."
+                else -> status?.label ?: "لا تتوفر حالة مؤكدة الآن"
+            },
+            style = MaterialTheme.typography.titleMedium,
+            color = brand.onHero,
+        )
+        if (daysLeft != null && periodDays != null && periodDays > 0) {
+            val fraction = (daysLeft.toFloat() / periodDays).coerceIn(0f, 1f)
+            LinearProgressIndicator(
+                progress = { fraction },
+                modifier = Modifier.fillMaxWidth().height(6.dp).clip(CircleShape)
+                    .semantics { contentDescription = "الأيام المتبقية ${ArabicCount.days(daysLeft.toInt())}" },
+                color = if (daysLeft <= RENEWAL_WINDOW_DAYS) brand.signature else brand.heroAccent,
+                trackColor = brand.onHero.copy(alpha = 0.18f),
+            )
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                snapshot?.serverTime?.let { "آخر تحقق: ${formatSaudiDate(it)} (توقيت السعودية)" } ?: "لم يُتحقق من الحالة بعد",
+                style = MaterialTheme.typography.labelSmall,
+                color = brand.onHeroMuted,
+                modifier = Modifier.weight(1f),
+            )
+            SabbaqButton(
+                text = "تحديث",
+                onClick = onRefresh,
+                busy = isRefreshing,
+                busyText = "جارٍ التحديث",
+                style = SabbaqButtonStyle.Text,
+                icon = Icons.Outlined.Refresh,
+                fillWidth = false,
+                colors = ButtonDefaults.textButtonColors(contentColor = brand.onHero),
+            )
+        }
+    }
+}
+
+@Composable
+private fun PlanBadge(state: LicenseState?) {
+    val brand = LocalSabbaqBrand.current
+    val (label, container, ink) = when (state) {
+        LicenseState.ACTIVE -> Triple("PRO", brand.signature, brand.onSignature)
+        LicenseState.TRIAL -> Triple("تجربة", brand.onHero.copy(alpha = 0.2f), brand.onHero)
+        null -> return
+        else -> Triple("غير فعّال", brand.onHero.copy(alpha = 0.12f), brand.onHeroMuted)
+    }
+    Surface(shape = CircleShape, color = container, contentColor = ink) {
+        Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.ExtraBold,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+    }
+}
+
+@Composable
+private fun AccountSectionHeader(title: String) {
+    Text(
+        title,
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 8.dp, start = 4.dp).semantics { heading() },
+    )
+}
+
+/** One labelled row inside an account card: icon, label, value and an optional trailing action. */
+@Composable
+private fun AccountRow(
+    icon: ImageVector,
+    label: String,
+    value: String? = null,
+    valueLtr: Boolean = false,
+    onClick: (() -> Unit)? = null,
+    trailing: (@Composable () -> Unit)? = null,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 52.dp)
+            .clip(MaterialTheme.shapes.medium)
+            .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
+            .padding(horizontal = 4.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+        Column(Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.titleSmall)
+            value?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall.copy(textDirection = if (valueLtr) TextDirection.Ltr else TextDirection.Content),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        trailing?.invoke()
+        if (onClick != null && trailing == null) {
+            Icon(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** This phone's standing: whether access is confirmed here, the app version and the support id. */
+@Composable
+private fun DeviceCard(leaseInMemory: Boolean, state: LicenseState?) {
+    @Suppress("DEPRECATION")
+    val clipboard = LocalClipboardManager.current
+    val correlationId = TelemetryRepository.currentCorrelationId()
+    var copied by rememberSaveable { mutableStateOf(false) }
+    SabbaqCard {
+        AccountRow(
+            icon = Icons.Outlined.Smartphone,
+            label = "هذا الجوال",
+            value = when {
+                leaseInMemory -> "مرتبط بحسابك وجاهز للعمل"
+                state == LicenseState.DEVICE_MISMATCH -> "حسابك مرتبط بجوال آخر؛ سجّل الدخول هنا لنقله"
+                else -> "لم يُتحقق من وصولك على هذا الجوال بعد"
+            },
+            trailing = { SabbaqStatusPill(if (leaseInMemory) "جاهز" else "غير مؤكد", ready = leaseInMemory) },
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        AccountRow(icon = Icons.Outlined.Info, label = "إصدار التطبيق", value = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})", valueLtr = true)
+        correlationId?.let { id ->
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            AccountRow(
+                icon = Icons.Outlined.Fingerprint,
+                label = "معرّف الدعم",
+                value = id,
+                valueLtr = true,
+                trailing = {
+                    TextButton(
+                        onClick = { clipboard.setText(AnnotatedString(id)); copied = true },
+                        modifier = Modifier.semantics { contentDescription = if (copied) "تم نسخ معرّف الدعم" else "نسخ معرّف الدعم" },
+                    ) {
+                        Icon(Icons.Outlined.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Text(if (copied) " تم النسخ" else " نسخ")
+                    }
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun HelpCard(onOpenSupport: (() -> Unit)?) {
+    if (onOpenSupport == null) return
+    SabbaqCard {
+        AccountRow(
+            icon = Icons.Outlined.SupportAgent,
+            label = "مراسلة الدعم",
+            value = "اكتب مشكلتك وتصلك الإجابة هنا وفي الإشعارات",
+            onClick = onOpenSupport,
+        )
+    }
+}
+
+@Composable
+private fun PrivacyCard(identity: String?, onSignOut: (() -> Unit)?) {
+    val context = LocalContext.current
+    SabbaqCard {
+        AccountRow(
+            icon = Icons.Outlined.PrivacyTip,
+            label = "سياسة الخصوصية",
+            value = "ما الذي يقرؤه سبّاق وما لا يجمعه",
+            onClick = { PublicLinks.open(context, PublicLinks.PRIVACY_POLICY) },
+        )
+        identity?.let {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            AccountRow(icon = Icons.Outlined.VerifiedUser, label = "الدخول الآمن", value = "نستخدم $it لتأكيد هويتك وحماية حسابك فقط")
+        }
+        onSignOut?.let { signOut ->
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            AccountRow(icon = Icons.AutoMirrored.Outlined.Logout, label = "تسجيل الخروج", value = "شروطك المحفوظة تبقى على هذا الجوال", onClick = signOut)
         }
     }
 }
@@ -503,71 +695,8 @@ internal object AccountDeletionConfirmation {
     fun matches(input: String): Boolean = input.trim().replace("ـ", "") == WORD
 }
 
-@Composable
-private fun LicenseStatusCard(
-    snapshot: SubscriptionSnapshot?,
-    leaseInMemory: Boolean,
-    isRefreshing: Boolean,
-    onRefresh: () -> Unit,
-) {
-    val status = snapshot?.state?.let(::licenseStatePresentation)
-    SabbaqCard(
-        title = "حالة اشتراكك",
-        subtitle = "تجربتك واشتراكك في مكان واحد.",
-        icon = Icons.Outlined.VerifiedUser,
-    ) {
-        SabbaqStatusPill(
-            text = status?.label ?: "لا تتوفر حالة مؤكدة الآن",
-            ready = status?.isOperational == true,
-        )
-        Text(
-            text = when {
-                snapshot == null -> "حدّث الحالة لمعرفة مدة اشتراكك وخيارات تجربتك."
-                leaseInMemory -> "سبّاق جاهز للاستخدام مع حسابك. اضبط شروطك وانطلق."
-                else -> "تعذر تأكيد اشتراكك الآن. حدّث الحالة؛ التواريخ أدناه من آخر تحقق."
-            },
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        if (snapshot != null) {
-            ServerTimestampRows(snapshot)
-        }
-        SabbaqButton(
-            text = "تحديث الاشتراك",
-            onClick = onRefresh,
-            busy = isRefreshing,
-            busyText = "جارٍ تحديث الحالة",
-            style = SabbaqButtonStyle.Secondary,
-            icon = Icons.Outlined.Refresh,
-        )
-    }
-}
-
-@Composable
-private fun ServerTimestampRows(snapshot: SubscriptionSnapshot) {
-    ServerTimestampRow("آخر تحديث للحالة", snapshot.serverTime)
-    when (snapshot.state) {
-        LicenseState.TRIAL -> ServerTimestampRow("تنتهي التجربة", snapshot.trialUntil)
-        LicenseState.ACTIVE -> ServerTimestampRow("ينتهي الاشتراك", snapshot.proUntil)
-        else -> Unit
-    }
-    Text(
-        "التواريخ بتوقيت المملكة العربية السعودية.",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-}
-
-@Composable
-private fun ServerTimestampRow(label: String, value: Instant?) {
-    if (value == null) return
-    Text(
-        "$label: ${formatSaudiDate(value)}",
-        style = MaterialTheme.typography.bodyMedium,
-    )
-}
-
 private fun formatSaudiDate(value: Instant): String =
-    DateTimeFormatter.ofPattern("dd MMMM yyyy، HH:mm", Locale("ar", "SA"))
+    DateTimeFormatter.ofPattern("dd MMMM yyyy، HH:mm", SabbaqLocale)
         .withZone(ZoneId.of("Asia/Riyadh"))
         .format(value)
 
@@ -616,9 +745,17 @@ private fun DirectDistributionCard(
     val daysLeft = subscribedUntil?.let { CelebrationCopy.daysLeft(it, Instant.now()) }
     var renewOpen by rememberSaveable { mutableStateOf(false) }
     val showRenewal = !subscribed || renewOpen || (daysLeft != null && daysLeft <= RENEWAL_WINDOW_DAYS)
-    if (subscribed) MembershipCard(until = subscribedUntil, daysLeft = daysLeft, renewalVisible = showRenewal,
-        onRenewEarly = { renewOpen = true })
-    if (!showRenewal) return
+    if (subscribed && !showRenewal) {
+        SabbaqCard {
+            AccountRow(
+                icon = Icons.Outlined.WorkspacePremium,
+                label = "تجديد مبكر",
+                value = "جدّد في أي وقت؛ تُضاف المدة الجديدة إلى المتبقي",
+                onClick = { renewOpen = true },
+            )
+        }
+        return
+    }
 
     SabbaqCard(
         title = if (subscribed) "تجديد اشتراكك" else "اشتراك سبّاق",
@@ -671,46 +808,6 @@ private fun DirectDistributionCard(
 }
 
 private const val RENEWAL_WINDOW_DAYS = 5L
-
-/** The subscriber's pride card: a gold membership badge, the end date and days left. */
-@Composable
-private fun MembershipCard(until: Instant?, daysLeft: Long?, renewalVisible: Boolean, onRenewEarly: () -> Unit) {
-    val brand = LocalSabbaqBrand.current
-    val gold = Color(0xFFF2C14E)
-    Surface(
-        shape = MaterialTheme.shapes.extraLarge,
-        color = Color.Transparent,
-        shadowElevation = 10.dp,
-        modifier = Modifier.fillMaxWidth().sabbaqEntrance(1).tilt3D(maxDegrees = 6f, idle = false, restX = 4f),
-    ) {
-        Column(
-            Modifier
-                .background(Brush.linearGradient(listOf(brand.heroStart, brand.heroEnd)))
-                .padding(22.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Icon(Icons.Outlined.WorkspacePremium, contentDescription = null, tint = gold, modifier = Modifier.size(30.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("عضوية سبّاق المميّزة", style = MaterialTheme.typography.titleLarge, color = brand.onHero,
-                        modifier = Modifier.semantics { heading() })
-                    Text("اشتراكك فعّال، وسبّاق يعمل لك بكل مزاياه.", style = MaterialTheme.typography.bodyMedium, color = brand.onHeroMuted)
-                }
-            }
-            CelebrationCopy.validity(until, Instant.now())?.let {
-                Text(it, style = MaterialTheme.typography.titleMedium, color = gold)
-            }
-            if (!renewalVisible) {
-                TextButton(onClick = onRenewEarly, modifier = Modifier.heightIn(min = 48.dp)) {
-                    Text("جدّد مبكرًا", color = brand.onHero)
-                }
-            } else if (daysLeft != null && daysLeft <= RENEWAL_WINDOW_DAYS) {
-                Text("اقترب موعد التجديد، جدّد الآن لتستمر المتابعة دون انقطاع.", style = MaterialTheme.typography.bodyMedium,
-                    color = brand.onHero)
-            }
-        }
-    }
-}
 
 @Composable
 private fun PlayInformationCard() {

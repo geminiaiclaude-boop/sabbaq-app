@@ -25,6 +25,8 @@ import androidx.core.app.ServiceCompat
 import app.sabbaq.Settings
 import app.sabbaq.core.TelemetryStage
 import app.sabbaq.network.SupabaseClient
+import app.sabbaq.notifications.NotificationCenter
+import app.sabbaq.notifications.NotificationTemplates
 import app.sabbaq.telemetry.TelemetryRepository
 import app.sabbaq.voice.VoiceAnnouncer
 import app.sabbaq.voice.VoiceKind
@@ -49,6 +51,7 @@ class KeeperService : Service() {
     private var offlineAlert: Job? = null
     private var offlineAnnounced = false
     private var monitoringLive = false
+    private var inboxSyncedAt = 0L
     private var pausedForOutage = false
     private var accessibilityWasOn: Boolean? = null
     private var subscriptionWarnedFor: Instant? = null
@@ -123,11 +126,37 @@ class KeeperService : Service() {
         checkAccessibility()
         warnIfSubscriptionEnding()
         refreshProfiles(force = true)
+        syncInbox()
         while (currentCoroutineContext().isActive) {
             delay(60_000)
             if (!checkStillAllowed()) break
             refreshProfiles(force = false)
+            syncInbox()
         }
+    }
+
+    /**
+     * The driver works inside the ride app, so administration messages would wait unseen in the
+     * inbox: every few minutes sync it and raise recent new ones as a system alert.
+     */
+    private suspend fun syncInbox() {
+        val now = SystemClock.elapsedRealtime()
+        if (inboxSyncedAt != 0L && now - inboxSyncedAt < INBOX_SYNC_MILLIS) return
+        inboxSyncedAt = now
+        val known = NotificationCenter.state.value.items.mapTo(HashSet()) { it.id }
+        val synced = try {
+            NotificationCenter.refresh()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            false
+        }
+        if (!synced) return
+        val recent = System.currentTimeMillis() - INBOX_ALERT_MAX_AGE_MILLIS
+        NotificationCenter.state.value.items
+            .filter { it.fromServer && !it.read && it.id !in known && it.createdAtEpochMs >= recent }
+            .take(3)
+            .forEach { notifyAlert(SERVER_MESSAGE_NOTIFICATION_BASE + (it.id.hashCode() and 0xFFF), it.title, it.body) }
     }
 
     /**
@@ -253,7 +282,9 @@ class KeeperService : Service() {
         )
         monitoringLive = false
         VoiceAnnouncer.announce(VoiceKind.Problem, VoiceRules.line(cause))
-        notifyAlert(STOP_NOTIFICATION_ID, "توقفت متابعة الطلبات", VoiceRules.line(cause).removePrefix("توقف سبّاق. "))
+        val stopText = VoiceRules.line(cause).removePrefix("توقف سبّاق. ")
+        notifyAlert(STOP_NOTIFICATION_ID, "توقفت متابعة الطلبات", stopText)
+        NotificationCenter.post(NotificationTemplates.monitoringStopped(stopText, System.currentTimeMillis()))
     }
 
     /** The engine cannot accept anything while its permission is off: warn once per change. */
@@ -264,6 +295,7 @@ class KeeperService : Service() {
         if (!on && before != false) {
             VoiceAnnouncer.announce(VoiceKind.Problem, VoiceLines.ACCESSIBILITY_OFF)
             notifyAlert(A11Y_NOTIFICATION_ID, "إذن متابعة الطلبات مغلق", "لن يقبل سبّاق أي طلب حتى تفعّله. اضغط لفتح التطبيق.")
+            NotificationCenter.post(NotificationTemplates.accessibilityOff(System.currentTimeMillis()))
         } else if (on && before == false) {
             VoiceAnnouncer.announce(VoiceKind.Problem, VoiceLines.ACCESSIBILITY_BACK)
             runCatching { getSystemService(NotificationManager::class.java)?.cancel(A11Y_NOTIFICATION_ID) }
@@ -383,7 +415,7 @@ class KeeperService : Service() {
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setSmallIcon(app.sabbaq.R.drawable.ic_stat_sabbaq)
-            .setColor(0xFF006B58.toInt())
+            .setColor(0xFF4E2A84.toInt())
             .setAutoCancel(true)
             .setContentIntent(openAppIntent())
             .build()
@@ -411,7 +443,7 @@ class KeeperService : Service() {
             else -> "يراقب العروض وفق الإعدادات التي اخترتها."
         })
         .setSmallIcon(app.sabbaq.R.drawable.ic_stat_sabbaq)
-        .setColor(0xFF006B58.toInt())
+        .setColor(0xFF4E2A84.toInt())
         .setCategory(NotificationCompat.CATEGORY_SERVICE)
         .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
         .setOngoing(true)
@@ -455,6 +487,9 @@ class KeeperService : Service() {
         private const val NOTIFICATION_ID = 1001
         private const val STOP_NOTIFICATION_ID = 1002
         private const val A11Y_NOTIFICATION_ID = 1003
+        private const val SERVER_MESSAGE_NOTIFICATION_BASE = 20_000
+        private const val INBOX_SYNC_MILLIS = 5L * 60 * 1000
+        private const val INBOX_ALERT_MAX_AGE_MILLIS = 24L * 60 * 60 * 1000
         private const val OFFLINE_GRACE_MILLIS = 20_000L
         private const val RESTORE_FIRST_RETRY_MILLIS = 5_000L
         private const val RESTORE_MAX_RETRY_MILLIS = 60_000L

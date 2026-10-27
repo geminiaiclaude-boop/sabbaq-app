@@ -19,8 +19,10 @@ import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.PrivacyTip
 import androidx.compose.material.icons.outlined.RecordVoiceOver
+import androidx.compose.material.icons.outlined.TaskAlt
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.HorizontalDivider
@@ -31,6 +33,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -49,6 +52,11 @@ import app.sabbaq.BuildConfig
 import app.sabbaq.ThemeMode
 import app.sabbaq.telemetry.TelemetryRepository
 import app.sabbaq.ui.theme.sabbaqEntrance
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.collectAsState
+import app.sabbaq.support.SupportRepository
+import app.sabbaq.service.ScreenSketchStore
 
 /** Settings categories; each opens its own page inside the «الإعدادات» destination. */
 internal enum class SettingsSection(val title: String, val icon: ImageVector) {
@@ -187,8 +195,10 @@ internal fun SettingsHubPage(
         }
 
         SettingsSection.Diagnostics -> {
-            TelemetryDiagnosticsCard(Modifier.sabbaqEntrance(0))
-            SupportIdCard(Modifier.sabbaqEntrance(1))
+            LiveAcceptTestEntry(Modifier.sabbaqEntrance(0))
+            UnreadScreenCard()
+            TelemetryDiagnosticsCard(Modifier.sabbaqEntrance(1))
+            SupportIdCard(Modifier.sabbaqEntrance(2))
         }
 
         SettingsSection.Platforms -> SupportedPlatformsCard(Modifier.sabbaqEntrance(0))
@@ -207,6 +217,51 @@ internal fun SettingsHubPage(
                 }
             }
         }
+    }
+}
+
+/** Opens the live acceptance test: proves on this phone that Sabbaq can read and accept an offer. */
+@Composable
+internal fun LiveAcceptTestEntry(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    SabbaqCard(
+        title = "اختبار القبول الحي",
+        subtitle = "يتأكد خلال ثوانٍ أن سبّاق يقرأ الطلب ويضغط القبول على جوالك، ويحدد الخطوة المتعطلة إن وُجدت.",
+        icon = Icons.Outlined.TaskAlt,
+        modifier = modifier,
+    ) {
+        SabbaqButton(
+            text = "ابدأ الاختبار",
+            onClick = { runCatching { context.startActivity(android.content.Intent(context, LiveAcceptTestActivity::class.java)) } },
+            icon = Icons.Outlined.PlayArrow,
+        )
+    }
+}
+
+/**
+ * Shown after Jeeny displayed what looked like an offer that Sabbaq could not read: one tap
+ * sends its anonymous outline to support, who can fix the reading profile without a release.
+ */
+@Composable
+private fun UnreadScreenCard() {
+    val sketch by ScreenSketchStore.latest.collectAsState()
+    val current = sketch ?: return
+    val scope = rememberCoroutineScope()
+    var sent by remember(current.atEpochMs) { mutableStateOf<Boolean?>(null) }
+    SabbaqCard(
+        title = "شاشة من جيني لم يفهمها سبّاق",
+        subtitle = "ظهر ما يشبه طلبًا لكن سبّاق لم يستطع قراءته. أرسل مخططها المجهّل للدعم: لا يحتوي أسماء أو عناوين أو أسعارًا.",
+        icon = Icons.Outlined.BugReport,
+    ) {
+        SabbaqButton(
+            text = when (sent) { true -> "أُرسلت للدعم"; false -> "تعذر الإرسال؛ أعد المحاولة"; null -> "إرسال للدعم" },
+            enabled = sent != true,
+            onClick = {
+                scope.launch {
+                    sent = SupportRepository.send("مخطط شاشة جيني غير المقروءة (${current.reason}):\n${current.text}".take(1000))
+                }
+            },
+        )
     }
 }
 

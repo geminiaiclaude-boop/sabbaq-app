@@ -19,7 +19,13 @@ import app.sabbaq.service.SabbaqA11yService
  * account state and whether the ride app is installed. Booleans only; nothing identifying.
  */
 internal object DeviceHealthProbe {
-    fun read(context: Context, serviceConnected: Boolean, targetInstalled: Boolean): DeviceHealth {
+    fun read(
+        context: Context,
+        serviceConnected: Boolean,
+        targetInstalled: Boolean,
+        targetInOtherProfile: Boolean = false,
+        targetUnknownPackage: Boolean = false,
+    ): DeviceHealth {
         val app = context.applicationContext
         return DeviceHealth(
             accessibilityEnabled = runCatching { accessibilityEnabled(app) }.getOrDefault(false),
@@ -29,6 +35,8 @@ internal object DeviceHealthProbe {
             signedIn = runCatching { SupabaseClient.hasSavedSession() }.getOrDefault(false),
             licenseValid = runCatching { SupabaseClient.hasValidLicense() }.getOrDefault(false),
             targetInstalled = targetInstalled,
+            targetInOtherProfile = targetInOtherProfile,
+            targetUnknownPackage = targetUnknownPackage,
             batteryUnrestricted = runCatching {
                 (app.getSystemService(Context.POWER_SERVICE) as PowerManager).isIgnoringBatteryOptimizations(app.packageName)
             }.getOrDefault(false),

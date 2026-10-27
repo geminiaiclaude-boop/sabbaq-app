@@ -93,7 +93,7 @@ internal fun SabbaqAmbientBackground(modifier: Modifier = Modifier) {
         val r = size.maxDimension
         glow(Offset(size.width * (0.86f + 0.08f * cos(p)), size.height * (0.06f + 0.05f * sin(p))), r * 0.55f, colors.primary.copy(alpha = 0.12f))
         glow(Offset(size.width * (0.08f + 0.07f * sin(p * 1.3f)), size.height * (0.52f + 0.06f * cos(p))), r * 0.48f, brand.heroAccent.copy(alpha = 0.10f))
-        glow(Offset(size.width * (0.72f + 0.06f * sin(p)), size.height * (0.98f + 0.03f * cos(p * 0.7f))), r * 0.45f, colors.tertiary.copy(alpha = 0.07f))
+        glow(Offset(size.width * (0.72f + 0.06f * sin(p)), size.height * (0.98f + 0.03f * cos(p * 0.7f))), r * 0.45f, colors.primary.copy(alpha = 0.08f))
     }
 }
 
@@ -321,9 +321,9 @@ internal fun SabbaqLaunchIntro(onFinished: () -> Unit, staticFrame: Boolean = fa
 private data class SampleOrder(val price: String, val pickup: String, val trip: String, val minutes: String, val matches: Boolean, val verdict: String)
 
 private val sampleOrders = listOf(
-    SampleOrder("٤٥ ر.س", "٣ كم", "١٥ كم", "٣٠ د", true, "يطابق شروطك"),
-    SampleOrder("١٨ ر.س", "٩ كم", "٤ كم", "١٢ د", false, "الوصول أبعد من حدّك"),
-    SampleOrder("٦٢ ر.س", "٢ كم", "٢١ كم", "٣٥ د", true, "يطابق شروطك"),
+    SampleOrder("45 ر.س", "3 كم", "15 كم", "30 د", true, "يطابق شروطك"),
+    SampleOrder("18 ر.س", "9 كم", "4 كم", "12 د", false, "الوصول أبعد من حدّك"),
+    SampleOrder("62 ر.س", "2 كم", "21 كم", "35 د", true, "يطابق شروطك"),
 )
 
 /**

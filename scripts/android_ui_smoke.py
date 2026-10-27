@@ -228,7 +228,7 @@ for name, screen, dark, font_scale, env in cases:
         assert_decision_history(visible, f'direct open: {name}')
     if screen == 'welcome-example':
         # The pipeline scene leads the page; the worked example sits below it.
-        assert reachable_by_scrolling('٢٫٥ ر.س قبل التكاليف', visible), f'Concrete fare/distance example missing: {name}'
+        assert reachable_by_scrolling('2.5 ر.س قبل التكاليف', visible), f'Concrete fare/distance example missing: {name}'
     if screen == 'welcome-features':
         assert 'أنت تحدد، وسبّاق يتابع' in visible, f'Feature card missing: {name}'
         assert reachable_by_scrolling('جرّبه قبل الاشتراك', visible) or reachable_by_scrolling('اكتشفه أولًا', visible), f'Subscription card missing: {name}'
