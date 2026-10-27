@@ -280,7 +280,7 @@ object SupabaseClient {
      * blaming the connection. An expired access token is renewed once and the call retried.
      */
     private suspend fun <T> supportCall(path: String, body: JsonObject, handle: (HttpResponse) -> Result<T>): Result<T> =
-        featureCall({ token -> authenticatedRequest(endpoint("rest/v1/$path"), token, body.toString().toRequestBody(jsonMediaType)) }, handle)
+        featureCall({ token -> authenticatedRequest(endpoint("rest/v1/$path"), token, body.toString().toRequestBody(jsonMediaType)) }, handle = handle)
 
     private suspend fun <T> featureCall(build: (String) -> Request, maxBytes: Int = MAX_RESPONSE_BYTES, handle: (HttpResponse) -> Result<T>): Result<T> {
         if (refreshToken != null && SystemClock.elapsedRealtime() - accessIssuedAt > RENEW_AFTER_MILLIS) renewAccessToken()

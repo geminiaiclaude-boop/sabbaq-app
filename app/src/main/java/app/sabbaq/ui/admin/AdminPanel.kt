@@ -15,6 +15,7 @@ import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryScrollableTabRow
@@ -147,6 +148,7 @@ private fun AdminGate(message: String, retry: () -> Unit, retryText: String = "Ø
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AdminWorkspace(session: AdminSession) {
     var section by rememberSaveable { mutableStateOf(AdminSection.DRIVERS) }
