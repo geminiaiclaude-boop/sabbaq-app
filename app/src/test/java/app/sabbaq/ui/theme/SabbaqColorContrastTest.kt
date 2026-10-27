@@ -27,6 +27,9 @@ class SabbaqColorContrastTest {
             "muted hero text" to (brand.heroEnd to brand.onHeroMuted),
             "successContainer" to (brand.successContainer to brand.onSuccessContainer),
             "success on surface" to (c.surface to brand.success),
+            "signature ink" to (brand.signature to brand.onSignature),
+            "accent on hero start" to (brand.heroStart to brand.heroAccent),
+            "accent on hero end" to (brand.heroEnd to brand.heroAccent),
         )
         (pairs + brandPairs).forEach { (name, pair) ->
             val contrast = ratio(pair.first, pair.second)

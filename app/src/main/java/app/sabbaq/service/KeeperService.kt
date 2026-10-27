@@ -383,7 +383,7 @@ class KeeperService : Service() {
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setSmallIcon(app.sabbaq.R.drawable.ic_stat_sabbaq)
-            .setColor(0xFF006B58.toInt())
+            .setColor(0xFF4E2A84.toInt())
             .setAutoCancel(true)
             .setContentIntent(openAppIntent())
             .build()
@@ -411,7 +411,7 @@ class KeeperService : Service() {
             else -> "يراقب العروض وفق الإعدادات التي اخترتها."
         })
         .setSmallIcon(app.sabbaq.R.drawable.ic_stat_sabbaq)
-        .setColor(0xFF006B58.toInt())
+        .setColor(0xFF4E2A84.toInt())
         .setCategory(NotificationCompat.CATEGORY_SERVICE)
         .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
         .setOngoing(true)

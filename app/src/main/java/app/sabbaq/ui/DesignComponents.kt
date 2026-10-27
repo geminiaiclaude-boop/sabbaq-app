@@ -16,6 +16,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CheckCircle
@@ -70,8 +71,12 @@ internal fun SabbaqBrand(compact: Boolean = false, onHero: Boolean = false) {
 
 @Composable
 internal fun SabbaqSectionTitle(title: String, subtitle: String? = null) {
+    val brand = LocalSabbaqBrand.current
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Box(Modifier.size(width = 5.dp, height = 22.dp).clip(RoundedCornerShape(50)).background(brand.signature))
+            Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
+        }
         subtitle?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
 }
@@ -110,13 +115,14 @@ internal fun SabbaqCard(
 @Composable
 internal fun SabbaqIconBadge(icon: ImageVector, modifier: Modifier = Modifier, destructive: Boolean = false) {
     val colors = MaterialTheme.colorScheme
-    val base = if (destructive) colors.errorContainer else colors.primaryContainer
+    val brand = LocalSabbaqBrand.current
+    val base = if (destructive) colors.errorContainer else brand.signature
     val edge = if (destructive) colors.error else colors.primary
-    // A small raised tile: lit from above, darker at the base, with its own shadow.
-    Box(modifier.size(40.dp).shadow(6.dp, MaterialTheme.shapes.small, spotColor = edge.copy(alpha = 0.35f)).clip(MaterialTheme.shapes.small)
-        .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.55f).compositeOver(base), base, edge.copy(alpha = 0.18f).compositeOver(base)))),
+    // A raised signal-yellow coin: lit from above, darker at the base, with its own shadow.
+    Box(modifier.size(40.dp).shadow(6.dp, CircleShape, spotColor = edge.copy(alpha = 0.35f)).clip(CircleShape)
+        .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.45f).compositeOver(base), base, edge.copy(alpha = 0.14f).compositeOver(base)))),
         contentAlignment = Alignment.Center) {
-        Icon(icon, null, tint = if (destructive) colors.onErrorContainer else colors.onPrimaryContainer, modifier = Modifier.size(22.dp))
+        Icon(icon, null, tint = if (destructive) colors.onErrorContainer else brand.onSignature, modifier = Modifier.size(22.dp))
     }
 }
 
@@ -141,8 +147,18 @@ internal fun SabbaqHeroSurface(
             .tilt3D(maxDegrees = 5f, idle = true)
             .shadow(24.dp, shape, ambientColor = brand.heroEnd, spotColor = brand.heroEnd),
         shape = shape, color = brand.heroStart, contentColor = brand.onHero,
+        border = BorderStroke(2.dp, brand.signature.copy(alpha = 0.85f)),
     ) {
         Box(Modifier.background(Brush.linearGradient(listOf(brand.heroStart, brand.heroEnd)))) {
+            // The signature yellow disc rising from the lower corner, kept faint behind the text.
+            Box(
+                Modifier
+                    .align(Alignment.BottomStart)
+                    .offset(x = (-56).dp, y = 72.dp)
+                    .size(200.dp)
+                    .clip(CircleShape)
+                    .background(brand.signature.copy(alpha = 0.16f)),
+            )
             if (scene) SabbaqRadarScene(active = sceneActive, pins = false, modifier = Modifier.matchParentSize().graphicsLayer { alpha = 0.5f })
             Column(
                 Modifier.padding(24.dp),
@@ -212,9 +228,10 @@ private fun <T> mutableLastNonNull() = LastNonNull<T>(null)
 @Composable
 internal fun SabbaqStatusPill(text: String, ready: Boolean, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
+    val brand = LocalSabbaqBrand.current
     Surface(modifier, shape = RoundedCornerShape(50),
-        color = if (ready) colors.primaryContainer else colors.surfaceContainerHigh,
-        contentColor = if (ready) colors.onPrimaryContainer else colors.onSurfaceVariant) {
+        color = if (ready) brand.successContainer else colors.surfaceContainerHigh,
+        contentColor = if (ready) brand.onSuccessContainer else colors.onSurfaceVariant) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Icon(if (ready) Icons.Outlined.CheckCircle else Icons.Outlined.Info, null, Modifier.size(16.dp))

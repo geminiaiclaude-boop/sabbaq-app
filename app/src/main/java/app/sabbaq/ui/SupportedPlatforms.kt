@@ -52,7 +52,7 @@ internal object SupportedPlatforms {
                 id = profile.id,
                 brand = brandOf(profile.name),
                 packages = profile.packages,
-                tint = tints[profile.id] ?: Color(0xFF82DFC3),
+                tint = tints[profile.id] ?: Color(0xFFFFD21F),
             )
         }
     }
