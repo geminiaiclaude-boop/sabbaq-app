@@ -36,11 +36,15 @@ class JeenyFrameClassifier(
 
     fun assess(root: ScreenNode): JeenyFrameAssessment {
         val labels = ArrayList<Pair<ScreenNode, String>>()
+        // Unlabelled clickable containers too: Jeeny's accept button is a clickable frame (it
+        // carries the countdown bar) whose «قبول العرض» text sits in a child view.
+        val clickables = ArrayList<ScreenNode>()
         var scanned = 0
         var chars = 0
         root.walk { node ->
             if (scanned >= maxNodes || chars >= maxTextChars) return@walk
             scanned++
+            if (node.clickable) clickables += node
             val label = Text.normalize(node.text).ifEmpty { Text.normalize(node.description) }
             if (label.isNotEmpty()) {
                 val bounded = label.take(maxTextChars - chars)
@@ -51,9 +55,7 @@ class JeenyFrameClassifier(
         val all = labels.map { it.second }
         val accept = labels.firstOrNull { (node, label) ->
             node.clickable && isAcceptLabel(label)
-        } ?: labels.firstOrNull { (node, _) ->
-            node.clickable && containsAcceptLabel(node, labels)
-        }
+        }?.first ?: clickables.firstOrNull { containsAcceptLabel(it, labels) }
         val strongCue = all.any { label -> strongConfirmCues.any { Text.containsWord(label, it) } }
         // Same rule as OfferParser: cues that also appear on offer cards count only once the
         // accept control is gone, otherwise a real offer is classified as an active ride.
@@ -83,7 +85,7 @@ class JeenyFrameClassifier(
             "p" to (hasPickup || hasAddress), "o" to hasOfferLabel, "c" to confirmed,
         ).joinToString(",") { (key, present) -> key + if (present) "1" else "0" } +
             ",n$scanned,cap${if (capped) 1 else 0}"
-        return JeenyFrameAssessment(classification, score.coerceIn(MIN_SCORE, MAX_SCORE), features, scanned, accept?.first?.nodePath, flags)
+        return JeenyFrameAssessment(classification, score.coerceIn(MIN_SCORE, MAX_SCORE), features, scanned, accept?.nodePath, flags)
     }
 
     private fun hasCurrencyAndNumber(label: String): Boolean =
