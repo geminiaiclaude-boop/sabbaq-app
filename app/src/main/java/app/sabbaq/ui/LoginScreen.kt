@@ -50,7 +50,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import android.content.Context
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import app.sabbaq.R
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.semantics
@@ -199,7 +203,7 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit, initialIntent: AccessIntent =
         // لا تقبل نتيجة RPC وحدها؛ لا انتقال قبل أن تكون المهلة الذاكرية صالحة الآن.
         if (!SupabaseClient.hasValidLicense()) {
             SupabaseClient.clearSession()
-            errorMessage = "تعذر تأكيد صلاحية الوصول لحسابك. سجّل الدخول مجددًا ثم حاول."
+            errorMessage = context.getString(R.string.login_err_access_confirm)
             journey = AuthJourney.Idle
             return
         }
@@ -232,7 +236,7 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit, initialIntent: AccessIntent =
             onSuccess = { offer = it },
             onFailure = {
                 offer = null
-                offerErrorMessage = "تعذر عرض تفاصيل التجربة الآن. تحقق من الاتصال ثم أعد المحاولة."
+                offerErrorMessage = context.getString(R.string.login_err_offer_details)
             }
         )
         loadingOffer = false
@@ -248,7 +252,7 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit, initialIntent: AccessIntent =
                 val adminResult = SupabaseClient.isAdmin(token)
                 if (adminResult.isFailure) {
                     SupabaseClient.clearSession()
-                    errorMessage = "تعذر تأكيد حسابك الآن. تحقق من الاتصال ثم أعد المحاولة."
+                    errorMessage = context.getString(R.string.login_err_confirm_account)
                     return@launch
                 }
                 val accountIsAdmin = adminResult.getOrThrow()
@@ -262,7 +266,7 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit, initialIntent: AccessIntent =
                 )?.takeIf { it.isNotBlank() }
                 if (deviceId == null) {
                     SupabaseClient.clearSession()
-                    errorMessage = "تعذر تحديد هذا الجهاز. أعد فتح التطبيق ثم حاول مرة أخرى."
+                    errorMessage = context.getString(R.string.login_err_identify_device)
                     return@launch
                 }
 
@@ -290,7 +294,7 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit, initialIntent: AccessIntent =
                             journey = AuthJourney.DeviceTransfer
                         } else {
                             SupabaseClient.clearSession()
-                            errorMessage = licenseErrorMessage(failure)
+                            errorMessage = licenseErrorMessage(context, failure)
                         }
                     }
                 }
@@ -298,7 +302,7 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit, initialIntent: AccessIntent =
                 throw cancelled
             } catch (_: Exception) {
                 SupabaseClient.clearSession()
-                errorMessage = "تعذر تأكيد الوصول إلى حسابك. تحقق من اتصال الإنترنت ثم أعد المحاولة."
+                errorMessage = context.getString(R.string.login_err_account_access)
             } finally {
                 if (journey != AuthJourney.AwaitingAccess && journey != AuthJourney.Idle &&
                     journey != AuthJourney.DeviceTransfer) {
@@ -326,16 +330,16 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit, initialIntent: AccessIntent =
                         transferLimitReached = failure is DeviceTransferLimitException
                         transferError = when (failure) {
                             is DeviceTransferLimitException -> failure.retryAfter
-                                ?.let { "نقلت حسابك مرتين خلال 30 يومًا. يمكنك نقله مجددًا ابتداءً من $it، أو تواصل مع الإدارة الآن." }
-                                ?: "نقلت حسابك مرتين خلال 30 يومًا. تواصل مع الإدارة لنقله الآن."
-                            else -> failure.message ?: "تعذر نقل الحساب الآن. حاول مجددًا بعد قليل."
+                                ?.let { context.getString(R.string.login_err_transfer_limit_until, it) }
+                                ?: context.getString(R.string.login_err_transfer_limit)
+                            else -> failure.message ?: context.getString(R.string.login_err_transfer_generic)
                         }
                     },
                 )
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                transferError = "تعذر نقل الحساب الآن. تحقق من الاتصال ثم أعد المحاولة."
+                transferError = context.getString(R.string.login_err_transfer_retry)
             } finally {
                 transferring = false
             }
@@ -352,7 +356,7 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit, initialIntent: AccessIntent =
             try {
                 val result = SupabaseClient.signInWithGoogle(context)
                 if (result.isFailure) {
-                    errorMessage = googleErrorMessage(result.exceptionOrNull())
+                    errorMessage = googleErrorMessage(context, result.exceptionOrNull())
                     return@launch
                 }
                 clearPhoneInput()
@@ -362,7 +366,7 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit, initialIntent: AccessIntent =
             } catch (_: Exception) {
                 // An unexpected exception's message is English/internal text; never show it.
                 SupabaseClient.clearSession()
-                errorMessage = "تعذر إتمام الدخول باستخدام Google. تحقق من الاتصال ثم أعد المحاولة. [G-RUNTIME-EX]"
+                errorMessage = context.getString(R.string.login_err_google_runtime)
             } finally {
                 if (journey == AuthJourney.Authenticating) journey = AuthJourney.Idle
             }
@@ -382,18 +386,18 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit, initialIntent: AccessIntent =
             try {
                 val result = SupabaseClient.requestPhoneOtp(phone)
                 if (result.isFailure) {
-                    errorMessage = otpRequestErrorMessage(result.exceptionOrNull())
+                    errorMessage = otpRequestErrorMessage(context, result.exceptionOrNull())
                     return@launch
                 }
                 otp = ""
                 otpRequested = true
                 otpValidationRequested = false
                 otpCooldownEndsAt = SystemClock.elapsedRealtime() + OTP_COOLDOWN_MILLIS
-                infoMessage = "أرسلنا رمزًا من 6 أرقام إلى جوالك."
+                infoMessage = context.getString(R.string.login_info_otp_sent)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                errorMessage = "تعذر إرسال رمز التحقق. تحقق من الاتصال ثم أعد المحاولة."
+                errorMessage = context.getString(R.string.login_err_otp_send)
             } finally {
                 if (journey == AuthJourney.Authenticating) journey = AuthJourney.Idle
             }
@@ -415,7 +419,7 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit, initialIntent: AccessIntent =
                 // لا يبقى الرمز في الذاكرة بعد إرسال طلب التحقق، ناجحًا كان أو فاشلًا.
                 otp = ""
                 if (result.isFailure) {
-                    errorMessage = otpVerificationErrorMessage(result.exceptionOrNull())
+                    errorMessage = otpVerificationErrorMessage(context, result.exceptionOrNull())
                     return@launch
                 }
                 clearPhoneInput()
@@ -424,7 +428,7 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit, initialIntent: AccessIntent =
                 throw cancelled
             } catch (_: Exception) {
                 SupabaseClient.clearSession()
-                errorMessage = "تعذر تأكيد الرمز. اطلب رمزًا جديدًا ثم أعد المحاولة."
+                errorMessage = context.getString(R.string.login_err_otp_confirm)
             } finally {
                 if (journey == AuthJourney.Authenticating) journey = AuthJourney.Idle
             }
@@ -443,12 +447,12 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit, initialIntent: AccessIntent =
                     Celebrations.accessGranted(SupabaseClient.subscriptionSnapshot())
                     completeLogin(isAdmin)
                 } else {
-                    activationError = trialErrorMessage(result.exceptionOrNull())
+                    activationError = trialErrorMessage(context, result.exceptionOrNull())
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                activationError = "تعذر بدء التجربة الآن. تحقق من الاتصال ثم أعد المحاولة."
+                activationError = context.getString(R.string.login_err_trial_start)
             } finally {
                 if (journey != AuthJourney.Idle) journey = AuthJourney.AwaitingAccess
             }
@@ -468,7 +472,7 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit, initialIntent: AccessIntent =
                 val redeemed = SupabaseClient.redeemCode(activationCode)
                 activationCode = ""
                 if (redeemed.getOrNull() != true) {
-                    activationError = activationErrorMessage(redeemed.exceptionOrNull())
+                    activationError = activationErrorMessage(context, redeemed.exceptionOrNull())
                     return@launch
                 }
                 val revalidated = SupabaseClient.revalidateLicense()
@@ -476,12 +480,12 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit, initialIntent: AccessIntent =
                     Celebrations.accessGranted(SupabaseClient.subscriptionSnapshot())
                     completeLogin(isAdmin)
                 } else {
-                    activationError = licenseErrorMessage(revalidated.exceptionOrNull())
+                    activationError = licenseErrorMessage(context, revalidated.exceptionOrNull())
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                activationError = "تعذر تأكيد رمز التفعيل. تحقق من الاتصال ثم أعد المحاولة."
+                activationError = context.getString(R.string.login_err_code_confirm)
             } finally {
                 if (journey != AuthJourney.Idle) journey = AuthJourney.AwaitingAccess
             }
@@ -489,12 +493,12 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit, initialIntent: AccessIntent =
     }
 
     val phoneError = if (phoneValidationRequested && !SaudiLoginInput.isSaudiMobile(phone)) {
-        "أدخل رقم جوال سعودي بصيغة 05XXXXXXXX أو +9665XXXXXXXX."
+        stringResource(R.string.login_err_phone_format)
     } else {
         null
     }
     val otpError = if (otpValidationRequested && !SaudiLoginInput.isSixDigitOtp(otp)) {
-        "أدخل رمز التحقق المكوّن من 6 أرقام."
+        stringResource(R.string.login_err_otp_format)
     } else {
         null
     }
@@ -551,7 +555,7 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit, initialIntent: AccessIntent =
                             onOpenPurchaseContact = { url ->
                                 runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
                                     .onFailure {
-                                        activationError = "تعذر فتح قناة التواصل. أعد المحاولة أو تواصل مع الإدارة."
+                                        activationError = context.getString(R.string.login_err_open_contact)
                                     }
                             },
                             onCancel = ::abandonAccess
@@ -578,7 +582,7 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit, initialIntent: AccessIntent =
                             selected = accessIntent,
                             onSelect = { accessIntent = it },
                         )
-                        Text("يعمل مع", style = MaterialTheme.typography.titleSmall,
+                        Text(stringResource(R.string.login_works_with), style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                         SupportedPlatformsRow()
                     } else Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -590,15 +594,15 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit, initialIntent: AccessIntent =
                             ) {
                                 Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.size(6.dp))
-                                Text("تغيير اختيارك")
+                                Text(stringResource(R.string.login_change_choice))
                             }
                         }
                         AccessIntentBanner(accessIntent, offer)
                         AuthenticationCard(
                             title = when (accessIntent) {
-                                AccessIntent.Trial -> "أنشئ حسابك وابدأ تجربتك"
-                                AccessIntent.Subscribe -> "سجّل الدخول أو أنشئ حسابك"
-                                else -> "تسجيل الدخول"
+                                AccessIntent.Trial -> stringResource(R.string.login_title_trial)
+                                AccessIntent.Subscribe -> stringResource(R.string.login_title_subscribe)
+                                else -> stringResource(R.string.login_title_signin)
                             },
                             phone = phone,
                             otp = otp,
@@ -637,7 +641,7 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit, initialIntent: AccessIntent =
                     }
                 }
                 Text(
-                    "بالمتابعة توافق على معالجة بياناتك كما توضح سياسة الخصوصية.",
+                    stringResource(R.string.login_privacy_consent),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -653,7 +657,7 @@ private fun AuthBrandHero() {
     SabbaqHeroSurface(Modifier.sabbaqEntrance(0)) {
         SabbaqBrand(onHero = true)
         Text(
-            text = "ادخل إلى حسابك، ثم اضبط شروط طلباتك.",
+            text = stringResource(R.string.login_hero_subtitle),
             style = MaterialTheme.typography.bodyMedium,
             color = brand.onHeroMuted,
         )
@@ -665,9 +669,9 @@ private fun AuthBrandHero() {
 private fun AccessIntentBanner(intent: AccessIntent, offer: PublicOffer?) {
     val text = when (intent) {
         AccessIntent.Trial -> offer?.takeIf { it.trialEnabled && it.trialDays > 0 }
-            ?.let { "اخترت التجربة المجانية (${ArabicCount.days(it.trialDays)}). بعد الدخول تبدأها بضغطة." }
-            ?: "اخترت التجربة المجانية. بعد الدخول نتحقق من أهلية حسابك."
-        AccessIntent.Subscribe -> "اخترت الاشتراك. بعد الدخول ترى طريقة الدفع وتفعّل اشتراكك."
+            ?.let { stringResource(R.string.login_intent_trial_days, pluralStringResource(R.plurals.days_count, it.trialDays, it.trialDays)) }
+            ?: stringResource(R.string.login_intent_trial)
+        AccessIntent.Subscribe -> stringResource(R.string.login_intent_subscribe)
         else -> null
     } ?: return
     SabbaqMessage(text, tone = SabbaqTone.Info)
@@ -677,7 +681,7 @@ private fun AccessIntentBanner(intent: AccessIntent, offer: PublicOffer?) {
 private fun OrDivider() {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         HorizontalDivider(Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
-        Text("أو", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.login_or), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         HorizontalDivider(Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
     }
 }
@@ -707,11 +711,11 @@ private fun AuthenticationCard(
 ) {
     SabbaqCard(
         title = title,
-        subtitle = "حساب واحد للدخول والتسجيل: إن لم يكن لديك حساب يُنشأ تلقائيًا عند أول دخول.",
+        subtitle = stringResource(R.string.login_card_subtitle),
         icon = Icons.Outlined.Login
     ) {
         SabbaqButton(
-            text = "المتابعة باستخدام Google",
+            text = stringResource(R.string.login_continue_google),
             onClick = onGoogle,
             busy = googleBusy,
             busyText = authProgressLabel(journey),
@@ -720,15 +724,15 @@ private fun AuthenticationCard(
         if (phoneAvailable) {
         OrDivider()
         SabbaqSectionTitle(
-            title = "رقم الجوال السعودي",
-            subtitle = if (otpRequested) "أدخل الرمز المكوّن من 6 أرقام الذي وصلك." else "نرسل رمزًا لمرة واحدة إلى جوالك. رقم الجوال محفوظ بأمان في حسابك لتأكيد هويتك والوصول إليه عند الحاجة."
+            title = stringResource(R.string.login_saudi_mobile),
+            subtitle = if (otpRequested) stringResource(R.string.login_otp_prompt_entered) else stringResource(R.string.login_otp_prompt)
         )
         OutlinedTextField(
             value = phone,
             onValueChange = onPhoneChange,
             enabled = !isBusy,
             singleLine = true,
-            label = { Text("رقم الجوال السعودي") },
+            label = { Text(stringResource(R.string.login_saudi_mobile)) },
             placeholder = { Text("05XXXXXXXX") },
             leadingIcon = { Icon(Icons.Outlined.Phone, contentDescription = null) },
             isError = phoneError != null,
@@ -742,12 +746,13 @@ private fun AuthenticationCard(
             modifier = Modifier.fillMaxWidth().focusRequester(phoneFocus)
         )
         if (otpRequested) {
+            val otpStateDesc = stringResource(R.string.login_otp_desc)
             OutlinedTextField(
                 value = otp,
                 onValueChange = onOtpChange,
                 enabled = !isBusy,
                 singleLine = true,
-                label = { Text("رمز التحقق") },
+                label = { Text(stringResource(R.string.login_otp_label)) },
                 placeholder = { Text("123456") },
                 leadingIcon = { Icon(Icons.Outlined.Key, contentDescription = null) },
                 isError = otpError != null,
@@ -758,7 +763,7 @@ private fun AuthenticationCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .focusRequester(otpFocus)
-                    .semantics { stateDescription = "رمز تحقق من 6 أرقام" }
+                    .semantics { stateDescription = otpStateDesc }
             )
         }
         }
@@ -768,13 +773,13 @@ private fun AuthenticationCard(
 
         if (phoneAvailable && otpRequested) {
             SabbaqButton(
-                text = "تحقق وتابع",
+                text = stringResource(R.string.login_verify_continue),
                 onClick = onVerifyOtp,
                 busy = isBusy && !googleBusy,
                 busyText = authProgressLabel(journey),
             )
             SabbaqButton(
-                text = if (otpCooldownSeconds > 0) "يمكن طلب رمز جديد بعد $otpCooldownSeconds ث" else "إرسال رمز جديد",
+                text = if (otpCooldownSeconds > 0) stringResource(R.string.login_resend_in, otpCooldownSeconds) else stringResource(R.string.login_resend),
                 onClick = onRequestOtp,
                 enabled = !isBusy && otpCooldownSeconds == 0,
                 style = SabbaqButtonStyle.Text,
@@ -782,11 +787,11 @@ private fun AuthenticationCard(
             )
         } else if (phoneAvailable) {
             SabbaqButton(
-                text = "إرسال رمز التحقق",
+                text = stringResource(R.string.login_send_otp),
                 onClick = onRequestOtp,
                 enabled = !isBusy && otpCooldownSeconds == 0,
                 busy = isBusy && !googleBusy,
-                busyText = "جارٍ إرسال الرمز…",
+                busyText = stringResource(R.string.login_sending_otp),
                 style = SabbaqButtonStyle.Secondary,
             )
         }
@@ -807,29 +812,29 @@ private fun DeviceTransferCard(
     onCancel: () -> Unit,
 ) {
     SabbaqCard(
-        title = "حسابك مفعّل على جهاز آخر",
-        subtitle = "يحدث هذا عند تغيير الجوال أو إعادة ضبطه أو تثبيت نسخة أخرى من سبّاق.",
+        title = stringResource(R.string.login_transfer_title),
+        subtitle = stringResource(R.string.login_transfer_subtitle),
         icon = Icons.Outlined.PhonelinkSetup,
     ) {
         Text(
-            "يمكنك نقل حسابك إلى هذا الجهاز الآن. سيتوقف سبّاق على الجهاز الآخر، وتبقى مدة اشتراكك كما هي. يمكن النقل مرتين كل 30 يومًا.",
+            stringResource(R.string.login_transfer_body),
             style = MaterialTheme.typography.bodyMedium,
         )
         SabbaqAnimatedMessage(error, SabbaqTone.Error)
         if (supportUrl != null) {
-            SabbaqButton("تواصل مع الإدارة عبر واتساب", onClick = { onOpenSupport(supportUrl) },
+            SabbaqButton(stringResource(R.string.login_transfer_whatsapp), onClick = { onOpenSupport(supportUrl) },
                 icon = Icons.AutoMirrored.Outlined.Chat)
         } else {
             SabbaqButton(
-                text = "نقل حسابي إلى هذا الجهاز",
+                text = stringResource(R.string.login_transfer_here),
                 onClick = onTransfer,
                 busy = busy,
-                busyText = "جارٍ نقل الحساب…",
+                busyText = stringResource(R.string.login_transfer_busy),
                 icon = Icons.Outlined.PhonelinkSetup,
             )
         }
         TextButton(onClick = onCancel, enabled = !busy, modifier = Modifier.align(Alignment.CenterHorizontally).heightIn(min = 48.dp)) {
-            Text("تسجيل الخروج والعودة")
+            Text(stringResource(R.string.login_signout_return))
         }
     }
 }
@@ -857,8 +862,8 @@ private fun PendingAccessCard(
     val tabs = if (BuildConfig.DIRECT_DISTRIBUTION) AccessTab.entries.toList() else listOf(AccessTab.Trial)
     var tab by rememberSaveable { mutableStateOf(intent.toTab().takeIf { it in tabs } ?: tabs.first()) }
     SabbaqCard(
-        title = "اختر طريقة البدء",
-        subtitle = "حسابك جاهز. اختر ما يناسبك، ويمكنك التبديل بين الخيارات في أي وقت.",
+        title = stringResource(R.string.login_start_title),
+        subtitle = stringResource(R.string.login_start_subtitle),
         icon = Icons.Outlined.Key
     ) {
         if (tabs.size > 1) SabbaqTabs(tabs = tabs, selected = tab, onSelect = { tab = it })
@@ -868,36 +873,36 @@ private fun PendingAccessCard(
                 onClick = onRetryOffer,
                 enabled = !isBusy && !loadingOffer,
                 modifier = Modifier.align(Alignment.CenterHorizontally).heightIn(min = 48.dp)
-            ) { Text("إعادة المحاولة") }
+            ) { Text(stringResource(R.string.login_retry)) }
         }
 
         when (tab) {
             AccessTab.Trial -> when {
-                loadingOffer -> SabbaqStatusPill(text = "جارٍ تجهيز تفاصيل التجربة…", ready = false)
+                loadingOffer -> SabbaqStatusPill(text = stringResource(R.string.login_trial_preparing), ready = false)
                 showTrial -> {
                     SabbaqSectionTitle(
-                        title = "تجربة مجانية لحسابك",
-                        subtitle = "جرّب الشروط والقبول التلقائي لمدة ${ArabicCount.days(offer?.trialDays)} دون دفع. تبدأ فقط عند ضغطك على الزر."
+                        title = stringResource(R.string.login_trial_card_title),
+                        subtitle = stringResource(R.string.login_trial_card_subtitle, pluralStringResource(R.plurals.days_count, offer?.trialDays ?: 0, offer?.trialDays ?: 0))
                     )
                     SabbaqButton(
-                        text = "ابدأ التجربة المجانية",
+                        text = stringResource(R.string.login_start_trial),
                         onClick = onStartTrial,
                         enabled = !isBusy,
                         busy = journey == AuthJourney.StartingTrial,
-                        busyText = "جارٍ تأكيد التجربة…",
+                        busyText = stringResource(R.string.login_confirming_trial),
                     )
                     actionError?.let { SabbaqMessage(message = it, isError = true) }
                 }
                 else -> {
                     // Never a silent dead end: say why, and offer the next step.
                     SabbaqMessage(
-                        if (offer?.trialEnabled == false) "التجربة المجانية غير متاحة حاليًا."
-                        else "استُخدمت التجربة المجانية من قبل على هذا الحساب أو هذا الجهاز، فلا يمكن بدؤها مرة أخرى."
+                        if (offer?.trialEnabled == false) stringResource(R.string.login_trial_unavailable)
+                        else stringResource(R.string.login_trial_used)
                     )
                     if (BuildConfig.DIRECT_DISTRIBUTION) {
-                        SabbaqButton("عرض الاشتراك", onClick = { tab = AccessTab.Subscribe }, style = SabbaqButtonStyle.Secondary)
+                        SabbaqButton(stringResource(R.string.login_show_subscription), onClick = { tab = AccessTab.Subscribe }, style = SabbaqButtonStyle.Secondary)
                     } else {
-                        SabbaqMessage("لا تتوفر طريقة شراء داخل التطبيق حاليًا.")
+                        SabbaqMessage(stringResource(R.string.login_no_purchase))
                     }
                 }
             }
@@ -914,8 +919,8 @@ private fun PendingAccessCard(
             )
             AccessTab.Code -> {
                 SabbaqSectionTitle(
-                    title = "تفعيل برمز",
-                    subtitle = "الصق رمز التفعيل الذي وصلك من الإدارة واضغط «تفعيل الوصول»."
+                    title = stringResource(R.string.login_code_title),
+                    subtitle = stringResource(R.string.login_code_subtitle)
                 )
                 ActivationCodeField(
                     value = activationCode,
@@ -926,11 +931,11 @@ private fun PendingAccessCard(
                 )
                 SabbaqAnimatedMessage(actionError, SabbaqTone.Error)
                 SabbaqButton(
-                    text = "تفعيل الوصول",
+                    text = stringResource(R.string.login_activate),
                     onClick = onActivateCode,
                     enabled = !isBusy,
                     busy = journey == AuthJourney.ActivatingCode,
-                    busyText = "جارٍ التحقق…",
+                    busyText = stringResource(R.string.login_verifying),
                 )
             }
         }
@@ -939,7 +944,7 @@ private fun PendingAccessCard(
             onClick = onCancel,
             enabled = !isBusy,
             modifier = Modifier.align(Alignment.CenterHorizontally).heightIn(min = 48.dp)
-        ) { Text("الدخول بحساب آخر") }
+        ) { Text(stringResource(R.string.login_other_account)) }
     }
 }
 
@@ -956,10 +961,10 @@ private fun DirectAccessOptions(
     onOpenPurchaseContact: (String) -> Unit
 ) {
     SabbaqSectionTitle(
-        title = "اشتراك سبّاق",
+        title = stringResource(R.string.login_subscription_title),
         subtitle = offer?.let {
-            "السعر ${formatOfferPrice(it.priceMinor, it.currency)} لمدة ${ArabicCount.days(it.subscriptionDays)}."
-        } ?: "لا نستطيع عرض السعر أو المدة الآن. أعد المحاولة قبل اتخاذ قرار الاشتراك."
+            stringResource(R.string.login_subscription_price, formatOfferPrice(it.priceMinor, it.currency, stringResource(R.string.currency_sar)), pluralStringResource(R.plurals.days_count, it.subscriptionDays, it.subscriptionDays))
+        } ?: stringResource(R.string.login_subscription_no_price)
     )
     PurchaseSteps(offer = offer, enabled = !isBusy, onOpenPurchase = onOpenPurchaseContact)
     ActivationCodeField(
@@ -971,11 +976,11 @@ private fun DirectAccessOptions(
     )
     SabbaqAnimatedMessage(actionError, SabbaqTone.Error)
     SabbaqButton(
-        text = "تفعيل الوصول",
+        text = stringResource(R.string.login_activate),
         onClick = onActivateCode,
         enabled = !isBusy,
         busy = journey == AuthJourney.ActivatingCode,
-        busyText = "جارٍ التحقق…",
+        busyText = stringResource(R.string.login_verifying),
     )
 }
 
@@ -1018,65 +1023,66 @@ private fun canStartTrial(snapshot: app.sabbaq.network.SubscriptionSnapshot?, of
         offer?.trialEnabled == true &&
         offer.trialDays > 0
 
-private fun formatOfferPrice(minor: Int, currency: String): String {
+private fun formatOfferPrice(minor: Int, currency: String, sarLabel: String): String {
     val riyals = minor / 100
     val halalas = (minor % 100).toString().padStart(2, '0')
-    val currencyLabel = if (currency.equals("SAR", ignoreCase = true)) "ر.س" else currency
+    val currencyLabel = if (currency.equals("SAR", ignoreCase = true)) sarLabel else currency
     return "$riyals.$halalas $currencyLabel"
 }
 
-private fun googleErrorMessage(error: Throwable?): String {
+private fun googleErrorMessage(context: Context, error: Throwable?): String {
     val msg = error?.message?.trim()
     if (!msg.isNullOrBlank()) {
         return msg
     }
-    return "تعذر إتمام الدخول باستخدام Google. حاول مجددًا بعد قليل. [G-UNKNOWN]"
+    return context.getString(R.string.login_err_google_unknown)
 }
 
-private fun otpRequestErrorMessage(error: Throwable?): String = when (error?.message) {
-    "تم تجاوز حد المحاولات؛ يرجى الانتظار" -> "تم تجاوز حد طلب الرموز. انتظر ثم أعد المحاولة."
-    "أدخل رقم جوال سعودي بصيغة +9665XXXXXXXX" -> "أدخل رقم جوال سعودي صالحًا."
-    else -> "تعذر إرسال رمز التحقق. تحقق من الرقم والاتصال ثم أعد المحاولة."
+private fun otpRequestErrorMessage(context: Context, error: Throwable?): String = when (error?.message) {
+    "تم تجاوز حد المحاولات؛ يرجى الانتظار" -> context.getString(R.string.login_err_otp_rate)
+    "أدخل رقم جوال سعودي بصيغة +9665XXXXXXXX" -> context.getString(R.string.login_err_phone_invalid)
+    else -> context.getString(R.string.login_err_otp_send)
 }
 
-private fun otpVerificationErrorMessage(error: Throwable?): String = when (error?.message) {
-    "رمز التحقق يجب أن يتكون من 6 أرقام" -> "أدخل رمز التحقق المكوّن من 6 أرقام."
-    "اطلب رمز تحقق جديدًا قبل التحقق" -> "اطلب رمز تحقق جديدًا أولًا."
-    "تم تجاوز حد المحاولات؛ يرجى الانتظار" -> "تم تجاوز حد المحاولات. انتظر ثم اطلب رمزًا جديدًا."
-    else -> "تعذر التحقق من الرمز. تأكد من الرمز أو اطلب رمزًا جديدًا."
+private fun otpVerificationErrorMessage(context: Context, error: Throwable?): String = when (error?.message) {
+    "رمز التحقق يجب أن يتكون من 6 أرقام" -> context.getString(R.string.login_err_otp_six)
+    "اطلب رمز تحقق جديدًا قبل التحقق" -> context.getString(R.string.login_err_otp_request_first)
+    "تم تجاوز حد المحاولات؛ يرجى الانتظار" -> context.getString(R.string.login_err_otp_rate_new)
+    else -> context.getString(R.string.login_err_otp_verify)
 }
 
-private fun licenseErrorMessage(error: Throwable?): String = when (error?.message) {
+private fun licenseErrorMessage(context: Context, error: Throwable?): String = when (error?.message) {
     "الحساب مرتبط بجهاز آخر",
     "تم حظر أو رفض الحساب",
     "حساب السائق غير مكتمل؛ أعد تسجيل الدخول أو تواصل مع الإدارة",
     "حساب السائق غير مكتمل؛ تواصل مع الإدارة",
     "يلزم تحديث التطبيق قبل استخدام الخدمة" -> error.message.orEmpty()
-    else -> "تعذر تأكيد حالة الاشتراك. تحقق من الاتصال ثم أعد المحاولة."
+    else -> context.getString(R.string.login_err_license_generic)
 }
 
-private fun trialErrorMessage(error: Throwable?): String = when (error?.message) {
-    "تعذر بدء التجربة" -> "لا يمكن بدء التجربة لحسابك الآن."
-    "تحقق من الترخيص والجهاز قبل بدء التجربة" -> "سجّل الدخول مجددًا ثم أعد محاولة بدء التجربة."
-    "تم تجاوز حد المحاولات؛ يرجى الانتظار" -> "تم تجاوز حد المحاولات. انتظر قبل إعادة المحاولة."
-    else -> "تعذر بدء التجربة الآن. تحقق من الاتصال ثم أعد المحاولة."
+private fun trialErrorMessage(context: Context, error: Throwable?): String = when (error?.message) {
+    "تعذر بدء التجربة" -> context.getString(R.string.login_err_trial_cannot)
+    "تحقق من الترخيص والجهاز قبل بدء التجربة" -> context.getString(R.string.login_err_trial_relogin)
+    "تم تجاوز حد المحاولات؛ يرجى الانتظار" -> context.getString(R.string.login_err_trial_rate)
+    else -> context.getString(R.string.login_err_trial_generic2)
 }
 
-private fun activationErrorMessage(error: Throwable?): String = when (error?.message) {
-    "رمز التفعيل غير صالح", "الرمز غير صحيح أو استُخدم مسبقًا" -> "رمز التفعيل غير صالح. راجعه ثم أعد المحاولة."
-    "انتهت الجلسة؛ سجّل الدخول من جديد" -> "انتهت جلسة الدخول. سجّل الدخول من جديد."
-    "محاولات كثيرة؛ يرجى الانتظار قبل المحاولة مجددًا" -> "محاولات كثيرة متتالية. انتظر بضع دقائق ثم أعد المحاولة."
-    "هذا الحساب مرتبط بجهاز آخر" -> "حسابك مرتبط بجهاز آخر. سجّل الدخول من جديد لنقله إلى هذا الجهاز ثم فعّل الرمز."
-    else -> "تعذر قبول رمز التفعيل. راجع الرمز والاتصال ثم أعد المحاولة."
+private fun activationErrorMessage(context: Context, error: Throwable?): String = when (error?.message) {
+    "رمز التفعيل غير صالح", "الرمز غير صحيح أو استُخدم مسبقًا" -> context.getString(R.string.login_err_code_invalid)
+    "انتهت الجلسة؛ سجّل الدخول من جديد" -> context.getString(R.string.login_err_code_session)
+    "محاولات كثيرة؛ يرجى الانتظار قبل المحاولة مجددًا" -> context.getString(R.string.login_err_code_rate)
+    "هذا الحساب مرتبط بجهاز آخر" -> context.getString(R.string.login_err_code_device)
+    else -> context.getString(R.string.login_err_code_generic)
 }
 
-private fun authProgressLabel(journey: AuthJourney): String = when (journey) {
-    AuthJourney.Authenticating -> "جارٍ التحقق…"
-    AuthJourney.CheckingRole -> "جارٍ مراجعة الحساب…"
-    AuthJourney.CheckingLicense -> "جارٍ تأكيد الوصول…"
-    AuthJourney.StartingTrial -> "جارٍ تأكيد التجربة…"
-    AuthJourney.ActivatingCode -> "جارٍ تفعيل الاشتراك…"
-    AuthJourney.AwaitingAccess -> "بانتظار التفعيل"
-    AuthJourney.DeviceTransfer -> "جارٍ نقل الحساب…"
-    AuthJourney.Idle -> "متابعة"
-}
+@Composable
+private fun authProgressLabel(journey: AuthJourney): String = stringResource(when (journey) {
+    AuthJourney.Authenticating -> R.string.login_progress_auth
+    AuthJourney.CheckingRole -> R.string.login_progress_role
+    AuthJourney.CheckingLicense -> R.string.login_progress_license
+    AuthJourney.StartingTrial -> R.string.login_progress_trial
+    AuthJourney.ActivatingCode -> R.string.login_progress_code
+    AuthJourney.AwaitingAccess -> R.string.login_progress_awaiting
+    AuthJourney.DeviceTransfer -> R.string.login_progress_transfer
+    AuthJourney.Idle -> R.string.login_progress_continue
+})
