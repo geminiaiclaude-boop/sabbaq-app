@@ -54,6 +54,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.sabbaq.BuildConfig
+import app.sabbaq.LocaleManager
+import app.sabbaq.R
+import androidx.compose.ui.res.stringResource
 import app.sabbaq.notifications.AppNotification
 import app.sabbaq.notifications.InboxState
 import app.sabbaq.notifications.NotificationAction
@@ -70,7 +73,7 @@ import kotlinx.coroutines.delay
 @Composable
 internal fun SupportButton(unread: Int, onClick: () -> Unit) {
     val brand = LocalSabbaqBrand.current
-    val description = if (unread > 0) "مراسلة الدعم، ردود جديدة: $unread" else "مراسلة الدعم"
+    val description = if (unread > 0) stringResource(R.string.np_support_cd_unread, unread) else stringResource(R.string.np_support_cd)
     IconButton(onClick = onClick, modifier = Modifier.size(52.dp).semantics { contentDescription = description }) {
         BadgedBox(badge = {
             if (unread > 0) Badge(containerColor = brand.signature, contentColor = brand.onSignature) {
@@ -86,7 +89,7 @@ internal fun SupportButton(unread: Int, onClick: () -> Unit) {
 @Composable
 internal fun NotificationBell(unread: Int, onClick: () -> Unit) {
     val brand = LocalSabbaqBrand.current
-    val description = if (unread > 0) "الإشعارات، ${ArabicCount.unreadNotifications(unread)}" else "الإشعارات"
+    val description = if (unread > 0) stringResource(R.string.np_bell_cd_unread, ArabicCount.unreadNotifications(unread)) else stringResource(R.string.np_bell_cd)
     IconButton(onClick = onClick, modifier = Modifier.size(52.dp).semantics { contentDescription = description }) {
         BadgedBox(badge = {
             if (unread > 0) Badge(containerColor = brand.signature, contentColor = brand.onSignature) {
@@ -129,20 +132,20 @@ internal fun NotificationsSheet(onDismiss: () -> Unit, onAction: (NotificationAc
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
-                    SabbaqSectionTitle("الإشعارات")
+                    SabbaqSectionTitle(stringResource(R.string.np_title))
                     Text(
-                        if (unread > 0) ArabicCount.unreadNotifications(unread) else "كل الإشعارات مقروءة",
+                        if (unread > 0) ArabicCount.unreadNotifications(unread) else stringResource(R.string.np_all_read),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                if (unread > 0) TextButton(onClick = NotificationCenter::markAllRead) { Text("تحديد الكل كمقروء") }
-                else if (inbox.items.isNotEmpty()) TextButton(onClick = NotificationCenter::clearRead) { Text("مسح المقروءة") }
+                if (unread > 0) TextButton(onClick = NotificationCenter::markAllRead) { Text(stringResource(R.string.np_mark_all_read)) }
+                else if (inbox.items.isNotEmpty()) TextButton(onClick = NotificationCenter::clearRead) { Text(stringResource(R.string.np_clear_read)) }
             }
             if (refreshing) LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 20.dp))
             if (syncFailed) {
                 SabbaqMessage(
-                    featureFailureText(failure, "رسائل الإدارة") + " المعروض محفوظ على جوالك.",
+                    featureFailureText(failure, stringResource(R.string.np_admin_messages)) + stringResource(R.string.np_shown_saved),
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
                 )
             }
@@ -203,14 +206,14 @@ private fun NotificationRow(notification: AppNotification, onAction: (Notificati
             }
             Text(notification.body, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
             if (notification.fromServer) {
-                Text("من إدارة سبّاق", style = MaterialTheme.typography.labelSmall, color = colors.primary)
+                Text(stringResource(R.string.np_from_admin), style = MaterialTheme.typography.labelSmall, color = colors.primary)
             }
             notification.action?.takeIf(::actionAvailable)?.let { action ->
                 TextButton(onClick = { onAction(action) }, modifier = Modifier.padding(top = 2.dp)) { Text(actionLabel(action)) }
             }
         }
         IconButton(onClick = { NotificationCenter.dismiss(notification.id) }, modifier = Modifier.size(40.dp)) {
-            Icon(Icons.Outlined.Close, contentDescription = "حذف الإشعار: ${notification.title}", tint = colors.onSurfaceVariant, modifier = Modifier.size(18.dp))
+            Icon(Icons.Outlined.Close, contentDescription = stringResource(R.string.np_dismiss_cd, notification.title), tint = colors.onSurfaceVariant, modifier = Modifier.size(18.dp))
         }
     }
 }
@@ -226,9 +229,9 @@ private fun EmptyNotifications() {
         Box(Modifier.size(72.dp).clip(CircleShape).background(brand.signature), contentAlignment = Alignment.Center) {
             Icon(Icons.Outlined.NotificationsNone, contentDescription = null, tint = brand.onSignature, modifier = Modifier.size(36.dp))
         }
-        Text("لا توجد إشعارات", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.np_empty), style = MaterialTheme.typography.titleMedium)
         Text(
-            "ستجد هنا الطلبات التي قبلها سبّاق، وتنبيهات المتابعة والاشتراك، ورسائل الإدارة.",
+            stringResource(R.string.np_empty_body),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -250,41 +253,45 @@ private fun kindStyle(kind: NotificationKind): Triple<ImageVector, Color, Color>
 }
 
 /** What the driver should know when the notification or support service could not be reached. */
-internal fun featureFailureText(failure: app.sabbaq.network.SupabaseClient.FeatureFailure?, what: String): String = when (failure) {
-    app.sabbaq.network.SupabaseClient.FeatureFailure.OFFLINE -> "لا يوجد اتصال بالإنترنت؛ تعذر تحديث $what. ستُحدَّث تلقائيًا عند عودة الاتصال."
-    app.sabbaq.network.SupabaseClient.FeatureFailure.SESSION -> "انتهت جلسة الدخول؛ تعذر تحديث $what. أغلق سبّاق وافتحه، أو سجّل الدخول من جديد."
-    else -> "خدمة $what غير متاحة مؤقتًا من الخادم، والإنترنت لديك يعمل. نعيد المحاولة تلقائيًا."
+internal fun featureFailureText(failure: app.sabbaq.network.SupabaseClient.FeatureFailure?, what: String): String {
+    val ar = LocaleManager.isArabic()
+    return when (failure) {
+        app.sabbaq.network.SupabaseClient.FeatureFailure.OFFLINE -> if (ar) "لا يوجد اتصال بالإنترنت؛ تعذر تحديث $what. ستُحدَّث تلقائيًا عند عودة الاتصال." else "There is no internet connection; $what could not be refreshed. It will update automatically when the connection returns."
+        app.sabbaq.network.SupabaseClient.FeatureFailure.SESSION -> if (ar) "انتهت جلسة الدخول؛ تعذر تحديث $what. أغلق سبّاق وافتحه، أو سجّل الدخول من جديد." else "Your sign-in session ended; $what could not be refreshed. Close and reopen Sabbaq, or sign in again."
+        else -> if (ar) "خدمة $what غير متاحة مؤقتًا من الخادم، والإنترنت لديك يعمل. نعيد المحاولة تلقائيًا." else "The $what service is temporarily unavailable from the server, while your internet works. We retry automatically."
+    }
 }
 
 /** A store page exists only for the Play build; the direct build updates through the administration. */
 internal fun actionAvailable(action: NotificationAction): Boolean =
     action != NotificationAction.UPDATE_APP || !BuildConfig.DIRECT_DISTRIBUTION
 
-internal fun actionLabel(action: NotificationAction): String = when (action) {
-    NotificationAction.OPEN_ACCOUNT -> "فتح حسابي"
-    NotificationAction.OPEN_SETUP -> "إكمال الإعداد"
-    NotificationAction.OPEN_FILTERS -> "مراجعة الشروط"
-    NotificationAction.UPDATE_APP -> "تحديث التطبيق"
-    NotificationAction.OPEN_SUPPORT -> "فتح المحادثة"
-}
+internal fun actionLabel(action: NotificationAction): String = (when (action) {
+    NotificationAction.OPEN_ACCOUNT -> "فتح حسابي" to "Open My Account"
+    NotificationAction.OPEN_SETUP -> "إكمال الإعداد" to "Complete setup"
+    NotificationAction.OPEN_FILTERS -> "مراجعة الشروط" to "Review conditions"
+    NotificationAction.UPDATE_APP -> "تحديث التطبيق" to "Update the app"
+    NotificationAction.OPEN_SUPPORT -> "فتح المحادثة" to "Open the conversation"
+}).let { if (LocaleManager.isArabic()) it.first else it.second }
 
-private val dayFormat = DateTimeFormatter.ofPattern("d MMMM", SabbaqLocale)
+private fun dayFormat() = DateTimeFormatter.ofPattern("d MMMM", sabbaqDateLocale())
 
 private fun dayLabel(epochMs: Long, today: LocalDate): String {
     val day = Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()).toLocalDate()
     return when (day) {
-        today -> "اليوم"
-        today.minusDays(1) -> "أمس"
-        else -> day.format(dayFormat)
+        today -> if (LocaleManager.isArabic()) "اليوم" else "Today"
+        today.minusDays(1) -> if (LocaleManager.isArabic()) "أمس" else "Yesterday"
+        else -> day.format(dayFormat())
     }
 }
 
 internal fun relativeTime(epochMs: Long, now: Long = System.currentTimeMillis()): String {
     val minutes = ((now - epochMs).coerceAtLeast(0)) / 60_000
+    val ar = LocaleManager.isArabic()
     return when {
-        minutes < 1 -> "الآن"
-        minutes < 60 -> "قبل $minutes د"
-        minutes < 24 * 60 -> "قبل ${minutes / 60} س"
-        else -> Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()).toLocalDate().format(dayFormat)
+        minutes < 1 -> if (ar) "الآن" else "Now"
+        minutes < 60 -> if (ar) "قبل $minutes د" else "$minutes min ago"
+        minutes < 24 * 60 -> if (ar) "قبل ${minutes / 60} س" else "${minutes / 60} h ago"
+        else -> Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()).toLocalDate().format(dayFormat())
     }
 }
