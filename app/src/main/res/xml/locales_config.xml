@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Languages the app ships. Android uses this for the system per-app language picker and to
+     choose resources by device language. Arabic is the app's design language; English is the
+     default for every other device language. -->
+<locale-config xmlns:android="http://schemas.android.com/apk/res/android">
+    <locale android:name="ar" />
+    <locale android:name="en" />
+</locale-config>

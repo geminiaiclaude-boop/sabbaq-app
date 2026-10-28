@@ -1,6 +1,49 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Default (English) strings. Arabic lives in values-ar/strings.xml, which Android uses on an
+     Arabic device; every other device language falls back to this file. Keep the two files in
+     sync: every key here must exist there. -->
 <resources>
-    <string name="app_name">سبّاق</string>
-    <string name="accessibility_service_description">يقرأ سبّاق العروض الظاهرة في تطبيقات الرحلات المدعومة فقط ويضغط قبول العرض المطابق لشروطك بعد موافقتك على التشغيل. لا يعمل دون اشتراك صالح، ويمكنك إيقافه من التطبيق أو الإشعار في أي وقت.</string>
-    <string name="live_accept_test_title">اختبار القبول الحي</string>
+    <string name="app_name">Sabbaq</string>
+    <string name="accessibility_service_description">Sabbaq reads the offers shown in supported ride apps only and taps accept on the offer that matches your conditions, after you turn it on. It does nothing without a valid subscription, and you can stop it from the app or the notification at any time.</string>
+    <string name="live_accept_test_title">Live accept test</string>
+
+    <!-- Language -->
+    <string name="language">Language</string>
+    <string name="language_arabic">العربية</string>
+    <string name="language_english">English</string>
+    <string name="language_choose">Choose language</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_skip">Skip tour</string>
+    <string name="onboarding_eyebrow">Meet Sabbaq</string>
+    <string name="onboarding_intro_title">Rides that fit your rules</string>
+    <string name="onboarding_intro_subtitle">You set your conditions once, and Sabbaq watches the offers and accepts the ones that match.</string>
+    <string name="onboarding_platforms_title">Works with the ride apps you already use</string>
+    <string name="onboarding_platforms_subtitle">Sabbaq follows the offers inside these apps and accepts whatever matches your conditions.</string>
+    <string name="onboarding_auto_title">You decide, Sabbaq watches</string>
+    <string name="onboarding_auto_subtitle">It auto-accepts the offers that match your conditions in the supported apps.</string>
+    <string name="onboarding_rule_fare_title">Never settle for less than your terms</string>
+    <string name="onboarding_rule_fare_detail">Set the lowest fare and the lowest return per km that suit you.</string>
+    <string name="onboarding_rule_pickup_title">Pickup distance, measured</string>
+    <string name="onboarding_rule_pickup_detail">Choose a limit for the distance to the passenger and the trip length.</string>
+    <string name="onboarding_rule_schedule_title">Work on your own schedule</string>
+    <string name="onboarding_rule_schedule_detail">Set your working hours, and turn accepting on or off whenever you want.</string>
+    <string name="onboarding_offer_loading">Preparing your trial details</string>
+    <string name="onboarding_offer_loading_hint">A moment while we show the available options.</string>
+    <string name="onboarding_retry">Retry</string>
+    <string name="onboarding_discover_first">Discover it first, then decide if it suits you.</string>
+    <string name="onboarding_how_title">How does Sabbaq work?</string>
+    <string name="onboarding_how_subtitle">Three moments in every offer, and you decide the outcome in advance.</string>
+    <string name="onboarding_worth_title">Is this trip worth it?</string>
+    <string name="onboarding_worth_subtitle">Example: a fare of 45 SAR for a 15 km trip.</string>
+    <string name="onboarding_pick_title">Pick what matters to you</string>
+    <string name="onboarding_pick_subtitle">Tap any detail to show it in the example or hide it.</string>
+    <string name="onboarding_example_title">Example details</string>
+    <string name="onboarding_example_subtitle">Numbers for illustration only, not a real offer.</string>
+    <string name="onboarding_example_note">A trip\'s fare is not net profit; costs vary with your trip.</string>
+    <string name="onboarding_back">Back</string>
+    <string name="onboarding_next">Next</string>
+    <string name="onboarding_how">How does it work?</string>
+    <string name="onboarding_page_of">Page %1$d of %2$d</string>
+    <string name="onboarding_step_of">Step %1$d of %2$d</string>
 </resources>

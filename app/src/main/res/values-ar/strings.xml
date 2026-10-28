@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Arabic strings, used on an Arabic device or when the user chooses Arabic. Every key in
+     values/strings.xml must exist here too. -->
+<resources>
+    <string name="app_name">سبّاق</string>
+    <string name="accessibility_service_description">يقرأ سبّاق العروض الظاهرة في تطبيقات الرحلات المدعومة فقط ويضغط قبول العرض المطابق لشروطك بعد موافقتك على التشغيل. لا يعمل دون اشتراك صالح، ويمكنك إيقافه من التطبيق أو الإشعار في أي وقت.</string>
+    <string name="live_accept_test_title">اختبار القبول الحي</string>
+
+    <!-- Language -->
+    <string name="language">اللغة</string>
+    <string name="language_arabic">العربية</string>
+    <string name="language_english">English</string>
+    <string name="language_choose">اختر اللغة</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_skip">تخطي الجولة</string>
+    <string name="onboarding_eyebrow">تعرّف على سبّاق</string>
+    <string name="onboarding_intro_title">طلبات على مقاس شروطك</string>
+    <string name="onboarding_intro_subtitle">تحدد شروطك مرة واحدة، ويتابع سبّاق الطلبات ويقبل ما يطابقها.</string>
+    <string name="onboarding_platforms_title">يعمل مع تطبيقات الرحلات التي تستخدمها</string>
+    <string name="onboarding_platforms_subtitle">سبّاق يتابع الطلبات داخل هذه التطبيقات ويقبل ما يطابق شروطك.</string>
+    <string name="onboarding_auto_title">أنت تحدد، وسبّاق يتابع</string>
+    <string name="onboarding_auto_subtitle">يشغّل القبول التلقائي للطلبات التي تطابق شروطك في التطبيقات المدعومة.</string>
+    <string name="onboarding_rule_fare_title">لا تقبل بأقل من شروطك</string>
+    <string name="onboarding_rule_fare_detail">حدد أقل أجرة وأقل عائد لكل كم يناسبك.</string>
+    <string name="onboarding_rule_pickup_title">مسافة الوصول محسوبة</string>
+    <string name="onboarding_rule_pickup_detail">اختر حدًا لمسافة الوصول للراكب وطول المشوار.</string>
+    <string name="onboarding_rule_schedule_title">عملك في الوقت الذي تختاره</string>
+    <string name="onboarding_rule_schedule_detail">حدد أوقات العمل، وشغّل القبول أو أوقفه متى أردت.</string>
+    <string name="onboarding_offer_loading">نجهّز لك تفاصيل التجربة</string>
+    <string name="onboarding_offer_loading_hint">لحظات ونعرض لك الخيارات المتاحة.</string>
+    <string name="onboarding_retry">إعادة التحقق</string>
+    <string name="onboarding_discover_first">اكتشفه أولًا، ثم قرر إن كان يناسبك.</string>
+    <string name="onboarding_how_title">كيف يعمل سبّاق؟</string>
+    <string name="onboarding_how_subtitle">ثلاث لحظات في كل طلب، وأنت تحدد القرار مسبقًا.</string>
+    <string name="onboarding_worth_title">هل يستحق هذا المشوار؟</string>
+    <string name="onboarding_worth_subtitle">مثال توضيحي: أجرة 45 ر.س لمشوار 15 كم.</string>
+    <string name="onboarding_pick_title">اختر ما يهمك</string>
+    <string name="onboarding_pick_subtitle">اضغط على أي تفصيل لإظهاره في المثال أو إخفائه.</string>
+    <string name="onboarding_example_title">تفاصيل المثال</string>
+    <string name="onboarding_example_subtitle">أرقام للتوضيح فقط، وليست طلبًا فعليًا.</string>
+    <string name="onboarding_example_note">أجرة الطلب ليست ربحًا صافيًا؛ التكاليف تختلف حسب مشوارك.</string>
+    <string name="onboarding_back">رجوع</string>
+    <string name="onboarding_next">التالي</string>
+    <string name="onboarding_how">كيف يعمل؟</string>
+    <string name="onboarding_page_of">الصفحة %1$d من %2$d</string>
+    <string name="onboarding_step_of">خطوة %1$d من %2$d</string>
+</resources>
