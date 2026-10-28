@@ -12,6 +12,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import app.sabbaq.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 
@@ -36,11 +38,11 @@ internal fun SabbaqLegalLinks(modifier: Modifier = Modifier, showDeletion: Boole
     val context = LocalContext.current
     FlowRow(modifier, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         TextButton(onClick = { PublicLinks.open(context, PublicLinks.PRIVACY_POLICY) }, modifier = Modifier.heightIn(min = 48.dp)) {
-            Text("سياسة الخصوصية", style = MaterialTheme.typography.labelLarge)
+            Text(stringResource(R.string.privacy_policy), style = MaterialTheme.typography.labelLarge)
         }
         if (showDeletion) {
             TextButton(onClick = { PublicLinks.open(context, PublicLinks.ACCOUNT_DELETION) }, modifier = Modifier.heightIn(min = 48.dp)) {
-                Text("طلب حذف الحساب", style = MaterialTheme.typography.labelLarge)
+                Text(stringResource(R.string.account_deletion_request), style = MaterialTheme.typography.labelLarge)
             }
         }
     }

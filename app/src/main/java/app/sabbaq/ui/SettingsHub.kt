@@ -49,6 +49,9 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import app.sabbaq.BuildConfig
+import app.sabbaq.R
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import app.sabbaq.ThemeMode
 import app.sabbaq.telemetry.TelemetryRepository
 import app.sabbaq.ui.theme.sabbaqEntrance
@@ -59,14 +62,14 @@ import app.sabbaq.support.SupportRepository
 import app.sabbaq.service.ScreenSketchStore
 
 /** Settings categories; each opens its own page inside the «الإعدادات» destination. */
-internal enum class SettingsSection(val title: String, val icon: ImageVector) {
-    Voice("الصوت والتنبيهات", Icons.Outlined.RecordVoiceOver),
-    Power("التشغيل والطاقة", Icons.Outlined.Bolt),
-    Permissions("الأذونات", Icons.Outlined.AccessibilityNew),
-    Appearance("المظهر", Icons.Outlined.Palette),
-    Diagnostics("التشخيص والدعم", Icons.Outlined.BugReport),
-    Platforms("التطبيقات المدعومة", Icons.Outlined.Apps),
-    More("المزيد", Icons.Outlined.Info),
+internal enum class SettingsSection(val titleRes: Int, val icon: ImageVector) {
+    Voice(R.string.settings_voice, Icons.Outlined.RecordVoiceOver),
+    Power(R.string.settings_power, Icons.Outlined.Bolt),
+    Permissions(R.string.settings_permissions, Icons.Outlined.AccessibilityNew),
+    Appearance(R.string.settings_appearance, Icons.Outlined.Palette),
+    Diagnostics(R.string.settings_diagnostics, Icons.Outlined.BugReport),
+    Platforms(R.string.settings_platforms, Icons.Outlined.Apps),
+    More(R.string.settings_more, Icons.Outlined.Info),
 }
 
 /**
@@ -88,9 +91,9 @@ internal fun SettingsHubPage(
     BackHandler(enabled = section != null) { section = null }
     val current = section
     if (current == null) {
-        Text("الإعدادات", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
+        Text(stringResource(R.string.settings_title), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
         Text(
-            "اضبط سبّاق على طريقتك. كل تغيير يُحفظ فورًا على هذا الجهاز.",
+            stringResource(R.string.settings_intro),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -100,25 +103,25 @@ internal fun SettingsHubPage(
             SettingsSection.entries.forEachIndexed { index, item ->
                 if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 val (summary, attention) = when (item) {
-                    SettingsSection.Voice -> "تنبيهات صوتية عربية لحالة العمل والطلبات" to false
-                    SettingsSection.Power -> (if (missingPower == 0) "يعمل مع قفل الشاشة وبعد إعادة التشغيل"
-                        else "ينقصه ${ArabicCount.permissions(missingPower)} ليعمل بكامل طاقته") to (missingPower > 0)
-                    SettingsSection.Permissions -> (if (missingPermissions == 0) "كل الأذونات مفعّلة"
-                        else "ينقصه ${ArabicCount.permissions(missingPermissions)}") to (missingPermissions > 0)
+                    SettingsSection.Voice -> stringResource(R.string.settings_sum_voice) to false
+                    SettingsSection.Power -> (if (missingPower == 0) stringResource(R.string.settings_power_ok)
+                        else stringResource(R.string.settings_power_fix, pluralStringResource(R.plurals.permissions_count, missingPower, missingPower))) to (missingPower > 0)
+                    SettingsSection.Permissions -> (if (missingPermissions == 0) stringResource(R.string.settings_perms_ok)
+                        else stringResource(R.string.settings_perms_fix, pluralStringResource(R.plurals.permissions_count, missingPermissions, missingPermissions))) to (missingPermissions > 0)
                     SettingsSection.Appearance -> when (themeMode) {
-                        ThemeMode.SYSTEM -> "حسب النظام"
-                        ThemeMode.LIGHT -> "فاتح"
-                        ThemeMode.DARK -> "داكن"
+                        ThemeMode.SYSTEM -> stringResource(R.string.theme_system)
+                        ThemeMode.LIGHT -> stringResource(R.string.theme_light)
+                        ThemeMode.DARK -> stringResource(R.string.theme_dark)
                     } to false
-                    SettingsSection.Diagnostics -> "لماذا لا يقبل الطلبات؟ ومعرّف الدعم" to false
-                    SettingsSection.Platforms -> "جيني وبولت وبترا، وما هو مثبت على جوالك" to false
-                    SettingsSection.More -> "تجربة الطلب، سجل القرارات، دليل الإعداد والخصوصية" to false
+                    SettingsSection.Diagnostics -> stringResource(R.string.settings_sum_diagnostics) to false
+                    SettingsSection.Platforms -> stringResource(R.string.settings_sum_platforms) to false
+                    SettingsSection.More -> stringResource(R.string.settings_sum_more) to false
                 }
-                SettingsCategoryRow(item.icon, item.title, summary, attention) { section = item }
+                SettingsCategoryRow(item.icon, stringResource(item.titleRes), summary, attention) { section = item }
             }
         }
         Text(
-            "سبّاق ${BuildConfig.VERSION_NAME}",
+            stringResource(R.string.app_version_line, BuildConfig.VERSION_NAME),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -129,23 +132,23 @@ internal fun SettingsHubPage(
         modifier = Modifier
             .fillMaxWidth()
             .clip(MaterialTheme.shapes.small)
-            .clickable(onClickLabel = "رجوع إلى الإعدادات", role = Role.Button) { section = null }
+            .clickable(onClickLabel = stringResource(R.string.settings_back), role = Role.Button) { section = null }
             .heightIn(min = 48.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         // RTL: «back» points to the right.
         Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null)
-        Text("الإعدادات", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+        Text(stringResource(R.string.settings_title), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
     }
-    Text(current.title, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
+    Text(stringResource(current.titleRes), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
     when (current) {
         SettingsSection.Voice -> VoiceAlertsCard(Modifier.sabbaqEntrance(0))
 
         SettingsSection.Power -> SabbaqCard(
-            title = if (power.all { it.ready }) "يعمل بكامل طاقته" else "ليعمل بكامل طاقته",
-            subtitle = if (power.all { it.ready }) "يستمر مع قفل الشاشة، ويعود تلقائيًا بعد إعادة تشغيل الجوال."
-                else "حتى لا يوقفه أندرويد أثناء قفل الشاشة أو بعد إعادة التشغيل.",
+            title = if (power.all { it.ready }) stringResource(R.string.power_ready_title) else stringResource(R.string.power_fix_title),
+            subtitle = if (power.all { it.ready }) stringResource(R.string.power_ready_sub)
+                else stringResource(R.string.power_fix_sub),
             icon = Icons.Outlined.Bolt,
             modifier = Modifier.sabbaqEntrance(0),
         ) {
@@ -155,15 +158,15 @@ internal fun SettingsHubPage(
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             Text(
-                "الاستئناف بعد إعادة التشغيل تلقائي إذا تركت المتابعة تعمل. وعند انقطاع الإنترنت تتوقف المتابعة مؤقتًا وتعود وحدها عند الاتصال.",
+                stringResource(R.string.power_note),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
 
         SettingsSection.Permissions -> SabbaqCard(
-            title = if (permissions.all { it.ready }) "كل شيء جاهز" else "أذونات مطلوبة",
-            subtitle = "يحتاجها سبّاق ليقرأ الطلب ويقبل المطابق لشروطك.",
+            title = if (permissions.all { it.ready }) stringResource(R.string.perms_ready_title) else stringResource(R.string.perms_needed_title),
+            subtitle = stringResource(R.string.perms_sub),
             icon = Icons.Outlined.AccessibilityNew,
             modifier = Modifier.sabbaqEntrance(0),
         ) {
@@ -186,9 +189,9 @@ internal fun SettingsHubPage(
                 ) {
                     RadioButton(selected = mode == themeMode, onClick = null)
                     Text(when (mode) {
-                        ThemeMode.SYSTEM -> "حسب النظام"
-                        ThemeMode.LIGHT -> "فاتح"
-                        ThemeMode.DARK -> "داكن"
+                        ThemeMode.SYSTEM -> stringResource(R.string.theme_system)
+                        ThemeMode.LIGHT -> stringResource(R.string.theme_light)
+                        ThemeMode.DARK -> stringResource(R.string.theme_dark)
                     }, style = MaterialTheme.typography.bodyLarge)
                 }
             }
@@ -206,13 +209,13 @@ internal fun SettingsHubPage(
         SettingsSection.More -> {
             val context = LocalContext.current
             SabbaqCard(modifier = Modifier.sabbaqEntrance(0)) {
-                SettingsCategoryRow(Icons.Outlined.Visibility, "تجربة الطلب", "جرّب شروطك على طلب افتراضي قبل العمل", false, onOpenSimulator)
+                SettingsCategoryRow(Icons.Outlined.Visibility, stringResource(R.string.more_sim_title), stringResource(R.string.more_sim_sub), false, onOpenSimulator)
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                SettingsCategoryRow(Icons.Outlined.History, "سجل القرارات والإحصاءات", "ما قبله سبّاق ورفضه ولماذا، وإحصاءات اليوم والأسبوع والشهر", false, onOpenHistory)
+                SettingsCategoryRow(Icons.Outlined.History, stringResource(R.string.more_hist_title), stringResource(R.string.more_hist_sub), false, onOpenHistory)
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                SettingsCategoryRow(Icons.Outlined.Tune, "دليل الإعداد", "تجهيز سبّاق خطوة بخطوة", false, onOpenSetupGuide)
+                SettingsCategoryRow(Icons.Outlined.Tune, stringResource(R.string.more_guide_title), stringResource(R.string.more_guide_sub), false, onOpenSetupGuide)
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                SettingsCategoryRow(Icons.Outlined.PrivacyTip, "سياسة الخصوصية", "ما الذي يقرؤه سبّاق وما لا يجمعه", false) {
+                SettingsCategoryRow(Icons.Outlined.PrivacyTip, stringResource(R.string.more_privacy_title), stringResource(R.string.more_privacy_sub), false) {
                     PublicLinks.open(context, PublicLinks.PRIVACY_POLICY)
                 }
             }
@@ -225,13 +228,13 @@ internal fun SettingsHubPage(
 internal fun LiveAcceptTestEntry(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     SabbaqCard(
-        title = "اختبار القبول الحي",
-        subtitle = "يتأكد خلال ثوانٍ أن سبّاق يقرأ الطلب ويضغط القبول على جوالك، ويحدد الخطوة المتعطلة إن وُجدت.",
+        title = stringResource(R.string.live_test_title),
+        subtitle = stringResource(R.string.live_test_sub),
         icon = Icons.Outlined.TaskAlt,
         modifier = modifier,
     ) {
         SabbaqButton(
-            text = "ابدأ الاختبار",
+            text = stringResource(R.string.live_test_start),
             onClick = { runCatching { context.startActivity(android.content.Intent(context, LiveAcceptTestActivity::class.java)) } },
             icon = Icons.Outlined.PlayArrow,
         )
@@ -249,12 +252,12 @@ private fun UnreadScreenCard() {
     val scope = rememberCoroutineScope()
     var sent by remember(current.atEpochMs) { mutableStateOf<Boolean?>(null) }
     SabbaqCard(
-        title = "شاشة من جيني لم يفهمها سبّاق",
-        subtitle = "ظهر ما يشبه طلبًا لكن سبّاق لم يستطع قراءته. أرسل مخططها المجهّل للدعم: لا يحتوي أسماء أو عناوين أو أسعارًا.",
+        title = stringResource(R.string.unread_title),
+        subtitle = stringResource(R.string.unread_sub),
         icon = Icons.Outlined.BugReport,
     ) {
         SabbaqButton(
-            text = when (sent) { true -> "أُرسلت للدعم"; false -> "تعذر الإرسال؛ أعد المحاولة"; null -> "إرسال للدعم" },
+            text = when (sent) { true -> stringResource(R.string.unread_sent); false -> stringResource(R.string.unread_failed); null -> stringResource(R.string.unread_send) },
             enabled = sent != true,
             onClick = {
                 scope.launch {
@@ -273,14 +276,14 @@ private fun SupportIdCard(modifier: Modifier = Modifier) {
     val clipboard = LocalClipboardManager.current
     var copied by rememberSaveable { mutableStateOf(false) }
     SabbaqCard(
-        title = "معرّف الدعم",
-        subtitle = "أرسله للإدارة عند الإبلاغ عن مشكلة؛ لا يكشف بياناتك.",
+        title = stringResource(R.string.support_id_title),
+        subtitle = stringResource(R.string.support_id_sub),
         icon = Icons.Outlined.Info,
         modifier = modifier,
     ) {
         Text(id, style = MaterialTheme.typography.titleSmall.copy(textDirection = TextDirection.Ltr))
         SabbaqButton(
-            text = if (copied) "تم النسخ" else "نسخ معرّف الدعم",
+            text = if (copied) stringResource(R.string.support_id_copied) else stringResource(R.string.support_id_copy),
             onClick = { clipboard.setText(AnnotatedString(id)); copied = true },
             style = SabbaqButtonStyle.Secondary,
             icon = Icons.Outlined.ContentCopy,
@@ -300,7 +303,7 @@ private fun SettingsCategoryRow(
         modifier = Modifier
             .fillMaxWidth()
             .clip(MaterialTheme.shapes.small)
-            .clickable(onClickLabel = "فتح $title", role = Role.Button, onClick = onClick)
+            .clickable(onClickLabel = stringResource(R.string.open_section, title), role = Role.Button, onClick = onClick)
             .heightIn(min = 64.dp)
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,

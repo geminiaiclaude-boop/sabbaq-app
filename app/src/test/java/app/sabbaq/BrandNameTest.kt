@@ -29,8 +29,11 @@ class BrandNameTest {
 
     @Test
     fun the_app_is_published_as_sabbaq() {
-        val strings = File("src/main/res/values/strings.xml").readText()
-        assertTrue("<string name=\"app_name\">سبّاق</string>" in strings)
+        // The brand reads «سبّاق» in Arabic and "Sabbaq" in English; each lives in its own resources.
+        val arabic = File("src/main/res/values-ar/strings.xml").readText()
+        assertTrue("<string name=\"app_name\">سبّاق</string>" in arabic)
+        val english = File("src/main/res/values/strings.xml").readText()
+        assertTrue("<string name=\"app_name\">Sabbaq</string>" in english)
         val gradle = File("build.gradle.kts").readText()
         assertTrue("applicationId = \"app.sabbaq.driver\"" in gradle)
         assertTrue("namespace = \"app.sabbaq\"" in gradle)

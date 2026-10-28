@@ -28,6 +28,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import app.sabbaq.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
@@ -103,7 +105,7 @@ internal fun OfflineBanner(online: Boolean, modifier: Modifier = Modifier) {
             ) {
                 Icon(Icons.Outlined.CloudOff, contentDescription = null, modifier = Modifier.size(20.dp))
                 Text(
-                    "لا يوجد اتصال بالإنترنت. الدخول وتحديث الاشتراك وحذف الحساب تحتاج اتصالًا؛ شروطك المحفوظة باقية على جهازك.",
+                    stringResource(R.string.offline_banner),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
