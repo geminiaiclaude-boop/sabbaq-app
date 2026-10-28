@@ -24,6 +24,9 @@ def adb(*params, timeout=600):
 
 print(adb('install', '-r', '-t', args.apk), flush=True)
 print(adb('install', '-r', '-t', args.test_apk), flush=True)
+# The flows assert the Arabic UI. Dialog windows read the activity's own resources, so the
+# app process itself must start in Arabic (per-app locale, API 33+), as on an Arabic device.
+adb('shell', 'cmd', 'locale', 'set-app-locales', 'app.sabbaq.driver.debug', '--user', '0', '--locales', 'ar')
 result = adb('shell', 'am', 'instrument', '-w', '-r',
              'app.sabbaq.driver.debug.test/androidx.test.runner.AndroidJUnitRunner')
 (out / 'instrumentation.txt').write_text(result)

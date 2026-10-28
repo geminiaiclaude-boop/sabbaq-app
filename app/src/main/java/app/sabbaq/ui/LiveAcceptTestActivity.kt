@@ -4,7 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.os.SystemClock
 import android.provider.Settings as AndroidSettings
-import androidx.activity.ComponentActivity
+import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
@@ -71,7 +71,7 @@ import kotlinx.coroutines.launch
  * through the same path it uses on Jeeny, step by step, on the driver's own phone. The result
  * names the first step that failed and how to fix it, and can be sent to support in one tap.
  */
-class LiveAcceptTestActivity : ComponentActivity() {
+class LiveAcceptTestActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
