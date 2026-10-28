@@ -1,5 +1,7 @@
 package app.sabbaq.network
 
+import app.sabbaq.LocaleManager
+
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
@@ -488,9 +490,9 @@ object SupabaseClient {
      */
     suspend fun signInWithGoogle(context: Context): Result<String> {
         val webClientId = NetworkInputValidator.googleWebClientId(BuildConfig.GOOGLE_WEB_CLIENT_ID)
-            ?: return invalidInput("الدخول باستخدام Google غير متاح في هذا الإصدار. حدّث التطبيق أو جرّب رقم الجوال.")
+            ?: return invalidInput((if (LocaleManager.isArabic()) "الدخول باستخدام Google غير متاح في هذا الإصدار. حدّث التطبيق أو جرّب رقم الجوال." else "Google sign-in is not available in this version. Update the app or try the phone number."))
         val activity = context.findActivity()
-            ?: return invalidInput("تسجيل Google يجب أن يبدأ من شاشة التطبيق")
+            ?: return invalidInput((if (LocaleManager.isArabic()) "تسجيل Google يجب أن يبدأ من شاشة التطبيق" else "Google sign-in must start from the app screen"))
         val attempt = sessions.beginAuthentication()
         val nonce = GoogleNonce.create()
         val googleCredential = try {
@@ -505,21 +507,21 @@ object SupabaseClient {
                 .build()
             val credential = CredentialManager.create(activity).getCredential(activity, request).credential
             if (credential.type != GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
-                return Result.failure(ClientRequestException("نوع هوية Google غير متطابق. اختر حسابك وحاول مجددًا. [G-CRED-TYPE]"))
+                return Result.failure(ClientRequestException((if (LocaleManager.isArabic()) "نوع هوية Google غير متطابق. اختر حسابك وحاول مجددًا. [G-CRED-TYPE]" else "The Google identity type does not match. Choose your account and try again. [G-CRED-TYPE]")))
             }
             GoogleIdTokenCredential.createFrom(credential.data)
         } catch (_: GetCredentialCancellationException) {
-            return Result.failure(ClientRequestException("تم إلغاء تسجيل الدخول باستخدام Google. [G-USER-CANCEL]"))
+            return Result.failure(ClientRequestException((if (LocaleManager.isArabic()) "تم إلغاء تسجيل الدخول باستخدام Google. [G-USER-CANCEL]" else "Google sign-in was canceled. [G-USER-CANCEL]")))
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (credEx: GetCredentialException) {
             val type = credEx.type.substringAfterLast('.').ifBlank { "UNKNOWN" }
-            return Result.failure(ClientRequestException("تعذر الحصول على هوية Google من خدمات الجهاز. [G-PLAY-$type]"))
+            return Result.failure(ClientRequestException((if (LocaleManager.isArabic()) "تعذر الحصول على هوية Google من خدمات الجهاز. [G-PLAY-$type]" else "Could not get the Google identity from the device services. [G-PLAY-$type]")))
         } catch (_: Exception) {
-            return Result.failure(ClientRequestException("تعذر بدء تسجيل الدخول باستخدام Google. [G-INIT-FAIL]"))
+            return Result.failure(ClientRequestException((if (LocaleManager.isArabic()) "تعذر بدء تسجيل الدخول باستخدام Google. [G-INIT-FAIL]" else "Could not start Google sign-in. [G-INIT-FAIL]")))
         }
         val idToken = NetworkInputValidator.token(googleCredential.idToken)
-            ?: return invalidInput("رمز هوية Google غير صالح أو منتهي الصلاحية. [G-TOKEN-INVALID]")
+            ?: return invalidInput((if (LocaleManager.isArabic()) "رمز هوية Google غير صالح أو منتهي الصلاحية. [G-TOKEN-INVALID]" else "The Google identity token is invalid or expired. [G-TOKEN-INVALID]"))
         val displayName = NetworkInputValidator.displayName(googleCredential.displayName)
 
         return networkCall {
@@ -540,7 +542,7 @@ object SupabaseClient {
                 return@networkCall httpFailure("تبادل هوية Google", response)
             }
             val token = accessTokenFrom(response.body)
-                ?: return@networkCall Result.failure(ClientRequestException("لم يكتمل تسجيل الدخول. حاول مجددًا."))
+                ?: return@networkCall Result.failure(ClientRequestException((if (LocaleManager.isArabic()) "لم يكتمل تسجيل الدخول. حاول مجددًا." else "Sign-in did not complete. Try again.")))
             val profile = ensureDriverProfile(token, displayName)
             if (profile.isFailure) {
                 return@networkCall Result.failure(profile.exceptionOrNull()!!)
@@ -598,7 +600,7 @@ object SupabaseClient {
             val response = execute(request)
             if (!response.isSuccessful) return@networkCall httpFailure("التحقق من الرمز", response)
             val token = accessTokenFrom(response.body)
-                ?: return@networkCall Result.failure(ClientRequestException("لم يكتمل تسجيل الدخول. حاول مجددًا."))
+                ?: return@networkCall Result.failure(ClientRequestException((if (LocaleManager.isArabic()) "لم يكتمل تسجيل الدخول. حاول مجددًا." else "Sign-in did not complete. Try again.")))
             val profile = ensureDriverProfile(token)
             if (profile.isFailure) {
                 return@networkCall Result.failure(profile.exceptionOrNull()!!)
