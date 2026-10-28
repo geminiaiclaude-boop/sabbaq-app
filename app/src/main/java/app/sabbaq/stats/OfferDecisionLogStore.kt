@@ -2,7 +2,6 @@ package app.sabbaq.stats
 
 import android.content.Context
 import android.content.SharedPreferences
-import app.sabbaq.core.ReasonCode
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -13,7 +12,8 @@ data class OfferDecisionLogEntry(
     val timestampEpochMs: Long,
     val profileId: String,
     val outcome: DecisionLogOutcome,
-    val reasons: List<ReasonCode> = emptyList(),
+    /** FareSniper decision reason keys (`failed_price`, `dest_excluded`, …). */
+    val reasons: List<String> = emptyList(),
 )
 
 @Serializable
@@ -37,7 +37,7 @@ object OfferDecisionLogStore {
             prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             val raw = prefs?.getString(KEY, null)?.takeIf { it.length <= MAX_CHARS }
             entries = runCatching {
-                raw?.let { json.decodeFromString<List<OfferDecisionLogEntry>>(StoredReasonCodes.dropRetired(json, it, "reasons")) }
+                raw?.let { json.decodeFromString<List<OfferDecisionLogEntry>>(it) }
                     .orEmpty()
             }
                 .getOrDefault(emptyList())
@@ -49,7 +49,8 @@ object OfferDecisionLogStore {
     }
 
     /** Dedupe material is transient, process-local only, and never serialized. */
-    fun recordDecision(fingerprint: String, profileId: String, rejectedReasons: List<ReasonCode>) = synchronized(lock) {
+    fun recordDecision(fingerprint: String, profileId: String, rejectedReason: String) = synchronized(lock) {
+        val rejectedReasons = listOf(rejectedReason).filter { it.isNotBlank() }
         val hash = fingerprint.hashCode()
         if (!observedFingerprintHashes.add(hash)) return@synchronized
         if (observedFingerprintHashes.size > 2048) observedFingerprintHashes.clear()

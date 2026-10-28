@@ -2,7 +2,7 @@ package app.sabbaq
 
 import android.content.Context
 import android.content.SharedPreferences
-import app.sabbaq.core.Filters
+import app.sabbaq.core.engine.EngineConfig
 import app.sabbaq.voice.VoicePreferences
 import app.sabbaq.voice.VoiceRules
 import kotlinx.coroutines.Dispatchers
@@ -15,15 +15,15 @@ object Settings {
     @Volatile
     private var preferences: SharedPreferences? = null
     @Volatile
-    private var cachedFilters: Filters? = null
+    private var cachedConfig: EngineConfig? = null
 
-    /** Saved filters may carry fields a later release removed; they must not reset the rest. */
+    /** Saved settings may carry fields a later release removed; they must not reset the rest. */
     private val storedJson = Json { ignoreUnknownKeys = true }
 
     fun init(context: Context) {
         synchronized(this) {
             preferences = context.applicationContext.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
-            cachedFilters = null
+            cachedConfig = null
         }
     }
 
@@ -35,23 +35,24 @@ object Settings {
         isActive = false
     }
 
-    var filters: Filters
+    /** The driver's acceptance settings, FareSniper's field set and defaults (docs/engine-parity). */
+    var engineConfig: EngineConfig
         get() = synchronized(this) {
-            cachedFilters ?: run {
-                val stored = prefs().getString(KEY_FILTERS, null)
+            cachedConfig ?: run {
+                val stored = prefs().getString(KEY_ENGINE_CONFIG, null)
                 val value = try {
-                    stored?.let { storedJson.decodeFromString<Filters>(it) } ?: Filters()
+                    stored?.let { storedJson.decodeFromString<EngineConfig>(it) } ?: EngineConfig()
                 } catch (_: Exception) {
-                    Filters()
+                    EngineConfig()
                 }
-                cachedFilters = value
+                cachedConfig = value
                 value
             }
         }
         set(value) {
             synchronized(this) {
-                prefs().edit().putString(KEY_FILTERS, Json.encodeToString(value)).apply()
-                cachedFilters = null
+                prefs().edit().putString(KEY_ENGINE_CONFIG, Json.encodeToString(value)).apply()
+                cachedConfig = null
             }
         }
 
@@ -90,12 +91,12 @@ object Settings {
         }
 
     /** A validated draft is committed as one document, on IO, before the UI reports success. */
-    suspend fun saveFilters(value: Filters): Boolean = withContext(Dispatchers.IO) {
+    suspend fun saveEngineConfig(value: EngineConfig): Boolean = withContext(Dispatchers.IO) {
         synchronized(this@Settings) {
             val saved = runCatching {
-                prefs().edit().putString(KEY_FILTERS, Json.encodeToString(value)).commit()
+                prefs().edit().putString(KEY_ENGINE_CONFIG, Json.encodeToString(value)).commit()
             }.getOrDefault(false)
-            if (saved) cachedFilters = null
+            if (saved) cachedConfig = null
             saved
         }
     }
@@ -108,14 +109,15 @@ object Settings {
         return synchronized(this) {
             val cleared = runCatching {
                 prefs().edit()
-                    .remove(KEY_FILTERS)
+                    .remove(KEY_ENGINE_CONFIG)
+                    .remove(KEY_OLD_FILTERS)
                     .putBoolean(KEY_IS_ACTIVE, false)
                     .remove(KEY_A11Y_DISCLOSURE_VERSION)
                     .remove(KEY_KNOWN_SUBSCRIBER)
                     .remove(KEY_MONITORING_WANTED)
                     .commit()
             }.getOrDefault(false)
-            if (cleared) cachedFilters = null
+            if (cleared) cachedConfig = null
             cleared
         }
     }
@@ -164,7 +166,8 @@ object Settings {
         ?: throw IllegalStateException("يجب استدعاء Settings.init قبل استخدام الإعدادات")
 
     private const val PREFERENCES_NAME = "sabbaq_prefs"
-    private const val KEY_FILTERS = "filters"
+    private const val KEY_ENGINE_CONFIG = "engine_config"
+    private const val KEY_OLD_FILTERS = "filters"
     private const val KEY_IS_ACTIVE = "is_active"
     private const val KEY_A11Y_DISCLOSURE_VERSION = "a11y_disclosure_version"
     private const val KEY_KNOWN_SUBSCRIBER = "known_subscriber"

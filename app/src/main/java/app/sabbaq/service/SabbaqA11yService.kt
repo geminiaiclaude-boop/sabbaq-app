@@ -1,769 +1,232 @@
 ﻿package app.sabbaq.service
 
 import android.accessibilityservice.AccessibilityService
-import android.accessibilityservice.AccessibilityServiceInfo
-import android.accessibilityservice.GestureDescription
-import android.graphics.Path
-import android.graphics.Rect
-import android.os.Build
-import android.os.Handler
-import android.os.Looper
 import android.os.SystemClock
-import android.util.DisplayMetrics
 import android.util.Log
-import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
-import android.view.accessibility.AccessibilityNodeInfo
 import app.sabbaq.Settings
-import app.sabbaq.core.*
+import app.sabbaq.core.BoundedDiagnostics
+import app.sabbaq.core.DecisionReport
+import app.sabbaq.core.DiagnosticEntry
+import app.sabbaq.core.DiagnosticStage
+import app.sabbaq.core.LiveAcceptProbe
+import app.sabbaq.core.LivenessSnapshot
+import app.sabbaq.core.LivenessState
+import app.sabbaq.core.TelemetryStage
+import app.sabbaq.core.engine.Decision
+import app.sabbaq.core.engine.DecisionEngine
+import app.sabbaq.core.engine.JeenyScreenReader
+import app.sabbaq.core.engine.ParsedRide
+import app.sabbaq.core.engine.PendingOutcome
+import app.sabbaq.core.engine.PendingRide
 import app.sabbaq.network.SupabaseClient
 import app.sabbaq.notifications.NotificationCenter
+import app.sabbaq.service.engine.EngineHost
+import app.sabbaq.service.engine.LiveNode
 import app.sabbaq.stats.DecisionLogOutcome
 import app.sabbaq.stats.OfferDecisionLogStore
 import app.sabbaq.stats.OfferStatsStore
 import app.sabbaq.telemetry.TelemetryRepository
 import app.sabbaq.voice.OfferEvents
 import java.math.BigDecimal
-import java.util.Calendar
-class SabbaqA11yService : AccessibilityService() {
 
-    private val clickGate = ClickGate(perOfferSuppressMs = 20000, minIntervalMs = 500)
-    private val acceptTracker = AcceptTracker(confirmWindowMs = 5000)
-    private var pendingVoiceDetails: Pair<BigDecimal?, BigDecimal?>? = null
-    private var pendingHistoryProfileId: String? = null
-    private var parsersByPackage: Map<String, List<OfferParser>> = emptyMap()
-    private var adaptersByProfile: Map<String, RideAppAdapter> = emptyMap()
-    private var lastParsedPackage: String? = null
-    private var lastParseTimeMs: Long? = null
-    private val lateReadHandler = Handler(Looper.getMainLooper())
-    private var jeenyHints: JeenyAcceptIdStore? = null
-    private var lateReadGeneration = 0
-    private val jeenyPipeline = JeenyOfferPipeline()
+/**
+ * Gates every event (consent, monitoring switch, licence) and hands Jeeny's events to
+ * [EngineHost], which reads, decides and taps exactly like FareSniper
+ * (docs/engine-parity/SABBAQ_ENGINE_DESIGN.md). This class only reports what the engine did.
+ */
+class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
+
+    private lateinit var host: EngineHost
     private val diagnostics = BoundedDiagnostics()
     private val liveness = LivenessState()
     private val runtimeStatus = RuntimeStatusRepository
-    private val dispatchRetry = BoundedDispatchRetry()
-    // Last frame seen per Jeeny window: an unchanged frame is not parsed again. Keyed by window,
-    // because the offer overlay and the main window are read alternately.
-    private val jeenyFrameFingerprints = LinkedHashMap<Int, String>()
-    private var pendingTap: PendingTap? = null
-    private var lastJeenyEventMs = 0L
-    private var lastJeenyWindowId: Int? = null
-    private var profileRevision = -1
-    private var firstSeenFingerprint: String? = null
-    private var firstSeenAtMs = 0L
-    private var gestureWarmed = false
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         liveness.pause(null)
         runtimeStatus.lifecycle(Settings.isActive, null)
-        jeenyHints = runCatching { JeenyAcceptIdStore(applicationContext) }.getOrNull()
         runCatching { OfferStatsStore.init(applicationContext) }
-            .onFailure { Log.w(TAG, "تعذر تهيئة الإحصاءات المحلية") }
         runCatching { OfferDecisionLogStore.init(applicationContext) }
-            .onFailure { Log.w(TAG, "تعذر تهيئة سجل القرارات المحلي") }
         TelemetryRepository.serviceConnected = true
-        LiveAcceptTest.onArmChanged = { lateReadHandler.post { applyPackageFilter() } }
-        loadProfiles()
-        TelemetryRepository.trace(
-            TelemetryStage.SERVICE_CONNECTED,
-            reasonCode = if (parsersByPackage.isEmpty()) "no_profiles" else "ready",
-            detail = "packages=${parsersByPackage.size},windows=${if (canReadWindows()) 1 else 0}",
-        )
+        host = EngineHost(this, { Settings.engineConfig }, ::canProcess, this)
+        host.onConnected()
+        TelemetryRepository.trace(TelemetryStage.SERVICE_CONNECTED, reasonCode = "ready", detail = "engine=faresniper")
     }
 
-    /** Builds parsers from the profiles in effect; re-run when the administration publishes new ones. */
-    private fun loadProfiles() {
-        profileRevision = ProfileRepository.revision
-        parsersByPackage = runCatching {
-            val profiles = ProfileRepository.current().filter { it.enabled }
-            adaptersByProfile = profiles.associate { it.id to RideAppAdapters.forProfile(it) }
-            profiles
-                .asSequence()
-                .flatMap { profile ->
-                    profile.packages.asSequence()
-                        .filter { it.isNotBlank() }
-                        .map { packageName ->
-                            val hints = if (packageName == JEENY_PACKAGE) jeenyHints?.snapshot().orEmpty() else emptySet()
-                            packageName to adaptersByProfile.getValue(profile.id).parser(hints)
-                        }
-                }
-                .groupBy(keySelector = { it.first }, valueTransform = { it.second })
-        }.getOrElse {
-            Log.e(TAG, "تعذر تحميل ملفات تعريف التطبيقات المدعومة")
-            emptyMap()
-        }
-
-        if (parsersByPackage.isEmpty()) {
-            Log.w(TAG, "لا توجد ملفات تعريف صالحة لخدمة الإتاحة")
-        }
-        applyPackageFilter()
-    }
-
-    /**
-     * Narrows the events Android delivers to the packages of the profiles in effect, so a package
-     * the administration adds over the air takes effect without a release (the manifest list is
-     * only the starting point), plus Sabbaq's own window while a live acceptance test runs. An
-     * empty set would mean "every app", so it is never applied.
-     */
-    private fun applyPackageFilter() {
-        val info = serviceInfo ?: return
-        val packages = parsersByPackage.keys +
-            (if (LiveAcceptTest.isArmed()) setOf(applicationContext.packageName) else emptySet())
-        if (packages.isEmpty()) return
-        val wanted = packages.sorted().toTypedArray()
-        if (info.packageNames?.sorted()?.toTypedArray()?.contentEquals(wanted) == true) return
-        info.packageNames = wanted
-        runCatching { serviceInfo = info }.onFailure { Log.w(TAG, "تعذر تحديث تطبيقات المتابعة") }
-    }
-
-    private fun canReadWindows(): Boolean =
-        serviceInfo?.let { (it.flags and AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS) != 0 } == true
-
-    private fun providerOf(packageName: String?): String =
-        packageName?.let { parsersByPackage[it]?.firstOrNull()?.profileId } ?: SERVICE_PROVIDER
+    private fun canProcess(): Boolean =
+        Settings.a11yDisclosureAccepted && Settings.isActive && SupabaseClient.hasValidLicense()
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
-        val eventNow = SystemClock.elapsedRealtime()
-        if (profileRevision != ProfileRepository.revision) loadProfiles()
-        liveness.accessibilityEvent(eventNow)
-        runtimeStatus.event(eventNow)
-        val eventPackage = event.packageName?.toString()
-        val provider = providerOf(eventPackage)
-        recordDiagnostic(DiagnosticStage.EVENT_RECEIVED, eventNow, provider = provider)
-        if (!Settings.a11yDisclosureAccepted) {
-            liveness.pause("disclosure_required")
-            runtimeStatus.lifecycle(false, "disclosure_required")
-            Settings.isActive = false
-            recordDiagnostic(DiagnosticStage.GATE_BLOCKED, eventNow, "disclosure_required", provider = provider)
-            return
-        }
-        // The live acceptance test runs on Sabbaq's own window, with or without monitoring on.
-        if (eventPackage == applicationContext.packageName) {
-            if (LiveAcceptTest.isArmed(eventNow)) handleLiveAcceptTest(eventNow)
-            return
-        }
-        if (!Settings.isActive) {
-            liveness.pause("service_paused")
-            runtimeStatus.lifecycle(false, "service_paused")
-            recordDiagnostic(DiagnosticStage.GATE_BLOCKED, eventNow, "service_paused", provider = provider)
-            return
-        }
-        if (!ServicesSafetyPolicy.isRelevantAccessibilityEvent(event.eventType)) {
-            recordDiagnostic(DiagnosticStage.GATE_BLOCKED, eventNow, "event_type", provider = provider)
-            return
-        }
-        if (!SupabaseClient.hasValidLicense()) {
-            // Gate this event, but never turn monitoring off here: the KeeperService owns the
-            // licence lifecycle and pauses/resumes as a matched pair. Latching Settings.isActive
-            // off from the accessibility service left monitoring stuck off after a transient lease
-            // lapse, because the keeper's resume only re-enables what the keeper itself paused.
-            liveness.pause("license_expired")
-            runtimeStatus.lifecycle(false, "license_expired")
-            recordDiagnostic(DiagnosticStage.GATE_BLOCKED, eventNow, "license_invalid", provider = provider)
-            return
-        }
-        val packageName = eventPackage ?: run {
-            recordDiagnostic(DiagnosticStage.GATE_BLOCKED, eventNow, "no_package")
-            return
-        }
-        if (!ServicesSafetyPolicy.isSupportedPackage(packageName, parsersByPackage.keys)) {
-            recordDiagnostic(DiagnosticStage.GATE_BLOCKED, eventNow,
-                if (parsersByPackage.isEmpty()) "no_profiles" else "package_unsupported")
-            return
-        }
-        recordDiagnostic(DiagnosticStage.PACKAGE_SEEN, eventNow, provider = provider)
-        warmUpGestureOnce()
-        if (packageName == JEENY_PACKAGE) {
-            liveness.targetEvent(eventNow)
-            handleJeenyEvent(event)
-            return
-        }
         val now = SystemClock.elapsedRealtime()
-        val previous = lastParseTimeMs.takeIf { lastParsedPackage == packageName }
-        if (!ServicesSafetyPolicy.shouldParse(event.eventType, now, previous)) {
-            recordDiagnostic(DiagnosticStage.STALE, now, "throttled", provider = provider)
+        liveness.accessibilityEvent(now)
+        runtimeStatus.event(now)
+        val packageName = event.packageName?.toString() ?: return
+        if (packageName == applicationContext.packageName) {
+            if (LiveAcceptTest.isArmed(now)) handleLiveAcceptTest(now)
             return
         }
-        processPackage(packageName)
+        if (!isJeeny(packageName)) return
+        record(DiagnosticStage.EVENT_RECEIVED, now)
+        when {
+            !Settings.a11yDisclosureAccepted -> {
+                Settings.isActive = false
+                liveness.pause("disclosure_required")
+                runtimeStatus.lifecycle(false, "disclosure_required")
+                record(DiagnosticStage.GATE_BLOCKED, now, "disclosure_required")
+                return
+            }
+            !Settings.isActive -> {
+                liveness.pause("service_paused")
+                runtimeStatus.lifecycle(false, "service_paused")
+                record(DiagnosticStage.GATE_BLOCKED, now, "service_paused")
+                return
+            }
+            !SupabaseClient.hasValidLicense() -> {
+                liveness.pause("license_expired")
+                runtimeStatus.lifecycle(false, "license_expired")
+                record(DiagnosticStage.GATE_BLOCKED, now, "license_invalid")
+                return
+            }
+        }
+        liveness.targetEvent(now)
+        if (::host.isInitialized) runCatching { host.onEvent(event) }.onFailure {
+            record(DiagnosticStage.TREE_REJECTED, now, it.javaClass.simpleName.lowercase().take(40))
+        }
+    }
+
+    /** FareSniper's Jeeny routing (§5): the package itself or a name containing its keywords. */
+    private fun isJeeny(packageName: String): Boolean {
+        val p = packageName.lowercase()
+        return p == JEENY_PACKAGE || "jeeny" in p || "easytaxi" in p
+    }
+
+    override fun onOffer(ride: ParsedRide, source: String) {
+        val now = SystemClock.elapsedRealtime()
+        liveness.offerDetected(now)
+        runtimeStatus.offer(now)
+        record(DiagnosticStage.OFFER_DETECTED, now, if (ride.price == null) "fare_missing" else "complete", detail = "src=$source,n=${ride.nodesVisited}")
+        runCatching { OfferStatsStore.recordVisible(fingerprint(ride)) }
+    }
+
+    override fun onRejected(ride: ParsedRide, decision: Decision, firstTime: Boolean) {
+        if (!firstTime) return
+        val now = SystemClock.elapsedRealtime()
+        liveness.decision(now)
+        runtimeStatus.decision(now, report(ride, decision))
+        record(DiagnosticStage.REJECTED, now, decision.reason?.take(40))
+        val reason = decision.reason.orEmpty()
+        runCatching { OfferDecisionLogStore.recordDecision(fingerprint(ride), JEENY_PROVIDER, reason) }
+        runCatching { OfferStatsStore.recordRejected(fingerprint(ride), reason) }
+    }
+
+    override fun onTap(ride: ParsedRide, decision: Decision, pending: PendingRide, method: String, latencyMs: Long) {
+        val now = SystemClock.elapsedRealtime()
+        liveness.decision(now)
+        liveness.click(now)
+        runtimeStatus.decision(now, report(ride, decision))
+        runtimeStatus.click(now)
+        TelemetryRepository.trace(TelemetryStage.DECISION_ACCEPTED, "rules_passed", provider = JEENY_PROVIDER)
+        record(DiagnosticStage.CLICK_PATH, now, method, latencyMs = latencyMs.coerceAtLeast(0))
+        runCatching { OfferDecisionLogStore.recordDecision(fingerprint(ride), JEENY_PROVIDER, "") }
+        runCatching {
+            OfferDecisionLogStore.recordOutcome(JEENY_PROVIDER,
+                if (method == "gesture") DecisionLogOutcome.GESTURE_CLICK_SENT else DecisionLogOutcome.SEMANTIC_CLICK_SENT)
+        }
+    }
+
+    override fun onPendingOutcome(outcome: PendingOutcome) {
+        val now = SystemClock.elapsedRealtime()
+        val p = outcome.pending
+        when (outcome) {
+            is PendingOutcome.Confirmed -> {
+                record(DiagnosticStage.CONFIRMATION_CONFIRMED, now, "post_click_confirmed")
+                runCatching { OfferDecisionLogStore.recordOutcome(JEENY_PROVIDER, DecisionLogOutcome.ACCEPTED_CONFIRMED) }
+                runCatching { OfferStatsStore.recordAcceptedConfirmed() }
+                val fare = p.price?.let { BigDecimal.valueOf(it) }
+                runCatching { NotificationCenter.postAcceptedRide(fare, null) }
+                OfferEvents.accepted(fare, null)
+            }
+            is PendingOutcome.NewOfferAppeared -> record(DiagnosticStage.CONFIRMATION_TIMEOUT, now, "new_offer_appeared")
+            is PendingOutcome.ConfirmationTimeout -> {
+                record(DiagnosticStage.CONFIRMATION_TIMEOUT, now, "confirmation_timeout")
+                runCatching { OfferDecisionLogStore.recordOutcome(JEENY_PROVIDER, DecisionLogOutcome.CONFIRMATION_TIMEOUT) }
+            }
+            is PendingOutcome.Disappeared -> {
+                record(DiagnosticStage.CONFIRMATION_TIMEOUT, now, "offer_disappeared_after_click")
+                runCatching { OfferDecisionLogStore.recordOutcome(JEENY_PROVIDER, DecisionLogOutcome.CONFIRMATION_TIMEOUT) }
+            }
+        }
+    }
+
+    override fun onIdle(reason: String) {
+        if (reason == "no_offer") return
+        record(DiagnosticStage.STALE, SystemClock.elapsedRealtime(), reason)
     }
 
     /**
-     * One step of the live acceptance test: the real live-tree read, the parser with the Jeeny
-     * rules in effect, the real tap path and confirmation detection, on the mock offer that
-     * Sabbaq draws. It never touches the production pipeline state, statistics or history.
+     * The live acceptance test: Sabbaq's own mock card goes through the same reader, the driver's
+     * own settings and the same tap ladder as a Jeeny offer.
      */
     private fun handleLiveAcceptTest(now: Long) {
         LiveAcceptTest.reach(LiveAcceptProbe.Step.EVENT, now)
-        val own = applicationContext.packageName
-        val (roots, _) = targetRoots(own, null)
-        roots.drop(1).forEach { runCatching { it.first.recycle() } }
-        val root = roots.firstOrNull()?.first ?: return
-        try {
-            val screen = root.toScreenNode()
-            LiveAcceptTest.reach(LiveAcceptProbe.Step.READ)
-            val profile = LiveAcceptProbe.profile(ProfileRepository.current().firstOrNull { it.id == JEENY_PROVIDER }, own)
-            val parsed = OfferParser(profile).parse(screen)
-            if (parsed.confirmed) {
-                LiveAcceptTest.reach(LiveAcceptProbe.Step.CONFIRMED)
-                return
-            }
-            val offer = parsed.offer
-            if (offer?.fare != null && offer.pickupKm != null) LiveAcceptTest.reach(LiveAcceptProbe.Step.PARSED)
-            val accept = parsed.acceptNode ?: return
-            LiveAcceptTest.reach(LiveAcceptProbe.Step.ACCEPT_FOUND)
-            if (LiveAcceptProbe.Step.PARSED !in LiveAcceptTest.state.value.reached || LiveAcceptTest.hasDispatched()) return
-            when (dispatchAcceptClick(root, own, accept, liveTest = true)) {
-                ClickResult.SEMANTIC -> LiveAcceptTest.reach(LiveAcceptProbe.Step.DISPATCHED, method = LiveAcceptProbe.Method.SEMANTIC)
-                ClickResult.GESTURE -> LiveAcceptTest.reach(LiveAcceptProbe.Step.DISPATCHED, method = LiveAcceptProbe.Method.GESTURE)
-                ClickResult.NOT_DISPATCHED -> LiveAcceptTest.refuseDispatch()
-            }
-        } catch (_: Exception) {
-            Log.i(TAG, "live acceptance test frame rejected")
-        } finally {
-            root.recycle()
-        }
-    }
-
-    private fun keepSketch(screen: ScreenNode, profile: RideProfile, reason: String) {
-        if (!ScreenSketchStore.wantsSketch()) return
-        runCatching { ScreenSketchStore.keep(ScreenSketch.render(screen, profile), reason) }
-    }
-
-    /** Jeeny has its own cheap signal -> full frame -> two late capture pipeline. */
-    private fun handleJeenyEvent(event: AccessibilityEvent) {
-        if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
-            event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) return
-        val now = SystemClock.elapsedRealtime()
-        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
-            now >= lastJeenyEventMs && now - lastJeenyEventMs < JEENY_EVENT_THROTTLE_MS) {
-            recordDiagnostic(DiagnosticStage.STALE, now, "throttled", provider = JEENY_PROVIDER)
+        val root = rootInActiveWindow ?: return
+        val live = LiveNode(root)
+        LiveAcceptTest.reach(LiveAcceptProbe.Step.READ)
+        if (hasText(live, LiveAcceptProbe.CONFIRM_LABEL)) {
+            LiveAcceptTest.reach(LiveAcceptProbe.Step.CONFIRMED)
             return
         }
-        lastJeenyEventMs = now
-        val previousWindowId = lastJeenyWindowId
-        // ClickGate (20 s per offer) and AcceptTracker (5 s) are already time-bounded. Resetting
-        // them here re-armed a second tap on the same offer whenever events alternated between
-        // the offer overlay and the main window, and dropped the confirmation, which Jeeny shows
-        // in a different window from the offer.
-        if (previousWindowId != null && previousWindowId != event.windowId) {
-            dispatchRetry.onConfirmationOrWindowChange()
-        }
-        lastJeenyWindowId = event.windowId
-        val token = jeenyPipeline.begin(JEENY_PACKAGE, event.windowId.toString())
-        jeenyPipeline.beginBurst()
-        processPackage(JEENY_PACKAGE, requireJeenySignal = true, preferredWindowId = event.windowId)
-        if (!jeenyPipeline.hasActionPending()) {
-            scheduleJeenyLateReads(JEENY_PACKAGE, token)
-        } else {
-            lateReadGeneration++
-            lateReadHandler.removeCallbacksAndMessages(LATE_READ_TOKEN)
+        val config = Settings.engineConfig
+        val ride = JeenyScreenReader(config) { SystemClock.uptimeMillis() }.read(live, resources.displayMetrics.heightPixels) ?: return
+        LiveAcceptTest.reach(LiveAcceptProbe.Step.PARSED)
+        val accept = ride.acceptNode ?: return
+        LiveAcceptTest.reach(LiveAcceptProbe.Step.ACCEPT_FOUND)
+        if (LiveAcceptTest.hasDispatched() || !DecisionEngine.decide(ride, config).accept || !::host.isInitialized) return
+        when (host.clickLadder(accept)) {
+            "semantic", "parent" -> LiveAcceptTest.reach(LiveAcceptProbe.Step.DISPATCHED, method = LiveAcceptProbe.Method.SEMANTIC)
+            "gesture" -> LiveAcceptTest.reach(LiveAcceptProbe.Step.DISPATCHED, method = LiveAcceptProbe.Method.GESTURE)
+            else -> LiveAcceptTest.refuseDispatch()
         }
     }
 
-    /** Re-reads the active window after progressive UI rendering, at most twice. */
-    private fun scheduleJeenyLateReads(packageName: String, pipelineGeneration: Long) {
-        val generation = ++lateReadGeneration
-        lateReadHandler.removeCallbacksAndMessages(LATE_READ_TOKEN)
-        LATE_READ_DELAYS_MS.forEachIndexed { index, delay ->
-            lateReadHandler.postAtTime({
-                if (generation == lateReadGeneration && jeenyPipeline.isCurrent(pipelineGeneration) &&
-                    jeenyPipeline.allowLateCapture() && Settings.isActive &&
-                    Settings.a11yDisclosureAccepted && SupabaseClient.hasValidLicense() &&
-                    jeenyPipeline.markLateCapture()) {
-                    processPackage(packageName, requireJeenySignal = true)
-                }
-            }, LATE_READ_TOKEN, SystemClock.uptimeMillis() + delay)
-        }
-    }
-
-    /** What one window's frame produced: an offer handled, nothing here (try the next window), or stop. */
-    private enum class Frame { HANDLED, NO_OFFER, STOP }
-
-    /**
-     * Reads every window of [packageName] that could hold the offer, the event's own window first:
-     * Jeeny can draw the offer in an overlay while its main window stays active, and reading only
-     * the active window missed those offers entirely. [force] re-reads an unchanged frame.
-     */
-    private fun processPackage(
-        packageName: String,
-        requireJeenySignal: Boolean = false,
-        preferredWindowId: Int? = null,
-        force: Boolean = false,
-    ): Boolean {
-        val provider = providerOf(packageName)
-        val parsers = parsersByPackage[packageName] ?: run {
-            recordDiagnostic(DiagnosticStage.GATE_BLOCKED, SystemClock.elapsedRealtime(), "no_parser", provider = provider)
-            return false
-        }
-        val parseTimeMs = SystemClock.elapsedRealtime()
-        val (roots, missReason) = targetRoots(packageName, preferredWindowId ?: lastJeenyWindowId)
-        if (roots.isEmpty()) {
-            recordDiagnostic(DiagnosticStage.ROOT_UNAVAILABLE, parseTimeMs, missReason, provider = provider)
-            return false
-        }
-        try {
-            for ((root, source) in roots) {
-                if (source == ROOT_FROM_WINDOW_LIST) {
-                    recordDiagnostic(DiagnosticStage.PACKAGE_SEEN, parseTimeMs, "overlay_window", provider = provider)
-                }
-                when (processRoot(root, packageName, parsers, provider, parseTimeMs, requireJeenySignal, force)) {
-                    Frame.HANDLED -> return true
-                    Frame.STOP -> return false
-                    Frame.NO_OFFER -> Unit
-                }
-            }
-        } finally {
-            roots.forEach { runCatching { it.first.recycle() } }
+    private fun hasText(node: LiveNode, label: String): Boolean {
+        val queue = ArrayDeque<app.sabbaq.core.engine.UiNode>()
+        queue.addLast(node)
+        var visited = 0
+        while (queue.isNotEmpty() && visited < 400) {
+            val n = queue.removeFirst()
+            visited++
+            if (n.text?.contains(label) == true || n.description?.contains(label) == true) return true
+            for (i in 0 until n.childCount) n.child(i)?.let(queue::addLast)
         }
         return false
     }
 
-    private fun processRoot(
-        rootNode: AccessibilityNodeInfo,
-        packageName: String,
-        parsers: List<OfferParser>,
-        provider: String,
-        parseTimeMs: Long,
-        requireJeenySignal: Boolean,
-        force: Boolean,
-    ): Frame {
-        val windowKey = rootNode.windowId
-        try {
-            lastParsedPackage = packageName
-            lastParseTimeMs = parseTimeMs
-            val screenNode = rootNode.toScreenNode()
-            if (packageName == JEENY_PACKAGE && requireJeenySignal) {
-                val fingerprint = ScreenChangeFingerprint.compute(packageName, windowKey.toString(), screenNode)
-                if (!force && jeenyFrameFingerprints[windowKey] == fingerprint) {
-                    recordDiagnostic(DiagnosticStage.STALE, parseTimeMs, "unchanged_frame", provider = provider)
-                    return Frame.NO_OFFER
-                }
-                jeenyFrameFingerprints.remove(windowKey)
-                jeenyFrameFingerprints[windowKey] = fingerprint
-                while (jeenyFrameFingerprints.size > MAX_TARGET_WINDOWS * 2) jeenyFrameFingerprints.remove(jeenyFrameFingerprints.keys.first())
-            }
-            for (parser in parsers) {
-                val adapter = adaptersByProfile[parser.profileId] ?: run {
-                    recordDiagnostic(DiagnosticStage.GATE_BLOCKED, parseTimeMs, "no_adapter", provider = provider)
-                    return Frame.STOP
-                }
-                val hints = if (packageName == JEENY_PACKAGE) jeenyHints?.snapshot()?.toSet().orEmpty() else emptySet()
-                val assessment = adapter.classify(screenNode, hints)
-                if (assessment?.classification == JeenyFrameClass.INCOMPLETE) {
-                    recordDiagnostic(DiagnosticStage.FRAME_INCOMPLETE, parseTimeMs, "bounded_preflight", assessment?.flags, provider)
-                }
-                val activeParser = if (packageName == JEENY_PACKAGE) {
-                    adapter.parser(hints)
-                } else adapter.parser()
-                if (requireJeenySignal && !jeenyPipeline.hasActionPending() && activeParser.probeOfferSignal(screenNode) == null) {
-                    val frameClass = assessment?.classification
-                    val reason = when (frameClass) {
-                        null -> "preflight"
-                        JeenyFrameClass.OFFER -> "no_accept_control"
-                        else -> "cls_" + frameClass?.name?.lowercase()
-                    }
-                    recordDiagnostic(DiagnosticStage.SIGNAL_MISS, parseTimeMs, reason, assessment?.flags, provider)
-                    // Only frames the classifier took for an offer are worth an outline for support.
-                    if (frameClass == JeenyFrameClass.OFFER || frameClass == JeenyFrameClass.INCOMPLETE) keepSketch(screenNode, adapter.profile, reason)
-                    return Frame.NO_OFFER
-                }
-                if (requireJeenySignal) recordDiagnostic(DiagnosticStage.SIGNAL_FOUND, parseTimeMs, detail = assessment?.flags, provider = provider)
-                val parsed = activeParser.parse(screenNode)
-                val nowMs = SystemClock.elapsedRealtime()
-                val acceptOutcome = acceptTracker.observe(activeParser.profileId.takeIf { parsed.confirmed }, nowMs)
-                when (acceptOutcome) {
-                    is AcceptTracker.Outcome.Confirmed -> {
-                        dispatchRetry.onConfirmationOrWindowChange()
-                        recordDiagnostic(DiagnosticStage.CONFIRMATION_CONFIRMED, nowMs)
-                        if (packageName == JEENY_PACKAGE) jeenyPipeline.markConfirmationResolved()
-                        pendingHistoryProfileId?.let { profileId -> runCatching { OfferDecisionLogStore.recordOutcome(profileId, DecisionLogOutcome.ACCEPTED_CONFIRMED) } }
-                        runCatching { OfferStatsStore.recordAcceptedConfirmed() }
-                        runCatching { NotificationCenter.postAcceptedRide(pendingVoiceDetails?.first, pendingVoiceDetails?.second) }
-                        pendingVoiceDetails?.let { (fare, pickupKm) -> OfferEvents.accepted(fare, pickupKm) }
-                        pendingVoiceDetails = null
-                        pendingTap = null
-                    }
-                    is AcceptTracker.Outcome.NotConfirmed -> {
-                        dispatchRetry.onConfirmationOrWindowChange()
-                        recordDiagnostic(DiagnosticStage.CONFIRMATION_TIMEOUT, nowMs)
-                        if (packageName == JEENY_PACKAGE) jeenyPipeline.markConfirmationResolved()
-                        pendingHistoryProfileId?.let { profileId -> runCatching { OfferDecisionLogStore.recordOutcome(profileId, DecisionLogOutcome.CONFIRMATION_TIMEOUT) } }
-                        Log.i(TAG, "offer confirmation timeout")
-                        pendingVoiceDetails = null
-                        pendingTap = null
-                    }
-                    null -> Unit
-                }
-                if (acceptOutcome != null) pendingHistoryProfileId = null
-                if (parsed.confirmed) continue
-                val offer = parsed.offer ?: run {
-                    if (requireJeenySignal || assessment != null) {
-                        recordDiagnostic(DiagnosticStage.OFFER_NOT_PARSED, nowMs, "parser_empty", assessment?.flags, provider)
-                        keepSketch(screenNode, adapter.profile, "parser_empty")
-                    }
-                    null
-                } ?: continue
-                liveness.offerDetected(nowMs)
-                runtimeStatus.offer(nowMs)
-                if (offer.fingerprint != firstSeenFingerprint) {
-                    firstSeenFingerprint = offer.fingerprint
-                    firstSeenAtMs = parseTimeMs
-                }
-                recordDiagnostic(
-                    if (offer.fare == null) DiagnosticStage.FARE_MISSING else DiagnosticStage.OFFER_DETECTED, nowMs,
-                    if (offer.fare == null) OfferTelemetryContract.reasonFor(ReasonCode.FARE_MISSING) else "complete", assessment?.flags, provider,
-                )
-                if (packageName == JEENY_PACKAGE && !jeenyPipeline.shouldProcess(offer.fingerprint)) {
-                    if (retapIfIgnored(rootNode, packageName, offer, parsed.acceptNode, provider)) return Frame.HANDLED
-                    Log.i(TAG, "jeeny frame skipped: same-offer")
-                    recordDiagnostic(DiagnosticStage.STALE, nowMs, "same_offer", provider = provider)
-                    return Frame.STOP
-                }
-                val verdict = OfferEvaluator.evaluate(offer, Settings.filters, Calendar.getInstance().let { it.get(Calendar.HOUR_OF_DAY) * 60 + it.get(Calendar.MINUTE) })
-                runCatching { OfferDecisionLogStore.recordDecision(offer.fingerprint, offer.profileId, if (verdict.accept) emptyList() else verdict.reasons.map { it.code }) }
-                liveness.decision(nowMs)
-                runtimeStatus.decision(nowMs, verdict.report)
-                runCatching { OfferStatsStore.recordVisible(offer.fingerprint) }
-                if (!verdict.accept) {
-                    recordDiagnostic(DiagnosticStage.REJECTED, nowMs, verdict.reasons.firstOrNull()?.code?.let(OfferTelemetryContract::reasonFor) ?: "rule", provider = provider)
-                    runCatching { OfferStatsStore.recordRejected(offer.fingerprint, verdict.reasons.map { it.code }) }
-                } else {
-                    TelemetryRepository.trace(TelemetryStage.DECISION_ACCEPTED, "rules_passed", provider = provider, score = verdict.report.score)
-                }
-                val acceptNode = parsed.acceptNode ?: run {
-                    recordDiagnostic(DiagnosticStage.ACCEPT_NODE_FOUND, nowMs, "missing", provider = provider)
-                    null
-                } ?: continue
-                recordDiagnostic(DiagnosticStage.ACCEPT_NODE_FOUND, nowMs, "found", provider = provider)
-                // Learn only from a node that the parser verified through a matching label.
-                if (packageName == JEENY_PACKAGE && acceptNode.viewId != null && hasMatchingAcceptLabel(acceptNode)) {
-                    jeenyHints?.learnVerified(acceptNode.viewId)
-                }
-                val screen = realScreenSize()
-                val windowToken = windowKey.toString()
-                dispatchRetry.begin(offer.fingerprint, windowToken)
-                // Bounds first: a refused frame must not hold the click gate for the next frame of the same offer.
-                val safeBounds = ServicesSafetyPolicy.isOnScreen(acceptNode.bounds, screen.first, screen.second)
-                val acquired = verdict.accept && safeBounds && (clickGate.tryAcquire(offer.fingerprint, nowMs) ||
-                    dispatchRetry.consumeRetry(offer.fingerprint, windowToken, nowMs))
-                if (verdict.accept && (!safeBounds || !acquired)) {
-                    // The gate holds an offer already tapped; if Jeeny ignored that tap, the one re-tap goes here.
-                    if (safeBounds && retapIfIgnored(rootNode, packageName, offer, acceptNode, provider)) return Frame.HANDLED
-                    recordDiagnostic(DiagnosticStage.CLICK_PATH, nowMs, if (!safeBounds) "unsafe_bounds" else "gate_suppressed", provider = provider)
-                    // Not tapped, not because it was already tapped: read the same frame again.
-                    if (!safeBounds) jeenyFrameFingerprints.remove(windowKey)
-                }
-                if (verdict.accept && safeBounds && acquired) {
-                    val clickResult = dispatchAcceptClick(rootNode, packageName, acceptNode)
-                    // Offer first seen -> tap dispatched: the number that decides whether another
-                    // driver's app wins the same request.
-                    val responseMs = (SystemClock.elapsedRealtime() - firstSeenAtMs).takeIf { firstSeenFingerprint == offer.fingerprint && it >= 0 }
-                    recordDiagnostic(DiagnosticStage.CLICK_PATH, nowMs, clickResult.name.lowercase(), provider = provider, latencyMs = responseMs)
-                    if (clickResult == ClickResult.NOT_DISPATCHED) {
-                        clickGate.release(offer.fingerprint, nowMs)
-                        dispatchRetry.onDispatchResult(DispatchFailure.NOT_DISPATCHED, nowMs)
-                        jeenyFrameFingerprints.remove(windowKey)
-                        Log.i(TAG, "accept dispatch rejected by safety gate")
-                    } else {
-                        dispatchRetry.onDispatchResult(if (clickResult == ClickResult.SEMANTIC) DispatchFailure.SEMANTIC_SUCCESS else DispatchFailure.GESTURE_SUCCESS, nowMs)
-                        runCatching { OfferDecisionLogStore.recordOutcome(offer.profileId, if (clickResult == ClickResult.SEMANTIC) DecisionLogOutcome.SEMANTIC_CLICK_SENT else DecisionLogOutcome.GESTURE_CLICK_SENT) }
-                        acceptTracker.tapped(offer.fingerprint, offer.profileId, SystemClock.elapsedRealtime())
-                        liveness.click(SystemClock.elapsedRealtime())
-                        runtimeStatus.click(SystemClock.elapsedRealtime())
-                        if (packageName == JEENY_PACKAGE) {
-                            jeenyPipeline.markActionPending()
-                            jeenyPipeline.remember(offer.fingerprint)
-                            pendingTap = PendingTap(offer.fingerprint, clickResult, SystemClock.elapsedRealtime())
-                            scheduleTapCheck(offer.fingerprint, windowKey)
-                        }
-                        pendingHistoryProfileId = offer.profileId
-                        pendingVoiceDetails = offer.fare to offer.pickupKm
-                        Log.i(TAG, "accept dispatched; confirmation pending")
-                    }
-                }
-                return Frame.HANDLED
-            }
-        } catch (error: Exception) {
-            Log.i(TAG, "supported app tree rejected or exceeded safety budget")
-            val reason = if (error is IllegalStateException && error.message == TREE_BUDGET_MESSAGE) "tree_budget"
-                else error.javaClass.simpleName.lowercase().ifBlank { "unknown" }.take(40)
-            recordDiagnostic(DiagnosticStage.TREE_REJECTED, SystemClock.elapsedRealtime(), reason, provider = provider)
-        }
-        return Frame.NO_OFFER
-    }
+    private fun fingerprint(ride: ParsedRide): String =
+        "${ride.price}|${ride.minutes}|${ride.destination.orEmpty()}|${ride.clickX},${ride.clickY}"
 
-    /** One accept tap waiting for Jeeny to react, and whether its single re-tap was used. */
-    private data class PendingTap(val fingerprint: String, val method: ClickResult, val atMs: Long, val retapped: Boolean = false)
-
-    /**
-     * ACTION_CLICK can report success on a view whose real listener sits elsewhere, and a gesture
-     * can land during an animation. When the same offer still shows its accept control
-     * [TAP_RETRY_AFTER_MS] after the tap, it is tapped once more by the other method. Exactly one
-     * re-tap per offer; the confirmation window and the click gate still bound everything else.
-     */
-    private fun retapIfIgnored(root: AccessibilityNodeInfo, packageName: String, offer: Offer, acceptNode: ScreenNode?, provider: String): Boolean {
-        val tap = pendingTap ?: return false
-        val now = SystemClock.elapsedRealtime()
-        if (tap.retapped || tap.fingerprint != offer.fingerprint || acceptNode == null || now - tap.atMs < TAP_RETRY_AFTER_MS) return false
-        pendingTap = tap.copy(retapped = true)
-        val result = dispatchAcceptClick(root, packageName, acceptNode, preferGesture = tap.method == ClickResult.SEMANTIC)
-        recordDiagnostic(DiagnosticStage.CLICK_PATH, now, "retap_" + result.name.lowercase(), provider = provider)
-        if (result == ClickResult.NOT_DISPATCHED) return false
-        acceptTracker.tapped(offer.fingerprint, offer.profileId, SystemClock.elapsedRealtime())
-        runtimeStatus.click(SystemClock.elapsedRealtime())
-        return true
-    }
-
-    /** Reads the window once more after a tap, even if nothing changed, so an ignored tap is seen. */
-    private fun scheduleTapCheck(fingerprint: String, windowId: Int) {
-        lateReadHandler.removeCallbacksAndMessages(TAP_CHECK_TOKEN)
-        lateReadHandler.postAtTime({
-            // Keyed to the tapped offer, not the pipeline: events alternating between Jeeny's
-            // windows reset the pipeline, and the check must still run.
-            val tap = pendingTap
-            if (tap != null && !tap.retapped && tap.fingerprint == fingerprint &&
-                ServicesSafetyPolicy.canProcessOffers(Settings.isActive, Settings.a11yDisclosureAccepted, SupabaseClient.hasValidLicense())) {
-                processPackage(JEENY_PACKAGE, requireJeenySignal = true, preferredWindowId = windowId, force = true)
-            }
-        }, TAP_CHECK_TOKEN, SystemClock.uptimeMillis() + TAP_RETRY_AFTER_MS + TAP_CHECK_MARGIN_MS)
-    }
-
-    /**
-     * Jeeny can show an offer in an overlay or dialog that is not the focused window, in which
-     * case [rootInActiveWindow] belongs to another app. Falls back to the interactive window list
-     * (FLAG_RETRIEVE_INTERACTIVE_WINDOWS) and returns the root plus where it came from, or the
-     * reason none was found as a coarse category that never names a third-party app.
-     */
-    @Suppress("DEPRECATION")
-    private fun targetRoots(packageName: String, preferredWindowId: Int?): Pair<List<Pair<AccessibilityNodeInfo, String>>, String> {
-        val found = ArrayList<Pair<AccessibilityNodeInfo, String>>()
-        val active = rootInActiveWindow
-        val activePackage = active?.packageName?.toString()
-        if (active != null && activePackage == packageName) found += active to ROOT_FROM_ACTIVE else active?.recycle()
-        val windowList = runCatching { windows }.getOrNull().orEmpty()
-        try {
-            // Topmost first: an offer overlay sits above the app's main window.
-            for (window in windowList.sortedByDescending { runCatching { it.layer }.getOrDefault(0) }) {
-                if (found.size >= MAX_TARGET_WINDOWS) break
-                if (found.any { it.first.windowId == window.id }) continue
-                val root = runCatching { window.root }.getOrNull() ?: continue
-                if (root.packageName?.toString() == packageName) found += root to ROOT_FROM_WINDOW_LIST else root.recycle()
-            }
-        } finally {
-            windowList.forEach { runCatching { it.recycle() } }
-        }
-        // The window the event came from goes first: that is where the change happened.
-        val preferred = found.indexOfFirst { it.first.windowId == preferredWindowId }
-        if (preferred > 0) found.add(0, found.removeAt(preferred))
-        if (found.isNotEmpty()) return found to ROOT_FROM_ACTIVE
-        return found to when {
-            active == null -> "active_null"
-            windowList.isEmpty() -> "active_" + packageCategory(activePackage) + "_no_windows"
-            else -> "active_" + packageCategory(activePackage)
-        }
-    }
-
-    private fun packageCategory(packageName: String?): String = when {
-        packageName == null -> "unnamed"
-        packageName == applicationContext.packageName -> "sabbaq"
-        packageName == "com.android.systemui" -> "systemui"
-        packageName in parsersByPackage.keys -> "supported"
-        packageName.contains("launcher") -> "launcher"
-        else -> "other"
-    }
-
-    private fun hasMatchingAcceptLabel(target: ScreenNode): Boolean {
-        var found = false
-        target.walk { node ->
-            val label = Text.normalize(node.text).ifEmpty { Text.normalize(node.description) }
-            if (label == "accept" || label.contains("قبول") || label.contains("accept")) found = true
-        }
-        return found
-    }
-
-    private enum class ClickResult { SEMANTIC, GESTURE, NOT_DISPATCHED }
-
-    /**
-     * Re-resolve the exact candidate from this event's live tree using its child path.
-     * A successful ACTION_CLICK is never followed by a gesture: it is not proof of ride
-     * acceptance, but retrying could accept twice. Gesture fallback is only for an
-     * explicit ACTION_CLICK=false response from a still-matching live node.
-     */
-    private fun dispatchAcceptClick(
-        root: AccessibilityNodeInfo,
-        packageName: String,
-        target: ScreenNode,
-        liveTest: Boolean = false,
-        preferGesture: Boolean = false,
-    ): ClickResult {
-        // The live test taps only Sabbaq's own mock button, so it skips the monitoring and licence gate.
-        if (!liveTest && !ServicesSafetyPolicy.canProcessOffers(Settings.isActive, Settings.a11yDisclosureAccepted, SupabaseClient.hasValidLicense())) return ClickResult.NOT_DISPATCHED
-        // The same button (path, id and label) where it is now: a card that slid a few pixels
-        // since the frame was parsed is still the same button.
-        var liveBounds: Bounds? = null
-        resolveLiveNode(root, target)?.let { node ->
-            try {
-                liveBounds = node.boundsInScreen().let { Bounds(it.left, it.top, it.right, it.bottom) }
-                if (!preferGesture && isSafeClickable(node, root, packageName) &&
-                    runCatching { node.performAction(AccessibilityNodeInfo.ACTION_CLICK) }.getOrDefault(false)) return ClickResult.SEMANTIC
-            } finally { node.recycle() }
-        }
-        val anchor = liveBounds ?: target.bounds
-        // A labelled child may be exposed while its clickable parent owns ACTION_CLICK.
-        val ancestor = if (preferGesture) null else resolveLiveClickableAncestor(root, target, anchor)
-        if (ancestor != null) {
-            try {
-                if (isSafeClickable(ancestor, root, packageName) &&
-                    runCatching { ancestor.performAction(AccessibilityNodeInfo.ACTION_CLICK) }.getOrDefault(false)) {
-                    return ClickResult.SEMANTIC
-                }
-            } finally { ancestor.recycle() }
-        }
-        // Coordinate fallback is last: the centre of the part of the live button inside the app's
-        // own window. No window bounds, no gesture.
-        val screen = realScreenSize()
-        val window = runCatching { root.window?.let { info -> Rect().also(info::getBoundsInScreen) } }.getOrNull()
-            ?.let { Bounds(it.left, it.top, it.right, it.bottom) } ?: return ClickResult.NOT_DISPATCHED
-        val point = ServicesSafetyPolicy.visibleTapPoint(anchor, window, screen.first, screen.second) ?: return ClickResult.NOT_DISPATCHED
-        return if (performGesture(point.first, point.second)) ClickResult.GESTURE else ClickResult.NOT_DISPATCHED
-    }
-
-    private fun isSafeClickable(node: AccessibilityNodeInfo, root: AccessibilityNodeInfo, packageName: String): Boolean =
-        root.packageName?.toString() == packageName && node.packageName?.toString() == packageName &&
-            node.isVisibleToUser && node.isEnabled && node.isClickable &&
-            node.actionList.any { it.id == AccessibilityNodeInfo.ACTION_CLICK } &&
-            node.boundsInScreen().let { rect ->
-                val screen = realScreenSize()
-                ServicesSafetyPolicy.isOnScreen(Bounds(rect.left, rect.top, rect.right, rect.bottom), screen.first, screen.second)
-            }
-
-    private fun AccessibilityNodeInfo.boundsInScreen(): Rect = Rect().also { getBoundsInScreen(it) }
-
-    /**
-     * The whole physical screen, system bars included: getBoundsInScreen reports node bounds in
-     * these coordinates. resources.displayMetrics leaves the navigation bar out on most phones, so
-     * an accept button at the bottom of the screen looked off-screen and was never tapped.
-     */
-    @Suppress("DEPRECATION")
-    private fun realScreenSize(): Pair<Int, Int> {
-        val windowManager = runCatching { getSystemService(WindowManager::class.java) }.getOrNull()
-        if (windowManager != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            runCatching { windowManager.maximumWindowMetrics.bounds }.getOrNull()
-                ?.takeIf { it.width() > 0 && it.height() > 0 }?.let { return it.width() to it.height() }
-        }
-        val metrics = DisplayMetrics()
-        runCatching { windowManager?.defaultDisplay?.getRealMetrics(metrics) }
-        if (metrics.widthPixels > 0 && metrics.heightPixels > 0) return metrics.widthPixels to metrics.heightPixels
-        return resources.displayMetrics.let { it.widthPixels to it.heightPixels }
-    }
-
-    private fun resolveLiveClickableAncestor(root: AccessibilityNodeInfo, target: ScreenNode, bounds: Bounds): AccessibilityNodeInfo? {
-        if (target.nodePath.isEmpty()) return null
-        var current = root
-        var owned = false
-        try {
-            for (index in target.nodePath.dropLast(1)) {
-                if (index !in 0 until current.childCount) return null
-                val child = current.getChild(index) ?: return null
-                if (owned) current.recycle()
-                current = child
-                owned = true
-            }
-            if (!current.isClickable || current.packageName?.toString() != root.packageName?.toString()) return null
-            val rect = current.boundsInScreen()
-            if (rect.left > bounds.left || rect.top > bounds.top || rect.right < bounds.right || rect.bottom < bounds.bottom) return null
-            return current.also { owned = false }
-        } finally { if (owned) current.recycle() }
-    }
-
-    /** The returned node is a temporary child owned by this method's caller. */
-    private fun resolveLiveNode(root: AccessibilityNodeInfo, target: ScreenNode): AccessibilityNodeInfo? {
-        if (target.nodePath.isEmpty()) return null
-        var current = root
-        var owned = false
-        try {
-            for (index in target.nodePath) {
-                if (index !in 0 until current.childCount) return null
-                val child = current.getChild(index) ?: return null
-                if (owned) current.recycle()
-                current = child
-                owned = true
-            }
-            val rect = Rect()
-            current.getBoundsInScreen(rect)
-            val sameLabel = Text.normalize(current.text?.toString()).ifEmpty {
-                Text.normalize(current.contentDescription?.toString())
-            } == Text.normalize(target.text).ifEmpty { Text.normalize(target.description) }
-            if (current.viewIdResourceName != target.viewId || !sameLabel || rect.isEmpty) return null
-            return current.also { owned = false }
-        } finally {
-            if (owned) current.recycle()
-        }
-    }
-
-    private fun performGesture(x: Int, y: Int): Boolean {
-        if (!ServicesSafetyPolicy.canProcessOffers(Settings.isActive,
-                Settings.a11yDisclosureAccepted, SupabaseClient.hasValidLicense())) return false
-        // A few pixels off the exact centre and a short randomised hold: the tap lands like a
-        // finger press, not a pixel-perfect machine tap that some buttons swallow.
-        val path = Path().apply {
-            moveTo((x + (-3..3).random()).toFloat(), (y + (-3..3).random()).toFloat())
-        }
-        val hold = (40L..90L).random()
-        val gesture = GestureDescription.Builder()
-            .addStroke(GestureDescription.StrokeDescription(path, 0L, hold)).build()
-        return dispatchGesture(gesture, null, null)
-    }
-
-    /**
-     * The first dispatchGesture after the service connects is slow because the gesture pipeline is
-     * cold. A one-shot 1 ms no-op at (1,1) warms it, so the first real accept tap is not the slow
-     * one: that tap's latency decides whether this driver's app wins the request.
-     */
-    private fun warmUpGestureOnce() {
-        if (gestureWarmed) return
-        if (!ServicesSafetyPolicy.canProcessOffers(Settings.isActive, Settings.a11yDisclosureAccepted, SupabaseClient.hasValidLicense())) return
-        gestureWarmed = true
-        val gesture = runCatching {
-            GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(Path().apply { moveTo(1f, 1f) }, 0L, 1L)).build()
-        }.getOrNull() ?: return
-        // Re-check at dispatch time: the gate may have closed between the event and this runnable.
-        lateReadHandler.post {
-            if (ServicesSafetyPolicy.canProcessOffers(Settings.isActive, Settings.a11yDisclosureAccepted, SupabaseClient.hasValidLicense())) {
-                runCatching { dispatchGesture(gesture, null, null) }
-            }
-        }
-    }
+    private fun report(ride: ParsedRide, decision: Decision): DecisionReport = DecisionReport(
+        score = (if (ride.price != null) 50 else 0) + (if (ride.minutes != null) 30 else 0) + (if (ride.destination != null) 20 else 0),
+        availableSignals = listOfNotNull("fare".takeIf { ride.price != null }, "time".takeIf { ride.minutes != null },
+            "destination".takeIf { ride.destination != null }),
+        reasons = emptyList(),
+    ).also { if (!decision.accept) Log.i(TAG, "rejected: ${decision.reason}") }
 
     override fun onInterrupt() {
         liveness.pause("interrupted")
         runtimeStatus.lifecycle(false, "interrupted")
-        recordDiagnostic(DiagnosticStage.WATCHDOG, SystemClock.elapsedRealtime(), "interrupted")
         TelemetryRepository.trace(TelemetryStage.SERVICE_INTERRUPTED, "interrupted")
     }
 
     /** Privacy-safe metadata for a UI or local log; no screen content is included. */
     fun livenessSnapshot(nowMs: Long = SystemClock.elapsedRealtime()): LivenessSnapshot = liveness.snapshot(nowMs).also {
-        if (it.stale) {
-            recordDiagnostic(DiagnosticStage.WATCHDOG, nowMs, "stale")
-            runtimeStatus.lifecycle(false, "stale")
-        }
+        if (it.stale) runtimeStatus.lifecycle(false, "stale")
     }
 
     fun diagnosticSnapshot(): List<DiagnosticEntry> = diagnostics.snapshot()
 
-    private fun recordDiagnostic(
-        stage: DiagnosticStage,
-        nowMs: Long,
-        reason: String? = null,
-        detail: String? = null,
-        provider: String = SERVICE_PROVIDER,
-        latencyMs: Long? = null,
-    ) {
-        // Every event is counted by telemetry; keeping them out of the 12-slot local ring
-        // stops "last stages" on the dashboard from showing nothing but EVENT_RECEIVED.
+    private fun record(stage: DiagnosticStage, nowMs: Long, reason: String? = null, detail: String? = null, latencyMs: Long? = null) {
         if (stage != DiagnosticStage.EVENT_RECEIVED) {
             diagnostics.record(stage, nowMs, reason)
             runtimeStatus.diagnostic(DiagnosticEntry(stage, nowMs, reason))
@@ -787,7 +250,7 @@ class SabbaqA11yService : AccessibilityService() {
             DiagnosticStage.ROOT_UNAVAILABLE -> TelemetryStage.ROOT_UNAVAILABLE
             DiagnosticStage.TREE_REJECTED -> TelemetryStage.TREE_REJECTED
         }
-        TelemetryRepository.trace(telemetryStage, reasonCode = reason, detail = detail, provider = provider, latencyMs = latencyMs)
+        TelemetryRepository.trace(telemetryStage, reasonCode = reason, detail = detail, provider = JEENY_PROVIDER, latencyMs = latencyMs)
     }
 
     override fun onDestroy() {
@@ -795,82 +258,15 @@ class SabbaqA11yService : AccessibilityService() {
         TelemetryRepository.serviceConnected = false
         TelemetryRepository.trace(TelemetryStage.SERVICE_DESTROYED, "destroyed")
         TelemetryRepository.flushNow()
-        lateReadGeneration++
-        lateReadHandler.removeCallbacksAndMessages(LATE_READ_TOKEN)
-        lateReadHandler.removeCallbacksAndMessages(TAP_CHECK_TOKEN)
-        jeenyPipeline.reset()
-        jeenyFrameFingerprints.clear()
-        pendingTap = null
-        lastJeenyWindowId = null
-        clickGate.reset()
-        pendingHistoryProfileId = null
-        pendingVoiceDetails = null
-        dispatchRetry.onConfirmationOrWindowChange()
-        parsersByPackage = emptyMap()
-        adaptersByProfile = emptyMap()
+        if (::host.isInitialized) host.onDestroy()
         liveness.pause("service_destroyed")
         runtimeStatus.reset()
         super.onDestroy()
     }
 
-    private fun AccessibilityNodeInfo.toScreenNode(
-        depth: Int = 0,
-        budget: NodeBudget = NodeBudget(),
-        nodePath: List<Int> = emptyList(),
-    ): ScreenNode {
-        check(++budget.visited <= MAX_TOTAL_NODES) { TREE_BUDGET_MESSAGE }
-        val rect = Rect()
-        this.getBoundsInScreen(rect)
-        val b = Bounds(rect.left, rect.top, rect.right, rect.bottom)
-
-        val children = ArrayList<ScreenNode>(minOf(childCount, MAX_CHILDREN_PER_NODE))
-        if (depth < MAX_TREE_DEPTH) {
-            for (i in 0 until minOf(childCount, MAX_CHILDREN_PER_NODE)) {
-                val child = getChild(i) ?: continue
-                try {
-                    children += child.toScreenNode(depth + 1, budget, nodePath + i)
-                } finally {
-                    child.recycle()
-                }
-            }
-        }
-
-        return ScreenNode(
-            id = this.hashCode(),
-            text = this.text?.toString(),
-            description = this.contentDescription?.toString(),
-            viewId = this.viewIdResourceName,
-            className = this.className?.toString(),
-            clickable = this.isClickable,
-            bounds = b,
-            children = children,
-            nodePath = nodePath
-        )
-    }
-
-    private class NodeBudget(var visited: Int = 0)
-
     private companion object {
         const val TAG = "SabbaqA11y"
-        const val MAX_TREE_DEPTH = 60
-        const val MAX_CHILDREN_PER_NODE = 200
-        const val MAX_TOTAL_NODES = 3000
-        const val TREE_BUDGET_MESSAGE = "Accessibility tree exceeds safe budget"
-        const val SERVICE_PROVIDER = "sabbaq"
         const val JEENY_PROVIDER = "jeeny"
-        const val ROOT_FROM_ACTIVE = "active"
-        const val ROOT_FROM_WINDOW_LIST = "window_list"
         const val JEENY_PACKAGE = "me.com.easytaxista"
-        // Map animations emit content changes continuously and each read walks up to 3000 nodes
-        // on the service thread. 100 ms keeps that bounded; a card rendered inside the window is
-        // still read by the late reads (120/420 ms) scheduled by the last processed event.
-        const val JEENY_EVENT_THROTTLE_MS = 100L
-        val LATE_READ_DELAYS_MS = longArrayOf(120L, 420L)
-        val LATE_READ_TOKEN = Any()
-        val TAP_CHECK_TOKEN = Any()
-        // Jeeny replaces the accept control within a few hundred ms of a tap it accepted.
-        const val TAP_RETRY_AFTER_MS = 1_200L
-        const val TAP_CHECK_MARGIN_MS = 60L
-        const val MAX_TARGET_WINDOWS = 3
     }
 }
