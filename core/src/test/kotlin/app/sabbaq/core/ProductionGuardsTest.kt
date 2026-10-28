@@ -10,52 +10,10 @@ class ProductionGuardsTest {
             ScreenNode(3, text = second, clickable = true, className = "Button")),
     )
 
-    @Test fun fingerprintIsDeterministicAndIncludesContextWithoutReturningText() {
-        val root = screen("SAR 5.50", "قبول العرض")
-        val a = ScreenChangeFingerprint.compute("me.com.easytaxista", "7", root)
-        assertEquals(a, ScreenChangeFingerprint.compute("me.com.easytaxista", "7", root))
-        assertNotEquals(a, ScreenChangeFingerprint.compute("me.com.easytaxista", "8", root))
-        assertFalse(a.contains("5.50"))
-    }
 
-    @Test fun adaptersAreExplicitForEveryBundledProfile() {
-        assertTrue(RideAppAdapters.forProfile(profile) is JeenyRideAppAdapter)
-        val bolt = Profiles.bundled().first { it.id == "bolt" }
-        assertTrue(RideAppAdapters.forProfile(bolt) is BoltRideAppAdapter)
-        val petra = Profiles.bundled().first { it.id == "petra" }
-        assertTrue(RideAppAdapters.forProfile(petra) is PetraRideAppAdapter)
-        assertTrue(RideAppAdapters.forProfile(profile).requiresPreflight)
-    }
 
-    @Test fun everyBundledPlatformSatisfiesAdapterContract() {
-        listOf("jeeny", "bolt", "petra").forEach { id ->
-            val adapter = RideAppAdapters.forProfile(Profiles.bundled().first { it.id == id })
-            assertTrue("$id must declare a package", adapter.packageNames.isNotEmpty())
-            assertTrue("$id must declare accept labels or ids", adapter.acceptLabelFamilies.isNotEmpty() || adapter.profile.acceptViewIds.isNotEmpty())
-            assertTrue(adapter.confirmationStrategy == ConfirmationStrategy.PROFILE_LABELS_AND_ACTIVE_CUES)
-            assertEquals(NodeResolutionStrategy.LABEL_THEN_ID_THEN_ANCESTOR, adapter.nodeResolutionStrategy)
-        }
-    }
 
-    @Test fun preflightBudgetIsFixedAndBounded() {
-        val adapter = RideAppAdapters.forProfile(profile)
-        // Bounded by the service's 3000-node tree budget, never smaller than it: a smaller
-        // preflight window silently ignored offer cards rendered below a map.
-        assertEquals(3000, adapter.signalConfig.maxNodes)
-        assertTrue(adapter.signalConfig.maxTextChars <= 32768)
-        assertTrue(adapter.signalConfig.minimumIndependentFeatures >= 3)
-    }
 
-    @Test fun fingerprintChangesWhenOnlyADeepNodeChanges() {
-        // Regression: only the first 96 nodes were hashed, so a new offer card deeper in the
-        // tree produced the same fingerprint and the frame was dropped as unchanged.
-        fun tree(cardText: String) = ScreenNode(1, children = (0 until 300).map { ScreenNode(10 + it, text = "tile $it") } +
-            ScreenNode(999, text = cardText, clickable = true))
-        assertNotEquals(
-            ScreenChangeFingerprint.compute("me.com.easytaxista", "7", tree("")),
-            ScreenChangeFingerprint.compute("me.com.easytaxista", "7", tree("قبول العرض")),
-        )
-    }
 
     @Test fun diagnosticsAreBoundedAndReasonsAreRedacted() {
         val diagnostics = BoundedDiagnostics(2)
@@ -80,16 +38,4 @@ class ProductionGuardsTest {
         assertEquals(101L, snapshot.lastTargetEventMs)
     }
 
-    @Test fun decisionReportUsesOnlyAvailableSignalsAndDoesNotGateVerdict() {
-        val offer = Offer("jeeny", null, null, null, null, null, null, emptyList(), emptyList())
-        val verdict = OfferEvaluator.evaluate(offer, Filters(acceptWhenNoFilters = true, acceptNoDestination = true), 600)
-        assertTrue(verdict.accept)
-        assertEquals(0, verdict.report.score)
-        assertTrue(verdict.report.availableSignals.isEmpty())
-        val rich = offer.copy(fare = java.math.BigDecimal("5"), tripKm = java.math.BigDecimal("10"), tripMinutes = 20, addresses = listOf("A", "B"))
-        val richVerdict = OfferEvaluator.evaluate(rich, Filters(acceptWhenNoFilters = true, acceptNoDestination = true), 600)
-        assertTrue(richVerdict.accept)
-        assertTrue(richVerdict.report.score > 0)
-        assertTrue("fare" in richVerdict.report.availableSignals)
-    }
 }

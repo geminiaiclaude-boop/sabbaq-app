@@ -5,6 +5,6 @@
     android:accessibilityFlags="flagDefault|flagReportViewIds|flagRetrieveInteractiveWindows"
     android:canRetrieveWindowContent="true"
     android:canPerformGestures="true"
-    android:packageNames="ee.mtakso.driver,me.com.easytaxista,com.PetraRide_Captain,com.petraride_captain"
+    android:packageNames="me.com.easytaxista"
     android:description="@string/accessibility_service_description"
     android:notificationTimeout="0" />

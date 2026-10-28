@@ -19,7 +19,7 @@ import app.sabbaq.core.engine.JeenyScreenReader
 import app.sabbaq.core.engine.ParsedRide
 import app.sabbaq.core.engine.PendingOutcome
 import app.sabbaq.core.engine.PendingRide
-import app.sabbaq.network.SupabaseClient
+import app.sabbaq.core.engine.SnipingGate
 import app.sabbaq.notifications.NotificationCenter
 import app.sabbaq.service.engine.EngineHost
 import app.sabbaq.service.engine.LiveNode
@@ -54,8 +54,23 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
         TelemetryRepository.trace(TelemetryStage.SERVICE_CONNECTED, reasonCode = "ready", detail = "engine=faresniper")
     }
 
-    private fun canProcess(): Boolean =
-        Settings.a11yDisclosureAccepted && Settings.isActive && SupabaseClient.hasValidLicense()
+    /**
+     * FareSniper's gate: the driver's own switch, consent and the saved subscription end date.
+     * A network failure, a lost session or a process restart never stops a tap.
+     */
+    private fun gate(): SnipingGate.Result {
+        val result = SnipingGate.check(
+            monitoringWanted = Settings.monitoringWanted,
+            disclosureAccepted = Settings.a11yDisclosureAccepted,
+            subscriptionEndsAtMs = Settings.subscriptionEndsAtMs,
+            newestSeenMs = Settings.newestSeenMs,
+            nowMs = System.currentTimeMillis(),
+        )
+        if (result.newestSeenMs != Settings.newestSeenMs) Settings.newestSeenMs = result.newestSeenMs
+        return result
+    }
+
+    private fun canProcess(): Boolean = gate().allowed
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
         val now = SystemClock.elapsedRealtime()
@@ -68,27 +83,14 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
         }
         if (!isJeeny(packageName)) return
         record(DiagnosticStage.EVENT_RECEIVED, now)
-        when {
-            !Settings.a11yDisclosureAccepted -> {
-                Settings.isActive = false
-                liveness.pause("disclosure_required")
-                runtimeStatus.lifecycle(false, "disclosure_required")
-                record(DiagnosticStage.GATE_BLOCKED, now, "disclosure_required")
-                return
-            }
-            !Settings.isActive -> {
-                liveness.pause("service_paused")
-                runtimeStatus.lifecycle(false, "service_paused")
-                record(DiagnosticStage.GATE_BLOCKED, now, "service_paused")
-                return
-            }
-            !SupabaseClient.hasValidLicense() -> {
-                liveness.pause("license_expired")
-                runtimeStatus.lifecycle(false, "license_expired")
-                record(DiagnosticStage.GATE_BLOCKED, now, "license_invalid")
-                return
-            }
+        val gate = gate()
+        if (!gate.allowed) {
+            liveness.pause(gate.reason)
+            runtimeStatus.lifecycle(false, gate.reason)
+            record(DiagnosticStage.GATE_BLOCKED, now, gate.reason)
+            return
         }
+        runtimeStatus.lifecycle(true, null)
         liveness.targetEvent(now)
         if (::host.isInitialized) runCatching { host.onEvent(event) }.onFailure {
             record(DiagnosticStage.TREE_REJECTED, now, it.javaClass.simpleName.lowercase().take(40))

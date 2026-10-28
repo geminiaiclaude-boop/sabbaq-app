@@ -76,6 +76,19 @@ object Settings {
         get() = runCatching { prefs().getBoolean(KEY_MONITORING_WANTED, false) }.getOrDefault(false)
         set(value) { runCatching { prefs().edit().putBoolean(KEY_MONITORING_WANTED, value).apply() } }
 
+    /**
+     * Subscription end (wall-clock epoch ms) saved from the last licence answer; 0 = not known
+     * yet. With [newestSeenMs] it is all the tap gate needs (FareSniper's isSnipingAllowedNow).
+     */
+    var subscriptionEndsAtMs: Long
+        get() = runCatching { prefs().getLong(KEY_SUBSCRIPTION_ENDS_AT, 0L) }.getOrDefault(0L)
+        set(value) { runCatching { prefs().edit().putLong(KEY_SUBSCRIPTION_ENDS_AT, value).apply() } }
+
+    /** Newest wall-clock time seen, to refuse a clock set back to extend the subscription. */
+    var newestSeenMs: Long
+        get() = runCatching { prefs().getLong(KEY_NEWEST_SEEN, 0L) }.getOrDefault(0L)
+        set(value) { runCatching { prefs().edit().putLong(KEY_NEWEST_SEEN, value).apply() } }
+
     /** The driver confirmed the phone maker's auto-start setting (it cannot be read back). */
     var autostartConfirmed: Boolean
         get() = runCatching { prefs().getBoolean(KEY_AUTOSTART_CONFIRMED, false) }.getOrDefault(false)
@@ -173,6 +186,8 @@ object Settings {
     private const val KEY_KNOWN_SUBSCRIBER = "known_subscriber"
     private const val KEY_MONITORING_WANTED = "monitoring_wanted"
     private const val KEY_AUTOSTART_CONFIRMED = "autostart_confirmed"
+    private const val KEY_SUBSCRIPTION_ENDS_AT = "subscription_ends_at"
+    private const val KEY_NEWEST_SEEN = "newest_seen_ms"
     private const val A11Y_DISCLOSURE_VERSION = 1
 }
 

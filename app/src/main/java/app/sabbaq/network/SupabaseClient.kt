@@ -1034,6 +1034,7 @@ object SupabaseClient {
         appUpdateRequired = status.minimumVersionCode?.let { it > BuildConfig.VERSION_CODE } == true
 
         if (!status.state.canBindCandidateDevice) {
+            app.sabbaq.Settings.subscriptionEndsAtMs = 1L
             sessions.invalidateLicenseIfMatches(token)
             return Result.failure(licenseStateFailure(status.state))
         }
@@ -1041,6 +1042,7 @@ object SupabaseClient {
 
         return when (status.state) {
             LicenseState.PENDING, LicenseState.EXPIRED -> {
+                app.sabbaq.Settings.subscriptionEndsAtMs = 1L
                 sessions.invalidateLicenseIfMatches(token)
                 Result.success(false)
             }
@@ -1051,6 +1053,7 @@ object SupabaseClient {
                     appVersionCode = BuildConfig.VERSION_CODE,
                     requestStartedAt = requestStartedAt
                 ) ?: return staleSessionFailure()
+                status.validUntil?.let { app.sabbaq.Settings.subscriptionEndsAtMs = it.toEpochMilli() }
                 if (valid) Result.success(true) else Result.failure(licenseResponseFailure(status))
             }
             else -> error("الحالة غير القابلة للربط فُحصت أعلاه")

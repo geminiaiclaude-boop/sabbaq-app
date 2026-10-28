@@ -163,7 +163,7 @@ class EngineHost(
         var root: AccessibilityNodeInfo? = null
         var parsed: ParsedRide? = null
         if (!abort.get()) {
-            root = runCatching { service.rootInActiveWindow }.getOrNull()
+            root = runCatching { service.rootInActiveWindow }.getOrNull()?.takeIf(::isRideAppRoot)
             if (root != null) {
                 val reader = JeenyScreenReader(cfg) { SystemClock.uptimeMillis() }
                 val live = LiveNode(root)
@@ -217,7 +217,7 @@ class EngineHost(
                 return
             }
             newestDecidedReadStart = maxOf(newestDecidedReadStart, SystemClock.uptimeMillis())
-            root = runCatching { service.rootInActiveWindow }.getOrNull() ?: run {
+            root = runCatching { service.rootInActiveWindow }.getOrNull()?.takeIf(::isRideAppRoot) ?: run {
                 lastEventProcessedMs = System.currentTimeMillis()
                 return
             }
@@ -247,7 +247,7 @@ class EngineHost(
         val pending = action.pending
         main.postDelayed({ flow.onWatchdog(pending)?.let(::handleOutcome) }, OfferFlow.WATCHDOG_MS + pending.delayMs)
         val tap = Runnable {
-            val method = clickLadder(target)
+            val method = if (allowed() && isRideAppNode(target)) clickLadder(target) else "not_dispatched"
             listener.onTap(action.ride, action.decision, pending, method, System.currentTimeMillis() - detectedAtMs)
             if (action.ride.destination == null) lateCapture(pending, cfg, height)
         }
@@ -256,9 +256,10 @@ class EngineHost(
 
     /** `executeFallbackClicks` (§8): click, parent click, then a 40 ms tap at the node's centre. */
     fun clickLadder(node: UiNode): String {
+        val b = node.bounds()
+        if (b.isEmpty) return "not_dispatched"
         if (node.click()) return "semantic"
         if (runCatching { node.parent()?.click() }.getOrNull() == true) return "parent"
-        val b = node.bounds()
         val path = Path().apply { moveTo(b.centerX.toFloat(), b.centerY.toFloat()) }
         val gesture = GestureDescription.Builder()
             .addStroke(GestureDescription.StrokeDescription(path, 0L, OfferFlow.MIN_TAP_HOLD_MS)).build()
@@ -268,7 +269,7 @@ class EngineHost(
     /** Late capture (§10): 60 ms after the tap, a bounded re-read fills the destination for the report. */
     private fun lateCapture(pending: PendingRide, cfg: EngineConfig, height: Int) {
         main.postDelayed({
-            val root = runCatching { service.rootInActiveWindow }.getOrNull() ?: return@postDelayed
+            val root = runCatching { service.rootInActiveWindow }.getOrNull()?.takeIf(::isRideAppRoot) ?: return@postDelayed
             val deadline = SystemClock.uptimeMillis() + OfferFlow.LATE_CAPTURE_BUDGET_MS
             runCatching { JeenyScreenReader(cfg) { SystemClock.uptimeMillis() }.read(LiveNode(root), height, collectAddresses = true, hardDeadline = deadline) }
         }, OfferFlow.LATE_CAPTURE_DELAY_MS)
@@ -310,7 +311,17 @@ class EngineHost(
         main.post { runCatching { service.dispatchGesture(gesture, null, null) } }
     }
 
+    /** Only the ride app's own windows are read or tapped (FareSniper's Jeeny routing, §5). */
+    private fun isRideAppRoot(root: AccessibilityNodeInfo): Boolean = isRidePackage(root.packageName?.toString())
+
+    private fun isRideAppNode(node: UiNode): Boolean = (node as? LiveNode)?.let { isRidePackage(it.packageName) } ?: true
+
     private companion object {
+        fun isRidePackage(packageName: String?): Boolean {
+            val p = packageName?.lowercase() ?: return false
+            return p == "me.com.easytaxista" || "jeeny" in p || "easytaxi" in p
+        }
+
         val NOISE_WIDGETS = listOf("scrollbar", "edittext", "progressbar", "seekbar", "switch", "toast")
         val PROBE_WORDS = listOf("jod", "sar", "$", "د.أ", "﷼", "ريال", "mins", "min ", "دقيق", "away",
             "accept", "reject", "قبول", "رفض", "عرض")

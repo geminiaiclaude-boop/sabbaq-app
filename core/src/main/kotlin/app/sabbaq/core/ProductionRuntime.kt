@@ -1,52 +1,11 @@
 package app.sabbaq.core
 
-/** Explicit strategy for each bundled provider; no unsupported provider is implied. */
-class BoltRideAppAdapter(override val profile: RideProfile) : RideAppAdapter {
-    override val packageNames: Set<String> = profile.packages.toSet()
-    override val signalConfig = AdapterSignalConfig(minimumIndependentFeatures = 3)
-    override val acceptLabelFamilies = profile.acceptLabels
-    override val confirmLabelFamilies = profile.confirmLabels
-}
-
-class PetraRideAppAdapter(override val profile: RideProfile) : RideAppAdapter {
-    override val packageNames: Set<String> = profile.packages.toSet()
-    override val signalConfig = AdapterSignalConfig(minimumIndependentFeatures = 3)
-    override val acceptLabelFamilies = profile.acceptLabels
-    override val confirmLabelFamilies = profile.confirmLabels
-}
-
-/** At most one bounded retry for one offer/window after an explicit dispatch failure. */
-enum class RetryState { IDLE, RETRY_ELIGIBLE, RETRY_CONSUMED, CANCELLED }
-enum class DispatchFailure { NOT_DISPATCHED, SEMANTIC_SUCCESS, GESTURE_SUCCESS }
-class BoundedDispatchRetry(
-    private val cooldownMs: Long = 750L,
-) {
-    init { require(cooldownMs > 0) }
-    private var state = RetryState.IDLE
-    private var offer: String? = null
-    private var window: String? = null
-    private var eligibleAt = Long.MAX_VALUE
-    fun begin(offerFingerprint: String, windowToken: String) {
-        if (offer != offerFingerprint || window != windowToken) {
-            offer = offerFingerprint; window = windowToken; state = RetryState.IDLE; eligibleAt = Long.MAX_VALUE
-        }
-    }
-    fun onDispatchResult(result: DispatchFailure, nowMs: Long) {
-        state = when (result) {
-            DispatchFailure.NOT_DISPATCHED -> if (state == RetryState.IDLE) RetryState.RETRY_ELIGIBLE else state
-            DispatchFailure.SEMANTIC_SUCCESS, DispatchFailure.GESTURE_SUCCESS -> RetryState.CANCELLED
-        }
-        if (result == DispatchFailure.NOT_DISPATCHED && state == RetryState.RETRY_ELIGIBLE) eligibleAt = nowMs + cooldownMs
-    }
-    fun canRetry(offerFingerprint: String, windowToken: String, nowMs: Long): Boolean =
-        state == RetryState.RETRY_ELIGIBLE && offer == offerFingerprint && window == windowToken && nowMs >= eligibleAt
-    fun consumeRetry(offerFingerprint: String, windowToken: String, nowMs: Long): Boolean {
-        if (!canRetry(offerFingerprint, windowToken, nowMs)) return false
-        state = RetryState.RETRY_CONSUMED; return true
-    }
-    fun onConfirmationOrWindowChange() { state = RetryState.CANCELLED; offer = null; window = null; eligibleAt = Long.MAX_VALUE }
-    fun snapshot(): RetryState = state
-}
+/** Explainability for the dashboard only; never an acceptance gate. [reasons] are FareSniper reason keys. */
+data class DecisionReport(
+    val score: Int,
+    val availableSignals: List<String>,
+    val reasons: List<String>,
+)
 
 data class RuntimeStatusSnapshot(
     val active: Boolean,
