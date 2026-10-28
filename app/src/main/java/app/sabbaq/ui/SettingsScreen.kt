@@ -1722,6 +1722,7 @@ private fun SimulatorPage(savedFilters: Filters) {
     var offerText by rememberSaveable { mutableStateOf("") }
     var result by remember { mutableStateOf<PreviewResult?>(null) }
     val hasInput = listOf(fare, pickupKm, tripKm, pickupMinutes, tripMinutes, offerText).any { it.isNotBlank() } || !hasDestination
+    val invalidNumberMsg = stringResource(R.string.ss_sim_invalid_number)
 
     fun evaluate() {
         val fareValue = parsePreviewDecimal(fare)
@@ -1739,7 +1740,7 @@ private fun SimulatorPage(savedFilters: Filters) {
         if (invalid) {
             result = PreviewResult(
                 verdict = OfferEvaluator.evaluate(emptyPreviewOffer(), savedFilters, currentMinuteOfDay()),
-                error = stringResource(R.string.ss_sim_invalid_number),
+                error = invalidNumberMsg,
             )
             return
         }

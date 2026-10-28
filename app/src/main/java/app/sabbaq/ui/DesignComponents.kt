@@ -48,7 +48,6 @@ import app.sabbaq.ui.theme.LocalReducedMotion
 import app.sabbaq.ui.theme.SabbaqMotion
 import app.sabbaq.ui.theme.glint
 import androidx.compose.ui.res.stringResource
-import app.sabbaq.R
 import app.sabbaq.ui.theme.pressDepth
 import app.sabbaq.ui.theme.tilt3D
 
