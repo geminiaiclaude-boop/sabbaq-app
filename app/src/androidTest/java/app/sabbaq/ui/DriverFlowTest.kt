@@ -45,6 +45,10 @@ class DriverFlowTest {
 
     @Before
     fun resetLocalState() {
+        // These flows assert the Arabic UI. The screens are composed with an Arabic context, so
+        // resources resolve to values-ar; pin the default locale too so the locale-aware helpers
+        // (LocaleManager.isArabic) agree, exactly as they do on a real Arabic device.
+        java.util.Locale.setDefault(java.util.Locale("ar"))
         Settings.init(InstrumentationRegistry.getInstrumentation().targetContext)
         Settings.clearAccountData()
     }
