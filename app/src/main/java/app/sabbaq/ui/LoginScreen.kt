@@ -1052,11 +1052,11 @@ private fun otpVerificationErrorMessage(context: Context, error: Throwable?): St
 }
 
 private fun licenseErrorMessage(context: Context, error: Throwable?): String = when (error?.message) {
-    "الحساب مرتبط بجهاز آخر",
-    "تم حظر أو رفض الحساب",
-    "حساب السائق غير مكتمل؛ أعد تسجيل الدخول أو تواصل مع الإدارة",
-    "حساب السائق غير مكتمل؛ تواصل مع الإدارة",
-    "يلزم تحديث التطبيق قبل استخدام الخدمة" -> error.message.orEmpty()
+    "الحساب مرتبط بجهاز آخر" -> context.getString(R.string.login_err_device_other)
+    "تم حظر أو رفض الحساب" -> context.getString(R.string.login_err_banned)
+    "حساب السائق غير مكتمل؛ أعد تسجيل الدخول أو تواصل مع الإدارة" -> context.getString(R.string.login_err_incomplete_relogin)
+    "حساب السائق غير مكتمل؛ تواصل مع الإدارة" -> context.getString(R.string.login_err_incomplete_admin)
+    "يلزم تحديث التطبيق قبل استخدام الخدمة" -> context.getString(R.string.login_err_update_required)
     else -> context.getString(R.string.login_err_license_generic)
 }
 

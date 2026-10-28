@@ -308,7 +308,7 @@ internal fun SabbaqLaunchIntro(onFinished: () -> Unit, staticFrame: Boolean = fa
                 },
             )
             Text(
-                SABBAQ_TAGLINE,
+                stringResource(R.string.app_tagline),
                 style = MaterialTheme.typography.titleMedium,
                 color = brand.onHeroMuted,
                 textAlign = TextAlign.Center,

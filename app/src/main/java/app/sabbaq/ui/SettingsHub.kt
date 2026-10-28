@@ -1,5 +1,7 @@
 package app.sabbaq.ui
 
+import app.sabbaq.LocaleManager
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -261,7 +263,7 @@ private fun UnreadScreenCard() {
             enabled = sent != true,
             onClick = {
                 scope.launch {
-                    sent = SupportRepository.send("مخطط شاشة جيني غير المقروءة (${current.reason}):\n${current.text}".take(1000))
+                    sent = SupportRepository.send((if (LocaleManager.isArabic()) "مخطط شاشة جيني غير المقروءة (${current.reason}):\n${current.text}" else "Unreadable Jeeny screen layout (${current.reason}):\n${current.text}").take(1000))
                 }
             },
         )

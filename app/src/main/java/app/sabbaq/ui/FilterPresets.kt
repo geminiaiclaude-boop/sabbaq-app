@@ -1,5 +1,7 @@
 package app.sabbaq.ui
 
+import app.sabbaq.R
+
 /**
  * Starting points for the distance and time conditions. A preset only rewrites the
  * pickup/trip fields it owns; fare, keywords and working hours stay as the driver set
@@ -7,8 +9,8 @@ package app.sabbaq.ui
  * Presets deliberately carry no fare values — pricing is the driver's own decision.
  */
 internal enum class FilterPreset(
-    val label: String,
-    val description: String,
+    val labelRes: Int,
+    val descriptionRes: Int,
     val maxPickupKm: String = "",
     val minPickupMinutes: String = "",
     val maxPickupMinutes: String = "",
@@ -18,18 +20,18 @@ internal enum class FilterPreset(
     val maxTripMinutes: String = "",
 ) {
     NearAndQuick(
-        label = "قريب وسريع",
-        description = "وصول خلال 3 كم و7 دقائق، ورحلة حتى 15 كم.",
+        labelRes = R.string.fp_near_label,
+        descriptionRes = R.string.fp_near_desc,
         maxPickupKm = "3", maxPickupMinutes = "7", maxTripKm = "15",
     ),
     LongTrips(
-        label = "مشاوير طويلة",
-        description = "رحلة من 15 كم فأكثر، ووصول حتى 6 كم.",
+        labelRes = R.string.fp_long_label,
+        descriptionRes = R.string.fp_long_desc,
         maxPickupKm = "6", minTripKm = "15",
     ),
     ClosePickupOnly(
-        label = "وصول قريب فقط",
-        description = "أي رحلة، بشرط وصول خلال 2 كم و5 دقائق.",
+        labelRes = R.string.fp_close_label,
+        descriptionRes = R.string.fp_close_desc,
         maxPickupKm = "2", maxPickupMinutes = "5",
     );
 

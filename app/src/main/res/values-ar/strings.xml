@@ -783,4 +783,16 @@
     <string name="sg_priority">إعداد ذو أولوية</string>
     <string name="sg_after_step">بعد إكمال هذه الخطوة والعودة، سيتحقق سبّاق من حالتها وينقلك تلقائيًا إلى الخطوة التالية.</string>
     <string name="sg_later">سأكمل لاحقًا من حالة العمل</string>
+    <string name="app_tagline">أول من يلتقط الطلب المناسب.</string>
+    <string name="fp_near_label">قريب وسريع</string>
+    <string name="fp_near_desc">وصول خلال 3 كم و7 دقائق، ورحلة حتى 15 كم.</string>
+    <string name="fp_long_label">مشاوير طويلة</string>
+    <string name="fp_long_desc">رحلة من 15 كم فأكثر، ووصول حتى 6 كم.</string>
+    <string name="fp_close_label">وصول قريب فقط</string>
+    <string name="fp_close_desc">أي رحلة، بشرط وصول خلال 2 كم و5 دقائق.</string>
+    <string name="login_err_device_other">الحساب مرتبط بجهاز آخر.</string>
+    <string name="login_err_banned">تم حظر أو رفض الحساب.</string>
+    <string name="login_err_incomplete_relogin">حساب السائق غير مكتمل؛ أعد تسجيل الدخول أو تواصل مع الإدارة.</string>
+    <string name="login_err_incomplete_admin">حساب السائق غير مكتمل؛ تواصل مع الإدارة.</string>
+    <string name="login_err_update_required">يلزم تحديث التطبيق قبل استخدام الخدمة.</string>
 </resources>

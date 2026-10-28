@@ -776,4 +776,16 @@ Write your problem or question and our team will reply here during working hours
     <string name="sg_priority">Priority setting</string>
     <string name="sg_after_step">After you complete this step and return, Sabbaq checks its state and moves you to the next step automatically.</string>
     <string name="sg_later">I\'ll finish later from work status</string>
+    <string name="app_tagline">First to grab the right order.</string>
+    <string name="fp_near_label">Near and quick</string>
+    <string name="fp_near_desc">Pickup within 3 km and 7 minutes, trip up to 15 km.</string>
+    <string name="fp_long_label">Long trips</string>
+    <string name="fp_long_desc">Trips of 15 km or more, pickup up to 6 km.</string>
+    <string name="fp_close_label">Close pickup only</string>
+    <string name="fp_close_desc">Any trip, as long as pickup is within 2 km and 5 minutes.</string>
+    <string name="login_err_device_other">The account is linked to another device.</string>
+    <string name="login_err_banned">The account has been banned or rejected.</string>
+    <string name="login_err_incomplete_relogin">The driver account is incomplete; sign in again or contact the administration.</string>
+    <string name="login_err_incomplete_admin">The driver account is incomplete; contact the administration.</string>
+    <string name="login_err_update_required">The app must be updated before using the service.</string>
 </resources>

@@ -1682,7 +1682,7 @@ private fun FilterPresetsCard(draft: FilterDraft, enabled: Boolean, onDraftChang
     val selected = FilterPreset.entries.firstOrNull { it.matches(draft) }
     SabbaqCard(
         title = stringResource(R.string.ss_preset_title),
-        subtitle = selected?.description ?: stringResource(R.string.ss_preset_sub),
+        subtitle = selected?.let { stringResource(it.descriptionRes) } ?: stringResource(R.string.ss_preset_sub),
         icon = Icons.Outlined.Tune,
     ) {
         FilterPresetChips(draft, enabled, onDraftChange)
@@ -1700,7 +1700,7 @@ private fun FilterPresetChips(draft: FilterDraft, enabled: Boolean, onDraftChang
                     selected = preset == selected,
                     enabled = enabled,
                     onClick = { onDraftChange(preset.applyTo(draft)) },
-                    label = { Text(preset.label) },
+                    label = { Text(stringResource(preset.labelRes)) },
                     leadingIcon = if (preset == selected) {
                         { Icon(Icons.Outlined.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp)) }
                     } else null,
