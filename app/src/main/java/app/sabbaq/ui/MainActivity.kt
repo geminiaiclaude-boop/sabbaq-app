@@ -64,6 +64,9 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import app.sabbaq.BuildConfig
 import app.sabbaq.Settings
+import app.sabbaq.R
+import app.sabbaq.LocaleManager
+import androidx.compose.ui.res.stringResource
 import app.sabbaq.ThemeMode
 import app.sabbaq.network.LicenseState
 import app.sabbaq.network.SupabaseClient
@@ -208,7 +211,7 @@ class MainActivity : ComponentActivity() {
                 // screen after the user returns; the system then reflects the
                 // real state and shows no extra block when it was accepted.
                 runCatching { startActivity(AccessibilitySetup.accessibilitySettingsIntent()) }
-                    .onFailure { permissionMessage = "تعذر فتح إعدادات إمكانية الوصول. حاول مجددًا من لوحة القيادة." }
+                    .onFailure { permissionMessage = (if (LocaleManager.isArabic()) "تعذر فتح إعدادات إمكانية الوصول. حاول مجددًا من لوحة القيادة." else "Could not open the accessibility settings. Try again from the dashboard.") }
             }
             val endSession = {
                 // Signing out ends automatic resume too; clearSession() also wipes the saved session.
@@ -258,14 +261,14 @@ class MainActivity : ComponentActivity() {
                         when (route) {
                             AppState.WELCOME -> OnboardingScreen(onContinue = {
                                 if (!OnboardingPreferences.markComplete(this@MainActivity)) {
-                                    permissionMessage = "قد تظهر هذه المقدمة مرة أخرى عند فتح التطبيق. يمكنك المتابعة الآن."
+                                    permissionMessage = (if (LocaleManager.isArabic()) "قد تظهر هذه المقدمة مرة أخرى عند فتح التطبيق. يمكنك المتابعة الآن." else "This intro may appear again when you open the app. You can continue now.")
                                 }
                                 navigation.welcomeFinished(SupabaseClient.hasSavedSession())
                             })
                             AppState.LOGIN -> LoginScreen(onLoginSuccess = navigation::authenticated)
                             AppState.ADMIN_PANEL -> {
                                 if (BuildConfig.DIRECT_DISTRIBUTION) app.sabbaq.ui.admin.AdminPanel()
-                                else Text("لوحة الإدارة غير متاحة في هذه النسخة")
+                                else Text(stringResource(R.string.ma_admin_unavailable))
                             }
                             AppState.DRIVER_PANEL -> SettingsScreen(
                                 notificationPermissionGranted = notificationsGranted,
@@ -315,8 +318,8 @@ class MainActivity : ComponentActivity() {
                                     val historyWiped = OfferDecisionLogStore.clear(this@MainActivity)
                                     TelemetryRepository.clearForAccountDeletion()
                                     endSession()
-                                    permissionMessage = if (wiped && statsWiped && historyWiped) "حُذف حسابك وبياناته المرتبطة. شكرًا لاستخدامك سبّاق."
-                                        else "حُذف حسابك من الخادم، لكن تعذّر مسح بعض الإعدادات المحلية. احذف بيانات التطبيق من إعدادات الجهاز لإكمال المسح."
+                                    permissionMessage = if (wiped && statsWiped && historyWiped) (if (LocaleManager.isArabic()) "حُذف حسابك وبياناته المرتبطة. شكرًا لاستخدامك سبّاق." else "Your account and its related data were deleted. Thank you for using Sabbaq.")
+                                        else (if (LocaleManager.isArabic()) "حُذف حسابك من الخادم، لكن تعذّر مسح بعض الإعدادات المحلية. احذف بيانات التطبيق من إعدادات الجهاز لإكمال المسح." else "Your account was deleted from the server, but some local settings could not be cleared. Delete the app data from the device settings to complete the wipe.")
                                 },
                             )
                         }
@@ -330,7 +333,7 @@ class MainActivity : ComponentActivity() {
                                 showRestrictedA11yGuidance = true
                             } else {
                                 runCatching { startActivity(AccessibilitySetup.accessibilitySettingsIntent()) }
-                                    .onFailure { permissionMessage = "تعذر فتح إعدادات إمكانية الوصول. حاول مجددًا من لوحة القيادة." }
+                                    .onFailure { permissionMessage = (if (LocaleManager.isArabic()) "تعذر فتح إعدادات إمكانية الوصول. حاول مجددًا من لوحة القيادة." else "Could not open the accessibility settings. Try again from the dashboard.") }
                             }
                         },
                         onDismiss = {
@@ -345,15 +348,15 @@ class MainActivity : ComponentActivity() {
                             runCatching {
                                 restrictedSettingsLauncher.launch(AccessibilitySetup.appDetailsIntent(this@MainActivity))
                             }.onFailure {
-                                permissionMessage = "تعذر فتح معلومات التطبيق. افتح إعدادات الجهاز ثم التطبيقات ثم سبّاق."
+                                permissionMessage = (if (LocaleManager.isArabic()) "تعذر فتح معلومات التطبيق. افتح إعدادات الجهاز ثم التطبيقات ثم سبّاق." else "Could not open the app info. Open the device settings, then Apps, then Sabbaq.")
                             }
                         },
                         onDismiss = { showRestrictedA11yGuidance = false },
                     )
                     permissionMessage?.let { message -> AlertDialog(
                         onDismissRequest = { permissionMessage = null },
-                        title = { Text("تنبيه") }, text = { Text(message) },
-                        confirmButton = { TextButton(onClick = { permissionMessage = null }) { Text("حسنًا") } }
+                        title = { Text(stringResource(R.string.ma_notice)) }, text = { Text(message) },
+                        confirmButton = { TextButton(onClick = { permissionMessage = null }) { Text(stringResource(R.string.ma_ok)) } }
                     ) }
                     // Do not compose the logo intro underneath the cinematic clip: its
                     // 2.3s animation would finish while hidden instead of playing after it.
@@ -434,7 +437,7 @@ internal fun SabbaqShell(
             (context as? android.app.Activity)?.finish()
         } else {
             lastRootBackAt = now
-            android.widget.Toast.makeText(context, "اضغط رجوع مرة أخرى للخروج من سبّاق", android.widget.Toast.LENGTH_SHORT).show()
+            android.widget.Toast.makeText(context, (if (LocaleManager.isArabic()) "اضغط رجوع مرة أخرى للخروج من سبّاق" else "Press back again to exit Sabbaq"), android.widget.Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -511,23 +514,23 @@ internal fun SabbaqShell(
     }
     if (confirmLogout) AlertDialog(
         onDismissRequest = { confirmLogout = false },
-        title = { Text("تسجيل الخروج؟") },
+        title = { Text(stringResource(R.string.ma_logout_q)) },
         text = { Text(when {
-            isSavingFilters -> "جارٍ حفظ آخر تعديل تلقائيًا. انتظر حتى يكتمل الحفظ قبل تسجيل الخروج."
-            hasUnpersistedFilterChanges -> "هناك تعديل على الشروط لم يُحفظ؛ سيبقى آخر إعداد محفوظ على هذا الجهاز إذا خرجت الآن."
-            else -> "سيتوقف القبول التلقائي بسبّاق. شروطك المحفوظة تبقى على هذا الجهاز."
+            isSavingFilters -> stringResource(R.string.ma_logout_saving)
+            hasUnpersistedFilterChanges -> stringResource(R.string.ma_logout_unpersisted)
+            else -> stringResource(R.string.ma_logout_default)
         }) },
         confirmButton = { TextButton(
             enabled = !isSavingFilters,
             onClick = { confirmLogout = false; onLogout() },
         ) {
             Text(when {
-                isSavingFilters -> "جارٍ الحفظ…"
-                hasUnpersistedFilterChanges -> "الخروج دون حفظ التعديل"
-                else -> "إيقاف سبّاق والخروج"
+                isSavingFilters -> stringResource(R.string.ma_logout_saving_btn)
+                hasUnpersistedFilterChanges -> stringResource(R.string.ma_logout_leave_unsaved)
+                else -> stringResource(R.string.ma_logout_stop_leave)
             })
         } },
-        dismissButton = { TextButton(onClick = { confirmLogout = false }) { Text("البقاء") } }
+        dismissButton = { TextButton(onClick = { confirmLogout = false }) { Text(stringResource(R.string.ma_stay)) } }
     )
     if (showNotifications) NotificationsSheet(
         onDismiss = { showNotifications = false },
@@ -562,7 +565,7 @@ private fun SabbaqTopBar(
             TopAppBar(
                 navigationIcon = {
                     IconButton(onClick = onOpenDrawer, modifier = Modifier.size(52.dp)) {
-                        Icon(Icons.Outlined.Menu, contentDescription = "فتح القائمة الجانبية")
+                        Icon(Icons.Outlined.Menu, contentDescription = stringResource(R.string.ma_open_drawer_cd))
                     }
                 },
                 title = { SabbaqBrand(compact = true, onHero = true) },
@@ -586,25 +589,25 @@ private fun SabbaqTopBar(
 
 private data class SabbaqDrawerItem(
     val destination: DriverDestination,
-    val label: String,
+    val labelRes: Int,
     val icon: ImageVector,
 )
 
 /** Drawer sections in the order a driver uses them: work, tools, account. */
 private val sabbaqDrawerSections = listOf(
-    "العمل" to listOf(
-        SabbaqDrawerItem(DriverDestination.Dashboard, "حالة العمل", Icons.Outlined.Home),
-        SabbaqDrawerItem(DriverDestination.Filters, "طلبات تناسبك", Icons.Outlined.FilterAlt),
-        SabbaqDrawerItem(DriverDestination.History, "سجل القرارات", Icons.Outlined.History),
+    R.string.ma_sec_work to listOf(
+        SabbaqDrawerItem(DriverDestination.Dashboard, R.string.nav_dashboard, Icons.Outlined.Home),
+        SabbaqDrawerItem(DriverDestination.Filters, R.string.nav_filters, Icons.Outlined.FilterAlt),
+        SabbaqDrawerItem(DriverDestination.History, R.string.nav_history, Icons.Outlined.History),
     ),
-    "الأدوات" to listOf(
-        SabbaqDrawerItem(DriverDestination.Simulator, "تجربة الطلب", Icons.Outlined.Visibility),
-        SabbaqDrawerItem(DriverDestination.Setup, "دليل الإعداد", Icons.Outlined.Checklist),
-        SabbaqDrawerItem(DriverDestination.Settings, "الإعدادات", Icons.Outlined.SettingsIcon),
+    R.string.ma_sec_tools to listOf(
+        SabbaqDrawerItem(DriverDestination.Simulator, R.string.nav_simulator, Icons.Outlined.Visibility),
+        SabbaqDrawerItem(DriverDestination.Setup, R.string.ss_setup_guide, Icons.Outlined.Checklist),
+        SabbaqDrawerItem(DriverDestination.Settings, R.string.nav_settings, Icons.Outlined.SettingsIcon),
     ),
-    "الحساب" to listOf(
-        SabbaqDrawerItem(DriverDestination.Account, "حسابي", Icons.Outlined.AccountCircle),
-        SabbaqDrawerItem(DriverDestination.Support, "مراسلة الدعم", Icons.Outlined.SupportAgent),
+    R.string.ma_sec_account to listOf(
+        SabbaqDrawerItem(DriverDestination.Account, R.string.nav_account, Icons.Outlined.AccountCircle),
+        SabbaqDrawerItem(DriverDestination.Support, R.string.sub_contact_support, Icons.Outlined.SupportAgent),
     ),
 )
 
@@ -646,22 +649,22 @@ private fun SabbaqDrawerSheet(
                 ) {
                     SabbaqBrand(onHero = true)
                     IconButton(onClick = onClose, modifier = Modifier.size(44.dp)) {
-                        Icon(Icons.Outlined.Close, contentDescription = "إغلاق القائمة", tint = brand.onHero)
+                        Icon(Icons.Outlined.Close, contentDescription = stringResource(R.string.ma_close_menu_cd), tint = brand.onHero)
                     }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     when {
-                        isAdmin -> DrawerPill("إدارة", brand.onHero.copy(alpha = 0.18f), brand.onHero)
+                        isAdmin -> DrawerPill(stringResource(R.string.ma_pill_admin), brand.onHero.copy(alpha = 0.18f), brand.onHero)
                         snapshot?.state == LicenseState.ACTIVE -> DrawerPill("PRO", brand.signature, brand.onSignature)
-                        snapshot?.state == LicenseState.TRIAL -> DrawerPill("تجربة", brand.onHero.copy(alpha = 0.18f), brand.onHero)
+                        snapshot?.state == LicenseState.TRIAL -> DrawerPill(stringResource(R.string.ma_pill_trial), brand.onHero.copy(alpha = 0.18f), brand.onHero)
                     }
                     Text(
                         when {
-                            !isAuthenticated -> "استكشف سبّاق وسجّل الدخول للبدء"
-                            isAdmin -> "لوحة الإدارة"
-                            snapshot?.state == LicenseState.ACTIVE -> "مشترك — تابع عملك بثقة"
-                            snapshot?.state == LicenseState.TRIAL -> "فترتك التجريبية فعّالة"
-                            else -> "مسجل الدخول"
+                            !isAuthenticated -> stringResource(R.string.ma_drawer_explore)
+                            isAdmin -> stringResource(R.string.ma_drawer_admin)
+                            snapshot?.state == LicenseState.ACTIVE -> stringResource(R.string.ma_drawer_pro)
+                            snapshot?.state == LicenseState.TRIAL -> stringResource(R.string.ma_drawer_trial)
+                            else -> stringResource(R.string.ma_drawer_signed_in)
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = brand.onHeroMuted,
@@ -679,10 +682,10 @@ private fun SabbaqDrawerSheet(
         ) {
             if (isAuthenticated && !isAdmin) {
                 sabbaqDrawerSections.forEach { (title, items) ->
-                    DrawerSectionTitle(title)
+                    DrawerSectionTitle(stringResource(title))
                     items.forEach { item ->
                         DrawerEntry(
-                            label = item.label,
+                            label = stringResource(item.labelRes),
                             icon = item.icon,
                             selected = item.destination == activeDestination,
                             onClick = { onOpenDriverDestination(item.destination) },
@@ -691,27 +694,27 @@ private fun SabbaqDrawerSheet(
                 }
             }
             if (isAdmin) {
-                DrawerSectionTitle("الإدارة")
-                DrawerEntry("لوحة الإدارة", Icons.Outlined.Tune, selected = true, onClick = {})
+                DrawerSectionTitle(stringResource(R.string.ma_sec_admin))
+                DrawerEntry(stringResource(R.string.ma_drawer_admin), Icons.Outlined.Tune, selected = true, onClick = {})
             }
             if (!isAuthenticated) {
-                DrawerEntry("تسجيل الدخول", Icons.Outlined.AccountCircle, selected = false, onClick = onOpenLogin)
+                DrawerEntry(stringResource(R.string.ma_sign_in), Icons.Outlined.AccountCircle, selected = false, onClick = onOpenLogin)
             }
-            DrawerSectionTitle("المظهر")
+            DrawerSectionTitle(stringResource(R.string.ma_sec_appearance))
             DrawerThemeChooser(themeMode, onThemeChange)
-            DrawerSectionTitle("الخصوصية")
-            DrawerEntry("سياسة الخصوصية", Icons.Outlined.PrivacyTip, selected = false, onClick = onOpenPrivacy)
-            DrawerEntry("طلب حذف الحساب", Icons.Outlined.DeleteOutline, selected = false, onClick = onOpenDeletion)
+            DrawerSectionTitle(stringResource(R.string.ma_sec_privacy))
+            DrawerEntry(stringResource(R.string.sub_privacy_policy), Icons.Outlined.PrivacyTip, selected = false, onClick = onOpenPrivacy)
+            DrawerEntry(stringResource(R.string.ma_request_deletion), Icons.Outlined.DeleteOutline, selected = false, onClick = onOpenDeletion)
         }
         // Footer: sign-out set apart, then the version.
         Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             if (isAuthenticated) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                DrawerEntry("تسجيل الخروج", Icons.AutoMirrored.Outlined.Logout, selected = false, destructive = true,
+                DrawerEntry(stringResource(R.string.sub_sign_out), Icons.AutoMirrored.Outlined.Logout, selected = false, destructive = true,
                     enabled = logoutEnabled, onClick = onRequestLogout)
             }
             Text(
-                "سبّاق ${BuildConfig.VERSION_NAME}",
+                stringResource(R.string.ma_version, BuildConfig.VERSION_NAME),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 12.dp),
@@ -728,16 +731,17 @@ private fun DrawerThemeChooser(themeMode: ThemeMode, onThemeChange: (ThemeMode) 
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         listOf(
-            Triple(ThemeMode.SYSTEM, "تلقائي", Icons.Outlined.SettingsBrightness),
-            Triple(ThemeMode.LIGHT, "فاتح", Icons.Outlined.LightMode),
-            Triple(ThemeMode.DARK, "داكن", Icons.Outlined.DarkMode),
+            Triple(ThemeMode.SYSTEM, stringResource(R.string.ma_theme_auto), Icons.Outlined.SettingsBrightness),
+            Triple(ThemeMode.LIGHT, stringResource(R.string.ma_theme_light), Icons.Outlined.LightMode),
+            Triple(ThemeMode.DARK, stringResource(R.string.ma_theme_dark), Icons.Outlined.DarkMode),
         ).forEach { (mode, label, icon) ->
+            val themeCd = stringResource(R.string.ma_theme_cd, label)
             FilterChip(
                 selected = themeMode == mode,
                 onClick = { onThemeChange(mode) },
                 label = { Text(label) },
                 leadingIcon = { Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                modifier = Modifier.weight(1f).semantics { contentDescription = "مظهر $label" },
+                modifier = Modifier.weight(1f).semantics { contentDescription = themeCd },
             )
         }
     }
