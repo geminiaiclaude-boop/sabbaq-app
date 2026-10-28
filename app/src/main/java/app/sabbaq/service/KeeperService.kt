@@ -220,9 +220,11 @@ class KeeperService : Service() {
         }
         // The server answered and the license is not valid: a definitive stop.
         if (revalidation.isSuccess) return stopForLicense()
-        // The 15-minute lease ran out without a server answer (no coverage, session renewal
-        // failed). Pause instead of stopping: the old behaviour shut monitoring down for good
-        // and a driver who drove through a dead zone lost every offer until reopening the app.
+        // The subscription period ended locally and the server could not be reached to confirm a
+        // renewal (no coverage, session renewal failed). Pause instead of stopping: the old
+        // behaviour shut monitoring down for good and a driver who drove through a dead zone lost
+        // every offer until reopening the app. A still-valid subscription never reaches here,
+        // because its lease stays valid for the whole paid period without a periodic re-check.
         val restored = try {
             SupabaseClient.restoreSession()
         } catch (cancelled: CancellationException) {

@@ -8,20 +8,22 @@ import org.junit.Test
 
 class LicenseLeaseTest {
     @Test
-    fun `المهلة تنتهي عند اقرب حد من انتهاء الاشتراك وخمس عشرة دقيقة`() {
+    fun `المشترك يبقى صالحا طوال مدة الاشتراك دون اشتراط فحص دوري`() {
         val clock = FakeClock(1_000L)
         val lease = LicenseLease(clock)
-        val status = activeStatus(validForMillis = 20L * 60L * 1000L)
+        val day = 24L * 60L * 60L * 1000L
+        val status = activeStatus(validForMillis = 30L * day)
 
         assertTrue(lease.replace(status, appVersionCode = 7, requestStartedAtMillis = clock.nowMillis()))
-        clock.now = 1_000L + LicenseLease.MAX_REVALIDATION_AGE_MILLIS - 1L
+        // لا يتوقف لأن فحصًا دوريًا لم يصل: يظل صالحًا بعد ساعات ثم أيام من آخر تحقق ناجح.
+        clock.now = 1_000L + 60L * 60L * 1000L
         assertTrue(lease.isValid())
-        clock.now += 1L
-        assertFalse(lease.isValid())
+        clock.now = 1_000L + 29L * day
+        assertTrue(lease.isValid())
     }
 
     @Test
-    fun `لا تمنح المهلة سماحا بعد انتهاء الاشتراك ولو كانت نافذة إعادة التحقق اطول`() {
+    fun `الصلاحية تنتهي عند انتهاء مدة الاشتراك التي حددها الخادم`() {
         val clock = FakeClock(10L)
         val lease = LicenseLease(clock)
         val status = activeStatus(validForMillis = 90_000L)
@@ -30,6 +32,17 @@ class LicenseLeaseTest {
         clock.now = 10L + 90_000L - 1L
         assertTrue(lease.isValid())
         clock.now += 1L
+        assertFalse(lease.isValid())
+    }
+
+    @Test
+    fun `ابطال المهلة يوقف الصلاحية فورا حتى داخل مدة الاشتراك`() {
+        val clock = FakeClock(1_000L)
+        val lease = LicenseLease(clock)
+        val status = activeStatus(validForMillis = 30L * 24L * 60L * 60L * 1000L)
+
+        assertTrue(lease.replace(status, appVersionCode = 7, requestStartedAtMillis = clock.nowMillis()))
+        lease.invalidate()
         assertFalse(lease.isValid())
     }
 
