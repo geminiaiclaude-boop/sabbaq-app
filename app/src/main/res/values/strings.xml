@@ -812,4 +812,24 @@ Write your problem or question and our team will reply here during working hours
     <string name="lat_done">Done</string>
     <string name="lat_not_done">Not done</string>
     <string name="lat_dispatch_refused">The system refused the tap at least once.</string>
+    <string name="adm_sec_drivers">Drivers</string>
+    <string name="adm_sec_support">Support</string>
+    <string name="adm_sec_notifications">Notifications</string>
+    <string name="adm_sec_codes">Activation codes</string>
+    <string name="adm_sec_policy">Offer policy</string>
+    <string name="adm_sec_telemetry">Complaint diagnosis</string>
+    <string name="adm_sec_profiles">App profiles</string>
+    <string name="adm_checking">Verifying admin access…</string>
+    <string name="adm_denied_session">Your sign-in session ended. Sign out from the menu, then sign in with the admin account.</string>
+    <string name="adm_denied">This account is not authorized to access the admin panel.</string>
+    <string name="adm_failed_offline">No network connection; admin access could not be verified.</string>
+    <string name="adm_failed">Admin access could not be verified now. Try again shortly.</string>
+    <string name="adm_continue">Continue</string>
+    <string name="adm_panel_title">Admin panel</string>
+    <string name="adm_panel_sub">Review the status before taking any action. The panel locks after 15 minutes of inactivity.</string>
+    <string name="adm_support_unread_cd">Support, %1$d unread messages</string>
+    <string name="adm_undefined">Not set</string>
+    <string name="adm_prev">Previous</string>
+    <string name="adm_page">Page %1$d</string>
+    <string name="adm_next">Next</string>
 </resources>

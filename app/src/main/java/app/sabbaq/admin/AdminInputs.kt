@@ -1,11 +1,15 @@
 package app.sabbaq.admin
 
+import app.sabbaq.LocaleManager
+
 /**
  * The administration's input rules, pure so they are unit tested: Arabic and Persian digits are
  * accepted, money is parsed from text into halalas without floating point, and CSV fields are
  * neutralised against spreadsheet formula injection. Same rules as the server and the web panel.
  */
 object AdminInputs {
+    private val ar: Boolean get() = LocaleManager.isArabic()
+
     const val MIN_MINOR = 1L
     const val MAX_MINOR = 100_000_000L
     private const val MAX_CONTACT_URL_BYTES = 2048
@@ -71,7 +75,7 @@ object AdminInputs {
 
     /** UTF-8 with a byte-order mark so spreadsheet apps read the Arabic header correctly. */
     fun codesCsv(rows: List<AdminExportCode>): String =
-        "\uFEFF" + (listOf(listOf<Any?>("الكود", "المدة (أيام)", "الدفعة")) + rows.map { listOf(it.code, it.days, it.batch) })
+        "\uFEFF" + (listOf(if (ar) listOf<Any?>("الكود", "المدة (أيام)", "الدفعة") else listOf<Any?>("Code", "Duration (days)", "Batch")) + rows.map { listOf(it.code, it.days, it.batch) })
             .joinToString("\r\n") { row -> row.joinToString(",", transform = ::csvField) }
 
     fun androidRelease(api: Int?): String? {
@@ -82,15 +86,15 @@ object AdminInputs {
 
     /** "2.1.0 (9) · أندرويد 14 · آخر ظهور …", the same wording as the web panel. */
     fun describeVersion(version: AdminDriverVersion?, formatTime: (java.time.Instant) -> String): String {
-        version ?: return "غير معروف"
+        version ?: return if (ar) "غير معروف" else "Unknown"
         val parts = mutableListOf<String>()
         parts += when {
             version.versionName != null -> version.versionCode?.let { "${version.versionName} ($it)" } ?: version.versionName
-            version.versionCode != null -> "رمز ${version.versionCode}"
-            else -> "لم يتصل بعد"
+            version.versionCode != null -> (if (ar) "رمز ${version.versionCode}" else "Code ${version.versionCode}")
+            else -> (if (ar) "لم يتصل بعد" else "Not connected yet")
         }
-        androidRelease(version.androidApi)?.let { parts += "أندرويد $it" }
-        version.lastSeen?.let { parts += "آخر ظهور ${formatTime(it)}" }
+        androidRelease(version.androidApi)?.let { parts += if (ar) "أندرويد $it" else "Android $it" }
+        version.lastSeen?.let { parts += if (ar) "آخر ظهور ${formatTime(it)}" else "Last seen ${formatTime(it)}" }
         return parts.joinToString(" · ")
     }
 }

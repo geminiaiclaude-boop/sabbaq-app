@@ -29,6 +29,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import android.os.SystemClock
 import app.sabbaq.network.SupabaseClient
 import app.sabbaq.network.SupabaseClient.FeatureFailure
+import app.sabbaq.LocaleManager
+import app.sabbaq.R
+import androidx.compose.ui.res.stringResource
 import app.sabbaq.ui.SabbaqLocale
 import app.sabbaq.ui.SabbaqTone
 import java.time.Instant
@@ -66,10 +69,10 @@ class AdminSession {
      */
     fun failureOf(error: Throwable?, fallback: String): AdminNotice {
         val kind = SupabaseClient.featureFailureOf(error)
-        if (kind == FeatureFailure.SESSION) lock("انتهت الجلسة أو لم يعد الحساب مخوّلًا لتنفيذ هذه العملية.")
+        if (kind == FeatureFailure.SESSION) lock(if (LocaleManager.isArabic()) "انتهت الجلسة أو لم يعد الحساب مخوّلًا لتنفيذ هذه العملية." else "The session ended or the account is no longer authorized to perform this operation.")
         return failure(when (kind) {
-            FeatureFailure.OFFLINE -> "لا يوجد اتصال بالشبكة؛ لم تُرسل أي عملية."
-            FeatureFailure.SESSION -> "انتهت الجلسة أو لم يعد الحساب مخوّلًا لتنفيذ هذه العملية."
+            FeatureFailure.OFFLINE -> (if (LocaleManager.isArabic()) "لا يوجد اتصال بالشبكة؛ لم تُرسل أي عملية." else "No network connection; no operation was sent.")
+            FeatureFailure.SESSION -> (if (LocaleManager.isArabic()) "انتهت الجلسة أو لم يعد الحساب مخوّلًا لتنفيذ هذه العملية." else "The session ended or the account is no longer authorized to perform this operation.")
             else -> fallback
         })
     }
@@ -83,9 +86,9 @@ private val dateTimeFormat = DateTimeFormatter.ofPattern("MM/dd HH:mm", SabbaqLo
 private val dateFormat = DateTimeFormatter.ofPattern("yyyy/MM/dd", SabbaqLocale)
 private val fullFormat = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm", SabbaqLocale)
 
-internal fun formatDateTime(value: Instant?): String = value?.atZone(ZoneId.systemDefault())?.format(dateTimeFormat) ?: "غير محدد"
-internal fun formatDate(value: Instant?): String = value?.atZone(ZoneId.systemDefault())?.format(dateFormat) ?: "غير محدد"
-internal fun formatFull(value: Instant?): String = value?.atZone(ZoneId.systemDefault())?.format(fullFormat) ?: "غير محدد"
+internal fun formatDateTime(value: Instant?): String = value?.atZone(ZoneId.systemDefault())?.format(dateTimeFormat) ?: (if (LocaleManager.isArabic()) "غير محدد" else "Not set")
+internal fun formatDate(value: Instant?): String = value?.atZone(ZoneId.systemDefault())?.format(dateFormat) ?: (if (LocaleManager.isArabic()) "غير محدد" else "Not set")
+internal fun formatFull(value: Instant?): String = value?.atZone(ZoneId.systemDefault())?.format(fullFormat) ?: (if (LocaleManager.isArabic()) "غير محدد" else "Not set")
 
 internal val monoStyle @Composable get() = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace)
 
@@ -97,7 +100,7 @@ internal fun AdminConfirm(title: String, text: String, confirm: String, onConfir
         title = { Text(title) },
         text = { Text(text) },
         confirmButton = { TextButton(onClick = { onDismiss(); onConfirm() }) { Text(confirm) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("إلغاء") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.ss_cancel)) } },
     )
 }
 
@@ -157,9 +160,9 @@ internal fun AdminField(
 @Composable
 internal fun AdminPager(offset: Int, pageSize: Int, hasMore: Boolean, loading: Boolean, onMove: (Int) -> Unit) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-        TextButton(onClick = { onMove(-1) }, enabled = !loading && offset > 0) { Text("السابق") }
-        Text("الصفحة ${offset / pageSize + 1}", style = MaterialTheme.typography.labelLarge)
-        TextButton(onClick = { onMove(1) }, enabled = !loading && hasMore) { Text("التالي") }
+        TextButton(onClick = { onMove(-1) }, enabled = !loading && offset > 0) { Text(stringResource(R.string.adm_prev)) }
+        Text(stringResource(R.string.adm_page, offset / pageSize + 1), style = MaterialTheme.typography.labelLarge)
+        TextButton(onClick = { onMove(1) }, enabled = !loading && hasMore) { Text(stringResource(R.string.adm_next)) }
     }
 }
 

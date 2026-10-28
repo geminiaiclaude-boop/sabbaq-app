@@ -111,9 +111,9 @@ internal fun AdminNotificationsSection(session: AdminSession, consume: () -> Adm
                 AdminField("العنوان", title, { title = it; error = null }, maxLength = 80, modifier = Modifier.testTag("admin-notification-title").focusRequester(titleFocus))
                 AdminField("النص", body, { body = it; error = null }, maxLength = 500, singleLine = false, minLines = 3,
                     hint = "${body.length} / 500", modifier = Modifier.testTag("admin-notification-body"))
-                AdminChoice("النوع", AdminRepository.NOTIFICATION_KINDS.toList(), kind, onSelect = { kind = it })
-                AdminChoice("زر في الإشعار", AdminRepository.NOTIFICATION_ACTIONS.toList(), action, onSelect = { action = it })
-                AdminChoice("ينتهي بعد", AdminRepository.NOTIFICATION_EXPIRY.toList(), expiry, onSelect = { expiry = it })
+                AdminChoice("النوع", AdminRepository.notificationKinds().toList(), kind, onSelect = { kind = it })
+                AdminChoice("زر في الإشعار", AdminRepository.notificationActions().toList(), action, onSelect = { action = it })
+                AdminChoice("ينتهي بعد", AdminRepository.notificationExpiry().toList(), expiry, onSelect = { expiry = it })
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                 SabbaqButton(
                     if (targetId != null) "إرسال إلى $targetName" else "إرسال لكل السائقين",
@@ -147,7 +147,7 @@ internal fun AdminNotificationsSection(session: AdminSession, consume: () -> Adm
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         AdminFact("الوقت", formatDateTime(item.createdAt))
                         AdminFact("المستلم", if (item.toAll) "كل السائقين" else item.driverName ?: "سائق")
-                        AdminFact("النوع", AdminRepository.NOTIFICATION_KINDS[item.kind] ?: "معلومة")
+                        AdminFact("النوع", AdminRepository.notificationKinds()[item.kind] ?: AdminRepository.notificationKinds().values.first())
                         AdminFact("قرأه", item.readCount.toString())
                     }
                     SabbaqButton("حذف", onClick = { confirmDelete = item }, style = SabbaqButtonStyle.Destructive, fillWidth = false,

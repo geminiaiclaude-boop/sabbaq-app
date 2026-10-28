@@ -819,4 +819,24 @@
     <string name="lat_done">تم</string>
     <string name="lat_not_done">لم يتم</string>
     <string name="lat_dispatch_refused">رفض النظام النقر مرة واحدة على الأقل.</string>
+    <string name="adm_sec_drivers">السائقون</string>
+    <string name="adm_sec_support">الدعم</string>
+    <string name="adm_sec_notifications">الإشعارات</string>
+    <string name="adm_sec_codes">أكواد التفعيل</string>
+    <string name="adm_sec_policy">سياسة العرض</string>
+    <string name="adm_sec_telemetry">تشخيص الشكاوى</string>
+    <string name="adm_sec_profiles">ملفات التطبيقات</string>
+    <string name="adm_checking">جارٍ التحقق من صلاحية الإدارة…</string>
+    <string name="adm_denied_session">انتهت جلسة الدخول. سجّل الخروج من القائمة ثم ادخل بحساب المشرف.</string>
+    <string name="adm_denied">هذا الحساب غير مخوّل للوصول إلى لوحة الإدارة.</string>
+    <string name="adm_failed_offline">لا يوجد اتصال بالشبكة؛ تعذر التحقق من صلاحية الإدارة.</string>
+    <string name="adm_failed">تعذر التحقق من صلاحية الإدارة الآن. أعد المحاولة بعد قليل.</string>
+    <string name="adm_continue">متابعة</string>
+    <string name="adm_panel_title">لوحة الإدارة</string>
+    <string name="adm_panel_sub">راجع الحالة قبل تنفيذ أي إجراء. تُقفل اللوحة بعد 15 دقيقة من عدم النشاط.</string>
+    <string name="adm_support_unread_cd">الدعم، %1$d رسالة غير مقروءة</string>
+    <string name="adm_undefined">غير محدد</string>
+    <string name="adm_prev">السابق</string>
+    <string name="adm_page">الصفحة %1$d</string>
+    <string name="adm_next">التالي</string>
 </resources>

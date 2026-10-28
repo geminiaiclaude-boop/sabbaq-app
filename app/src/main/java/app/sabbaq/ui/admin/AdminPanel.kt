@@ -41,6 +41,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
+import app.sabbaq.LocaleManager
+import app.sabbaq.R
+import androidx.compose.ui.res.stringResource
 import app.sabbaq.admin.AdminRepository
 import app.sabbaq.network.SupabaseClient
 import app.sabbaq.network.SupabaseClient.FeatureFailure
@@ -49,14 +52,14 @@ import app.sabbaq.ui.SabbaqCard
 import app.sabbaq.ui.SabbaqMessage
 import kotlinx.coroutines.delay
 
-enum class AdminSection(val label: String) {
-    DRIVERS("السائقون"),
-    SUPPORT("الدعم"),
-    NOTIFICATIONS("الإشعارات"),
-    CODES("أكواد التفعيل"),
-    POLICY("سياسة العرض"),
-    TELEMETRY("تشخيص الشكاوى"),
-    PROFILES("ملفات التطبيقات"),
+enum class AdminSection(val labelRes: Int) {
+    DRIVERS(R.string.adm_sec_drivers),
+    SUPPORT(R.string.adm_sec_support),
+    NOTIFICATIONS(R.string.adm_sec_notifications),
+    CODES(R.string.adm_sec_codes),
+    POLICY(R.string.adm_sec_policy),
+    TELEMETRY(R.string.adm_sec_telemetry),
+    PROFILES(R.string.adm_sec_profiles),
 }
 
 /** What one section asks another to open: a driver's diagnosis, a notification to one driver, a chat. */
@@ -99,7 +102,7 @@ fun AdminPanel() {
         if (access != Access.GRANTED) return@LaunchedEffect
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (true) {
-                if (session.idleMillis() >= AdminSession.IDLE_LIMIT_MILLIS) session.lock("انتهت الجلسة بسبب عدم النشاط.")
+                if (session.idleMillis() >= AdminSession.IDLE_LIMIT_MILLIS) session.lock(if (LocaleManager.isArabic()) "انتهت الجلسة بسبب عدم النشاط." else "The session ended due to inactivity.")
                 delay(30_000)
             }
         }
@@ -111,19 +114,19 @@ fun AdminPanel() {
         when {
             access == Access.CHECKING -> AdminCentered {
                 CircularProgressIndicator()
-                Text("جارٍ التحقق من صلاحية الإدارة…", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.adm_checking), style = MaterialTheme.typography.bodyMedium)
             }
             access == Access.DENIED -> AdminGate(
-                if (accessFailure == FeatureFailure.SESSION) "انتهت جلسة الدخول. سجّل الخروج من القائمة ثم ادخل بحساب المشرف."
-                else "هذا الحساب غير مخوّل للوصول إلى لوحة الإدارة.",
+                if (accessFailure == FeatureFailure.SESSION) stringResource(R.string.adm_denied_session)
+                else stringResource(R.string.adm_denied),
                 retry = { attempt++ },
             )
             access == Access.FAILED -> AdminGate(
-                if (accessFailure == FeatureFailure.OFFLINE) "لا يوجد اتصال بالشبكة؛ تعذر التحقق من صلاحية الإدارة."
-                else "تعذر التحقق من صلاحية الإدارة الآن. أعد المحاولة بعد قليل.",
+                if (accessFailure == FeatureFailure.OFFLINE) stringResource(R.string.adm_failed_offline)
+                else stringResource(R.string.adm_failed),
                 retry = { attempt++ },
             )
-            session.locked != null -> AdminGate(session.locked.orEmpty(), retry = { attempt++ }, retryText = "متابعة")
+            session.locked != null -> AdminGate(session.locked.orEmpty(), retry = { attempt++ }, retryText = stringResource(R.string.adm_continue))
             else -> AdminWorkspace(session)
         }
     }
@@ -137,12 +140,12 @@ private fun AdminCentered(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun AdminGate(message: String, retry: () -> Unit, retryText: String = "إعادة المحاولة") {
+private fun AdminGate(message: String, retry: () -> Unit, retryText: String = "") {
     AdminCentered {
         Column(Modifier.widthIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            SabbaqCard(title = "لوحة الإدارة", icon = Icons.Outlined.Lock) {
+            SabbaqCard(title = stringResource(R.string.adm_panel_title), icon = Icons.Outlined.Lock) {
                 SabbaqMessage(message, isError = true)
-                SabbaqButton(retryText, onClick = retry, modifier = Modifier.testTag("admin-retry"))
+                SabbaqButton(retryText.ifEmpty { stringResource(R.string.ss_retry) }, onClick = retry, modifier = Modifier.testTag("admin-retry"))
             }
         }
     }
@@ -184,23 +187,24 @@ private fun AdminWorkspace(session: AdminSession) {
                     horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Icon(Icons.Outlined.AdminPanelSettings, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Column(Modifier.weight(1f)) {
-                        Text("لوحة الإدارة", style = MaterialTheme.typography.titleMedium)
-                        Text("راجع الحالة قبل تنفيذ أي إجراء. تُقفل اللوحة بعد 15 دقيقة من عدم النشاط.",
+                        Text(stringResource(R.string.adm_panel_title), style = MaterialTheme.typography.titleMedium)
+                        Text(stringResource(R.string.adm_panel_sub),
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 PrimaryScrollableTabRow(selectedTabIndex = section.ordinal, edgePadding = 8.dp) {
+                    val supportUnreadCd = stringResource(R.string.adm_support_unread_cd, supportUnread)
                     AdminSection.entries.forEach { entry ->
                         Tab(
                             selected = entry == section,
                             onClick = { section = entry },
                             modifier = Modifier.testTag("admin-tab-${entry.name.lowercase()}").semantics {
-                                if (entry == AdminSection.SUPPORT && supportUnread > 0) contentDescription = "الدعم، $supportUnread رسالة غير مقروءة"
+                                if (entry == AdminSection.SUPPORT && supportUnread > 0) contentDescription = supportUnreadCd
                             },
                             text = {
                                 if (entry == AdminSection.SUPPORT && supportUnread > 0) {
-                                    BadgedBox(badge = { Badge { Text(if (supportUnread > 99) "99+" else supportUnread.toString()) } }) { Text(entry.label) }
-                                } else Text(entry.label)
+                                    BadgedBox(badge = { Badge { Text(if (supportUnread > 99) "99+" else supportUnread.toString()) } }) { Text(stringResource(entry.labelRes)) }
+                                } else Text(stringResource(entry.labelRes))
                             },
                         )
                     }
