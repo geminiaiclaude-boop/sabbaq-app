@@ -22,6 +22,7 @@ import android.util.Log
 import android.view.accessibility.AccessibilityManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
+import app.sabbaq.LocaleManager
 import app.sabbaq.Settings
 import app.sabbaq.core.TelemetryStage
 import app.sabbaq.network.SupabaseClient
@@ -284,8 +285,8 @@ class KeeperService : Service() {
         )
         monitoringLive = false
         VoiceAnnouncer.announce(VoiceKind.Problem, VoiceRules.line(cause))
-        val stopText = VoiceRules.line(cause).removePrefix("توقف سبّاق. ")
-        notifyAlert(STOP_NOTIFICATION_ID, "توقفت متابعة الطلبات", stopText)
+        val stopText = VoiceRules.line(cause).removePrefix(if (LocaleManager.isArabic()) "توقف سبّاق. " else "Sabbaq stopped. ")
+        notifyAlert(STOP_NOTIFICATION_ID, (if (LocaleManager.isArabic()) "توقفت متابعة الطلبات" else "Order monitoring stopped"), stopText)
         NotificationCenter.post(NotificationTemplates.monitoringStopped(stopText, System.currentTimeMillis()))
     }
 
@@ -296,7 +297,7 @@ class KeeperService : Service() {
         accessibilityWasOn = on
         if (!on && before != false) {
             VoiceAnnouncer.announce(VoiceKind.Problem, VoiceLines.ACCESSIBILITY_OFF)
-            notifyAlert(A11Y_NOTIFICATION_ID, "إذن متابعة الطلبات مغلق", "لن يقبل سبّاق أي طلب حتى تفعّله. اضغط لفتح التطبيق.")
+            notifyAlert(A11Y_NOTIFICATION_ID, (if (LocaleManager.isArabic()) "إذن متابعة الطلبات مغلق" else "Order-monitoring permission is off"), (if (LocaleManager.isArabic()) "لن يقبل سبّاق أي طلب حتى تفعّله. اضغط لفتح التطبيق." else "Sabbaq will not accept any order until you enable it. Tap to open the app."))
             NotificationCenter.post(NotificationTemplates.accessibilityOff(System.currentTimeMillis()))
         } else if (on && before == false) {
             VoiceAnnouncer.announce(VoiceKind.Problem, VoiceLines.ACCESSIBILITY_BACK)
@@ -395,14 +396,14 @@ class KeeperService : Service() {
             val manager = getSystemService(NotificationManager::class.java) ?: return
             manager.createNotificationChannel(NotificationChannel(
                 CHANNEL_ID,
-                "حالة سبّاق الطلبات",
+                (if (LocaleManager.isArabic()) "حالة سبّاق الطلبات" else "Sabbaq order status"),
                 NotificationManager.IMPORTANCE_LOW
-            ).apply { description = "إشعار دائم يوضح أن مراقبة العروض مفعلة." })
+            ).apply { description = (if (LocaleManager.isArabic()) "إشعار دائم يوضح أن مراقبة العروض مفعلة." else "A persistent notification showing that order monitoring is on.") })
             manager.createNotificationChannel(NotificationChannel(
                 ALERT_CHANNEL_ID,
-                "تنبيهات سبّاق",
+                (if (LocaleManager.isArabic()) "تنبيهات سبّاق" else "Sabbaq alerts"),
                 NotificationManager.IMPORTANCE_DEFAULT
-            ).apply { description = "تنبيه عندما تتوقف المتابعة أو يُغلق إذن تحتاجه." })
+            ).apply { description = (if (LocaleManager.isArabic()) "تنبيه عندما تتوقف المتابعة أو يُغلق إذن تحتاجه." else "An alert when monitoring stops or a permission you need is turned off.") })
         }
     }
 
@@ -435,14 +436,14 @@ class KeeperService : Service() {
 
     private fun buildNotification(resuming: Boolean, waitingForNetwork: Boolean = false) = NotificationCompat.Builder(this, CHANNEL_ID)
         .setContentTitle(when {
-            waitingForNetwork -> "سبّاق متوقف مؤقتًا"
-            resuming -> "سبّاق يستأنف المتابعة…"
-            else -> "سبّاق الطلبات مفعّل"
+            waitingForNetwork -> (if (LocaleManager.isArabic()) "سبّاق متوقف مؤقتًا" else "Sabbaq is paused")
+            resuming -> (if (LocaleManager.isArabic()) "سبّاق يستأنف المتابعة…" else "Sabbaq is resuming monitoring…")
+            else -> (if (LocaleManager.isArabic()) "سبّاق الطلبات مفعّل" else "Sabbaq order monitoring is on")
         })
         .setContentText(when {
-            waitingForNetwork -> "بانتظار الإنترنت لتأكيد اشتراكك؛ يعود تلقائيًا عند الاتصال."
-            resuming -> "نتحقق من اشتراكك ونعيد المتابعة تلقائيًا."
-            else -> "يراقب العروض وفق الإعدادات التي اخترتها."
+            waitingForNetwork -> (if (LocaleManager.isArabic()) "بانتظار الإنترنت لتأكيد اشتراكك؛ يعود تلقائيًا عند الاتصال." else "Waiting for the internet to confirm your subscription; it returns automatically when connected.")
+            resuming -> (if (LocaleManager.isArabic()) "نتحقق من اشتراكك ونعيد المتابعة تلقائيًا." else "We are verifying your subscription and resuming monitoring automatically.")
+            else -> (if (LocaleManager.isArabic()) "يراقب العروض وفق الإعدادات التي اخترتها." else "It monitors orders according to the settings you chose.")
         })
         .setSmallIcon(app.sabbaq.R.drawable.ic_stat_sabbaq)
         .setColor(0xFF4E2A84.toInt())
@@ -452,7 +453,7 @@ class KeeperService : Service() {
         .setOnlyAlertOnce(true)
         .addAction(
             android.R.drawable.ic_media_pause,
-            "إيقاف",
+            (if (LocaleManager.isArabic()) "إيقاف" else "Stop"),
             android.app.PendingIntent.getService(
                 this, 1, Intent(this, KeeperService::class.java).setAction(ACTION_STOP),
                 android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE,

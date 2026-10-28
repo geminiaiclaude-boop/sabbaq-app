@@ -50,6 +50,9 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import app.sabbaq.LocaleManager
+import app.sabbaq.R
+import androidx.compose.ui.res.stringResource
 import app.sabbaq.Settings
 import app.sabbaq.ThemeMode
 import app.sabbaq.core.LiveAcceptProbe
@@ -100,13 +103,13 @@ class LiveAcceptTestActivity : ComponentActivity() {
 }
 
 private val STEP_LABELS = linkedMapOf(
-    Step.EVENT to "وصول أحداث الشاشة إلى سبّاق",
-    Step.READ to "قراءة محتوى الشاشة",
-    Step.PARSED to "استخراج الأجرة والمسافات بقواعد جيني",
-    Step.ACCEPT_FOUND to "العثور على زر القبول",
-    Step.DISPATCHED to "إرسال النقر على الزر",
-    Step.CLICK_RECEIVED to "وصول النقر إلى الزر",
-    Step.CONFIRMED to "رؤية شاشة التأكيد",
+    Step.EVENT to R.string.lat_step_event,
+    Step.READ to R.string.lat_step_read,
+    Step.PARSED to R.string.lat_step_parsed,
+    Step.ACCEPT_FOUND to R.string.lat_step_accept,
+    Step.DISPATCHED to R.string.lat_step_dispatched,
+    Step.CLICK_RECEIVED to R.string.lat_step_received,
+    Step.CONFIRMED to R.string.lat_step_confirmed,
 )
 
 @Composable
@@ -159,13 +162,13 @@ private fun LiveAcceptTestScreen(onOpenAccessibility: () -> Unit, onClose: () ->
     ) {
         Column(Modifier.widthIn(max = 560.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             SabbaqSectionTitle(
-                "اختبار القبول الحي",
-                "يعرض سبّاق طلبًا تجريبيًا ويقبله بنفس الطريقة التي يقبل بها طلبات جيني، على جوالك أنت. لا تلمس الشاشة أثناء الاختبار.",
+                stringResource(R.string.lat_title),
+                stringResource(R.string.lat_subtitle),
             )
             if (!serviceReady) {
-                SabbaqMessage("إذن متابعة الطلبات غير مفعّل أو لم يتصل بعد. فعّله ثم ارجع وأعد الاختبار.", isError = true)
-                SabbaqButton(text = "فتح إعدادات الإتاحة", onClick = onOpenAccessibility)
-                SabbaqButton(text = "إعادة الاختبار", onClick = { run++ }, style = SabbaqButtonStyle.Secondary)
+                SabbaqMessage(stringResource(R.string.lat_service_off), isError = true)
+                SabbaqButton(text = stringResource(R.string.lat_open_a11y), onClick = onOpenAccessibility)
+                SabbaqButton(text = stringResource(R.string.lat_retry), onClick = { run++ }, style = SabbaqButtonStyle.Secondary)
                 return@Column
             }
             if (showOffer) MockOfferCard(accepted = accepted, onAccept = {
@@ -178,30 +181,30 @@ private fun LiveAcceptTestScreen(onOpenAccessibility: () -> Unit, onClose: () ->
                 if (diagnosis == null) {
                     val seconds = (state.elapsed(Step.CONFIRMED) ?: 0) / 1000.0
                     SabbaqMessage(
-                        "نجح الاختبار: قبل سبّاق الطلب التجريبي خلال ${"%.1f".format(SabbaqLocale, seconds)} ث عبر " +
-                            (if (state.method == LiveAcceptProbe.Method.GESTURE) "لمسة على الشاشة." else "نقر مباشر على الزر."),
+                        stringResource(R.string.lat_success, "%.1f".format(SabbaqLocale, seconds),
+                            if (state.method == LiveAcceptProbe.Method.GESTURE) stringResource(R.string.lat_via_gesture) else stringResource(R.string.lat_via_direct)),
                         tone = SabbaqTone.Success,
                     )
                 } else {
                     SabbaqMessage(diagnosis, isError = true)
                 }
-                SabbaqButton(text = "إعادة الاختبار", onClick = { run++ })
+                SabbaqButton(text = stringResource(R.string.lat_retry), onClick = { run++ })
                 SabbaqButton(
-                    text = when (sentToSupport) { true -> "أُرسلت النتيجة للدعم"; false -> "تعذر الإرسال؛ أعد المحاولة"; null -> "إرسال النتيجة للدعم" },
+                    text = when (sentToSupport) { true -> stringResource(R.string.lat_send_sent); false -> stringResource(R.string.lat_send_failed); null -> stringResource(R.string.lat_send) },
                     enabled = sentToSupport != true,
                     style = SabbaqButtonStyle.Secondary,
                     onClick = {
                         val summary = LiveAcceptProbe.summary(state.reached.keys, state.method, state.elapsed(Step.CONFIRMED))
                         scope.launch {
                             sentToSupport = SupportRepository.send(
-                                "نتيجة اختبار القبول الحي: " + (if (state.succeeded) "نجح" else "فشل") + " ($summary)" +
+                                (if (LocaleManager.isArabic()) "نتيجة اختبار القبول الحي: " else "Live accept test result: ") + (if (state.succeeded) (if (LocaleManager.isArabic()) "نجح" else "passed") else (if (LocaleManager.isArabic()) "فشل" else "failed")) + " ($summary)" +
                                     (diagnosis?.let { "\n$it" } ?: ""),
                             )
                         }
                     },
                 )
             }
-            SabbaqButton(text = "إغلاق", onClick = onClose, style = SabbaqButtonStyle.Text)
+            SabbaqButton(text = stringResource(R.string.lat_close), onClick = onClose, style = SabbaqButtonStyle.Text)
         }
     }
 }
@@ -233,7 +236,7 @@ private fun MockOfferCard(accepted: Boolean, onAccept: () -> Unit) {
 @Composable
 private fun StepsCard(state: LiveAcceptTest.State, running: Boolean) {
     val brand = LocalSabbaqBrand.current
-    SabbaqCard(title = if (running) "جارٍ الاختبار…" else "النتيجة") {
+    SabbaqCard(title = if (running) stringResource(R.string.lat_running) else stringResource(R.string.lat_result_title)) {
         STEP_LABELS.forEach { (step, label) ->
             val ms = state.elapsed(step)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -246,17 +249,17 @@ private fun StepsCard(state: LiveAcceptTest.State, running: Boolean) {
                             running -> Icons.Outlined.HourglassEmpty
                             else -> Icons.Outlined.RadioButtonUnchecked
                         },
-                        contentDescription = if (ms != null) "تم" else "لم يتم",
+                        contentDescription = if (ms != null) stringResource(R.string.lat_done) else stringResource(R.string.lat_not_done),
                         tint = if (ms != null) brand.onSuccessContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(18.dp),
                     )
                 }
-                Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                Text(stringResource(label), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                 if (ms != null) Text("$ms ms", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         if (state.dispatchRefused) {
-            Text("رفض النظام النقر مرة واحدة على الأقل.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            Text(stringResource(R.string.lat_dispatch_refused), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         }
     }
 }
