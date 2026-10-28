@@ -13,14 +13,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import app.sabbaq.LocaleManager
+import app.sabbaq.R
 import app.sabbaq.core.TelemetryDiagnosis
 import app.sabbaq.core.TelemetryStage
 import app.sabbaq.telemetry.TelemetryRepository
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+private fun Pair<String, String>.pick(): String = if (LocaleManager.isArabic()) first else second
 
 /**
  * On-device answer to "why is nothing happening": the funnel since the service started and
@@ -40,7 +45,7 @@ internal fun TelemetryDiagnosticsCard(modifier: Modifier = Modifier) {
     }
     val verdict = TelemetryDiagnosis.diagnose(status.funnel)
     SabbaqCard(
-        title = "تشخيص الرصد",
+        title = stringResource(R.string.tdc_title),
         subtitle = verdictText(verdict),
         icon = Icons.Outlined.BugReport,
         modifier = modifier,
@@ -55,30 +60,29 @@ internal fun TelemetryDiagnosticsCard(modifier: Modifier = Modifier) {
             .take(6).forEach { row ->
                 val reason = RuntimeLabels.reason(row.key.reason)
                 Text(
-                    stageText(row.key.stage) + (if (reason.isNotEmpty()) " · $reason" else "") + " · ${row.total} مرة",
+                    stageText(row.key.stage) + (if (reason.isNotEmpty()) " · $reason" else "") + " · " + stringResource(R.string.tdc_times, row.total),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
         Text(
-            "بانتظار الإرسال: ${status.pending} · ${uploadText(status.state)}" +
-                (status.lastUploadEpochMs?.let { " · آخر إرسال ${clock(it)}" } ?: ""),
+            stringResource(R.string.tdc_pending, status.pending, uploadText(status.state)) +
+                (status.lastUploadEpochMs?.let { stringResource(R.string.tdc_last_upload, clock(it)) } ?: ""),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         sendResult?.let { (result, at) ->
             SabbaqMessage(
                 when (result) {
-                    is TelemetryRepository.SendResult.Sent ->
-                        "أُرسل التشخيص إلى فريق سبّاق الساعة ${clock(at)}. أرسل معرّف الدعم أو راسل الدعم ليُراجَع."
-                    TelemetryRepository.SendResult.NoSession -> "لم يُرسل: سجّل الدخول أولًا ثم أعد المحاولة."
-                    TelemetryRepository.SendResult.Rejected -> "رفض الخادم جزءًا من البيانات وحُذف؛ أُرسل الباقي. أعد المحاولة إن لزم."
-                    TelemetryRepository.SendResult.Retrying -> "تعذر الاتصال بالخادم الآن. سيُعاد الإرسال تلقائيًا، أو أعد المحاولة بعد التأكد من الإنترنت."
+                    is TelemetryRepository.SendResult.Sent -> stringResource(R.string.tdc_sent, clock(at))
+                    TelemetryRepository.SendResult.NoSession -> stringResource(R.string.tdc_no_session)
+                    TelemetryRepository.SendResult.Rejected -> stringResource(R.string.tdc_rejected)
+                    TelemetryRepository.SendResult.Retrying -> stringResource(R.string.tdc_retrying)
                 },
                 tone = if (result is TelemetryRepository.SendResult.Sent) SabbaqTone.Success else SabbaqTone.Error,
             )
         }
         SabbaqButton(
-            text = if (sendResult?.first is TelemetryRepository.SendResult.Sent) "إرسال مرة أخرى" else "إرسال التشخيص الآن",
+            text = if (sendResult?.first is TelemetryRepository.SendResult.Sent) stringResource(R.string.tdc_send_again) else stringResource(R.string.tdc_send_now),
             onClick = {
                 if (!sending) scope.launch {
                     sending = true
@@ -91,85 +95,85 @@ internal fun TelemetryDiagnosticsCard(modifier: Modifier = Modifier) {
                 }
             },
             busy = sending,
-            busyText = "جارٍ إرسال التشخيص…",
+            busyText = stringResource(R.string.tdc_sending),
             style = SabbaqButtonStyle.Secondary,
             icon = Icons.Outlined.CloudUpload,
         )
     }
 }
 
-private fun verdictText(verdict: TelemetryDiagnosis.Verdict): String = when (verdict) {
-    TelemetryDiagnosis.Verdict.NO_EVENTS -> "لم يصل أي حدث من تطبيق النقل"
-    TelemetryDiagnosis.Verdict.DISCLOSURE_REQUIRED -> "إفصاح إمكانية الوصول غير مقبول"
-    TelemetryDiagnosis.Verdict.SERVICE_PAUSED -> "المتابعة متوقفة"
-    TelemetryDiagnosis.Verdict.LICENSE_INVALID -> "الاشتراك غير صالح على هذا الجهاز"
-    TelemetryDiagnosis.Verdict.NO_PROFILES -> "لا توجد ملفات تطبيقات مدعومة محمّلة"
-    TelemetryDiagnosis.Verdict.WINDOW_NOT_READABLE -> "نافذة الطلب غير قابلة للقراءة"
-    TelemetryDiagnosis.Verdict.TREE_REJECTED -> "شاشة التطبيق أكبر من حد القراءة الآمن"
-    TelemetryDiagnosis.Verdict.OFFER_NOT_RECOGNISED -> "الشاشة تُقرأ لكن الطلب لا يُتعرّف عليه"
-    TelemetryDiagnosis.Verdict.OFFER_NOT_PARSED -> "الطلب ظهر وتعذر استخراج تفاصيله"
-    TelemetryDiagnosis.Verdict.OFFERS_REJECTED_BY_RULES -> "الطلبات تُرى وترفضها شروطك"
-    TelemetryDiagnosis.Verdict.ACCEPT_NOT_DISPATCHED -> "تعذر الضغط على زر القبول"
-    TelemetryDiagnosis.Verdict.ACCEPT_NOT_CONFIRMED -> "أُرسل القبول ولم يتأكد"
-    TelemetryDiagnosis.Verdict.WAITING_FOR_OFFER -> "يعمل؛ بانتظار طلب جديد"
-    TelemetryDiagnosis.Verdict.WORKING -> "يعمل ويقبل الطلبات"
-}
+private fun verdictText(verdict: TelemetryDiagnosis.Verdict): String = (when (verdict) {
+    TelemetryDiagnosis.Verdict.NO_EVENTS -> "لم يصل أي حدث من تطبيق النقل" to "No event arrived from the ride app"
+    TelemetryDiagnosis.Verdict.DISCLOSURE_REQUIRED -> "إفصاح إمكانية الوصول غير مقبول" to "The accessibility disclosure is not accepted"
+    TelemetryDiagnosis.Verdict.SERVICE_PAUSED -> "المتابعة متوقفة" to "Monitoring is stopped"
+    TelemetryDiagnosis.Verdict.LICENSE_INVALID -> "الاشتراك غير صالح على هذا الجهاز" to "The subscription is not valid on this device"
+    TelemetryDiagnosis.Verdict.NO_PROFILES -> "لا توجد ملفات تطبيقات مدعومة محمّلة" to "No supported app profiles are loaded"
+    TelemetryDiagnosis.Verdict.WINDOW_NOT_READABLE -> "نافذة الطلب غير قابلة للقراءة" to "The order window is not readable"
+    TelemetryDiagnosis.Verdict.TREE_REJECTED -> "شاشة التطبيق أكبر من حد القراءة الآمن" to "The app screen is larger than the safe read limit"
+    TelemetryDiagnosis.Verdict.OFFER_NOT_RECOGNISED -> "الشاشة تُقرأ لكن الطلب لا يُتعرّف عليه" to "The screen is read but the order is not recognised"
+    TelemetryDiagnosis.Verdict.OFFER_NOT_PARSED -> "الطلب ظهر وتعذر استخراج تفاصيله" to "The order appeared but its details could not be extracted"
+    TelemetryDiagnosis.Verdict.OFFERS_REJECTED_BY_RULES -> "الطلبات تُرى وترفضها شروطك" to "Orders are seen and rejected by your conditions"
+    TelemetryDiagnosis.Verdict.ACCEPT_NOT_DISPATCHED -> "تعذر الضغط على زر القبول" to "Could not tap the accept button"
+    TelemetryDiagnosis.Verdict.ACCEPT_NOT_CONFIRMED -> "أُرسل القبول ولم يتأكد" to "The accept was sent but not confirmed"
+    TelemetryDiagnosis.Verdict.WAITING_FOR_OFFER -> "يعمل؛ بانتظار طلب جديد" to "Running; waiting for a new order"
+    TelemetryDiagnosis.Verdict.WORKING -> "يعمل ويقبل الطلبات" to "Running and accepting orders"
+}).pick()
 
-private fun verdictAdvice(verdict: TelemetryDiagnosis.Verdict): String = when (verdict) {
-    TelemetryDiagnosis.Verdict.NO_EVENTS -> "تأكد أن خدمة إمكانية الوصول لسبّاق مفعّلة وأن تطبيق النقل مفتوح ومتصل."
-    TelemetryDiagnosis.Verdict.DISCLOSURE_REQUIRED -> "افتح سبّاق ووافق على إفصاح إمكانية الوصول ثم شغّل المتابعة."
-    TelemetryDiagnosis.Verdict.SERVICE_PAUSED -> "اضغط تشغيل المتابعة من لوحة التحكم."
-    TelemetryDiagnosis.Verdict.LICENSE_INVALID -> "افتح صفحة الاشتراك لتجديده أو إعادة تسجيل الدخول."
-    TelemetryDiagnosis.Verdict.NO_PROFILES -> "أعد تشغيل سبّاق؛ إن استمر أرسل التشخيص للدعم."
+private fun verdictAdvice(verdict: TelemetryDiagnosis.Verdict): String = (when (verdict) {
+    TelemetryDiagnosis.Verdict.NO_EVENTS -> "تأكد أن خدمة إمكانية الوصول لسبّاق مفعّلة وأن تطبيق النقل مفتوح ومتصل." to "Make sure Sabbaq's accessibility service is enabled and the ride app is open and connected."
+    TelemetryDiagnosis.Verdict.DISCLOSURE_REQUIRED -> "افتح سبّاق ووافق على إفصاح إمكانية الوصول ثم شغّل المتابعة." to "Open Sabbaq, accept the accessibility disclosure, then start monitoring."
+    TelemetryDiagnosis.Verdict.SERVICE_PAUSED -> "اضغط تشغيل المتابعة من لوحة التحكم." to "Press start monitoring from the dashboard."
+    TelemetryDiagnosis.Verdict.LICENSE_INVALID -> "افتح صفحة الاشتراك لتجديده أو إعادة تسجيل الدخول." to "Open the subscription page to renew it or sign in again."
+    TelemetryDiagnosis.Verdict.NO_PROFILES -> "أعد تشغيل سبّاق؛ إن استمر أرسل التشخيص للدعم." to "Restart Sabbaq; if it persists, send the diagnosis to support."
     TelemetryDiagnosis.Verdict.WINDOW_NOT_READABLE,
     TelemetryDiagnosis.Verdict.TREE_REJECTED,
     TelemetryDiagnosis.Verdict.OFFER_NOT_RECOGNISED,
     TelemetryDiagnosis.Verdict.OFFER_NOT_PARSED,
     TelemetryDiagnosis.Verdict.ACCEPT_NOT_DISPATCHED,
-    TelemetryDiagnosis.Verdict.ACCEPT_NOT_CONFIRMED -> "اضغط «إرسال التشخيص الآن» وأرسل معرّف الدعم من صفحة الاشتراك؛ يحتاج هذا إصلاحًا من فريق سبّاق."
-    TelemetryDiagnosis.Verdict.OFFERS_REJECTED_BY_RULES -> "راجع الشروط في «سجل القرارات» وخففها إن كانت أشد من اللازم."
+    TelemetryDiagnosis.Verdict.ACCEPT_NOT_CONFIRMED -> "اضغط «إرسال التشخيص الآن» وأرسل معرّف الدعم من صفحة الاشتراك؛ يحتاج هذا إصلاحًا من فريق سبّاق." to "Press \"Send the diagnosis now\" and send the support ID from the subscription page; this needs a fix from the Sabbaq team."
+    TelemetryDiagnosis.Verdict.OFFERS_REJECTED_BY_RULES -> "راجع الشروط في «سجل القرارات» وخففها إن كانت أشد من اللازم." to "Review the conditions in \"Decision log\" and ease them if they are stricter than needed."
     TelemetryDiagnosis.Verdict.WAITING_FOR_OFFER,
-    TelemetryDiagnosis.Verdict.WORKING -> "لا يلزم أي إجراء."
-}
+    TelemetryDiagnosis.Verdict.WORKING -> "لا يلزم أي إجراء." to "No action is needed."
+}).pick()
 
-private fun stageText(stage: TelemetryStage): String = when (stage) {
-    TelemetryStage.EVENT_RECEIVED -> "حدث وارد"
-    TelemetryStage.PACKAGE_SEEN -> "تطبيق مدعوم"
-    TelemetryStage.GATE_BLOCKED -> "موقوف"
-    TelemetryStage.ROOT_UNAVAILABLE -> "نافذة غير مقروءة"
-    TelemetryStage.TREE_REJECTED -> "شاشة مرفوضة"
-    TelemetryStage.STALE -> "إطار مكرر"
-    TelemetryStage.SIGNAL_MISS -> "لا طلب"
-    TelemetryStage.SIGNAL_FOUND -> "إشارة طلب"
-    TelemetryStage.FRAME_INCOMPLETE -> "إطار ناقص"
-    TelemetryStage.OFFER_NOT_PARSED -> "تعذر الاستخراج"
-    TelemetryStage.OFFER_DETECTED -> "طلب مكتشف"
-    TelemetryStage.REJECTED -> "مرفوض بالشروط"
-    TelemetryStage.DECISION_ACCEPTED -> "مطابق للشروط"
-    TelemetryStage.ACCEPT_NODE -> "زر القبول"
-    TelemetryStage.CLICK_RESULT -> "الضغط"
-    TelemetryStage.CONFIRMATION_CONFIRMED -> "قبول مؤكد"
-    TelemetryStage.CONFIRMATION_TIMEOUT -> "قبول غير مؤكد"
-    TelemetryStage.SERVICE_CONNECTED -> "الخدمة متصلة"
-    TelemetryStage.SERVICE_INTERRUPTED -> "الخدمة مقاطَعة"
-    TelemetryStage.SERVICE_DESTROYED -> "الخدمة أُوقفت"
-    TelemetryStage.UPLOAD_REJECTED -> "رفض الإرسال"
-    TelemetryStage.QUEUE_DROPPED -> "أحداث محذوفة"
-    TelemetryStage.PAUSED -> "إيقاف مؤقت"
-    TelemetryStage.HEARTBEAT -> "نبضة"
-    TelemetryStage.APP_CRASH -> "انهيار التطبيق"
-    TelemetryStage.PARSED, TelemetryStage.ACCEPT_DISPATCHED -> stage.name.lowercase()
-}
+private fun stageText(stage: TelemetryStage): String = (when (stage) {
+    TelemetryStage.EVENT_RECEIVED -> "حدث وارد" to "Incoming event"
+    TelemetryStage.PACKAGE_SEEN -> "تطبيق مدعوم" to "Supported app"
+    TelemetryStage.GATE_BLOCKED -> "موقوف" to "Blocked"
+    TelemetryStage.ROOT_UNAVAILABLE -> "نافذة غير مقروءة" to "Unreadable window"
+    TelemetryStage.TREE_REJECTED -> "شاشة مرفوضة" to "Rejected screen"
+    TelemetryStage.STALE -> "إطار مكرر" to "Repeated frame"
+    TelemetryStage.SIGNAL_MISS -> "لا طلب" to "No order"
+    TelemetryStage.SIGNAL_FOUND -> "إشارة طلب" to "Order signal"
+    TelemetryStage.FRAME_INCOMPLETE -> "إطار ناقص" to "Incomplete frame"
+    TelemetryStage.OFFER_NOT_PARSED -> "تعذر الاستخراج" to "Extraction failed"
+    TelemetryStage.OFFER_DETECTED -> "طلب مكتشف" to "Order detected"
+    TelemetryStage.REJECTED -> "مرفوض بالشروط" to "Rejected by conditions"
+    TelemetryStage.DECISION_ACCEPTED -> "مطابق للشروط" to "Matches conditions"
+    TelemetryStage.ACCEPT_NODE -> "زر القبول" to "Accept button"
+    TelemetryStage.CLICK_RESULT -> "الضغط" to "Tap"
+    TelemetryStage.CONFIRMATION_CONFIRMED -> "قبول مؤكد" to "Accept confirmed"
+    TelemetryStage.CONFIRMATION_TIMEOUT -> "قبول غير مؤكد" to "Accept unconfirmed"
+    TelemetryStage.SERVICE_CONNECTED -> "الخدمة متصلة" to "Service connected"
+    TelemetryStage.SERVICE_INTERRUPTED -> "الخدمة مقاطَعة" to "Service interrupted"
+    TelemetryStage.SERVICE_DESTROYED -> "الخدمة أُوقفت" to "Service stopped"
+    TelemetryStage.UPLOAD_REJECTED -> "رفض الإرسال" to "Upload rejected"
+    TelemetryStage.QUEUE_DROPPED -> "أحداث محذوفة" to "Dropped events"
+    TelemetryStage.PAUSED -> "إيقاف مؤقت" to "Paused"
+    TelemetryStage.HEARTBEAT -> "نبضة" to "Heartbeat"
+    TelemetryStage.APP_CRASH -> "انهيار التطبيق" to "App crash"
+    TelemetryStage.PARSED, TelemetryStage.ACCEPT_DISPATCHED -> stage.name.lowercase() to stage.name.lowercase()
+}).pick()
 
 private val clockFormat = java.time.format.DateTimeFormatter.ofPattern("HH:mm", SabbaqLocale)
 
 private fun clock(epochMs: Long): String =
     java.time.Instant.ofEpochMilli(epochMs).atZone(java.time.ZoneId.systemDefault()).format(clockFormat)
 
-private fun uploadText(state: TelemetryRepository.UploadState): String = when (state) {
-    TelemetryRepository.UploadState.IDLE -> "لم يُرسل بعد"
-    TelemetryRepository.UploadState.UPLOADED -> "أُرسل"
-    TelemetryRepository.UploadState.WAITING_FOR_SESSION -> "بانتظار تسجيل الدخول"
-    TelemetryRepository.UploadState.RETRYING -> "يعيد المحاولة تلقائيًا"
-    TelemetryRepository.UploadState.BATCH_DROPPED -> "رُفضت دفعة غير صالحة"
-}
+private fun uploadText(state: TelemetryRepository.UploadState): String = (when (state) {
+    TelemetryRepository.UploadState.IDLE -> "لم يُرسل بعد" to "Not sent yet"
+    TelemetryRepository.UploadState.UPLOADED -> "أُرسل" to "Sent"
+    TelemetryRepository.UploadState.WAITING_FOR_SESSION -> "بانتظار تسجيل الدخول" to "Waiting for sign-in"
+    TelemetryRepository.UploadState.RETRYING -> "يعيد المحاولة تلقائيًا" to "Retrying automatically"
+    TelemetryRepository.UploadState.BATCH_DROPPED -> "رُفضت دفعة غير صالحة" to "An invalid batch was rejected"
+}).pick()

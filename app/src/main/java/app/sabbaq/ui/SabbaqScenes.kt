@@ -62,6 +62,9 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import app.sabbaq.LocaleManager
+import app.sabbaq.R
+import androidx.compose.ui.res.stringResource
 import app.sabbaq.ui.theme.LocalSabbaqBrand
 import app.sabbaq.ui.theme.LocalReducedMotion
 import app.sabbaq.ui.theme.SabbaqMotion
@@ -251,6 +254,7 @@ internal fun SabbaqLaunchIntro(onFinished: () -> Unit, staticFrame: Boolean = fa
     if (reduced && !staticFrame) return
     fun phase(start: Float, end: Float) = ((progress.value - start) / (end - start)).coerceIn(0f, 1f)
     val density = LocalDensity.current.density
+    val brandName = stringResource(R.string.app_name)
     Box(
         Modifier
             .fillMaxSize()
@@ -262,7 +266,7 @@ internal fun SabbaqLaunchIntro(onFinished: () -> Unit, staticFrame: Boolean = fa
                 scaleX = 1f + 0.12f * exit
                 scaleY = 1f + 0.12f * exit
             }
-            .semantics { contentDescription = "سبّاق" },
+            .semantics { contentDescription = brandName },
         contentAlignment = Alignment.Center,
     ) {
         SabbaqRadarScene(active = true, modifier = Modifier.fillMaxSize().graphicsLayer { alpha = 0.35f * phase(0.3f, 0.7f) })
@@ -292,7 +296,7 @@ internal fun SabbaqLaunchIntro(onFinished: () -> Unit, staticFrame: Boolean = fa
             }
             Spacer(Modifier.height(18.dp))
             Text(
-                "سبّاق",
+                stringResource(R.string.app_name),
                 style = MaterialTheme.typography.displayMedium,
                 color = brand.onHero,
                 modifier = Modifier.graphicsLayer {
@@ -304,7 +308,7 @@ internal fun SabbaqLaunchIntro(onFinished: () -> Unit, staticFrame: Boolean = fa
                 },
             )
             Text(
-                SABBAQ_TAGLINE,
+                stringResource(R.string.app_tagline),
                 style = MaterialTheme.typography.titleMedium,
                 color = brand.onHeroMuted,
                 textAlign = TextAlign.Center,
@@ -320,10 +324,14 @@ internal fun SabbaqLaunchIntro(onFinished: () -> Unit, staticFrame: Boolean = fa
 
 private data class SampleOrder(val price: String, val pickup: String, val trip: String, val minutes: String, val matches: Boolean, val verdict: String)
 
-private val sampleOrders = listOf(
+private fun sampleOrders(ar: Boolean) = if (ar) listOf(
     SampleOrder("45 ر.س", "3 كم", "15 كم", "30 د", true, "يطابق شروطك"),
     SampleOrder("18 ر.س", "9 كم", "4 كم", "12 د", false, "الوصول أبعد من حدّك"),
     SampleOrder("62 ر.س", "2 كم", "21 كم", "35 د", true, "يطابق شروطك"),
+) else listOf(
+    SampleOrder("SAR 45", "3 km", "15 km", "30 min", true, "Matches your conditions"),
+    SampleOrder("SAR 18", "9 km", "4 km", "12 min", false, "Pickup is beyond your limit"),
+    SampleOrder("SAR 62", "2 km", "21 km", "35 min", true, "Matches your conditions"),
 )
 
 /**
@@ -341,19 +349,21 @@ internal fun SabbaqOrderShowcase(modifier: Modifier = Modifier) {
         while (true) {
             delay(3_200)
             flip.animateTo(90f, tween(240, easing = SabbaqMotion.EmphasizedAccelerate))
-            shown = (shown + 1) % sampleOrders.size
+            shown = (shown + 1) % sampleOrders(LocaleManager.isArabic()).size
             flip.snapTo(-90f)
             flip.animateTo(0f, tween(460, easing = SabbaqMotion.EmphasizedDecelerate))
         }
     }
-    val order = sampleOrders[shown]
+    val orders = sampleOrders(LocaleManager.isArabic())
+    val order = orders[shown]
     val density = LocalDensity.current.density
+    val exampleCd = stringResource(R.string.scenes_example_cd, order.price, order.pickup, order.trip, order.verdict)
     Box(
         modifier
             .fillMaxWidth()
             .padding(top = 22.dp, start = 18.dp, end = 18.dp, bottom = 6.dp)
             .semantics(mergeDescendants = true) {
-                contentDescription = "مثال توضيحي لطلب: ${order.price}، الوصول ${order.pickup}، المشوار ${order.trip}. ${order.verdict}"
+                contentDescription = exampleCd
             }
             .tilt3D(maxDegrees = 12f, restX = 10f, restY = -12f),
         contentAlignment = Alignment.Center,
@@ -391,14 +401,14 @@ private fun OrderCardFace(order: SampleOrder, modifier: Modifier, stampKey: Int)
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(Icons.Outlined.NearMe, null, tint = colors.primary, modifier = Modifier.size(18.dp))
-                Text("طلب جديد", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
-                Text("مثال", style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
+                Text(stringResource(R.string.scenes_new_order), style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                Text(stringResource(R.string.scenes_example), style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
             }
             Text(order.price, style = MaterialTheme.typography.displaySmall, color = colors.onSurface)
             Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                OrderMetric("الوصول", order.pickup)
-                OrderMetric("المشوار", order.trip)
-                OrderMetric("المدة", order.minutes)
+                OrderMetric(stringResource(R.string.scenes_m_pickup), order.pickup)
+                OrderMetric(stringResource(R.string.scenes_m_trip), order.trip)
+                OrderMetric(stringResource(R.string.scenes_m_duration), order.minutes)
             }
             Surface(
                 shape = RoundedCornerShape(50),
@@ -471,9 +481,9 @@ internal fun SabbaqHowItWorksScene(modifier: Modifier = Modifier) {
     val brand = LocalSabbaqBrand.current
     val reduced = LocalReducedMotion.current
     val stages = listOf(
-        PipelineStage(Icons.Outlined.NearMe, "يظهر طلب", "في تطبيق الرحلات"),
-        PipelineStage(Icons.Outlined.FilterAlt, "يقارنه بشروطك", "الأجرة والمسافة والوقت"),
-        PipelineStage(Icons.Outlined.CheckCircle, "يقبل المطابق", "بنقرة واحدة"),
+        PipelineStage(Icons.Outlined.NearMe, stringResource(R.string.scenes_stage1_t), stringResource(R.string.scenes_stage1_d)),
+        PipelineStage(Icons.Outlined.FilterAlt, stringResource(R.string.scenes_stage2_t), stringResource(R.string.scenes_stage2_d)),
+        PipelineStage(Icons.Outlined.CheckCircle, stringResource(R.string.scenes_stage3_t), stringResource(R.string.scenes_stage3_d)),
     )
     val clock = if (reduced) null else rememberInfiniteTransition(label = "pipeline").animateFloat(
         initialValue = 0f,

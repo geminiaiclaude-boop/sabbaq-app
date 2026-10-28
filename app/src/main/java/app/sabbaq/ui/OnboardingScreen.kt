@@ -45,11 +45,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import app.sabbaq.BuildConfig
+import app.sabbaq.LocaleManager
+import app.sabbaq.R
 import app.sabbaq.network.SupabaseClient
 import kotlinx.coroutines.launch
 import androidx.compose.animation.core.animateFloatAsState
@@ -115,7 +118,8 @@ fun OnboardingScreen(
     // The system back button walks back through the tour before it can leave the app.
     BackHandler(enabled = pageIndex > 0) { page.previous()?.let { pageIndex = it.ordinal } }
 
-    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+    val direction = if (LocaleManager.isArabic()) LayoutDirection.Rtl else LayoutDirection.Ltr
+    CompositionLocalProvider(LocalLayoutDirection provides direction) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -142,10 +146,11 @@ fun OnboardingScreen(
                         .fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
+                    val pageOf = stringResource(R.string.onboarding_page_of, page.ordinal + 1, ONBOARDING_PAGES)
                     SabbaqPageDots(
                         page = page.ordinal,
                         count = ONBOARDING_PAGES,
-                        modifier = Modifier.semantics { stateDescription = "الصفحة ${page.ordinal + 1} من $ONBOARDING_PAGES" },
+                        modifier = Modifier.semantics { stateDescription = pageOf },
                     )
 
                     SabbaqDepthContent(target = page, order = { it.ordinal }, label = "onboarding-page") { shown ->
@@ -211,11 +216,13 @@ private fun OnboardingTopBar(page: OnboardingPage, onSkip: () -> Unit, modifier:
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(Modifier.weight(1f)) { SabbaqBrand(compact = true, onHero = true) }
+                LanguageSwitch()
+                val stepOf = stringResource(R.string.onboarding_step_of, page.ordinal + 1, ONBOARDING_PAGES)
                 Text(
                     "${page.ordinal + 1}/$ONBOARDING_PAGES",
                     style = MaterialTheme.typography.labelMedium,
                     color = brand.onHeroMuted,
-                    modifier = Modifier.semantics { contentDescription = "خطوة ${page.ordinal + 1} من $ONBOARDING_PAGES" },
+                    modifier = Modifier.semantics { contentDescription = stepOf },
                 )
                 OutlinedButton(
                     onClick = onSkip,
@@ -224,7 +231,7 @@ private fun OnboardingTopBar(page: OnboardingPage, onSkip: () -> Unit, modifier:
                     contentPadding = PaddingValues(horizontal = 14.dp),
                     modifier = Modifier.heightIn(min = 40.dp),
                 ) {
-                    Text("تخطي الجولة", style = MaterialTheme.typography.labelLarge)
+                    Text(stringResource(R.string.onboarding_skip), style = MaterialTheme.typography.labelLarge)
                 }
             }
             Box(Modifier.fillMaxWidth().height(3.dp).background(brand.signature))
@@ -241,16 +248,16 @@ private fun WelcomePage(
 ) {
     val brand = LocalSabbaqBrand.current
     SabbaqHeroSurface(Modifier.sabbaqEntrance(0), scene = false) {
-        Text("تعرّف على سبّاق", style = MaterialTheme.typography.labelLarge, color = brand.heroAccent)
-        Text("طلبات على مقاس شروطك", style = MaterialTheme.typography.headlineSmall)
-        Text("تحدد شروطك مرة واحدة، ويتابع سبّاق الطلبات ويقبل ما يطابقها.",
+        Text(stringResource(R.string.onboarding_eyebrow), style = MaterialTheme.typography.labelLarge, color = brand.heroAccent)
+        Text(stringResource(R.string.onboarding_intro_title), style = MaterialTheme.typography.headlineSmall)
+        Text(stringResource(R.string.onboarding_intro_subtitle),
             style = MaterialTheme.typography.bodyMedium, color = brand.onHeroMuted)
         // The product, shown rather than described: example requests and Sabbaq' verdict.
         SabbaqOrderShowcase()
     }
     SabbaqCard(
-        title = "يعمل مع تطبيقات الرحلات التي تستخدمها",
-        subtitle = "سبّاق يتابع الطلبات داخل هذه التطبيقات ويقبل ما يطابق شروطك.",
+        title = stringResource(R.string.onboarding_platforms_title),
+        subtitle = stringResource(R.string.onboarding_platforms_subtitle),
         modifier = Modifier.sabbaqEntrance(1),
     ) {
         SupportedPlatformsRow()
@@ -265,29 +272,29 @@ private fun FeaturesSubscriptionPage(
     onRetryOffer: () -> Unit,
 ) {
     SabbaqCard(
-        title = "أنت تحدد، وسبّاق يتابع",
-        subtitle = "يشغّل القبول التلقائي للطلبات التي تطابق شروطك في التطبيقات المدعومة.",
+        title = stringResource(R.string.onboarding_auto_title),
+        subtitle = stringResource(R.string.onboarding_auto_subtitle),
         modifier = Modifier.sabbaqEntrance(0),
     ) {
         DriverValue(
             icon = Icons.Outlined.Payments,
-            title = "لا تقبل بأقل من شروطك",
-            detail = "حدد أقل أجرة وأقل عائد لكل كم يناسبك."
+            title = stringResource(R.string.onboarding_rule_fare_title),
+            detail = stringResource(R.string.onboarding_rule_fare_detail)
         )
         DriverValue(
             icon = Icons.Outlined.NearMe,
-            title = "مسافة الوصول محسوبة",
-            detail = "اختر حدًا لمسافة الوصول للراكب وطول المشوار."
+            title = stringResource(R.string.onboarding_rule_pickup_title),
+            detail = stringResource(R.string.onboarding_rule_pickup_detail)
         )
         DriverValue(
             icon = Icons.Outlined.Schedule,
-            title = "عملك في الوقت الذي تختاره",
-            detail = "حدد أوقات العمل، وشغّل القبول أو أوقفه متى أردت."
+            title = stringResource(R.string.onboarding_rule_schedule_title),
+            detail = stringResource(R.string.onboarding_rule_schedule_detail)
         )
     }
 
     SabbaqCard(
-        title = if (loadingOffer) "نجهّز لك تفاصيل التجربة" else offerCopy.headline,
+        title = if (loadingOffer) stringResource(R.string.onboarding_offer_loading) else offerCopy.headline(),
         modifier = Modifier.sabbaqEntrance(1),
     ) {
         if (loadingOffer) {
@@ -297,24 +304,24 @@ private fun FeaturesSubscriptionPage(
             ) {
                 CircularProgressIndicator(modifier = Modifier.padding(4.dp), strokeWidth = 2.dp)
                 Text(
-                    "لحظات ونعرض لك الخيارات المتاحة.",
+                    stringResource(R.string.onboarding_offer_loading_hint),
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
         } else {
-            Text(offerCopy.detail, style = MaterialTheme.typography.bodyMedium)
+            Text(offerCopy.detail(), style = MaterialTheme.typography.bodyMedium)
             if (isDirectDistribution && !offerCopy.hasServerOffer) {
                 TextButton(
                     onClick = onRetryOffer,
                     modifier = Modifier.align(Alignment.Start).heightIn(min = 48.dp)
                 ) {
-                    Text("إعادة التحقق")
+                    Text(stringResource(R.string.onboarding_retry))
                 }
             }
         }
     }
     Text(
-        "اكتشفه أولًا، ثم قرر إن كان يناسبك.",
+        stringResource(R.string.onboarding_discover_first),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
@@ -341,37 +348,37 @@ private fun DecisionPreviewPage(
     onSignalChange: (DecisionSignal) -> Unit
 ) {
     SabbaqHeroSurface(Modifier.sabbaqEntrance(0), scene = false) {
-        Text("كيف يعمل سبّاق؟", style = MaterialTheme.typography.headlineSmall)
-        Text("ثلاث لحظات في كل طلب، وأنت تحدد القرار مسبقًا.", style = MaterialTheme.typography.bodyMedium,
+        Text(stringResource(R.string.onboarding_how_title), style = MaterialTheme.typography.headlineSmall)
+        Text(stringResource(R.string.onboarding_how_subtitle), style = MaterialTheme.typography.bodyMedium,
             color = LocalSabbaqBrand.current.onHeroMuted)
         SabbaqHowItWorksScene()
     }
     SabbaqCard(
-        title = "هل يستحق هذا المشوار؟",
-        subtitle = "مثال توضيحي: أجرة 45 ر.س لمشوار 15 كم.",
+        title = stringResource(R.string.onboarding_worth_title),
+        subtitle = stringResource(R.string.onboarding_worth_subtitle),
         modifier = Modifier.sabbaqEntrance(1),
     ) {
         SabbaqSectionTitle(
-            title = "اختر ما يهمك",
-            subtitle = "اضغط على أي تفصيل لإظهاره في المثال أو إخفائه."
+            title = stringResource(R.string.onboarding_pick_title),
+            subtitle = stringResource(R.string.onboarding_pick_subtitle)
         )
         DecisionSignal.entries.forEach { signal ->
             FilterChip(
                 selected = signal in selectedSignals,
                 onClick = { onSignalChange(signal) },
-                label = { Text(signal.label) },
+                label = { Text(stringResource(signal.labelRes)) },
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
             )
         }
     }
 
     SabbaqCard(
-        title = "تفاصيل المثال",
-        subtitle = "أرقام للتوضيح فقط، وليست طلبًا فعليًا.",
+        title = stringResource(R.string.onboarding_example_title),
+        subtitle = stringResource(R.string.onboarding_example_subtitle),
         modifier = Modifier.sabbaqEntrance(2),
     ) {
         Text(localDecisionPreview(selectedSignals), style = MaterialTheme.typography.bodyLarge)
-        Text("أجرة الطلب ليست ربحًا صافيًا؛ التكاليف تختلف حسب مشوارك.",
+        Text(stringResource(R.string.onboarding_example_note),
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
@@ -394,15 +401,15 @@ private fun OnboardingNavigation(
                 onClick = onBack,
                 modifier = Modifier.heightIn(min = 52.dp)
             ) {
-                Text("رجوع")
+                Text(stringResource(R.string.onboarding_back))
             }
         } else {
             Spacer(Modifier.weight(1f))
         }
         SabbaqButton(
             text = when (page) {
-                OnboardingPage.INTRODUCTION -> "التالي"
-                OnboardingPage.FEATURES -> "كيف يعمل؟"
+                OnboardingPage.INTRODUCTION -> stringResource(R.string.onboarding_next)
+                OnboardingPage.FEATURES -> stringResource(R.string.onboarding_how)
                 OnboardingPage.HOW_IT_WORKS -> onboardingFinalCta(canShowTrialJourney)
             },
             onClick = onNext,

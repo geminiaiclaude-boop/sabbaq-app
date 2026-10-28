@@ -23,6 +23,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import app.sabbaq.LocaleManager
+import app.sabbaq.R
+import androidx.compose.ui.res.stringResource
 import app.sabbaq.core.OfferStatsTotals
 import app.sabbaq.core.ReasonCode
 import app.sabbaq.stats.OfferStatsStore
@@ -46,27 +49,27 @@ internal fun OfferStatsCard(modifier: Modifier = Modifier) {
     val snapshot by OfferStatsStore.snapshots.collectAsState()
     val numberFormat = NumberFormat.getIntegerInstance(SabbaqLocale)
     val displayDate = runCatching {
-        LocalDate.parse(snapshot.date).format(DateTimeFormatter.ofPattern("d MMMM yyyy", SabbaqLocale))
+        LocalDate.parse(snapshot.date).format(DateTimeFormatter.ofPattern("d MMMM yyyy", sabbaqDateLocale()))
     }.getOrDefault(snapshot.date)
 
     SabbaqCard(
-        title = "إحصاءات سبّاق",
-        subtitle = "ملخص نشاط المتابعة على هذا الجهاز: اليوم والأسبوع والشهر.",
+        title = stringResource(R.string.osc_title),
+        subtitle = stringResource(R.string.osc_sub),
         icon = Icons.Outlined.BarChart,
         modifier = modifier,
     ) {
-        Text("تاريخ اليوم: $displayDate", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-        PeriodStatsPanel("اليوم", snapshot.today, numberFormat)
+        Text(stringResource(R.string.osc_today_date, displayDate), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+        PeriodStatsPanel(stringResource(R.string.osc_today), snapshot.today, numberFormat)
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        PeriodStatsPanel("هذا الأسبوع · من الاثنين", snapshot.week, numberFormat)
+        PeriodStatsPanel(stringResource(R.string.osc_week), snapshot.week, numberFormat)
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        PeriodStatsPanel("هذا الشهر", snapshot.month, numberFormat)
+        PeriodStatsPanel(stringResource(R.string.osc_month), snapshot.month, numberFormat)
 
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        Text("أكثر أسباب الرفض اليوم", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+        Text(stringResource(R.string.osc_top_reject), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
         val topReasons = snapshot.today.topRejectionReasons(3)
         if (topReasons.isEmpty()) {
-            Text("لا توجد طلبات مرفوضة مسجلة اليوم.", style = MaterialTheme.typography.bodySmall,
+            Text(stringResource(R.string.osc_no_rejected), style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
             topReasons.forEach { (reason, count) ->
@@ -78,7 +81,7 @@ internal fun OfferStatsCard(modifier: Modifier = Modifier) {
             }
         }
         Text(
-            "تُحفظ الأعداد وأسباب الرفض على هذا الجهاز فقط، دون عناوين أو نصوص الطلبات. قد يُحتسب الطلب نفسه مرة أخرى بعد إعادة تشغيل التطبيق.",
+            stringResource(R.string.osc_privacy_note),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 2.dp),
@@ -96,9 +99,9 @@ private fun PeriodStatsPanel(label: String, totals: OfferStatsTotals, numberForm
         Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                StatValue("مرئي", totals.visibleOffers, numberFormat, MaterialTheme.colorScheme.primary, Modifier.weight(1f))
-                StatValue("مرفوض", totals.rejectedOffers, numberFormat, MaterialTheme.colorScheme.onSurfaceVariant, Modifier.weight(1f))
-                StatValue("مقبول", totals.acceptedOffers, numberFormat, LocalSabbaqBrand.current.success, Modifier.weight(1f))
+                StatValue(stringResource(R.string.osc_visible), totals.visibleOffers, numberFormat, MaterialTheme.colorScheme.primary, Modifier.weight(1f))
+                StatValue(stringResource(R.string.osc_rejected), totals.rejectedOffers, numberFormat, MaterialTheme.colorScheme.onSurfaceVariant, Modifier.weight(1f))
+                StatValue(stringResource(R.string.osc_accepted), totals.acceptedOffers, numberFormat, LocalSabbaqBrand.current.success, Modifier.weight(1f))
             }
         }
     }
@@ -112,26 +115,26 @@ private fun StatValue(label: String, count: Long, numberFormat: NumberFormat, ti
     }
 }
 
-private fun ReasonCode.displayName(): String = when (this) {
-    ReasonCode.NO_FILTERS -> "لم تُحدد شروط قبول"
-    ReasonCode.OUTSIDE_SCHEDULE -> "خارج وقت العمل"
-    ReasonCode.INVALID_FILTER -> "شرط غير صالح"
-    ReasonCode.FARE_MISSING -> "الأجرة غير واضحة"
-    ReasonCode.FARE_TOO_LOW -> "الأجرة أقل من الحد"
-    ReasonCode.FARE_TOO_HIGH -> "الأجرة أعلى من الحد"
-    ReasonCode.PER_KM_MISSING -> "بيانات العائد لكل كم ناقصة"
-    ReasonCode.PER_KM_TOO_LOW -> "العائد لكل كم أقل من المطلوب"
-    ReasonCode.PICKUP_KM_MISSING -> "مسافة الوصول غير واضحة"
-    ReasonCode.PICKUP_TOO_FAR -> "مسافة الوصول أبعد من الحد"
-    ReasonCode.PICKUP_MIN_MISSING -> "وقت الوصول غير واضح"
-    ReasonCode.PICKUP_TOO_LONG -> "وقت الوصول أطول من الحد"
-    ReasonCode.PICKUP_TOO_SHORT -> "وقت الوصول أقصر من الحد"
-    ReasonCode.DESTINATION_MISSING -> "الوجهة غير ظاهرة"
-    ReasonCode.TRIP_KM_MISSING -> "مسافة الرحلة غير واضحة"
-    ReasonCode.TRIP_TOO_SHORT -> "مسافة الرحلة أقصر من الحد"
-    ReasonCode.TRIP_TOO_LONG -> "مسافة الرحلة أطول من الحد"
-    ReasonCode.TRIP_MIN_MISSING -> "وقت الرحلة غير واضح"
-    ReasonCode.TRIP_MIN_TOO_SHORT -> "وقت الرحلة أقصر من الحد"
-    ReasonCode.TRIP_MIN_TOO_LONG -> "وقت الرحلة أطول من الحد"
-    ReasonCode.EXCLUDED_KEYWORD -> "كلمة مستبعدة"
-}
+private fun ReasonCode.displayName(): String = (when (this) {
+    ReasonCode.NO_FILTERS -> "لم تُحدد شروط قبول" to "No acceptance conditions set"
+    ReasonCode.OUTSIDE_SCHEDULE -> "خارج وقت العمل" to "Outside working hours"
+    ReasonCode.INVALID_FILTER -> "شرط غير صالح" to "Invalid condition"
+    ReasonCode.FARE_MISSING -> "الأجرة غير واضحة" to "Fare not clear"
+    ReasonCode.FARE_TOO_LOW -> "الأجرة أقل من الحد" to "Fare below the limit"
+    ReasonCode.FARE_TOO_HIGH -> "الأجرة أعلى من الحد" to "Fare above the limit"
+    ReasonCode.PER_KM_MISSING -> "بيانات العائد لكل كم ناقصة" to "Return-per-km data missing"
+    ReasonCode.PER_KM_TOO_LOW -> "العائد لكل كم أقل من المطلوب" to "Return per km below target"
+    ReasonCode.PICKUP_KM_MISSING -> "مسافة الوصول غير واضحة" to "Pickup distance not clear"
+    ReasonCode.PICKUP_TOO_FAR -> "مسافة الوصول أبعد من الحد" to "Pickup distance beyond the limit"
+    ReasonCode.PICKUP_MIN_MISSING -> "وقت الوصول غير واضح" to "Pickup time not clear"
+    ReasonCode.PICKUP_TOO_LONG -> "وقت الوصول أطول من الحد" to "Pickup time above the limit"
+    ReasonCode.PICKUP_TOO_SHORT -> "وقت الوصول أقصر من الحد" to "Pickup time below the limit"
+    ReasonCode.DESTINATION_MISSING -> "الوجهة غير ظاهرة" to "Destination not shown"
+    ReasonCode.TRIP_KM_MISSING -> "مسافة الرحلة غير واضحة" to "Trip distance not clear"
+    ReasonCode.TRIP_TOO_SHORT -> "مسافة الرحلة أقصر من الحد" to "Trip distance below the limit"
+    ReasonCode.TRIP_TOO_LONG -> "مسافة الرحلة أطول من الحد" to "Trip distance above the limit"
+    ReasonCode.TRIP_MIN_MISSING -> "وقت الرحلة غير واضح" to "Trip time not clear"
+    ReasonCode.TRIP_MIN_TOO_SHORT -> "وقت الرحلة أقصر من الحد" to "Trip time below the limit"
+    ReasonCode.TRIP_MIN_TOO_LONG -> "وقت الرحلة أطول من الحد" to "Trip time above the limit"
+    ReasonCode.EXCLUDED_KEYWORD -> "كلمة مستبعدة" to "Excluded word"
+}).let { if (LocaleManager.isArabic()) it.first else it.second }

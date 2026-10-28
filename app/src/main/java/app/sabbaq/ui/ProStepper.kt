@@ -26,6 +26,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import app.sabbaq.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -92,6 +94,8 @@ internal fun ProConditionCard(
                 }
                 headerAction?.invoke()
             }
+            val activateCd = stringResource(R.string.ps_activate, title)
+            val switchState = if (enabled) stringResource(R.string.ps_on) else stringResource(R.string.ps_off)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -105,8 +109,8 @@ internal fun ProConditionCard(
                     modifier = Modifier
                         .testTag("filter-switch-$testKey")
                         .semantics {
-                            contentDescription = "تفعيل $title"
-                            stateDescription = if (enabled) "مفعّل" else "غير مفعّل"
+                            contentDescription = activateCd
+                            stateDescription = switchState
                         },
                 )
             }
@@ -141,7 +145,7 @@ private fun StepperEditorDialog(
     val valid = isValidNumber(editorValue, keyboardType)
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("تعديل $label") },
+        title = { Text(stringResource(R.string.ps_edit, label)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 OutlinedTextField(
@@ -150,9 +154,9 @@ private fun StepperEditorDialog(
                     label = { Text(label) },
                     supportingText = {
                         Text(
-                            if (editorValue.isBlank()) "اتركه فارغًا لإلغاء هذا الحد."
-                            else if (!valid) "أدخل رقمًا غير سالب صالحًا."
-                            else "يمكنك التعديل مباشرة أو استخدام زري الزيادة والنقصان.",
+                            if (editorValue.isBlank()) stringResource(R.string.ps_leave_blank)
+                            else if (!valid) stringResource(R.string.ps_invalid)
+                            else stringResource(R.string.ps_edit_hint),
                         )
                     },
                     isError = !valid,
@@ -162,8 +166,8 @@ private fun StepperEditorDialog(
                 )
             }
         },
-        confirmButton = { TextButton(enabled = valid, onClick = { onApply(editorValue.trim()) }) { Text("تطبيق") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("إلغاء") } },
+        confirmButton = { TextButton(enabled = valid, onClick = { onApply(editorValue.trim()) }) { Text(stringResource(R.string.ps_apply)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.ss_cancel)) } },
     )
 }
 
@@ -188,6 +192,8 @@ internal fun CompactStepperValue(
     var showEditor by rememberSaveable(testKey) { mutableStateOf(false) }
     var editorValue by rememberSaveable(testKey) { mutableStateOf(value) }
     val colors = MaterialTheme.colorScheme
+    val editCd = stringResource(R.string.ps_edit, label)
+    val stepperState = if (value.isBlank()) stringResource(R.string.ps_undefined) else stringResource(R.string.ps_value_unit, value, unit)
     Surface(
         modifier = modifier.alpha(if (dimmed) 0.5f else 1f),
         shape = MaterialTheme.shapes.small,
@@ -195,7 +201,7 @@ internal fun CompactStepperValue(
         border = BorderStroke(1.dp, if (error != null) colors.error else colors.outlineVariant),
     ) {
         Row(Modifier.heightIn(min = 40.dp), verticalAlignment = Alignment.CenterVertically) {
-            CompactStepButton("تقليل $label", Icons.Outlined.Remove, "filter-stepper-$testKey-decrement") {
+            CompactStepButton(stringResource(R.string.ps_decrease, label), Icons.Outlined.Remove, "filter-stepper-$testKey-decrement") {
                 onValueChange(stepValue(value, step, keyboardType, direction = -1))
             }
             Column(
@@ -204,8 +210,8 @@ internal fun CompactStepperValue(
                     .clickable(role = Role.Button) { editorValue = value; showEditor = true }
                     .testTag("filter-stepper-$testKey-value")
                     .semantics {
-                        contentDescription = "تعديل $label"
-                        stateDescription = if (value.isBlank()) "غير محدد" else "$value $unit"
+                        contentDescription = editCd
+                        stateDescription = stepperState
                     },
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
@@ -217,7 +223,7 @@ internal fun CompactStepperValue(
                     maxLines = 1,
                 )
             }
-            CompactStepButton("زيادة $label", Icons.Outlined.Add, "filter-stepper-$testKey-increment") {
+            CompactStepButton(stringResource(R.string.ps_increase, label), Icons.Outlined.Add, "filter-stepper-$testKey-increment") {
                 onValueChange(stepValue(value, step, keyboardType, direction = 1))
             }
         }

@@ -24,6 +24,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import app.sabbaq.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,14 +47,14 @@ fun RestrictedAccessibilityDialog(
                 tint = MaterialTheme.colorScheme.primary,
             )
         },
-        title = { Text("خطوة أمان مطلوبة") },
+        title = { Text(stringResource(R.string.rad_title)) },
         text = {
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Text(
-                    "حماية Android تمنع تفعيل خدمة إمكانية الوصول للتطبيقات المثبتة من خارج Google Play حتى تسمح بها يدويًا.",
+                    stringResource(R.string.rad_intro),
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Card(
@@ -66,29 +68,29 @@ fun RestrictedAccessibilityDialog(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         Text(
-                            "لفك الحظر",
+                            stringResource(R.string.rad_unblock),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
                         )
                         RestrictedSettingsStep(
                             number = "1",
                             icon = Icons.Outlined.Settings,
-                            text = "افتح معلومات تطبيق سبّاق.",
+                            text = stringResource(R.string.rad_step1),
                         )
                         RestrictedSettingsStep(
                             number = "2",
                             icon = Icons.Outlined.MoreVert,
-                            text = "اضغط النقاط الثلاث ⋮ أعلى الشاشة.",
+                            text = stringResource(R.string.rad_step2),
                         )
                         RestrictedSettingsStep(
                             number = "3",
                             icon = Icons.Outlined.LockOpen,
-                            text = "اختر «السماح بالإعدادات المقيدة».",
+                            text = stringResource(R.string.rad_step3),
                         )
                         RestrictedSettingsStep(
                             number = "4",
                             icon = Icons.Outlined.AccessibilityNew,
-                            text = "ارجع إلى إعدادات إمكانية الوصول وفعّل سبّاق.",
+                            text = stringResource(R.string.rad_step4),
                         )
                     }
                 }
@@ -110,7 +112,7 @@ fun RestrictedAccessibilityDialog(
                         modifier = Modifier.size(20.dp),
                     )
                     Text(
-                        "لن يظهر هذا الخيار إذا كان التطبيق مثبتًا من Google Play. لا يمكن لسبّاق تجاوز حماية Android تلقائيًا.",
+                        stringResource(R.string.rad_note),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -119,7 +121,7 @@ fun RestrictedAccessibilityDialog(
         },
         confirmButton = {
             SabbaqButton(
-                text = "فتح معلومات تطبيق سبّاق",
+                text = stringResource(R.string.rad_open_btn),
                 onClick = onOpenAppDetails,
                 fillWidth = false,
             )
@@ -128,7 +130,7 @@ fun RestrictedAccessibilityDialog(
             TextButton(
                 onClick = onDismiss,
                 modifier = Modifier.heightIn(min = 48.dp),
-            ) { Text("ليس الآن") }
+            ) { Text(stringResource(R.string.adx_not_now)) }
         },
     )
 }

@@ -47,13 +47,12 @@ import app.sabbaq.ui.theme.LocalSabbaqBrand
 import app.sabbaq.ui.theme.LocalReducedMotion
 import app.sabbaq.ui.theme.SabbaqMotion
 import app.sabbaq.ui.theme.glint
+import androidx.compose.ui.res.stringResource
 import app.sabbaq.ui.theme.pressDepth
 import app.sabbaq.ui.theme.tilt3D
 
 /** Message tone; drives colour, icon and the screen-reader announcement together. */
 enum class SabbaqTone { Info, Success, Error }
-
-internal const val SABBAQ_TAGLINE = "أول من يلتقط الطلب المناسب."
 
 @Composable
 internal fun SabbaqBrand(compact: Boolean = false, onHero: Boolean = false) {
@@ -66,9 +65,9 @@ internal fun SabbaqBrand(compact: Boolean = false, onHero: Boolean = false) {
                 .clip(tile)
                 .then(if (onHero) Modifier.border(1.5.dp, brand.signature.copy(alpha = 0.9f), tile) else Modifier))
         Column {
-            Text("سبّاق", style = if (compact) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineMedium,
+            Text(stringResource(R.string.app_name), style = if (compact) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineMedium,
                 color = if (onHero) brand.onHero else MaterialTheme.colorScheme.onBackground)
-            if (!compact) Text(SABBAQ_TAGLINE, style = MaterialTheme.typography.bodyMedium,
+            if (!compact) Text(stringResource(R.string.app_tagline), style = MaterialTheme.typography.bodyMedium,
                 color = if (onHero) brand.onHeroMuted else MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }

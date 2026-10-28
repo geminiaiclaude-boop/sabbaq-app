@@ -14,6 +14,7 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         CrashLog.install(this)
+        LocaleManager.restore(this)
         Settings.init(this)
         runCatching { OfferDecisionLogStore.init(this) }
         runCatching { NotificationCenter.init(this) }

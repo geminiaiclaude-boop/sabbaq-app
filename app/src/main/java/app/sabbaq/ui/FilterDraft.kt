@@ -3,6 +3,7 @@ package app.sabbaq.ui
 import app.sabbaq.core.Filters
 import app.sabbaq.core.FilterCombination
 import app.sabbaq.core.PerKmBasis
+import app.sabbaq.LocaleManager
 import app.sabbaq.core.Text
 import java.math.BigDecimal
 import kotlinx.serialization.Serializable
@@ -113,7 +114,7 @@ class FilterDraft private constructor(
         decimal("maxPickupKm", maxPickupKm, errors, pickupDistanceEnabled)
         val highFareOverrideValue = decimal("highFareOverrideAmount", highFareOverrideAmount, errors, highFareOverrideEnabled)
         if (highFareOverrideEnabled && highFareOverrideValue == null && highFareOverrideAmount.isBlank()) {
-            errors["highFareOverrideAmount"] = "أدخل سعرًا صالحًا لتفعيل التجاوز."
+            errors["highFareOverrideAmount"] = (if (LocaleManager.isArabic()) "أدخل سعرًا صالحًا لتفعيل التجاوز." else "Enter a valid price to enable the override.")
         }
         val minPickupMinutesValue = if (pickupTimeEnabled) nonNegativeInt("minPickupMinutes", minPickupMinutes, errors)
             else inactiveInt(minPickupMinutes, original.minPickupMinutes)
@@ -127,23 +128,23 @@ class FilterDraft private constructor(
             else inactiveInt(maxTripMinutes, original.maxTripMinutes)
 
         if (fareRangeEnabled && minFareValue != null && maxFareValue != null && minFareValue > maxFareValue) {
-            errors["minFare"] = RANGE_ERROR
-            errors["maxFare"] = RANGE_ERROR
+            errors["minFare"] = rangeError()
+            errors["maxFare"] = rangeError()
         }
         if (tripDistanceEnabled && minTripKmValue != null && maxTripKmValue != null && minTripKmValue > maxTripKmValue) {
-            errors["minTripKm"] = RANGE_ERROR
-            errors["maxTripKm"] = RANGE_ERROR
+            errors["minTripKm"] = rangeError()
+            errors["maxTripKm"] = rangeError()
         }
         if (pickupTimeEnabled && minPickupMinutesValue != null && maxPickupMinutesValue != null && minPickupMinutesValue > maxPickupMinutesValue) {
-            errors["minPickupMinutes"] = RANGE_ERROR
-            errors["maxPickupMinutes"] = RANGE_ERROR
+            errors["minPickupMinutes"] = rangeError()
+            errors["maxPickupMinutes"] = rangeError()
         }
         if (tripTimeEnabled && minTripMinutesValue != null && maxTripMinutesValue != null && minTripMinutesValue > maxTripMinutesValue) {
-            errors["minTripMinutes"] = RANGE_ERROR
-            errors["maxTripMinutes"] = RANGE_ERROR
+            errors["minTripMinutes"] = rangeError()
+            errors["maxTripMinutes"] = rangeError()
         }
         if (excludeKeywords.length > MAX_KEYWORDS_LENGTH) {
-            errors["excludeKeywords"] = "الكلمات المستبعدة أطول من الحد المسموح."
+            errors["excludeKeywords"] = (if (LocaleManager.isArabic()) "الكلمات المستبعدة أطول من الحد المسموح." else "The excluded words exceed the allowed length.")
         }
 
         val schedule = if (scheduleEnabled) {
@@ -215,16 +216,16 @@ class FilterDraft private constructor(
         val value = Text.normalize(raw)
         if (value.isEmpty()) return null
         if (raw.length > MAX_DECIMAL_LENGTH) {
-            errors[field] = "الرقم أطول من الحد المسموح."
+            errors[field] = (if (LocaleManager.isArabic()) "الرقم أطول من الحد المسموح." else "The number exceeds the allowed length.")
             return null
         }
         if (DECIMAL_PATTERN.matchEntire(value) == null) {
-            errors[field] = "أدخل رقمًا غير سالب صالحًا."
+            errors[field] = (if (LocaleManager.isArabic()) "أدخل رقمًا غير سالب صالحًا." else "Enter a valid non-negative number.")
             return null
         }
         val parsed = Text.parseNumber(value)
         if (parsed == null || parsed.signum() < 0) {
-            errors[field] = "أدخل رقمًا غير سالب صالحًا."
+            errors[field] = (if (LocaleManager.isArabic()) "أدخل رقمًا غير سالب صالحًا." else "Enter a valid non-negative number.")
             return null
         }
         return parsed
@@ -240,15 +241,15 @@ class FilterDraft private constructor(
         val value = Text.normalize(raw)
         if (value.isEmpty()) return null
         if (raw.length > MAX_INTEGER_LENGTH) {
-            errors[field] = "العدد أطول من الحد المسموح."
+            errors[field] = (if (LocaleManager.isArabic()) "العدد أطول من الحد المسموح." else "The integer exceeds the allowed length.")
             return null
         }
         if (INTEGER_PATTERN.matchEntire(value) == null) {
-            errors[field] = "أدخل عددًا صحيحًا غير سالب."
+            errors[field] = (if (LocaleManager.isArabic()) "أدخل عددًا صحيحًا غير سالب." else "Enter a valid non-negative integer.")
             return null
         }
         return value.toIntOrNull().also {
-            if (it == null) errors[field] = "العدد أكبر من الحد المسموح."
+            if (it == null) errors[field] = (if (LocaleManager.isArabic()) "العدد أكبر من الحد المسموح." else "The integer is larger than allowed.")
         }
     }
 
@@ -260,23 +261,23 @@ class FilterDraft private constructor(
     ): Int? {
         val value = Text.normalize(raw)
         if (raw.length > MAX_SCHEDULE_LENGTH) {
-            errors[field] = "الوقت أطول من الحد المسموح."
+            errors[field] = (if (LocaleManager.isArabic()) "الوقت أطول من الحد المسموح." else "The time exceeds the allowed length.")
             return null
         }
         val match = TIME_PATTERN.matchEntire(value)
         if (match == null) {
-            errors[field] = "أدخل وقتًا صالحًا مثل 08:30."
+            errors[field] = (if (LocaleManager.isArabic()) "أدخل وقتًا صالحًا مثل 08:30." else "Enter a valid time like 08:30.")
             return null
         }
         val hour = match.groupValues[1].toInt()
         val minute = match.groupValues[2].toInt()
         if (hour == 24 && minute == 0) {
             if (allowEndOfDay) return MINUTES_PER_DAY
-            errors[field] = "24:00 مسموح لوقت النهاية فقط."
+            errors[field] = (if (LocaleManager.isArabic()) "24:00 مسموح لوقت النهاية فقط." else "24:00 is allowed for the end time only.")
             return null
         }
         if (hour !in 0..23 || minute !in 0..59) {
-            errors[field] = "أدخل وقتًا صالحًا مثل 08:30."
+            errors[field] = (if (LocaleManager.isArabic()) "أدخل وقتًا صالحًا مثل 08:30." else "Enter a valid time like 08:30.")
             return null
         }
         return hour * 60 + minute
@@ -292,7 +293,7 @@ class FilterDraft private constructor(
         private const val MAX_KEYWORDS_LENGTH = 1_000
         private const val MAX_SCHEDULE_LENGTH = 5
         private const val MINUTES_PER_DAY = 24 * 60
-        private const val RANGE_ERROR = "يجب ألا يتجاوز الحد الأدنى الحد الأقصى."
+        private fun rangeError() = if (LocaleManager.isArabic()) "يجب ألا يتجاوز الحد الأدنى الحد الأقصى." else "The minimum must not exceed the maximum."
 
         // Text.NUMBER يدعم ١٬٢٥٠٫٥٠ بعد التطبيع، ويستبعد exponent وNaN بالصيغة الكاملة.
         private val DECIMAL_PATTERN = Regex("(?:${Text.NUMBER})")

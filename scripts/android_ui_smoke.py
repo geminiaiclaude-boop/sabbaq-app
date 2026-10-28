@@ -70,6 +70,10 @@ def ui_xml(timeout=60):
 
 assert adb('shell', 'getprop', 'sys.boot_completed', transport_retries=2).strip() == '1', 'Emulator has not completed boot'
 print(adb('install', '-r', args.apk), flush=True)
+# These screens are authored against the app's Arabic design language. The emulator's own
+# language is English, so pin the app (not the device) to Arabic via the framework per-app
+# locale (API 33+); the app's localeConfig lists ar, and this persists across force-stops.
+adb('shell', 'cmd', 'locale', 'set-app-locales', args.package, '--user', '0', '--locales', 'ar')
 adb('shell', 'settings', 'put', 'global', 'window_animation_scale', '0')
 adb('shell', 'settings', 'put', 'global', 'transition_animation_scale', '0')
 adb('shell', 'settings', 'put', 'global', 'animator_duration_scale', '0')

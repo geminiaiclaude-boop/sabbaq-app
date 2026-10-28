@@ -3,13 +3,26 @@ package app.sabbaq.ui
 import app.sabbaq.network.LicenseState
 import app.sabbaq.network.SubscriptionSnapshot
 import java.time.Instant
+import java.util.Locale
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 
 class CelebrationCopyTest {
     private val now = Instant.parse("2026-10-21T12:00:00Z")
+    private lateinit var previous: Locale
+
+    @Before fun pinArabic() {
+        previous = Locale.getDefault()
+        Locale.setDefault(Locale.forLanguageTag("ar"))
+    }
+
+    @After fun restoreLocale() {
+        Locale.setDefault(previous)
+    }
 
     private fun snapshot(state: LicenseState, proUntil: Instant? = null, trialUntil: Instant? = null) = SubscriptionSnapshot(
         state = state, serverTime = now, validUntil = proUntil ?: trialUntil, trialUntil = trialUntil, proUntil = proUntil,

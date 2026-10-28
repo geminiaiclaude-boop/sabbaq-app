@@ -25,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import app.sabbaq.LocaleManager
 import app.sabbaq.admin.AdminProfile
 import app.sabbaq.admin.AdminRepository
 import app.sabbaq.admin.str
@@ -65,37 +66,37 @@ internal fun AdminProfilesSection(session: AdminSession) {
     LaunchedEffect(reload) {
         loading = true
         val published = notice.takeIf { selectAfterLoad != null }
-        notice = info("يجري تحميل ملفات التطبيقات…")
+        notice = info((if (LocaleManager.isArabic()) "يجري تحميل ملفات التطبيقات…" else "Loading the app profiles…"))
         AdminRepository.profiles().fold(
             onSuccess = { list ->
                 profiles = list
                 val keep = selectAfterLoad ?: selected.takeIf { id -> list.any { it.id == id } } ?: list.firstOrNull()?.id ?: NEW_PROFILE
                 select(keep, list)
                 notice = published ?: info(
-                    if (list.isNotEmpty()) "الملفات المنشورة تتقدّم على الملفات المضمّنة في التطبيق فقط إذا كان رقم إصدارها أكبر."
-                    else "لا توجد ملفات منشورة بعد؛ التطبيق يستعمل الملفات المضمّنة (الإصدار 3). الصق ملفًا برقم إصدار 4 أو أكبر لنشر إصلاح.")
+                    if (list.isNotEmpty()) (if (LocaleManager.isArabic()) "الملفات المنشورة تتقدّم على الملفات المضمّنة في التطبيق فقط إذا كان رقم إصدارها أكبر." else "Published profiles take precedence over the app's built-in profiles only if their version number is higher.")
+                    else (if (LocaleManager.isArabic()) "لا توجد ملفات منشورة بعد؛ التطبيق يستعمل الملفات المضمّنة (الإصدار 3). الصق ملفًا برقم إصدار 4 أو أكبر لنشر إصلاح." else "No published profiles yet; the app uses the built-in profiles (version 3). Paste a profile with version 4 or higher to publish a fix."))
                 selectAfterLoad = null
             },
-            onFailure = { notice = session.failureOf(it, "تعذر تحميل ملفات التطبيقات. تحقق من الاتصال.") },
+            onFailure = { notice = session.failureOf(it, (if (LocaleManager.isArabic()) "تعذر تحميل ملفات التطبيقات. تحقق من الاتصال." else "Could not load the app profiles. Check the connection.")) },
         )
         loading = false
     }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp).testTag("admin-profiles"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        SabbaqCard(title = "ملفات التطبيقات", icon = Icons.Outlined.Description,
-            subtitle = "تعديل طريقة قراءة جيني/بولت/بترا يصل لكل السائقين خلال 6 ساعات دون إصدار جديد. ارفع رقم الإصدار عند كل تعديل.") {
-            val options = profiles.orEmpty().map { it.id to "${it.id} · الإصدار ${it.version}${if (it.enabled) "" else " · معطّل"}" } + (NEW_PROFILE to "ملف جديد…")
-            AdminChoice("الملف", options, selected, onSelect = { select(it, profiles) }, enabled = !publishing)
+        SabbaqCard(title = (if (LocaleManager.isArabic()) "ملفات التطبيقات" else "App profiles"), icon = Icons.Outlined.Description,
+            subtitle = (if (LocaleManager.isArabic()) "تعديل طريقة قراءة جيني/بولت/بترا يصل لكل السائقين خلال 6 ساعات دون إصدار جديد. ارفع رقم الإصدار عند كل تعديل." else "Changing how Jeeny/Bolt/Petra are read reaches all drivers within 6 hours with no new release. Raise the version number with each change.")) {
+            val options = profiles.orEmpty().map { it.id to (if (LocaleManager.isArabic()) "${it.id} · الإصدار ${it.version}${if (it.enabled) "" else " · معطّل"}" else "${it.id} · version ${it.version}${if (it.enabled) "" else " · disabled"}") } + (NEW_PROFILE to (if (LocaleManager.isArabic()) "ملف جديد…" else "New profile…"))
+            AdminChoice((if (LocaleManager.isArabic()) "الملف" else "Profile"), options, selected, onSelect = { select(it, profiles) }, enabled = !publishing)
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("مفعّل", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                Text((if (LocaleManager.isArabic()) "مفعّل" else "Enabled"), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                 Switch(checked = enabled, onCheckedChange = { enabled = it }, enabled = !publishing)
             }
-            AdminField("محتوى الملف (JSON)", body, { body = it }, maxLength = 200_000, ltr = true, singleLine = false, minLines = 14,
+            AdminField((if (LocaleManager.isArabic()) "محتوى الملف (JSON)" else "Profile content (JSON)"), body, { body = it }, maxLength = 200_000, ltr = true, singleLine = false, minLines = 14,
                 textStyle = monoStyle, enabled = !publishing, modifier = Modifier.testTag("admin-profile-body"))
             SabbaqAnimatedMessage(notice?.text, notice?.tone ?: SabbaqTone.Info)
-            SabbaqButton("نشر الملف", busy = publishing, busyText = "جارٍ النشر…", enabled = !loading, modifier = Modifier.testTag("admin-profile-publish"), onClick = {
+            SabbaqButton((if (LocaleManager.isArabic()) "نشر الملف" else "Publish the profile"), busy = publishing, busyText = (if (LocaleManager.isArabic()) "جارٍ النشر…" else "Publishing…"), enabled = !loading, modifier = Modifier.testTag("admin-profile-publish"), onClick = {
                 val draft = AdminRepository.validateProfile(body, profiles.orEmpty())
-                draft.exceptionOrNull()?.let { notice = failure(it.message ?: "المحتوى غير صالح."); return@SabbaqButton }
+                draft.exceptionOrNull()?.let { notice = failure(it.message ?: (if (LocaleManager.isArabic()) "المحتوى غير صالح." else "The content is invalid.")); return@SabbaqButton }
                 val profileBody = draft.getOrThrow()
                 scope.launch {
                     publishing = true
@@ -103,20 +104,20 @@ internal fun AdminProfilesSection(session: AdminSession) {
                         onSuccess = {
                             val id = profileBody.str("id").orEmpty()
                             val version = profileBody.str("version").orEmpty()
-                            notice = success("نُشر $id الإصدار $version. يصل للسائقين خلال 6 ساعات أو عند تشغيل المتابعة.")
+                            notice = success((if (LocaleManager.isArabic()) "نُشر $id الإصدار $version. يصل للسائقين خلال 6 ساعات أو عند تشغيل المتابعة." else "Published $id version $version. It reaches drivers within 6 hours or when they start monitoring."))
                             selectAfterLoad = id
                             reload++
                         },
                         onFailure = {
                             notice = if (app.sabbaq.network.SupabaseClient.featureFailureOf(it) == app.sabbaq.network.SupabaseClient.FeatureFailure.REJECTED)
-                                failure("رفض الخادم الملف. تحقق من الحقول ورقم الإصدار ثم أعد المحاولة.")
-                            else session.failureOf(it, "تعذر نشر الملف. تحقق من الاتصال ثم أعد المحاولة.")
+                                failure((if (LocaleManager.isArabic()) "رفض الخادم الملف. تحقق من الحقول ورقم الإصدار ثم أعد المحاولة." else "The server rejected the profile. Check the fields and version number, then try again."))
+                            else session.failureOf(it, (if (LocaleManager.isArabic()) "تعذر نشر الملف. تحقق من الاتصال ثم أعد المحاولة." else "Could not publish the profile. Check the connection, then try again."))
                         },
                     )
                     publishing = false
                 }
             })
-            TextButton(onClick = { reload++ }, enabled = !loading && !publishing) { Text("تحديث") }
+            TextButton(onClick = { reload++ }, enabled = !loading && !publishing) { Text((if (LocaleManager.isArabic()) "تحديث" else "Refresh")) }
         }
     }
 }

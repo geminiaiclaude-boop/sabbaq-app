@@ -143,6 +143,9 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import app.sabbaq.BuildConfig
+import app.sabbaq.R
+import app.sabbaq.LocaleManager
+import androidx.compose.ui.res.stringResource
 import app.sabbaq.Settings
 import app.sabbaq.ThemeMode
 import app.sabbaq.core.Filters
@@ -181,17 +184,17 @@ private data class DriverStatus(val message: String, val isError: Boolean = fals
 private data class PreviewResult(val verdict: Verdict, val error: String? = null)
 private data class DriverNavItem(
     val destination: DriverDestination,
-    val label: String,
+    val labelRes: Int,
     val icon: ImageVector,
 )
 
 private val driverDestinations = listOf(
-    DriverNavItem(DriverDestination.Dashboard, "حالة العمل", Icons.Outlined.Tune),
-    DriverNavItem(DriverDestination.Filters, "طلبات تناسبك", Icons.Outlined.FilterAlt),
-    DriverNavItem(DriverDestination.Settings, "الإعدادات", Icons.Outlined.SettingsIcon),
-    DriverNavItem(DriverDestination.Account, "حسابي", Icons.Outlined.AccountCircle),
-    DriverNavItem(DriverDestination.Simulator, "تجربة الطلب", Icons.Outlined.Visibility),
-    DriverNavItem(DriverDestination.History, "سجل القرارات", Icons.Outlined.Info),
+    DriverNavItem(DriverDestination.Dashboard, R.string.nav_dashboard, Icons.Outlined.Tune),
+    DriverNavItem(DriverDestination.Filters, R.string.nav_filters, Icons.Outlined.FilterAlt),
+    DriverNavItem(DriverDestination.Settings, R.string.nav_settings, Icons.Outlined.SettingsIcon),
+    DriverNavItem(DriverDestination.Account, R.string.nav_account, Icons.Outlined.AccountCircle),
+    DriverNavItem(DriverDestination.Simulator, R.string.nav_simulator, Icons.Outlined.Visibility),
+    DriverNavItem(DriverDestination.History, R.string.nav_history, Icons.Outlined.Info),
 )
 
 // Four tabs on phones; «تجربة الطلب» and «سجل القرارات» stay one tap away in the drawer and
@@ -301,11 +304,11 @@ fun SettingsScreen(
         isActive = false
         runtimeMessage = when {
             stopResult.isFailure -> DriverStatus(
-                "تم إيقاف متابعة الطلبات، لكن لم نتمكن من تأكيد الإيقاف بالكامل. أعد فتح التطبيق إذا استمرت المتابعة.",
+                context.getString(R.string.ss_stop_unconfirmed),
                 isError = true,
             )
             message != null -> DriverStatus(message)
-            else -> DriverStatus("تم إيقاف متابعة الطلبات. عدّل شروطك أو ابدأ مجددًا عندما تكون جاهزًا.")
+            else -> DriverStatus(context.getString(R.string.ss_stop_default))
         }
     }
 
@@ -327,11 +330,11 @@ fun SettingsScreen(
         // the dashboard was open into a permanent stop. Only a revoked notification permission,
         // which the keeper also treats as fatal, ends monitoring from the screen.
         if (persistedActive && !notifications) {
-            stopKeeper("توقفت متابعة الطلبات لأن إذن الإشعارات لم يعد مفعّلًا.")
+            stopKeeper(context.getString(R.string.ss_stop_notifications_off))
         } else if (persistedActive && !a11y) {
-            runtimeMessage = DriverStatus("إذن إمكانية الوصول مغلق؛ لن يُقبل أي طلب حتى تعيد تفعيله، وتُستأنف المتابعة تلقائيًا بعدها.", isError = true)
+            runtimeMessage = DriverStatus(context.getString(R.string.ss_a11y_off_running), isError = true)
         } else if (persistedActive && !licensed) {
-            runtimeMessage = DriverStatus("نتحقق من اشتراكك؛ تُستأنف المتابعة تلقائيًا عند عودة الاتصال.", isError = true)
+            runtimeMessage = DriverStatus(context.getString(R.string.ss_license_checking_running), isError = true)
         }
     }
 
@@ -363,7 +366,7 @@ fun SettingsScreen(
     fun updateDraft(next: FilterDraft, stopIfActive: Boolean = true) {
         if (next === draft) return
         if (isActive && stopIfActive) {
-            stopKeeper("أوقفنا متابعة الطلبات قبل تعديل شروطك؛ سيُحفظ التغيير تلقائيًا.")
+            stopKeeper(context.getString(R.string.ss_stop_before_edit))
         }
         draft = next
         filtersMessage = null
@@ -373,11 +376,11 @@ fun SettingsScreen(
         val filters = validation.filters
         if (filters == null) {
             isSavingFilters = false
-            filtersMessage = DriverStatus("راجع القيم المعلّمة؛ لا تُحفظ الفلاتر غير الصالحة.", isError = true)
+            filtersMessage = DriverStatus(context.getString(R.string.ss_review_marked_values), isError = true)
             return
         }
         isSavingFilters = true
-        filtersMessage = DriverStatus("جارٍ حفظ التعديلات تلقائيًا.")
+        filtersMessage = DriverStatus(context.getString(R.string.ss_saving_auto))
         scope.launch {
             delay(180)
             filterSaveMutex.withLock {
@@ -388,28 +391,28 @@ fun SettingsScreen(
                         // A later invalid edit has no save job of its own. Restore the last
                         // durable filters so an older in-flight commit cannot replace them.
                         if (saved && draft.validate().filters == null && !Settings.saveFilters(savedFilters)) {
-                            filtersMessage = DriverStatus("تعذر استرجاع الشروط المحفوظة بعد تعديل غير صالح.", isError = true)
+                            filtersMessage = DriverStatus(context.getString(R.string.ss_restore_failed_after_invalid), isError = true)
                         }
                         return@withLock
                     }
                     if (saved) {
                         savedFilters = filters
                         draft = FilterDraft.from(filters)
-                        filtersMessage = DriverStatus("حُفظت التعديلات تلقائيًا.", success = true)
+                        filtersMessage = DriverStatus(context.getString(R.string.ss_saved_auto), success = true)
                         haptics.performHapticFeedback(HapticFeedbackType.Confirm)
                         if (returnToSetupAfterAction && destination == DriverDestination.Filters) {
                             returnToSetupAfterAction = false
                             destination = DriverDestination.Setup
                         }
                     } else {
-                        filtersMessage = DriverStatus("تعذر حفظ التعديلات على الجهاز؛ ما زالت الشروط السابقة مستخدمة. أعد المحاولة.", isError = true)
+                        filtersMessage = DriverStatus(context.getString(R.string.ss_save_failed_retry), isError = true)
                         haptics.performHapticFeedback(HapticFeedbackType.Reject)
                     }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (_: Exception) {
                     if (revision == filterRevision) {
-                        filtersMessage = DriverStatus("تعذر حفظ التعديلات على الجهاز؛ ما زالت الشروط السابقة مستخدمة. أعد المحاولة.", isError = true)
+                        filtersMessage = DriverStatus(context.getString(R.string.ss_save_failed_retry), isError = true)
                     }
                 } finally {
                     if (revision == filterRevision) isSavingFilters = false
@@ -443,25 +446,25 @@ fun SettingsScreen(
         if (checkingActivation || isSavingFilters || isActive) return
         if (isRestoringSession || sessionRestoreError) {
             runtimeMessage = DriverStatus(
-                if (isRestoringSession) "جارٍ استعادة جلستك المحفوظة. ستتمكن من بدء المتابعة بعد اكتمال التحقق."
-                else "تعذر تحديث الجلسة؛ أعد المحاولة من إشعار الاستعادة قبل بدء المتابعة.",
+                if (isRestoringSession) context.getString(R.string.ss_restoring_session_wait)
+                else context.getString(R.string.ss_session_update_failed),
                 isError = sessionRestoreError,
             )
             return
         }
         if (filtersDirty) {
-            runtimeMessage = DriverStatus("تُحفظ التعديلات تلقائيًا؛ انتظر اكتمال الحفظ أو صحح القيم المعلّمة.", isError = true)
+            runtimeMessage = DriverStatus(context.getString(R.string.ss_autosave_wait), isError = true)
             return
         }
         if (!draftValidation.isValid || UiFormValidation.filtersError(savedFilters) != null) {
-            runtimeMessage = DriverStatus("صحح شروط الطلبات واحفظها قبل بدء العمل.", isError = true)
+            runtimeMessage = DriverStatus(context.getString(R.string.ss_fix_conditions_before_start), isError = true)
             return
         }
         // Conditions are not a setup step: they are what starting needs, so starting takes the
         // driver straight to them.
         if (!savedFilters.anyActive()) {
             navigateTo(DriverDestination.Filters)
-            filtersMessage = DriverStatus("اضبط شرطًا واحدًا على الأقل (مثل نطاق السعر أو وقت الوصول) ثم ارجع وابدأ المتابعة.", isError = true)
+            filtersMessage = DriverStatus(context.getString(R.string.ss_set_one_condition), isError = true)
             return
         }
         refreshRuntimePrerequisites()
@@ -481,14 +484,14 @@ fun SettingsScreen(
                     showActivationConsent = true
                 } else {
                     runtimeMessage = DriverStatus(
-                        "لم نتمكن من التحقق من اشتراكك. جدّده أو سجّل الدخول مجددًا ثم حاول مرة أخرى.",
+                        context.getString(R.string.ss_verify_failed_renew),
                         isError = true,
                     )
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                runtimeMessage = DriverStatus("لم نتمكن من التحقق من اشتراكك. تحقق من اتصال الإنترنت ثم حاول مرة أخرى.", isError = true)
+                runtimeMessage = DriverStatus(context.getString(R.string.ss_verify_failed_network), isError = true)
             } finally {
                 checkingActivation = false
             }
@@ -502,18 +505,18 @@ fun SettingsScreen(
             !SupabaseClient.hasValidLicense() || !accessibilityEnabled || !notificationsEnabled) {
             Settings.isActive = false
             isActive = false
-            runtimeMessage = DriverStatus("تغيّرت متطلبات بدء العمل؛ راجعها ثم حاول مرة أخرى.", isError = true)
+            runtimeMessage = DriverStatus(context.getString(R.string.ss_requirements_changed), isError = true)
             return
         }
         val result = latestToggleKeeper(true)
         if (result.isFailure) {
             Settings.isActive = false
             isActive = false
-            runtimeMessage = DriverStatus("لم نتمكن من بدء متابعة الطلبات. راجع أذونات الجهاز ثم حاول مرة أخرى.", isError = true)
+            runtimeMessage = DriverStatus(context.getString(R.string.ss_start_failed_perms), isError = true)
         } else {
             isActive = true
             haptics.performHapticFeedback(HapticFeedbackType.Confirm)
-            runtimeMessage = DriverStatus("متابعة الطلبات تعمل وفق شروطك المحفوظة وأوقات عملك. يمكنك إيقافها في أي وقت.", success = true)
+            runtimeMessage = DriverStatus(context.getString(R.string.ss_monitoring_started), success = true)
         }
     }
 
@@ -528,17 +531,17 @@ fun SettingsScreen(
     if (showAccessibilityRequired) {
         AlertDialog(
             onDismissRequest = { showAccessibilityRequired = false },
-            title = { Text("فعّل إذن متابعة الطلبات") },
-            text = { Text("يحتاج سبّاق إلى إذن إمكانية الوصول لمتابعة تفاصيل الطلبات الظاهرة والنقر على الطلب المطابق لشروطك. فعّله من إعدادات الجهاز، ويمكنك إيقاف المتابعة في أي وقت.") },
+            title = { Text(stringResource(R.string.ss_dlg_a11y_title)) },
+            text = { Text(stringResource(R.string.ss_dlg_a11y_text)) },
             confirmButton = {
                 TextButton(onClick = {
                     showAccessibilityRequired = false
                     if (onOpenA11y().isFailure) {
-                        runtimeMessage = DriverStatus("لم نتمكن من فتح إعدادات إمكانية الوصول. افتحها يدويًا من إعدادات الجهاز.", true)
+                        runtimeMessage = DriverStatus(context.getString(R.string.ss_a11y_open_failed), true)
                     }
-                }) { Text("فتح إعدادات الجهاز") }
+                }) { Text(stringResource(R.string.ss_open_device_settings)) }
             },
-            dismissButton = { TextButton(onClick = { showAccessibilityRequired = false }) { Text("إلغاء") } },
+            dismissButton = { TextButton(onClick = { showAccessibilityRequired = false }) { Text(stringResource(R.string.ss_cancel)) } },
         )
     }
 
@@ -546,76 +549,75 @@ fun SettingsScreen(
         AlertDialog(
             onDismissRequest = { showMissingPermissions = false },
             icon = { Icon(Icons.Outlined.WarningAmber, contentDescription = null) },
-            title = { Text("قبل البدء: أذونات مطلوبة") },
+            title = { Text(stringResource(R.string.ss_dlg_perms_title)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("يحتاج سبّاق إلى هذه الأذونات ليعمل. امنحها من هنا، ثم اضغط «ابدأ» مجددًا.",
+                    Text(stringResource(R.string.ss_dlg_perms_text),
                         style = MaterialTheme.typography.bodyMedium)
-                    if (!accessibilityEnabled) PermissionAction(Icons.Outlined.AccessibilityNew, "إذن متابعة الطلبات",
-                        "ليقرأ الطلب الظاهر ويقارنه بشروطك", "تفعيل") {
+                    if (!accessibilityEnabled) PermissionAction(Icons.Outlined.AccessibilityNew, stringResource(R.string.ss_perm_a11y_title),
+                        stringResource(R.string.ss_perm_a11y_why), stringResource(R.string.ss_enable)) {
                         showMissingPermissions = false
                         if (onOpenA11y().isFailure) {
-                            runtimeMessage = DriverStatus("لم نتمكن من فتح إعدادات إمكانية الوصول. افتحها يدويًا من إعدادات الجهاز.", true)
+                            runtimeMessage = DriverStatus(context.getString(R.string.ss_a11y_open_failed), true)
                         }
                     }
-                    if (!notificationsEnabled) PermissionAction(Icons.Outlined.Notifications, "التنبيهات",
-                        "ليظهر لك أن المتابعة تعمل", "السماح") {
+                    if (!notificationsEnabled) PermissionAction(Icons.Outlined.Notifications, stringResource(R.string.ss_perm_notif_title),
+                        stringResource(R.string.ss_perm_notif_why), stringResource(R.string.ss_allow)) {
                         showMissingPermissions = false
                         onRequestNotificationPermission()
                     }
-                    if (!batteryUnrestricted) PermissionAction(Icons.Outlined.BatteryChargingFull, "العمل دون قيود البطارية",
-                        "حتى لا يوقفه أندرويد عند قفل الشاشة (موصى به)", "السماح") {
+                    if (!batteryUnrestricted) PermissionAction(Icons.Outlined.BatteryChargingFull, stringResource(R.string.ss_perm_batt_title),
+                        stringResource(R.string.ss_perm_batt_why), stringResource(R.string.ss_allow)) {
                         runCatching { context.startActivity(PowerSetup.batteryIntent(context)) }
                             .recoverCatching { context.startActivity(PowerSetup.appDetailsIntent(context)) }
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { showMissingPermissions = false }) { Text("تم") } },
+            confirmButton = { TextButton(onClick = { showMissingPermissions = false }) { Text(stringResource(R.string.ss_done)) } },
         )
     }
 
     if (showNotificationRequired) {
         AlertDialog(
             onDismissRequest = { showNotificationRequired = false },
-            title = { Text("يلزم إذن الإشعارات") },
-            text = { Text("يحتاج سبّاق إلى الإشعارات ليُظهر لك بوضوح أن متابعة الطلبات تعمل.") },
+            title = { Text(stringResource(R.string.ss_dlg_notif_title)) },
+            text = { Text(stringResource(R.string.ss_dlg_notif_text)) },
             confirmButton = {
                 TextButton(onClick = {
                     showNotificationRequired = false
                     onRequestNotificationPermission()
-                }) { Text("السماح بالإشعارات") }
+                }) { Text(stringResource(R.string.ss_allow_notifications)) }
             },
-            dismissButton = { TextButton(onClick = { showNotificationRequired = false }) { Text("إلغاء") } },
+            dismissButton = { TextButton(onClick = { showNotificationRequired = false }) { Text(stringResource(R.string.ss_cancel)) } },
         )
     }
 
     if (showActivationConsent) {
         AlertDialog(
             onDismissRequest = { showActivationConsent = false },
-            title = { Text("بدء متابعة الطلبات") },
+            title = { Text(stringResource(R.string.ss_dlg_start_title)) },
             text = {
                 Text(
-                    "عند البدء، يقرأ سبّاق تفاصيل الطلبات الظاهرة وفق شروطك المحفوظة، ويمكنه النقر تلقائيًا على طلب يطابقها. " +
-                        "يمكنك إيقاف المتابعة في أي وقت."
+                    stringResource(R.string.ss_dlg_start_text)
                 )
             },
-            confirmButton = { TextButton(onClick = ::confirmActivation) { Text("موافق، ابدأ المتابعة") } },
-            dismissButton = { TextButton(onClick = { showActivationConsent = false }) { Text("إلغاء") } },
+            confirmButton = { TextButton(onClick = ::confirmActivation) { Text(stringResource(R.string.ss_dlg_start_confirm)) } },
+            dismissButton = { TextButton(onClick = { showActivationConsent = false }) { Text(stringResource(R.string.ss_cancel)) } },
         )
     }
 
     if (showResetFilters) {
         AlertDialog(
             onDismissRequest = { showResetFilters = false },
-            title = { Text("استعادة الشروط الافتراضية؟") },
-            text = { Text("سيُعاد ضبط جميع الشروط المحفوظة فورًا، وستتوقف المتابعة أولًا إذا كانت تعمل. لا يمكن التراجع عن هذا إلا بإدخال الشروط من جديد.") },
+            title = { Text(stringResource(R.string.ss_dlg_reset_title)) },
+            text = { Text(stringResource(R.string.ss_dlg_reset_text)) },
             confirmButton = {
                 TextButton(onClick = {
                     showResetFilters = false
                     updateDraft(FilterDraft.from(Filters()))
-                }) { Text("إعادة الضبط") }
+                }) { Text(stringResource(R.string.ss_reset)) }
             },
-            dismissButton = { TextButton(onClick = { showResetFilters = false }) { Text("إلغاء") } },
+            dismissButton = { TextButton(onClick = { showResetFilters = false }) { Text(stringResource(R.string.ss_cancel)) } },
         )
     }
 
@@ -648,7 +650,7 @@ fun SettingsScreen(
                 onToggle = { enabled -> if (enabled) requestActivation() else stopKeeper() },
                 onOpenA11y = {
                     if (onOpenA11y().isFailure) {
-                        runtimeMessage = DriverStatus("تعذر فتح إعدادات إمكانية الوصول. افتحها يدويًا من إعدادات الجهاز.", true)
+                        runtimeMessage = DriverStatus(context.getString(R.string.ss_a11y_open_failed2), true)
                     }
                 },
                 onRequestNotifications = onRequestNotificationPermission,
@@ -679,41 +681,41 @@ fun SettingsScreen(
                     steps = listOf(
                         SetupStep(
                             icon = Icons.Outlined.VerifiedUser,
-                            title = "تأكد من اشتراكك",
-                            why = "ابدأ تجربتك أو فعّل اشتراكك من صفحة حسابي.",
-                            doneText = "اشتراكك جاهز للعمل",
-                            actionLabel = "فتح حسابي",
+                            title = stringResource(R.string.ss_setup_sub_title),
+                            why = stringResource(R.string.ss_setup_sub_why),
+                            doneText = stringResource(R.string.ss_setup_sub_done),
+                            actionLabel = stringResource(R.string.ss_setup_open_account),
                             done = licenseInMemory,
                             onAction = { navigateFromSetup(DriverDestination.Account) },
                         ),
                         SetupStep(
                             icon = Icons.Outlined.AccessibilityNew,
-                            title = "اسمح لسبّاق بمتابعة الطلبات",
-                            why = "يقرأ سبّاق شاشة الطلب في التطبيقات المدعومة فقط ليقارنها بشروطك، ويعالجها على جهازك. سنشرح لك التفاصيل قبل فتح الإعدادات.",
-                            doneText = "الإذن مفعّل",
-                            actionLabel = "تفعيل الإذن",
+                            title = stringResource(R.string.ss_setup_a11y_title),
+                            why = stringResource(R.string.ss_setup_a11y_why),
+                            doneText = stringResource(R.string.ss_setup_a11y_done),
+                            actionLabel = stringResource(R.string.ss_setup_a11y_action),
                             done = accessibilityEnabled,
                             onAction = {
                                 if (onOpenA11y().isFailure) {
-                                    runtimeMessage = DriverStatus("تعذر فتح إعدادات إمكانية الوصول. افتحها يدويًا من إعدادات الجهاز.", true)
+                                    runtimeMessage = DriverStatus(context.getString(R.string.ss_a11y_open_failed2), true)
                                 }
                             },
                         ),
                         SetupStep(
                             icon = Icons.Outlined.Notifications,
-                            title = "فعّل تنبيهات حالة العمل",
-                            why = "تنبيه ثابت يُظهر لك أن المتابعة تعمل، فتعرف دائمًا متى يعمل سبّاق ومتى يتوقف.",
-                            doneText = "التنبيهات مفعّلة",
-                            actionLabel = "السماح بالتنبيهات",
+                            title = stringResource(R.string.ss_setup_notif_title),
+                            why = stringResource(R.string.ss_setup_notif_why),
+                            doneText = stringResource(R.string.ss_setup_notif_done),
+                            actionLabel = stringResource(R.string.ss_allow_notifications),
                             done = notificationsEnabled,
                             onAction = onRequestNotificationPermission,
                         ),
                         SetupStep(
                             icon = Icons.Outlined.BatteryChargingFull,
-                            title = "اسمح له بالعمل دون قيود البطارية",
-                            why = "بدون هذا قد يوقف أندرويد سبّاق عند قفل الشاشة أو بعد فترة. يستهلك سبّاق القليل من البطارية لأنه ينتظر فقط ظهور الطلبات.",
-                            doneText = "لن يوقفه توفير الطاقة",
-                            actionLabel = "السماح",
+                            title = stringResource(R.string.ss_setup_batt_title),
+                            why = stringResource(R.string.ss_setup_batt_why),
+                            doneText = stringResource(R.string.ss_setup_batt_done),
+                            actionLabel = stringResource(R.string.ss_allow),
                             done = batteryUnrestricted,
                             onAction = {
                                 runCatching { context.startActivity(PowerSetup.batteryIntent(context)) }
@@ -723,10 +725,10 @@ fun SettingsScreen(
                     ) + listOfNotNull(
                         if (PowerSetup.needsAutostart()) SetupStep(
                             icon = Icons.Outlined.RestartAlt,
-                            title = "فعّل التشغيل التلقائي في جوالك",
-                            why = "جوالك يمنع التطبيقات من العودة بعد إعادة التشغيل ما لم تفعّل لها «التشغيل التلقائي». سنفتح لك الإعداد مباشرة.",
-                            doneText = "مفعّل لسبّاق",
-                            actionLabel = "فتح الإعداد",
+                            title = stringResource(R.string.ss_setup_autostart_title),
+                            why = stringResource(R.string.ss_setup_autostart_why),
+                            doneText = stringResource(R.string.ss_setup_autostart_done),
+                            actionLabel = stringResource(R.string.ss_setup_open_setting),
                             done = autostartDone,
                             onAction = {
                                 runCatching { context.startActivity(PowerSetup.autostartIntent(context)) }
@@ -763,23 +765,23 @@ fun SettingsScreen(
                 }
                 val openA11y = {
                     if (onOpenA11y().isFailure) {
-                        runtimeMessage = DriverStatus("تعذر فتح إعدادات إمكانية الوصول. افتحها يدويًا من إعدادات الجهاز.", true)
+                        runtimeMessage = DriverStatus(context.getString(R.string.ss_a11y_open_failed2), true)
                     }
                 }
                 SettingsHubPage(
                     permissions = listOf(
-                        ReadinessItem(Icons.Outlined.AccessibilityNew, "إذن متابعة الطلبات", accessibilityEnabled,
-                            "مفعّل", "ليقرأ الطلب ويقبل المطابق؛ بدونه لا يعمل", "تفعيل الإذن", openA11y),
-                        ReadinessItem(Icons.Outlined.Notifications, "تنبيهات حالة العمل", notificationsEnabled,
-                            "مفعّلة", "ليظهر لك دائمًا أن المتابعة تعمل", "السماح", onRequestNotificationPermission),
-                        ReadinessItem(Icons.Outlined.VerifiedUser, "حالة الاشتراك", licenseInMemory,
-                            "جاهز للعمل", "ابدأ تجربتك أو فعّل اشتراكك", "فتح حسابي") { navigateTo(DriverDestination.Account) },
+                        ReadinessItem(Icons.Outlined.AccessibilityNew, stringResource(R.string.ss_perm_a11y_title), accessibilityEnabled,
+                            stringResource(R.string.ss_ready_a11y_ready), stringResource(R.string.ss_ready_a11y_why), stringResource(R.string.ss_setup_a11y_action), openA11y),
+                        ReadinessItem(Icons.Outlined.Notifications, stringResource(R.string.ss_ready_notif_title), notificationsEnabled,
+                            stringResource(R.string.ss_ready_notif_ready), stringResource(R.string.ss_ready_notif_why), stringResource(R.string.ss_allow), onRequestNotificationPermission),
+                        ReadinessItem(Icons.Outlined.VerifiedUser, stringResource(R.string.ss_ready_sub_title), licenseInMemory,
+                            stringResource(R.string.ss_ready_sub_ready), stringResource(R.string.ss_ready_sub_why), stringResource(R.string.ss_setup_open_account)) { navigateTo(DriverDestination.Account) },
                     ),
                     power = buildList {
-                        add(ReadinessItem(Icons.Outlined.BatteryChargingFull, "العمل دون قيود البطارية", batteryUnrestricted,
-                            "لن يوقفه توفير الطاقة", "قد يوقفه أندرويد عند قفل الشاشة", "السماح", openBattery))
-                        if (PowerSetup.needsAutostart()) add(ReadinessItem(Icons.Outlined.RestartAlt, "التشغيل التلقائي في جوالك", autostartDone,
-                            "مفعّل لسبّاق", "ليعود بعد إعادة تشغيل الجوال؛ فعّل «التشغيل التلقائي»", "فتح الإعداد") {
+                        add(ReadinessItem(Icons.Outlined.BatteryChargingFull, stringResource(R.string.ss_perm_batt_title), batteryUnrestricted,
+                            stringResource(R.string.ss_setup_batt_done), stringResource(R.string.ss_ready_batt_why), stringResource(R.string.ss_allow), openBattery))
+                        if (PowerSetup.needsAutostart()) add(ReadinessItem(Icons.Outlined.RestartAlt, stringResource(R.string.ss_ready_autostart_title), autostartDone,
+                            stringResource(R.string.ss_setup_autostart_done), stringResource(R.string.ss_ready_autostart_why), stringResource(R.string.ss_setup_open_setting)) {
                             runCatching { context.startActivity(PowerSetup.autostartIntent(context)) }
                             Settings.autostartConfirmed = true
                             autostartDone = true
@@ -834,10 +836,10 @@ private fun DriverNavigationShell(
         val selected = destination == item.destination
         if (item.destination == DriverDestination.Dashboard && dashboardBadge > 0) {
             BadgedBox(badge = { Badge { Text("$dashboardBadge") } }) {
-                Icon(item.icon, contentDescription = "${item.label}، ينقصه $dashboardBadge", modifier = Modifier.flipWhenSelected(selected))
+                Icon(item.icon, contentDescription = stringResource(R.string.nav_missing_badge, stringResource(item.labelRes), dashboardBadge), modifier = Modifier.flipWhenSelected(selected))
             }
         } else {
-            Icon(item.icon, contentDescription = item.label, modifier = Modifier.flipWhenSelected(selected))
+            Icon(item.icon, contentDescription = stringResource(item.labelRes), modifier = Modifier.flipWhenSelected(selected))
         }
     }
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -854,7 +856,7 @@ private fun DriverNavigationShell(
                             // «طلبات تناسبك» whole instead of clipping at the screen edge.
                             label = {
                                 Text(
-                                    item.label,
+                                    stringResource(item.labelRes),
                                     style = MaterialTheme.typography.labelMedium,
                                     textAlign = TextAlign.Center,
                                     maxLines = 2,
@@ -885,7 +887,7 @@ private fun DriverNavigationShell(
                                     onClick = { onDestinationSelected(item.destination) },
                                     icon = { navIcon(item) },
                                     label = {
-                                        Text(item.label, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
+                                        Text(stringResource(item.labelRes), fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
                                     },
                                     colors = NavigationBarItemDefaults.colors(
                                         selectedIconColor = colors.onSecondaryContainer,
@@ -941,25 +943,25 @@ private fun ActiveSubscriptionStatusCard(
     val remaining = until?.let { java.time.Duration.between(now, it).coerceAtLeast(java.time.Duration.ZERO) }
     val remainingDays = remaining?.toDays()
     val endDate = until?.let {
-        java.time.format.DateTimeFormatter.ofPattern("d MMMM yyyy", SabbaqLocale)
+        java.time.format.DateTimeFormatter.ofPattern("d MMMM yyyy", sabbaqDateLocale())
             .withZone(java.time.ZoneId.systemDefault()).format(it)
     }
     val title = when (state) {
-        LicenseState.ACTIVE -> "مشترك في سبّاق Pro"
-        LicenseState.TRIAL -> "فترة تجريبية مجانية"
-        LicenseState.PENDING -> "الاشتراك بانتظار التفعيل"
-        LicenseState.EXPIRED -> "انتهى اشتراكك"
-        LicenseState.DEVICE_MISMATCH -> "الاشتراك مرتبط بجهاز آخر"
-        LicenseState.BANNED, LicenseState.REJECTED -> "الاشتراك غير متاح"
-        LicenseState.UNREGISTERED, null -> "حالة الاشتراك غير مؤكدة"
+        LicenseState.ACTIVE -> stringResource(R.string.ss_sub_pro)
+        LicenseState.TRIAL -> stringResource(R.string.ss_sub_trial)
+        LicenseState.PENDING -> stringResource(R.string.ss_sub_pending)
+        LicenseState.EXPIRED -> stringResource(R.string.ss_sub_expired)
+        LicenseState.DEVICE_MISMATCH -> stringResource(R.string.ss_sub_mismatch)
+        LicenseState.BANNED, LicenseState.REJECTED -> stringResource(R.string.ss_sub_unavailable)
+        LicenseState.UNREGISTERED, null -> stringResource(R.string.ss_sub_unknown)
     }
     val detail = when {
-        (isPro || isTrial) && remainingDays == 0L -> "ينتهي خلال أقل من يوم — جدّد الآن"
-        (isPro || isTrial) && remainingDays != null -> "متبقٍ ${ArabicCount.days(remainingDays.toInt())} · حتى $endDate"
-        isPro || isTrial -> "متابعة الطلبات متاحة"
-        state == LicenseState.PENDING -> "سنفعّل الوصول بعد اكتمال التحقق"
-        state == null -> "حدّث حالة حسابك من «حسابي»"
-        else -> "افتح «حسابي» للتجديد أو التفاصيل"
+        (isPro || isTrial) && remainingDays == 0L -> stringResource(R.string.ss_sub_ends_today)
+        (isPro || isTrial) && remainingDays != null -> stringResource(R.string.ss_sub_remaining, ArabicCount.days(remainingDays.toInt()), endDate ?: "")
+        isPro || isTrial -> stringResource(R.string.ss_sub_available)
+        state == LicenseState.PENDING -> stringResource(R.string.ss_sub_pending_detail)
+        state == null -> stringResource(R.string.ss_sub_update_from_account)
+        else -> stringResource(R.string.ss_sub_open_account_detail)
     }
     val endingSoon = (isPro || isTrial) && remainingDays != null && remainingDays <= 2
     // Trial length is known, so its progress is shown; a paid period's start is not, so Pro shows the date only.
@@ -977,12 +979,13 @@ private fun ActiveSubscriptionStatusCard(
         isTrial -> colors.onPrimaryContainer
         else -> colors.onErrorContainer
     }
+    val cardStateDescription = stringResource(R.string.ss_sub_state_desc, title, detail)
     Surface(
         modifier = modifier
             .fillMaxWidth()
             .clip(MaterialTheme.shapes.large)
-            .clickable(onClickLabel = "فتح حسابي", role = Role.Button, onClick = onOpenAccount)
-            .semantics(mergeDescendants = true) { stateDescription = "$title، $detail" },
+            .clickable(onClickLabel = stringResource(R.string.ss_open_account_label), role = Role.Button, onClick = onOpenAccount)
+            .semantics(mergeDescendants = true) { stateDescription = cardStateDescription },
         shape = MaterialTheme.shapes.large,
         color = Color.Transparent,
         contentColor = content,
@@ -1026,7 +1029,7 @@ private fun MembershipBadge(isPro: Boolean, isTrial: Boolean) {
     val colors = MaterialTheme.colorScheme
     val (label, fill, ink) = when {
         isPro -> Triple("PRO", Brush.linearGradient(listOf(Color(0xFFF7D774), Color(0xFFD9A526))), Color(0xFF3A2A00))
-        isTrial -> Triple("تجربة", Brush.linearGradient(listOf(colors.primary, colors.primary)), colors.onPrimary)
+        isTrial -> Triple(stringResource(R.string.ss_badge_trial), Brush.linearGradient(listOf(colors.primary, colors.primary)), colors.onPrimary)
         else -> Triple("!", Brush.linearGradient(listOf(colors.error, colors.error)), colors.onError)
     }
     Box(
@@ -1073,19 +1076,19 @@ private fun DashboardPage(
     onOpenAutostart: () -> Unit = {},
 ) = DriverPage {
     val readiness = listOf(
-        ReadinessItem(Icons.Outlined.AccessibilityNew, "إذن متابعة الطلبات", accessibilityEnabled,
-            "مفعّل", "ليقرأ الطلب ويقبل المطابق؛ بدونه لا يعمل", "تفعيل الإذن", onOpenA11y),
-        ReadinessItem(Icons.Outlined.Notifications, "تنبيهات حالة العمل", notificationsEnabled,
-            "مفعّلة", "ليظهر لك دائمًا أن المتابعة تعمل", "السماح", onRequestNotifications),
-        ReadinessItem(Icons.Outlined.VerifiedUser, "حالة الاشتراك", licenseInMemory,
-            "جاهز للعمل", "ابدأ تجربتك أو فعّل اشتراكك", "فتح حسابي", onOpenAccount),
+        ReadinessItem(Icons.Outlined.AccessibilityNew, stringResource(R.string.ss_perm_a11y_title), accessibilityEnabled,
+            stringResource(R.string.ss_ready_a11y_ready), stringResource(R.string.ss_ready_a11y_why), stringResource(R.string.ss_setup_a11y_action), onOpenA11y),
+        ReadinessItem(Icons.Outlined.Notifications, stringResource(R.string.ss_ready_notif_title), notificationsEnabled,
+            stringResource(R.string.ss_ready_notif_ready), stringResource(R.string.ss_ready_notif_why), stringResource(R.string.ss_allow), onRequestNotifications),
+        ReadinessItem(Icons.Outlined.VerifiedUser, stringResource(R.string.ss_ready_sub_title), licenseInMemory,
+            stringResource(R.string.ss_ready_sub_ready), stringResource(R.string.ss_ready_sub_why), stringResource(R.string.ss_setup_open_account), onOpenAccount),
     )
     // What keeps it running when the screen locks, the phone sleeps or restarts.
     val power = buildList {
-        add(ReadinessItem(Icons.Outlined.BatteryChargingFull, "العمل دون قيود البطارية", batteryUnrestricted,
-            "لن يوقفه توفير الطاقة", "قد يوقفه أندرويد عند قفل الشاشة", "السماح", onOpenBattery))
-        if (autostartNeeded) add(ReadinessItem(Icons.Outlined.RestartAlt, "التشغيل التلقائي في جوالك", autostartDone,
-            "مفعّل لسبّاق", "ليعود بعد إعادة تشغيل الجوال؛ فعّل «التشغيل التلقائي»", "فتح الإعداد", onOpenAutostart))
+        add(ReadinessItem(Icons.Outlined.BatteryChargingFull, stringResource(R.string.ss_perm_batt_title), batteryUnrestricted,
+            stringResource(R.string.ss_setup_batt_done), stringResource(R.string.ss_ready_batt_why), stringResource(R.string.ss_allow), onOpenBattery))
+        if (autostartNeeded) add(ReadinessItem(Icons.Outlined.RestartAlt, stringResource(R.string.ss_ready_autostart_title), autostartDone,
+            stringResource(R.string.ss_setup_autostart_done), stringResource(R.string.ss_ready_autostart_why), stringResource(R.string.ss_setup_open_setting), onOpenAutostart))
     }
     val readyCount = readiness.count { it.ready }
     val allCount = readiness.size + power.size
@@ -1105,7 +1108,7 @@ private fun DashboardPage(
         totalCount = allCount,
         onToggle = onToggle,
         canStart = !isRestoringSession && !sessionRestoreError,
-        busyText = if (isRestoringSession) "جارٍ استعادة الجلسة" else "جارٍ التحقق من الاشتراك",
+        busyText = if (isRestoringSession) stringResource(R.string.ss_busy_restoring) else stringResource(R.string.ss_busy_verifying),
         modifier = Modifier.sabbaqEntrance(1),
     )
     ActiveConditionsCockpit(
@@ -1125,12 +1128,13 @@ private fun DashboardPage(
     SabbaqAnimatedMessage(message?.message, message?.tone ?: SabbaqTone.Info)
 
     SabbaqCard(
-        title = if (readyCount == readiness.size) "كل شيء جاهز" else "قبل بدء العمل",
-        subtitle = if (readyCount == readiness.size) "يمكنك بدء المتابعة في أي وقت."
-            else "تبقّت ${ArabicCount.steps(readiness.size - readyCount)} قبل البدء.",
+        title = if (readyCount == readiness.size) stringResource(R.string.ss_card_ready_title) else stringResource(R.string.ss_card_before_start),
+        subtitle = if (readyCount == readiness.size) stringResource(R.string.ss_card_ready_sub)
+            else stringResource(R.string.ss_card_steps_left, ArabicCount.steps(readiness.size - readyCount)),
         icon = Icons.Outlined.VerifiedUser,
         modifier = Modifier.sabbaqEntrance(1),
     ) {
+        val readyCountState = stringResource(R.string.ss_ready_count_state, readyCount, readiness.size)
         val progress by animateFloatAsState(
             targetValue = readyCount.toFloat() / readiness.size,
             animationSpec = tween(SabbaqMotion.LONG, easing = SabbaqMotion.Emphasized),
@@ -1138,14 +1142,14 @@ private fun DashboardPage(
         )
         LinearProgressIndicator(
             progress = { progress },
-            modifier = Modifier.fillMaxWidth().semantics { stateDescription = "$readyCount من ${readiness.size} جاهزة" },
+            modifier = Modifier.fillMaxWidth().semantics { stateDescription = readyCountState },
         )
         readiness.forEachIndexed { index, item ->
             if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             ReadinessRow(item)
         }
         SabbaqButton(
-            if (readyCount < readiness.size) "أكمل الإعداد خطوة بخطوة" else "دليل الإعداد",
+            if (readyCount < readiness.size) stringResource(R.string.ss_complete_setup_steps) else stringResource(R.string.ss_setup_guide),
             onClick = onOpenSetupGuide,
             style = if (readyCount < readiness.size) SabbaqButtonStyle.Secondary else SabbaqButtonStyle.Text,
             icon = Icons.Outlined.Tune,
@@ -1154,9 +1158,9 @@ private fun DashboardPage(
 
     val powerReady = power.all { it.ready }
     SabbaqCard(
-        title = if (powerReady) "يعمل بكامل طاقته" else "ليعمل بكامل طاقته",
-        subtitle = if (powerReady) "يستمر مع قفل الشاشة، ويعود تلقائيًا بعد إعادة تشغيل الجوال."
-            else "حتى لا يوقفه أندرويد أثناء قفل الشاشة أو بعد إعادة التشغيل.",
+        title = if (powerReady) stringResource(R.string.ss_card_full_power_on) else stringResource(R.string.ss_card_full_power_off),
+        subtitle = if (powerReady) stringResource(R.string.ss_card_full_power_on_sub)
+            else stringResource(R.string.ss_card_full_power_off_sub),
         icon = Icons.Outlined.Bolt,
         modifier = Modifier.sabbaqEntrance(2),
     ) {
@@ -1165,17 +1169,16 @@ private fun DashboardPage(
             ReadinessRow(item)
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        ReadinessRow(ReadinessItem(Icons.Outlined.Autorenew, "الاستئناف بعد إعادة التشغيل", true,
-            "تلقائي إذا تركت المتابعة تعمل", "", "", {}))
+        ReadinessRow(ReadinessItem(Icons.Outlined.Autorenew, stringResource(R.string.ss_resume_after_restart), true,
+            stringResource(R.string.ss_resume_after_restart_ready), "", "", {}))
     }
 
     // Voice alerts live in «الإعدادات ← الصوت والتنبيهات»; statistics live in «سجل القرارات».
     SupportedPlatformsCard(Modifier.sabbaqEntrance(5))
 
-    SabbaqCard(title = "أثناء وقت العمل", icon = Icons.Outlined.Info, modifier = Modifier.sabbaqEntrance(6)) {
+    SabbaqCard(title = stringResource(R.string.ss_card_during_work), icon = Icons.Outlined.Info, modifier = Modifier.sabbaqEntrance(6)) {
         Text(
-            "يتابع سبّاق الطلبات الظاهرة وفق سعر الطلب والعائد لكل كم ومسافة الوصول وأوقات العمل التي حددتها. " +
-                "عند ظهور طلب مطابق، يمكنه النقر عليه تلقائيًا. يمكنك إيقاف المتابعة في أي وقت.",
+            stringResource(R.string.ss_during_work_text),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -1194,23 +1197,23 @@ internal fun RuntimeStatusCard(status: RuntimeStatusSnapshot, modifier: Modifier
     }
     val state = when {
         status.pausedReason != null -> RuntimeLabels.pausedReason(status.pausedReason)
-        status.stale -> "لا نشاط حديث؛ افتح تطبيق النقل وتأكد أنه متصل"
-        status.active -> "تعمل وتراقب الطلبات"
-        else -> "متوقفة"
+        status.stale -> stringResource(R.string.ss_runtime_stale)
+        status.active -> stringResource(R.string.ss_runtime_active)
+        else -> stringResource(R.string.ss_runtime_stopped)
     }
-    SabbaqCard(title = "حالة التشغيل الفعلية", subtitle = state, icon = Icons.Outlined.Autorenew, modifier = modifier) {
-        Text("آخر نشاط من تطبيق النقل: ${RuntimeLabels.relativeTime(status.lastEventMs, now)}", style = MaterialTheme.typography.bodySmall)
-        Text("آخر طلب: ${RuntimeLabels.relativeTime(status.lastOfferMs, now)} · آخر قرار: ${RuntimeLabels.relativeTime(status.lastDecisionMs, now)}", style = MaterialTheme.typography.bodySmall)
-        Text("آخر ضغط على قبول: ${RuntimeLabels.relativeTime(status.lastClickMs, now)}", style = MaterialTheme.typography.bodySmall)
+    SabbaqCard(title = stringResource(R.string.ss_runtime_title), subtitle = state, icon = Icons.Outlined.Autorenew, modifier = modifier) {
+        Text(stringResource(R.string.ss_runtime_last_event, RuntimeLabels.relativeTime(status.lastEventMs, now)), style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(R.string.ss_runtime_last_offer_decision, RuntimeLabels.relativeTime(status.lastOfferMs, now), RuntimeLabels.relativeTime(status.lastDecisionMs, now)), style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(R.string.ss_runtime_last_click, RuntimeLabels.relativeTime(status.lastClickMs, now)), style = MaterialTheme.typography.bodySmall)
         status.latestReport?.let { report ->
-            Text("وضوح آخر طلب: ${report.score}/100", style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(R.string.ss_runtime_clarity, report.score), style = MaterialTheme.typography.bodySmall)
             if (report.reasons.isNotEmpty()) {
-                Text("سبب عدم القبول: ${report.reasons.take(2).joinToString(" · ") { reasonArabic(it).removeSuffix(".") }}",
+                Text(stringResource(R.string.ss_runtime_reject_reason, report.reasons.take(2).joinToString(" · ") { reasonArabic(it).removeSuffix(".") }),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
         }
         if (status.diagnostics.isNotEmpty()) {
-            Text("آخر المراحل: ${status.diagnostics.takeLast(4).joinToString(" ← ") { RuntimeLabels.stage(it.stage) }}",
+            Text(stringResource(R.string.ss_runtime_stages, status.diagnostics.takeLast(4).joinToString(" ← ") { RuntimeLabels.stage(it.stage) }),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
@@ -1232,15 +1235,15 @@ private fun SessionRestoreNotice(isRestoring: Boolean, onRetry: () -> Unit) {
         ) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
-                    if (isRestoring) "أهلًا بعودتك" else "الحساب محفوظ لكن تعذر تحديث الجلسة",
+                    if (isRestoring) stringResource(R.string.ss_restore_welcome) else stringResource(R.string.ss_restore_session_failed),
                     style = MaterialTheme.typography.titleSmall,
                 )
                 Text(
-                    if (isRestoring) "جارٍ التحقق من الجلسة والترخيص. ستبقى متابعة الطلبات متوقفة حتى يكتمل التحقق."
-                    else "لم تُمسح الجلسة. يمكنك استخدام إعداداتك المحلية؛ أعد المحاولة قبل تشغيل متابعة الطلبات.",
+                    if (isRestoring) stringResource(R.string.ss_restore_checking)
+                    else stringResource(R.string.ss_restore_local),
                     style = MaterialTheme.typography.bodySmall,
                 )
-                if (!isRestoring) TextButton(onClick = onRetry) { Text("إعادة المحاولة") }
+                if (!isRestoring) TextButton(onClick = onRetry) { Text(stringResource(R.string.ss_retry)) }
             }
             if (isRestoring) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
         }
@@ -1264,11 +1267,11 @@ private fun ActiveConditionsCockpit(
     modifier: Modifier = Modifier,
 ) {
     SabbaqCard(
-        title = "شروط القيادة",
+        title = stringResource(R.string.ss_conditions_title),
         subtitle = when {
-            activeCount == 0 -> "فعّل شرطًا واحدًا على الأقل لاختيار الطلبات."
-            isActive -> "${ArabicCount.conditions(activeCount)} فعّالة · أي تعديل هنا يُطبَّق فورًا دون إيقاف المتابعة."
-            else -> "${ArabicCount.conditions(activeCount)} فعّالة · تُحفظ التعديلات تلقائيًا."
+            activeCount == 0 -> stringResource(R.string.ss_conditions_none)
+            isActive -> stringResource(R.string.ss_conditions_active_live, ArabicCount.conditions(activeCount))
+            else -> stringResource(R.string.ss_conditions_active_saved, ArabicCount.conditions(activeCount))
         },
         icon = Icons.Outlined.Tune,
         modifier = modifier,
@@ -1276,7 +1279,7 @@ private fun ActiveConditionsCockpit(
         QuickConditionsPanel(draft, errors, onDraftChange)
         SabbaqAnimatedMessage(saveMessage?.message, saveMessage?.tone ?: SabbaqTone.Info)
         SabbaqButton(
-            "باقي الشروط في «طلبات تناسبك»",
+            stringResource(R.string.ss_conditions_more),
             onClick = onOpenFilters,
             style = SabbaqButtonStyle.Secondary,
             icon = Icons.Outlined.FilterAlt,
@@ -1307,11 +1310,12 @@ private fun OperationHero(
     totalCount: Int,
     onToggle: (Boolean) -> Unit,
     canStart: Boolean = true,
-    busyText: String = "جارٍ التحقق من الاشتراك",
+    busyText: String = stringResource(R.string.ss_busy_verifying),
     modifier: Modifier = Modifier,
 ) {
     val brand = LocalSabbaqBrand.current
     val reduced = LocalReducedMotion.current
+    val readinessState = stringResource(R.string.ss_readiness_state, readyCount, totalCount)
     val readiness = if (totalCount > 0) readyCount.toFloat() / totalCount else 0f
     val ring by animateFloatAsState(
         targetValue = if (isActive) 1f else readiness,
@@ -1384,7 +1388,7 @@ private fun OperationHero(
             ) {
                 if (isActive) LiveStatusMark(isActive = true)
                 else SabbaqProgressCoin(done = readyCount, total = totalCount,
-                    modifier = Modifier.semantics { stateDescription = "جاهزية $readyCount من $totalCount" })
+                    modifier = Modifier.semantics { stateDescription = readinessState })
                 AnimatedContent(
                     targetState = isActive,
                     transitionSpec = { (fadeIn(tween(SabbaqMotion.MEDIUM)) togetherWith fadeOut(tween(SabbaqMotion.SHORT))) },
@@ -1392,15 +1396,15 @@ private fun OperationHero(
                 ) { active ->
                     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
-                            if (active) "متابعة الطلبات تعمل" else "متابعة الطلبات متوقفة",
+                            if (active) stringResource(R.string.ss_hero_active) else stringResource(R.string.ss_hero_stopped),
                             style = MaterialTheme.typography.titleMedium,
                             color = brand.onHero,
                             textAlign = TextAlign.Center,
                         )
                         Text(
-                            if (active) "تُطبّق شروطك المحفوظة وأوقات عملك."
-                            else if (readyCount < totalCount) "جاهزية $readyCount من $totalCount؛ أكمل البقية أدناه."
-                            else "كل شيء جاهز. ابدأ عندما تكون مستعدًا.",
+                            if (active) stringResource(R.string.ss_hero_active_sub)
+                            else if (readyCount < totalCount) stringResource(R.string.ss_hero_ready_sub, readyCount, totalCount)
+                            else stringResource(R.string.ss_hero_allready_sub),
                             style = MaterialTheme.typography.bodySmall,
                             color = brand.onHeroMuted,
                             textAlign = TextAlign.Center,
@@ -1408,8 +1412,9 @@ private fun OperationHero(
                         )
                     }
                 }
+                val toggleContentDescription = if (isActive) stringResource(R.string.ss_stop_cd) else stringResource(R.string.ss_start_cd)
                 SabbaqButton(
-                    text = if (isActive) "إيقاف" else "ابدأ",
+                    text = if (isActive) stringResource(R.string.ss_stop) else stringResource(R.string.ss_start),
                     onClick = { onToggle(!isActive) },
                     enabled = isActive || canStart,
                     busy = isChecking,
@@ -1417,7 +1422,7 @@ private fun OperationHero(
                     icon = if (isActive) Icons.Outlined.Stop else Icons.Outlined.PlayArrow,
                     fillWidth = false,
                     modifier = Modifier.semantics {
-                        contentDescription = if (isActive) "إيقاف متابعة الطلبات" else "ابدأ متابعة الطلبات"
+                        contentDescription = toggleContentDescription
                     },
                     colors = ButtonDefaults.buttonColors(
                         containerColor = if (isActive) brand.onHero.copy(alpha = 0.14f) else brand.signature,
@@ -1525,7 +1530,7 @@ private fun LiveStatusMark(isActive: Boolean) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(
                     imageVector = if (isActive) Icons.Outlined.CheckCircle else Icons.Outlined.Stop,
-                    contentDescription = if (isActive) "متابعة الطلبات تعمل" else "متابعة الطلبات متوقفة",
+                    contentDescription = if (isActive) stringResource(R.string.ss_hero_active) else stringResource(R.string.ss_hero_stopped),
                     modifier = Modifier.size(24.dp),
                 )
             }
@@ -1558,7 +1563,7 @@ internal fun ReadinessRow(item: ReadinessItem) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (item.ready) {
-            SabbaqStatusPill("جاهز", ready = true)
+            SabbaqStatusPill(stringResource(R.string.ss_ready_pill), ready = true)
         } else if (item.actionLabel.isNotEmpty()) {
             Button(onClick = item.onAction, contentPadding = PaddingValues(horizontal = 16.dp), modifier = Modifier.heightIn(min = 40.dp)) {
                 Text(item.actionLabel, style = MaterialTheme.typography.labelLarge)
@@ -1585,12 +1590,12 @@ private fun MissingPermissionsCard(missing: List<ReadinessItem>, modifier: Modif
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Icon(Icons.Outlined.WarningAmber, contentDescription = null)
                 Text(
-                    "ينقص سبّاق ${ArabicCount.permissions(missing.size)} ليعمل بكامل طاقته",
+                    stringResource(R.string.ss_missing_title, ArabicCount.permissions(missing.size)),
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.weight(1f).semantics { heading() },
                 )
             }
-            Text("بدونها قد لا يقبل الطلبات، أو يتوقف عند قفل الشاشة أو بعد إعادة التشغيل. اضغط على كل زر وامنح الإذن.",
+            Text(stringResource(R.string.ss_missing_text),
                 style = MaterialTheme.typography.bodyMedium)
             missing.forEach { item ->
                 PermissionAction(item.icon, item.title, item.missingText, item.actionLabel, item.onAction)
@@ -1630,12 +1635,12 @@ private fun FiltersPage(
     onReset: () -> Unit,
 ) = DriverPage {
     SabbaqSectionTitle(
-        title = "طلبات تناسبك",
-        subtitle = if (isSaving) "جارٍ تطبيق آخر تعديل وحفظه على هذا الجهاز…" else "حدّد ما يلائم وقتك ومسافة وصولك والعائد الذي تريده؛ تُحفظ التغييرات تلقائيًا.",
+        title = stringResource(R.string.ss_filters_title),
+        subtitle = if (isSaving) stringResource(R.string.ss_filters_saving) else stringResource(R.string.ss_filters_subtitle),
     )
     SabbaqAnimatedMessage(message?.message, message?.tone ?: SabbaqTone.Info)
     SabbaqAnimatedMessage(
-        if (validationErrors.isNotEmpty()) "راجع الحقول المعلَّمة؛ لن نستبدل شروطك المحفوظة حتى تصلحها." else null,
+        if (validationErrors.isNotEmpty()) stringResource(R.string.ss_filters_fix_marked) else null,
         SabbaqTone.Error,
     )
     FilterPresetsCard(draft = draft, enabled = !isSaving, onDraftChange = onDraftChange)
@@ -1644,24 +1649,24 @@ private fun FiltersPage(
         errors = validationErrors,
         onDraftChange = onDraftChange,
     )
-    SabbaqCard(title = "الحفظ الفوري", subtitle = "يُطبّق كل شرط صالح ويحفظ محليًا دون خطوة إضافية.", icon = Icons.Outlined.Autorenew) {
+    SabbaqCard(title = stringResource(R.string.ss_instant_save_title), subtitle = stringResource(R.string.ss_instant_save_sub), icon = Icons.Outlined.Autorenew) {
         if (isSaving) {
             LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-            Text("جارٍ حفظ آخر تعديل…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.ss_saving_last), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (dirty && !isSaving && message?.isError == true) {
             SabbaqButton(
-                text = "إعادة محاولة الحفظ",
+                text = stringResource(R.string.ss_retry_save),
                 onClick = onSave,
                 enabled = validationErrors.isEmpty(),
                 icon = Icons.Outlined.Refresh,
             )
         }
         AnimatedVisibility(dirty && !isSaving && validationErrors.isEmpty()) {
-            SabbaqButton(text = "استرجاع الشروط المحفوظة", onClick = onRevert, style = SabbaqButtonStyle.Secondary)
+            SabbaqButton(text = stringResource(R.string.ss_restore_saved_conditions), onClick = onRevert, style = SabbaqButtonStyle.Secondary)
         }
         SabbaqButton(
-            text = "استعادة الإعدادات الافتراضية",
+            text = stringResource(R.string.ss_restore_defaults),
             onClick = onReset,
             enabled = !isSaving,
             style = SabbaqButtonStyle.Text,
@@ -1676,8 +1681,8 @@ private fun FiltersPage(
 private fun FilterPresetsCard(draft: FilterDraft, enabled: Boolean, onDraftChange: (FilterDraft) -> Unit) {
     val selected = FilterPreset.entries.firstOrNull { it.matches(draft) }
     SabbaqCard(
-        title = "ابدأ من قالب",
-        subtitle = selected?.description ?: "يضبط حدود الوصول والرحلة فقط، ثم يحفظها تلقائيًا.",
+        title = stringResource(R.string.ss_preset_title),
+        subtitle = selected?.let { stringResource(it.descriptionRes) } ?: stringResource(R.string.ss_preset_sub),
         icon = Icons.Outlined.Tune,
     ) {
         FilterPresetChips(draft, enabled, onDraftChange)
@@ -1695,7 +1700,7 @@ private fun FilterPresetChips(draft: FilterDraft, enabled: Boolean, onDraftChang
                     selected = preset == selected,
                     enabled = enabled,
                     onClick = { onDraftChange(preset.applyTo(draft)) },
-                    label = { Text(preset.label) },
+                    label = { Text(stringResource(preset.labelRes)) },
                     leadingIcon = if (preset == selected) {
                         { Icon(Icons.Outlined.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp)) }
                     } else null,
@@ -1717,6 +1722,7 @@ private fun SimulatorPage(savedFilters: Filters) {
     var offerText by rememberSaveable { mutableStateOf("") }
     var result by remember { mutableStateOf<PreviewResult?>(null) }
     val hasInput = listOf(fare, pickupKm, tripKm, pickupMinutes, tripMinutes, offerText).any { it.isNotBlank() } || !hasDestination
+    val invalidNumberMsg = stringResource(R.string.ss_sim_invalid_number)
 
     fun evaluate() {
         val fareValue = parsePreviewDecimal(fare)
@@ -1734,7 +1740,7 @@ private fun SimulatorPage(savedFilters: Filters) {
         if (invalid) {
             result = PreviewResult(
                 verdict = OfferEvaluator.evaluate(emptyPreviewOffer(), savedFilters, currentMinuteOfDay()),
-                error = "أدخل رقمًا غير سالب، أو اترك الحقل فارغًا إذا لم تتوفر هذه المعلومة.",
+                error = invalidNumberMsg,
             )
             return
         }
@@ -1758,33 +1764,33 @@ private fun SimulatorPage(savedFilters: Filters) {
     }
 
     DriverPage {
-        SabbaqSectionTitle("جرّب شروطك", "أدخل تفاصيل طلب مشابه لتعرف إن كان يطابق شروطك المحفوظة، من دون التأثير في عملك.")
-        SabbaqMessage("هذه تجربة فقط: لن تغيّر شروطك ولن تنقر على أي طلب.")
-        SabbaqCard(title = "تفاصيل الطلب للتجربة", subtitle = "أدخل ما تعرفه من تفاصيل الطلب، واترك أي خانة فارغة إذا لم تظهر لك.", icon = Icons.Outlined.Visibility) {
-            PreviewField(fare, "سعر الطلب", KeyboardType.Decimal) { fare = it; result = null }
+        SabbaqSectionTitle(stringResource(R.string.ss_sim_title), stringResource(R.string.ss_sim_subtitle))
+        SabbaqMessage(stringResource(R.string.ss_sim_note))
+        SabbaqCard(title = stringResource(R.string.ss_sim_card_title), subtitle = stringResource(R.string.ss_sim_card_sub), icon = Icons.Outlined.Visibility) {
+            PreviewField(fare, stringResource(R.string.ss_sim_fare), KeyboardType.Decimal) { fare = it; result = null }
             Row(
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text("الطلب يعرض وجهة", style = MaterialTheme.typography.bodyLarge)
-                    Text("أطفئه لمحاكاة طلب بلا وجهة.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.ss_sim_has_destination), style = MaterialTheme.typography.bodyLarge)
+                    Text(stringResource(R.string.ss_sim_has_destination_sub), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Switch(checked = hasDestination, onCheckedChange = { hasDestination = it; result = null })
             }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                PreviewField(pickupKm, "مسافة الوصول", KeyboardType.Decimal, Modifier.weight(1f), unit = "كم") { pickupKm = it; result = null }
-                PreviewField(pickupMinutes, "وقت الوصول", KeyboardType.Number, Modifier.weight(1f), unit = "د") { pickupMinutes = it; result = null }
+                PreviewField(pickupKm, stringResource(R.string.ss_sim_pickup_km), KeyboardType.Decimal, Modifier.weight(1f), unit = stringResource(R.string.ss_unit_km)) { pickupKm = it; result = null }
+                PreviewField(pickupMinutes, stringResource(R.string.ss_sim_pickup_min), KeyboardType.Number, Modifier.weight(1f), unit = stringResource(R.string.ss_unit_min)) { pickupMinutes = it; result = null }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                PreviewField(tripKm, "مسافة الرحلة", KeyboardType.Decimal, Modifier.weight(1f), unit = "كم") { tripKm = it; result = null }
-                PreviewField(tripMinutes, "مدة الرحلة", KeyboardType.Number, Modifier.weight(1f), unit = "د") { tripMinutes = it; result = null }
+                PreviewField(tripKm, stringResource(R.string.ss_sim_trip_km), KeyboardType.Decimal, Modifier.weight(1f), unit = stringResource(R.string.ss_unit_km)) { tripKm = it; result = null }
+                PreviewField(tripMinutes, stringResource(R.string.ss_sim_trip_min), KeyboardType.Number, Modifier.weight(1f), unit = stringResource(R.string.ss_unit_min)) { tripMinutes = it; result = null }
             }
-            PreviewField(offerText, "كلمات في وصف الطلب (اختياري)", KeyboardType.Text, singleLine = false) { offerText = it; result = null }
-            SabbaqButton(text = "اعرف هل يناسبك", onClick = ::evaluate, enabled = hasInput, icon = Icons.Outlined.Visibility)
+            PreviewField(offerText, stringResource(R.string.ss_sim_offer_text), KeyboardType.Text, singleLine = false) { offerText = it; result = null }
+            SabbaqButton(text = stringResource(R.string.ss_sim_check), onClick = ::evaluate, enabled = hasInput, icon = Icons.Outlined.Visibility)
             AnimatedVisibility(hasInput) {
-                SabbaqButton(text = "مسح التجربة", onClick = ::clearAll, style = SabbaqButtonStyle.Text, icon = Icons.Outlined.Refresh)
+                SabbaqButton(text = stringResource(R.string.ss_sim_clear), onClick = ::clearAll, style = SabbaqButtonStyle.Text, icon = Icons.Outlined.Refresh)
             }
         }
         AnimatedContent(
@@ -1827,19 +1833,19 @@ private fun PreviewVerdictCard(result: PreviewResult) {
     }
     val verdict = result.verdict
     SabbaqCard(
-        title = if (verdict.accept) "نتيجة التجربة: يناسبك" else "نتيجة التجربة: لا يناسبك",
-        subtitle = if (verdict.accept) "بحسب شروطك المحفوظة وتفاصيل التجربة." else "لن يطابق هذا الطلب شروطك للأسباب التالية.",
+        title = if (verdict.accept) stringResource(R.string.ss_verdict_match) else stringResource(R.string.ss_verdict_nomatch),
+        subtitle = if (verdict.accept) stringResource(R.string.ss_verdict_match_sub) else stringResource(R.string.ss_verdict_nomatch_sub),
         icon = if (verdict.accept) Icons.Outlined.CheckCircle else Icons.Outlined.WarningAmber,
     ) {
         SabbaqMessage(
-            if (verdict.accept) "يطابق شروطك المحفوظة." else "لا يطابق ${ArabicCount.conditionsObject(verdict.reasons.size)} من شروطك.",
+            if (verdict.accept) stringResource(R.string.ss_verdict_match_msg) else stringResource(R.string.ss_verdict_nomatch_msg, ArabicCount.conditionsObject(verdict.reasons.size)),
             tone = if (verdict.accept) SabbaqTone.Success else SabbaqTone.Error,
         )
         verdict.reasons.forEach { reason ->
-            Text("• ${reasonArabic(reason.code)}", style = MaterialTheme.typography.bodyMedium)
+            Text("• " + reasonArabic(reason.code), style = MaterialTheme.typography.bodyMedium)
         }
         verdict.farePerKm?.let { perKm ->
-            Text("العائد المحسوب لكل كم: ${perKm.stripTrailingZeros().toPlainString()}", style = MaterialTheme.typography.bodySmall,
+            Text(stringResource(R.string.ss_verdict_perkm, perKm.stripTrailingZeros().toPlainString()), style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
@@ -1909,7 +1915,9 @@ private fun emptyPreviewOffer(): Offer = Offer(
 
 private fun currentMinuteOfDay(): Int = Calendar.getInstance().let { it.get(Calendar.HOUR_OF_DAY) * 60 + it.get(Calendar.MINUTE) }
 
-internal fun reasonArabic(code: ReasonCode): String = when (code) {
+internal fun reasonArabic(code: ReasonCode): String {
+    if (!LocaleManager.isArabic()) return reasonEnglish(code)
+    return when (code) {
     ReasonCode.NO_FILTERS -> "لم تحدد شرطًا لاختيار الطلبات."
     ReasonCode.OUTSIDE_SCHEDULE -> "الوقت خارج أوقات العمل التي حددتها."
     ReasonCode.INVALID_FILTER -> "أحد شروط الطلبات غير صالح."
@@ -1931,6 +1939,31 @@ internal fun reasonArabic(code: ReasonCode): String = when (code) {
     ReasonCode.TRIP_MIN_TOO_LONG -> "مدة الرحلة أطول مما حددته."
     ReasonCode.TRIP_MIN_TOO_SHORT -> "مدة الرحلة أقصر مما حددته."
     ReasonCode.EXCLUDED_KEYWORD -> "وصف الطلب يحتوي كلمة لا تناسبك."
+    }
+}
+
+private fun reasonEnglish(code: ReasonCode): String = when (code) {
+    ReasonCode.NO_FILTERS -> "You have not set a condition for selecting orders."
+    ReasonCode.OUTSIDE_SCHEDULE -> "The time is outside the working hours you set."
+    ReasonCode.INVALID_FILTER -> "One of the order conditions is invalid."
+    ReasonCode.FARE_MISSING -> "The order price is not shown."
+    ReasonCode.FARE_TOO_LOW -> "The order price is below the limit you set."
+    ReasonCode.FARE_TOO_HIGH -> "The order price is above the limit you set."
+    ReasonCode.PER_KM_MISSING -> "The return per km cannot be computed from the available details."
+    ReasonCode.PER_KM_TOO_LOW -> "The return per km is below the limit you set."
+    ReasonCode.PICKUP_KM_MISSING -> "The pickup distance is not shown."
+    ReasonCode.PICKUP_TOO_FAR -> "The pickup distance is farther than you set."
+    ReasonCode.PICKUP_MIN_MISSING -> "The pickup time is not shown."
+    ReasonCode.PICKUP_TOO_LONG -> "The pickup time is longer than you set."
+    ReasonCode.PICKUP_TOO_SHORT -> "The pickup time is shorter than you set."
+    ReasonCode.DESTINATION_MISSING -> "The order destination is not shown, and the no-destination orders option is off."
+    ReasonCode.TRIP_KM_MISSING -> "The trip distance is not shown."
+    ReasonCode.TRIP_TOO_SHORT -> "The trip distance is shorter than you set."
+    ReasonCode.TRIP_TOO_LONG -> "The trip distance is longer than you set."
+    ReasonCode.TRIP_MIN_MISSING -> "The trip duration is not shown."
+    ReasonCode.TRIP_MIN_TOO_LONG -> "The trip duration is longer than you set."
+    ReasonCode.TRIP_MIN_TOO_SHORT -> "The trip duration is shorter than you set."
+    ReasonCode.EXCLUDED_KEYWORD -> "The order description contains a word that does not suit you."
 }
 
 private fun Context.isSabbaqAccessibilityEnabled(): Boolean {

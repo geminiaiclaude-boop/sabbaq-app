@@ -1,5 +1,7 @@
 package app.sabbaq.admin
 
+import app.sabbaq.LocaleManager
+
 import app.sabbaq.network.SupabaseClient
 import app.sabbaq.network.SupabaseClient.FeatureException
 import app.sabbaq.network.SupabaseClient.FeatureFailure
@@ -296,10 +298,15 @@ object AdminRepository {
 
     // ---- Notifications
 
-    val NOTIFICATION_KINDS = linkedMapOf("info" to "معلومة", "warning" to "تنبيه", "success" to "خبر سار", "account" to "الاشتراك", "update" to "تحديث التطبيق")
-    val NOTIFICATION_ACTIONS = linkedMapOf("" to "بدون زر", "open_account" to "فتح حسابي", "open_setup" to "إكمال الإعداد",
+    private val adminAr: Boolean get() = LocaleManager.isArabic()
+    fun notificationKinds() = if (adminAr) linkedMapOf("info" to "معلومة", "warning" to "تنبيه", "success" to "خبر سار", "account" to "الاشتراك", "update" to "تحديث التطبيق")
+        else linkedMapOf("info" to "Info", "warning" to "Warning", "success" to "Good news", "account" to "Subscription", "update" to "App update")
+    fun notificationActions() = if (adminAr) linkedMapOf("" to "بدون زر", "open_account" to "فتح حسابي", "open_setup" to "إكمال الإعداد",
         "open_filters" to "مراجعة الشروط", "update_app" to "تحديث التطبيق", "open_support" to "فتح محادثة الدعم")
-    val NOTIFICATION_EXPIRY = linkedMapOf(0 to "لا ينتهي (يُحذف بعد 90 يومًا)", 1 to "يوم", 3 to "3 أيام", 7 to "أسبوع", 30 to "30 يومًا")
+        else linkedMapOf("" to "No button", "open_account" to "Open My Account", "open_setup" to "Complete setup",
+        "open_filters" to "Review conditions", "update_app" to "Update the app", "open_support" to "Open support chat")
+    fun notificationExpiry() = if (adminAr) linkedMapOf(0 to "لا ينتهي (يُحذف بعد 90 يومًا)", 1 to "يوم", 3 to "3 أيام", 7 to "أسبوع", 30 to "30 يومًا")
+        else linkedMapOf(0 to "Does not expire (deleted after 90 days)", 1 to "A day", 3 to "3 days", 7 to "A week", 30 to "30 days")
 
     suspend fun notifications(): Result<List<AdminNotification>> =
         SupabaseClient.adminRpc("admin_list_notifications", buildJsonObject { put("p_limit", 100) }).mapCatching { body ->
@@ -312,8 +319,8 @@ object AdminRepository {
 
     suspend fun sendNotification(driverId: String?, title: String, body: String, kind: String, action: String, expiryDays: Int): Result<Unit> {
         val cleanTitle = title.trim(); val cleanBody = body.trim()
-        if (cleanTitle.length !in 2..80 || cleanBody.length !in 2..500 || kind !in NOTIFICATION_KINDS || action !in NOTIFICATION_ACTIONS ||
-            expiryDays !in NOTIFICATION_EXPIRY || (driverId != null && !UUID_PATTERN.matches(driverId))) return rejected()
+        if (cleanTitle.length !in 2..80 || cleanBody.length !in 2..500 || kind !in notificationKinds() || action !in notificationActions() ||
+            expiryDays !in notificationExpiry() || (driverId != null && !UUID_PATTERN.matches(driverId))) return rejected()
         val expiresAt = expiryDays.takeIf { it > 0 }?.let { Instant.now().plusSeconds(it * 86_400L).toString() }
         return SupabaseClient.adminRpc("admin_send_notification", buildJsonObject {
             put("p_driver", driverId); put("p_title", cleanTitle); put("p_body", cleanBody)
@@ -337,7 +344,7 @@ object AdminRepository {
             rows(body).mapNotNull { row ->
                 val id = row.str("driver_id")?.takeIf(UUID_PATTERN::matches) ?: return@mapNotNull null
                 val last = row["last_message"] as? JsonObject
-                AdminThread(id, row.str("driver_name") ?: "سائق", row.str("driver_phone").orEmpty(), row.str("status") == "closed",
+                AdminThread(id, row.str("driver_name") ?: (if (LocaleManager.isArabic()) "سائق" else "Driver"), row.str("driver_phone").orEmpty(), row.str("status") == "closed",
                     row.int("admin_unread")?.coerceAtLeast(0) ?: 0, row.instant("last_message_at"), last?.str("body"), last?.str("sender") == "admin")
             }
         }
@@ -348,7 +355,7 @@ object AdminRepository {
         return SupabaseClient.adminRpc("admin_support_thread", buildJsonObject { put("p_driver", driverId); put("p_limit", 200) }).mapCatching { body ->
             val root = json.parseToJsonElement(body) as JsonObject
             AdminConversation(
-                name = root.str("driver_name") ?: "سائق",
+                name = root.str("driver_name") ?: (if (LocaleManager.isArabic()) "سائق" else "Driver"),
                 phone = root.str("driver_phone").orEmpty(),
                 closed = root.str("status") == "closed",
                 appVersion = root.str("last_app_version")?.takeIf(VERSION_NAME::matches),
@@ -391,20 +398,20 @@ object AdminRepository {
     /** Same rules as admin_upsert_profile and the app: valid id, required lists, a version above the published one. */
     fun validateProfile(text: String, published: List<AdminProfile>): Result<JsonObject> {
         val parsed = runCatching { json.parseToJsonElement(text) }.getOrNull()
-            ?: return Result.failure(IllegalArgumentException("المحتوى ليس JSON صالحًا."))
-        val body = parsed as? JsonObject ?: return Result.failure(IllegalArgumentException("الملف يجب أن يكون كائن JSON."))
+            ?: return Result.failure(IllegalArgumentException(if (LocaleManager.isArabic()) "المحتوى ليس JSON صالحًا." else "The content is not valid JSON."))
+        val body = parsed as? JsonObject ?: return Result.failure(IllegalArgumentException(if (LocaleManager.isArabic()) "الملف يجب أن يكون كائن JSON." else "The file must be a JSON object."))
         val id = (body["id"] as? JsonPrimitive)?.takeIf { it.isString }?.content
-        if (id == null || !PROFILE_ID.matches(id)) return Result.failure(IllegalArgumentException("المعرّف id غير صالح."))
+        if (id == null || !PROFILE_ID.matches(id)) return Result.failure(IllegalArgumentException(if (LocaleManager.isArabic()) "المعرّف id غير صالح." else "The id is invalid."))
         val version = (body["version"] as? JsonPrimitive)?.takeIf { !it.isString }?.longOrNull
-        if (version == null || version < 1 || version > Int.MAX_VALUE) return Result.failure(IllegalArgumentException("رقم الإصدار version يجب أن يكون عددًا صحيحًا موجبًا."))
+        if (version == null || version < 1 || version > Int.MAX_VALUE) return Result.failure(IllegalArgumentException(if (LocaleManager.isArabic()) "رقم الإصدار version يجب أن يكون عددًا صحيحًا موجبًا." else "The version number must be a positive integer."))
         for (field in listOf("packages", "acceptLabels", "currencyTokens")) {
             val list = body[field] as? JsonArray
             if (list == null || list.none { (it as? JsonPrimitive)?.takeIf { value -> value.isString }?.content?.isNotBlank() == true }) {
-                return Result.failure(IllegalArgumentException("الحقل $field يجب أن يكون قائمة غير فارغة."))
+                return Result.failure(IllegalArgumentException(if (LocaleManager.isArabic()) "الحقل $field يجب أن يكون قائمة غير فارغة." else "The $field field must be a non-empty list."))
             }
         }
         published.firstOrNull { it.id == id }?.let { current ->
-            if (version <= current.version) return Result.failure(IllegalArgumentException("ارفع رقم الإصدار فوق ${current.version}؛ لن يطبّق التطبيق إصدارًا مساويًا أو أقدم."))
+            if (version <= current.version) return Result.failure(IllegalArgumentException(if (LocaleManager.isArabic()) "ارفع رقم الإصدار فوق ${current.version}؛ لن يطبّق التطبيق إصدارًا مساويًا أو أقدم." else "Raise the version above ${current.version}; the app will not apply an equal or older version."))
         }
         return Result.success(body)
     }
@@ -418,7 +425,7 @@ object AdminRepository {
         val id = row.str("id")?.takeIf(UUID_PATTERN::matches) ?: return null
         return AdminDriver(
             id = id,
-            name = row.str("full_name") ?: "سائق",
+            name = row.str("full_name") ?: (if (LocaleManager.isArabic()) "سائق" else "Driver"),
             phone = row.str("phone").orEmpty(),
             status = row.str("status") ?: "pending",
             proUntil = row.instant("pro_until"),

@@ -1,6 +1,9 @@
 import java.net.URI
 import java.security.KeyStore
 import java.security.PrivateKey
+import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import java.util.Base64
 import java.util.Properties
 import org.gradle.api.GradleException
@@ -25,6 +28,32 @@ fun setting(name: String): String? =
     System.getenv(name)?.takeIf { it.isNotBlank() } ?: localProps.getProperty(name)?.takeIf { it.isNotBlank() }
         ?: publicBackend.getProperty(name)?.takeIf { it.isNotBlank() }
 
+// ---- Automatic, collision-proof versioning (part of the build, independent of git) --------
+// Every build stamps its own identity from the build clock, so no two builds can share a
+// versionCode and nobody has to remember to bump a number. This lives entirely in the build
+// configuration — it does not read git history or any repository metadata — so it behaves the
+// same from a full checkout, a shallow CI checkout, or a plain source archive. A manual override
+// stays available through the SABBAQ_VERSION_CODE / SABBAQ_VERSION_NAME settings for a pinned
+// release, and an optional SABBAQ_BUILD_EPOCH_MS lets CI pass a fixed instant for a reproducible
+// build.
+val VERSION_CODE_EPOCH_SECONDS = 1_577_836_800L // 2020-01-01T00:00:00Z
+val VERSION_CODE_FLOOR = 14 // one above the last hand-numbered build (13); never regress below it
+val VERSION_CODE_CEILING = 2_100_000_000L // Android's hard limit on versionCode
+
+val buildEpochMs: Long = setting("SABBAQ_BUILD_EPOCH_MS")?.toLongOrNull() ?: System.currentTimeMillis()
+
+// Whole minutes since 2020: strictly increasing as the clock advances (so a later build always
+// outranks an earlier one), unique per build, far above the last hand-numbered code (13), and
+// inside Android's ceiling for ~thousands of years.
+fun buildVersionCode(): Int =
+    ((buildEpochMs / 1000L - VERSION_CODE_EPOCH_SECONDS) / 60L)
+        .coerceIn(VERSION_CODE_FLOOR.toLong(), VERSION_CODE_CEILING).toInt()
+
+// yyyyMMdd.HHmm (UTC): a human-readable build stamp, matching the telemetry/admin shape
+// [A-Za-z0-9._-] within 32 chars, so every installed build is identifiable without git.
+fun buildStamp(): String = DateTimeFormatter.ofPattern("yyyyMMdd.HHmm")
+    .withZone(ZoneOffset.UTC).format(Instant.ofEpochMilli(buildEpochMs))
+
 fun buildConfigString(value: String): String = buildString {
     append('"')
     value.forEach { character ->
@@ -46,12 +75,22 @@ val keystorePath = setting("SABBAQ_KEYSTORE")
 val releaseStoreFile = keystorePath
     ?.takeIf { it.isNotBlank() }
     ?.let { rootProject.file(it) }
-val versionCodeValue = setting("SABBAQ_VERSION_CODE") ?: "13"
-val configuredVersionCode = versionCodeValue.toIntOrNull()
-    ?: throw GradleException("SABBAQ_VERSION_CODE يجب أن يكون عدداً صحيحاً موجباً")
-require(configuredVersionCode > 0) { "SABBAQ_VERSION_CODE يجب أن يكون عدداً صحيحاً موجباً" }
-val configuredVersionName = setting("SABBAQ_VERSION_NAME") ?: "2.0.2"
-require(configuredVersionName.isNotBlank()) { "SABBAQ_VERSION_NAME لا يمكن أن يكون فارغاً" }
+// Base marketing version. Bump this for a real release; the build identity below stays unique
+// regardless, so two builds of the same base can never collide.
+val versionNameBase = "2.0.3"
+
+// Explicit setting wins (manual release control); otherwise the build stamps its own.
+val configuredVersionCode = (setting("SABBAQ_VERSION_CODE")?.toIntOrNull() ?: buildVersionCode())
+require(configuredVersionCode >= VERSION_CODE_FLOOR) {
+    "versionCode $configuredVersionCode أقل من الحد الأدنى $VERSION_CODE_FLOOR؛ قد يرفض أندرويد التحديث"
+}
+// versionName carries the build stamp so every installed build is identifiable in telemetry and
+// support. Kept within the 32-char, [A-Za-z0-9._-] shape the telemetry and admin layers validate.
+val configuredVersionName = setting("SABBAQ_VERSION_NAME") ?: "$versionNameBase-${buildStamp()}"
+require(configuredVersionName.isNotBlank() && configuredVersionName.length <= 32 &&
+    configuredVersionName.matches(Regex("^[A-Za-z0-9._-]+$"))) {
+    "versionName غير صالح: '$configuredVersionName'"
+}
 
 android {
     namespace = "app.sabbaq"
@@ -129,6 +168,13 @@ kotlin {
     jvmToolchain(17)
 }
 
+// Unit tests assert the Arabic wording of locale-aware helpers, so pin the test JVM to Arabic;
+// a test that needs English sets the locale itself and restores it.
+tasks.withType<Test>().configureEach {
+    systemProperty("user.language", "ar")
+    systemProperty("user.country", "SA")
+}
+
 val verifyReleaseConfiguration by tasks.registering {
     group = "verification"
     description = "يتحقق من إعدادات الخدمة والتوقيع اللازمة قبل إنتاج حزمة release."
@@ -202,6 +248,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.appcompat)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.process)

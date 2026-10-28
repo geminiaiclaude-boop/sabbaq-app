@@ -30,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import app.sabbaq.LocaleManager
 import app.sabbaq.admin.AdminDriver
 import app.sabbaq.admin.AdminDriverVersion
 import app.sabbaq.admin.AdminInputs
@@ -43,10 +44,10 @@ import java.time.Instant
 import kotlinx.coroutines.launch
 
 internal fun driverStatusLabel(status: String): String = when (status) {
-    "active" -> "مفعّل"
-    "pending" -> "بانتظار التفعيل"
-    "rejected" -> "مرفوض"
-    "banned" -> "محظور"
+    "active" -> (if (LocaleManager.isArabic()) "مفعّل" else "Active")
+    "pending" -> (if (LocaleManager.isArabic()) "بانتظار التفعيل" else "Pending activation")
+    "rejected" -> (if (LocaleManager.isArabic()) "مرفوض" else "Rejected")
+    "banned" -> (if (LocaleManager.isArabic()) "محظور" else "Banned")
     else -> status
 }
 
@@ -76,7 +77,7 @@ internal fun AdminDriversSection(session: AdminSession, open: (AdminRequest) -> 
         AdminRepository.drivers(offset).fold(
             onSuccess = { page ->
                 drivers = page.items; hasMore = page.hasMore
-                notice = kept ?: success("تم تحميل ${page.items.size} سجل من السائقين.")
+                notice = kept ?: success(if (LocaleManager.isArabic()) "تم تحميل ${page.items.size} سجل من السائقين." else "Loaded ${page.items.size} driver records.")
                 kept = null
                 versions = null; versionsFailed = false
                 AdminRepository.driverVersions(page.items.map { it.id }).fold(
@@ -84,7 +85,7 @@ internal fun AdminDriversSection(session: AdminSession, open: (AdminRequest) -> 
                     onFailure = { versionsFailed = true; session.failureOf(it, "") },
                 )
             },
-            onFailure = { notice = session.failureOf(it, "تعذر تحميل بيانات السائقين. تحقق من الاتصال ثم أعد المحاولة.") },
+            onFailure = { notice = session.failureOf(it, (if (LocaleManager.isArabic()) "تعذر تحميل بيانات السائقين. تحقق من الاتصال ثم أعد المحاولة." else "Could not load the driver data. Check the connection, then try again.")) },
         )
         loading = false
     }
@@ -95,15 +96,15 @@ internal fun AdminDriversSection(session: AdminSession, open: (AdminRequest) -> 
     LazyColumn(Modifier.fillMaxSize().testTag("admin-drivers"), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item(key = "head") {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("راجع بيانات الحسابات وأعد ربط الجهاز عند الحاجة.", style = MaterialTheme.typography.bodyMedium,
+                Text((if (LocaleManager.isArabic()) "راجع بيانات الحسابات وأعد ربط الجهاز عند الحاجة." else "Review the account data and re-link the device when needed."), style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                 OutlinedTextField(
                     value = query, onValueChange = { query = it.take(40) }, singleLine = true,
                     leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
-                    label = { Text("بحث بالاسم أو الهاتف في هذه الصفحة") }, modifier = Modifier.fillMaxWidth(),
+                    label = { Text((if (LocaleManager.isArabic()) "بحث بالاسم أو الهاتف في هذه الصفحة" else "Search by name or phone on this page")) }, modifier = Modifier.fillMaxWidth(),
                 )
-                SabbaqButton("تحديث بيانات السائقين", onClick = { offset = 0; reload++ }, style = SabbaqButtonStyle.Secondary,
-                    busy = loading, busyText = "جارٍ التحميل…")
+                SabbaqButton((if (LocaleManager.isArabic()) "تحديث بيانات السائقين" else "Refresh driver data"), onClick = { offset = 0; reload++ }, style = SabbaqButtonStyle.Secondary,
+                    busy = loading, busyText = (if (LocaleManager.isArabic()) "جارٍ التحميل…" else "Loading…"))
                 SabbaqAnimatedMessage(notice?.text, notice?.tone ?: app.sabbaq.ui.SabbaqTone.Info)
                 AdminPager(offset, AdminRepository.PAGE_SIZE, hasMore, loading) { direction ->
                     offset = (offset + direction * AdminRepository.PAGE_SIZE).coerceAtLeast(0)
@@ -111,7 +112,7 @@ internal fun AdminDriversSection(session: AdminSession, open: (AdminRequest) -> 
             }
         }
         if (!loading && shown.isEmpty()) item(key = "empty") {
-            Text(if (needle.isEmpty()) "لا توجد سجلات في هذه الصفحة." else "لا يوجد سائق يطابق البحث في هذه الصفحة.",
+            Text(if (needle.isEmpty()) (if (LocaleManager.isArabic()) "لا توجد سجلات في هذه الصفحة." else "No records on this page.") else (if (LocaleManager.isArabic()) "لا يوجد سائق يطابق البحث في هذه الصفحة." else "No driver matches the search on this page."),
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         items(shown, key = { it.id }) { driver ->
@@ -119,7 +120,7 @@ internal fun AdminDriversSection(session: AdminSession, open: (AdminRequest) -> 
                 driver = driver,
                 version = when {
                     versions != null -> AdminInputs.describeVersion(versions?.get(driver.id), ::formatDateTime)
-                    versionsFailed -> "تعذر التحميل"
+                    versionsFailed -> (if (LocaleManager.isArabic()) "تعذر التحميل" else "Load failed")
                     else -> "…"
                 },
                 resetting = resetting == driver.id,
@@ -138,15 +139,15 @@ internal fun AdminDriversSection(session: AdminSession, open: (AdminRequest) -> 
 
     confirmReset?.let { driver ->
         AdminConfirm(
-            title = "فك ربط الجهاز",
-            text = "هل أنت متأكد من فك ربط جهاز ${driver.name}؟ سيُطلب منه الدخول من جديد، ويُربط حسابه بأول جهاز يدخل منه.",
-            confirm = "فك الربط",
+            title = (if (LocaleManager.isArabic()) "فك ربط الجهاز" else "Unlink the device"),
+            text = if (LocaleManager.isArabic()) "هل أنت متأكد من فك ربط جهاز ${driver.name}؟ سيُطلب منه الدخول من جديد، ويُربط حسابه بأول جهاز يدخل منه." else "Are you sure you want to unlink ${driver.name}'s device? They will be asked to sign in again, and their account links to the first device they sign in from.",
+            confirm = (if (LocaleManager.isArabic()) "فك الربط" else "Unlink"),
             onConfirm = {
                 scope.launch {
                     resetting = driver.id
                     AdminRepository.resetDevice(driver.id).fold(
-                        onSuccess = { kept = success("تم فك ربط الجهاز."); notice = kept; reload++ },
-                        onFailure = { notice = session.failureOf(it, "تعذر فك ربط الجهاز.") },
+                        onSuccess = { kept = success((if (LocaleManager.isArabic()) "تم فك ربط الجهاز." else "The device was unlinked.")); notice = kept; reload++ },
+                        onFailure = { notice = session.failureOf(it, (if (LocaleManager.isArabic()) "تعذر فك ربط الجهاز." else "Could not unlink the device.")) },
                     )
                     resetting = null
                 }
@@ -171,29 +172,29 @@ private fun DriverCard(
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Column(Modifier.weight(1f)) {
                 Text(driver.name, style = MaterialTheme.typography.titleMedium)
-                AdminFact("الهاتف", driver.phone.ifEmpty { "غير محدد" }, ltr = true)
+                AdminFact((if (LocaleManager.isArabic()) "الهاتف" else "Phone"), driver.phone.ifEmpty { (if (LocaleManager.isArabic()) "غير محدد" else "Not set") }, ltr = true)
             }
             SabbaqStatusPill(driverStatusLabel(driver.status), ready = driver.status == "active")
         }
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            AdminFact("إصدار سبّاق", version)
-            AdminFact("نهاية الاشتراك", subscriptionText(driver.proUntil))
-            driver.trialUntil?.let { AdminFact("التجربة حتى", formatDate(it)) }
-            AdminFact("معرف الجهاز", driver.deviceId ?: "غير مرتبط", ltr = driver.deviceId != null)
-            AdminFact("تاريخ التسجيل", formatDate(driver.createdAt))
+            AdminFact((if (LocaleManager.isArabic()) "إصدار سبّاق" else "Sabbaq version"), version)
+            AdminFact((if (LocaleManager.isArabic()) "نهاية الاشتراك" else "Subscription end"), subscriptionText(driver.proUntil))
+            driver.trialUntil?.let { AdminFact((if (LocaleManager.isArabic()) "التجربة حتى" else "Trial until"), formatDate(it)) }
+            AdminFact((if (LocaleManager.isArabic()) "معرف الجهاز" else "Device ID"), driver.deviceId ?: (if (LocaleManager.isArabic()) "غير مرتبط" else "Not linked"), ltr = driver.deviceId != null)
+            AdminFact((if (LocaleManager.isArabic()) "تاريخ التسجيل" else "Registration date"), formatDate(driver.createdAt))
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            OutlinedButton(onClick = onDiagnose) { Text("تشخيص الشكوى") }
-            OutlinedButton(onClick = onNotify) { Text("إرسال إشعار") }
-            OutlinedButton(onClick = onMessage) { Text("مراسلة") }
-            SabbaqButton("فك ربط الجهاز", onClick = onReset, style = SabbaqButtonStyle.Destructive, fillWidth = false,
-                busy = resetting, busyText = "جارٍ فك الربط…")
+            OutlinedButton(onClick = onDiagnose) { Text((if (LocaleManager.isArabic()) "تشخيص الشكوى" else "Diagnose complaint")) }
+            OutlinedButton(onClick = onNotify) { Text((if (LocaleManager.isArabic()) "إرسال إشعار" else "Send notification")) }
+            OutlinedButton(onClick = onMessage) { Text((if (LocaleManager.isArabic()) "مراسلة" else "Message")) }
+            SabbaqButton((if (LocaleManager.isArabic()) "فك ربط الجهاز" else "Unlink the device"), onClick = onReset, style = SabbaqButtonStyle.Destructive, fillWidth = false,
+                busy = resetting, busyText = (if (LocaleManager.isArabic()) "جارٍ فك الربط…" else "Unlinking…"))
         }
     }
 }
 
 private fun subscriptionText(until: Instant?): String = when {
-    until == null -> "غير محدد"
-    until.isBefore(Instant.now()) -> "${formatDate(until)} (منتهٍ)"
+    until == null -> (if (LocaleManager.isArabic()) "غير محدد" else "Not set")
+    until.isBefore(Instant.now()) -> (if (LocaleManager.isArabic()) "${formatDate(until)} (منتهٍ)" else "${formatDate(until)} (expired)")
     else -> formatDate(until)
 }

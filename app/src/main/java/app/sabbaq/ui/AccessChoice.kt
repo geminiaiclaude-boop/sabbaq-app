@@ -45,6 +45,8 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
+import app.sabbaq.R
+import androidx.compose.ui.res.stringResource
 import app.sabbaq.BuildConfig
 import app.sabbaq.network.PublicOffer
 import app.sabbaq.ui.theme.SabbaqMotion
@@ -73,32 +75,32 @@ internal fun AccessChoiceCard(
     val showTrial = !knownSubscriber && offer?.trialEnabled != false
     val showSubscribe = BuildConfig.DIRECT_DISTRIBUTION && !knownSubscriber
     SabbaqCard(
-        title = if (knownSubscriber) "مرحبًا بعودتك" else "كيف تريد أن تبدأ؟",
-        subtitle = if (knownSubscriber) "سجّل الدخول وتابع اشتراكك من حيث توقفت." else "اختر ما يناسبك، ثم سجّل الدخول.",
+        title = if (knownSubscriber) stringResource(R.string.ac_welcome_back) else stringResource(R.string.ac_how_start),
+        subtitle = if (knownSubscriber) stringResource(R.string.ac_welcome_back_sub) else stringResource(R.string.ac_how_start_sub),
         modifier = modifier,
     ) {
         Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (showTrial) ChoiceTile(
                 icon = Icons.Outlined.CardGiftcard,
-                title = "جرّب مجانًا",
-                detail = offer?.takeIf { it.trialDays > 0 }?.let { "تجربة كاملة لمدة ${ArabicCount.days(it.trialDays)} دون دفع، للحسابات المؤهلة." }
-                    ?: "جرّب سبّاق دون دفع، للحسابات المؤهلة.",
+                title = stringResource(R.string.ac_try_free),
+                detail = offer?.takeIf { it.trialDays > 0 }?.let { stringResource(R.string.ac_trial_detail_days, ArabicCount.days(it.trialDays)) }
+                    ?: stringResource(R.string.ac_trial_detail_nodays),
                 selected = selected == AccessIntent.Trial,
                 onClick = { onSelect(AccessIntent.Trial) },
                 index = 0,
             )
             if (showSubscribe) ChoiceTile(
                 icon = Icons.Outlined.WorkspacePremium,
-                title = "اشترك الآن",
-                detail = offer?.let { CustomerCommerceCopy.offerSummary(it) + "، بكل المزايا." } ?: "اشتراك كامل بكل المزايا.",
+                title = stringResource(R.string.ac_subscribe_now),
+                detail = offer?.let { CustomerCommerceCopy.offerSummary(it) + stringResource(R.string.ac_subscribe_suffix) } ?: stringResource(R.string.ac_subscribe_detail_full),
                 selected = selected == AccessIntent.Subscribe,
                 onClick = { onSelect(AccessIntent.Subscribe) },
                 index = 1,
             )
             ChoiceTile(
                 icon = Icons.AutoMirrored.Outlined.Login,
-                title = "لدي اشتراك",
-                detail = "سجّل الدخول بالحساب الذي اشتركت به.",
+                title = stringResource(R.string.ac_have_sub),
+                detail = stringResource(R.string.ac_have_sub_detail),
                 selected = selected == AccessIntent.SignIn || (knownSubscriber && selected == AccessIntent.None),
                 onClick = { onSelect(AccessIntent.SignIn) },
                 index = 2,
@@ -148,19 +150,19 @@ internal fun PurchaseSteps(offer: PublicOffer?, enabled: Boolean, onOpenPurchase
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         if (target == null) {
             // No purchase channel on the server: never point to a button that is not there.
-            SabbaqMessage("إذا استلمت رمز تفعيل من الإدارة، الصقه أدناه واضغط «تفعيل الوصول».")
+            SabbaqMessage(stringResource(R.string.ac_code_hint))
             return@Column
         }
         if (target.viaWhatsapp) {
-            PurchaseStep("1", "اضغط «اشترك عبر واتساب»؛ تُفتح محادثة مع الإدارة برسالة جاهزة.")
-            PurchaseStep("2", "أكمل الدفع كما توضح لك الإدارة، ويصلك رمز التفعيل في المحادثة.")
+            PurchaseStep("1", stringResource(R.string.ac_step_wa1))
+            PurchaseStep("2", stringResource(R.string.ac_step_wa2))
         } else {
-            PurchaseStep("1", "اضغط «اشترك الآن» وأكمل الدفع.")
-            PurchaseStep("2", "يصلك رمز التفعيل بعد تأكيد الدفع.")
+            PurchaseStep("1", stringResource(R.string.ac_step_pay1))
+            PurchaseStep("2", stringResource(R.string.ac_step_pay2))
         }
-        PurchaseStep("3", "الصق الرمز أدناه واضغط «تفعيل الوصول».")
+        PurchaseStep("3", stringResource(R.string.ac_step3))
         SabbaqButton(
-            text = if (target.viaWhatsapp) "اشترك عبر واتساب" else "اشترك الآن",
+            text = if (target.viaWhatsapp) stringResource(R.string.ac_subscribe_wa) else stringResource(R.string.ac_subscribe_now),
             onClick = { onOpenPurchase(target.url) },
             enabled = enabled,
             icon = if (target.viaWhatsapp) Icons.AutoMirrored.Outlined.Chat else Icons.Outlined.WorkspacePremium,
@@ -198,12 +200,12 @@ internal fun ActivationCodeField(
         onValueChange = onValueChange,
         enabled = enabled,
         singleLine = true,
-        label = { Text("رمز التفعيل") },
+        label = { Text(stringResource(R.string.ac_code_label)) },
         placeholder = { Text("XXXX-XXXX-XXXX-XXXX") },
         leadingIcon = { Icon(Icons.Outlined.Key, contentDescription = null) },
         trailingIcon = {
             IconButton(onClick = { clipboard.getText()?.text?.let { onValueChange(it.trim().take(128)) } }, enabled = enabled) {
-                Icon(Icons.Outlined.ContentPaste, contentDescription = "لصق الرمز")
+                Icon(Icons.Outlined.ContentPaste, contentDescription = stringResource(R.string.ac_paste_cd))
             }
         },
         isError = error != null,
@@ -216,7 +218,7 @@ internal fun ActivationCodeField(
 }
 
 /** Ways to get access once signed in; the driver can switch between them freely. */
-internal enum class AccessTab(val label: String) { Trial("تجربة مجانية"), Subscribe("اشتراك"), Code("لدي رمز") }
+internal enum class AccessTab(val labelRes: Int) { Trial(R.string.ac_tab_trial), Subscribe(R.string.ac_tab_subscribe), Code(R.string.ac_tab_code) }
 
 internal fun AccessIntent.toTab(): AccessTab = when (this) {
     AccessIntent.Subscribe -> AccessTab.Subscribe
@@ -244,7 +246,7 @@ internal fun SabbaqTabs(tabs: List<AccessTab>, selected: AccessTab, onSelect: (A
                 ) {
                     Row(horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp)) {
-                        Text(tab.label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                        Text(stringResource(tab.labelRes), style = MaterialTheme.typography.labelLarge, maxLines = 1)
                     }
                 }
             }

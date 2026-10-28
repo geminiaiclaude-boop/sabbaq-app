@@ -43,6 +43,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import app.sabbaq.R
+import androidx.compose.ui.res.stringResource
 import app.sabbaq.core.PerKmBasis
 import app.sabbaq.core.FilterCombination
 import app.sabbaq.core.Text as CoreText
@@ -61,26 +63,26 @@ internal fun AdvancedFiltersEditor(
 
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         SabbaqSectionTitle(
-            title = "شروط الطلبات",
-            subtitle = "تُحفظ التعديلات تلقائيًا. أطفئ الشرط لإيقافه مع الاحتفاظ بقيمته.",
+            title = stringResource(R.string.afe_section_title),
+            subtitle = stringResource(R.string.afe_section_sub),
         )
 
         FilterGroup(
-            title = "منطق جمع الشروط",
-            subtitle = "في AND يجب تحقق كل شروط الاختيار؛ في OR يكفي تحقق شرط واحد. شروط الاستبعاد والسلامة تبقى إلزامية.",
+            title = stringResource(R.string.afe_combo_title),
+            subtitle = stringResource(R.string.afe_combo_sub),
             filledCount = 1,
         ) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 FilterChip(
                     selected = draft.combination == FilterCombination.ALL,
                     onClick = { onDraftChange(draft.copy(combination = FilterCombination.ALL)) },
-                    label = { Text("كل الشروط (AND)", style = MaterialTheme.typography.labelSmall) },
+                    label = { Text(stringResource(R.string.afe_combo_all), style = MaterialTheme.typography.labelSmall) },
                     modifier = Modifier.height(32.dp),
                 )
                 FilterChip(
                     selected = draft.combination == FilterCombination.ANY,
                     onClick = { onDraftChange(draft.copy(combination = FilterCombination.ANY)) },
-                    label = { Text("أي شرط (OR)", style = MaterialTheme.typography.labelSmall) },
+                    label = { Text(stringResource(R.string.afe_combo_any), style = MaterialTheme.typography.labelSmall) },
                     modifier = Modifier.height(32.dp),
                 )
             }
@@ -89,8 +91,8 @@ internal fun AdvancedFiltersEditor(
         FareRangeCondition(draft, errors, onDraftChange)
 
         ProConditionCard(
-            title = "الحد الأدنى للعائد لكل كم",
-            subtitle = "استبعد الأجرة الضعيفة مقارنة بالمسافة",
+            title = stringResource(R.string.afe_perkm_title),
+            subtitle = stringResource(R.string.afe_perkm_sub),
             enabled = draft.farePerKmEnabled,
             testKey = "fare-per-km",
             onEnabledChange = { enabled ->
@@ -101,32 +103,32 @@ internal fun AdvancedFiltersEditor(
             },
             footer = {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("احتسبه على", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.afe_perkm_basis), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     FilterChip(
                         selected = draft.perKmBasis == PerKmBasis.TRIP,
                         onClick = { onDraftChange(draft.copy(perKmBasis = PerKmBasis.TRIP)) },
-                        label = { Text("مسافة الرحلة", style = MaterialTheme.typography.labelSmall) },
+                        label = { Text(stringResource(R.string.afe_trip_distance), style = MaterialTheme.typography.labelSmall) },
                         modifier = Modifier.height(32.dp),
                     )
                     FilterChip(
                         selected = draft.perKmBasis == PerKmBasis.TOTAL,
                         onClick = { onDraftChange(draft.copy(perKmBasis = PerKmBasis.TOTAL)) },
-                        label = { Text("الوصول + الرحلة", style = MaterialTheme.typography.labelSmall) },
+                        label = { Text(stringResource(R.string.afe_perkm_basis_total), style = MaterialTheme.typography.labelSmall) },
                         modifier = Modifier.height(32.dp),
                     )
                 }
             },
         ) { dimmed ->
             CompactStepperValue(
-                "أدنى عائد", draft.minFarePerKm, "/كم", "0.1", KeyboardType.Decimal,
+                stringResource(R.string.afe_min_perkm), draft.minFarePerKm, stringResource(R.string.afe_unit_perkm), "0.1", KeyboardType.Decimal,
                 onValueChange = { onDraftChange(draft.copy(minFarePerKm = it)) }, testKey = "min-fare-per-km",
                 modifier = Modifier.weight(1f), error = errors["minFarePerKm"], dimmed = dimmed,
             )
         }
 
         ProConditionCard(
-            title = "مسافة الوصول",
-            subtitle = "أقصى مسافة بينك وبين الراكب",
+            title = stringResource(R.string.afe_pickup_distance),
+            subtitle = stringResource(R.string.afe_pickup_distance_sub),
             enabled = draft.pickupDistanceEnabled,
             testKey = "pickup-distance",
             onEnabledChange = { enabled ->
@@ -137,7 +139,7 @@ internal fun AdvancedFiltersEditor(
             },
         ) { dimmed ->
             CompactStepperValue(
-                "أقصى وصول", draft.maxPickupKm, "كم", "0.5", KeyboardType.Decimal,
+                stringResource(R.string.afe_max_pickup), draft.maxPickupKm, stringResource(R.string.ss_unit_km), "0.5", KeyboardType.Decimal,
                 onValueChange = { onDraftChange(draft.copy(maxPickupKm = it)) }, testKey = "max-pickup-km",
                 modifier = Modifier.weight(1f), error = errors["maxPickupKm"], dimmed = dimmed,
             )
@@ -146,8 +148,8 @@ internal fun AdvancedFiltersEditor(
         PickupTimeCondition(draft, errors, onDraftChange)
 
         ProConditionCard(
-            title = "مسافة الرحلة",
-            subtitle = "الحدان بعد استلام الراكب",
+            title = stringResource(R.string.afe_trip_distance),
+            subtitle = stringResource(R.string.afe_trip_distance_sub),
             enabled = draft.tripDistanceEnabled,
             testKey = "trip-distance",
             onEnabledChange = { enabled ->
@@ -160,20 +162,20 @@ internal fun AdvancedFiltersEditor(
             },
         ) { dimmed ->
             CompactStepperValue(
-                "أقصر رحلة", draft.minTripKm, "كم", "0.5", KeyboardType.Decimal,
+                stringResource(R.string.afe_min_trip), draft.minTripKm, stringResource(R.string.ss_unit_km), "0.5", KeyboardType.Decimal,
                 onValueChange = { onDraftChange(draft.copy(minTripKm = it)) }, testKey = "min-trip-km",
                 modifier = Modifier.weight(1f), error = errors["minTripKm"], dimmed = dimmed,
             )
             CompactStepperValue(
-                "أطول رحلة", draft.maxTripKm, "كم", "0.5", KeyboardType.Decimal,
+                stringResource(R.string.afe_max_trip), draft.maxTripKm, stringResource(R.string.ss_unit_km), "0.5", KeyboardType.Decimal,
                 onValueChange = { onDraftChange(draft.copy(maxTripKm = it)) }, testKey = "max-trip-km",
                 modifier = Modifier.weight(1f), error = errors["maxTripKm"], dimmed = dimmed,
             )
         }
 
         ProConditionCard(
-            title = "مدة الرحلة",
-            subtitle = "المدة المتوقعة بعد استلام الراكب",
+            title = stringResource(R.string.afe_trip_time),
+            subtitle = stringResource(R.string.afe_trip_time_sub),
             enabled = draft.tripTimeEnabled,
             testKey = "trip-time",
             onEnabledChange = { enabled ->
@@ -186,12 +188,12 @@ internal fun AdvancedFiltersEditor(
             },
         ) { dimmed ->
             CompactStepperValue(
-                "أقل مدة", draft.minTripMinutes, "د", "5", KeyboardType.Number,
+                stringResource(R.string.afe_min_dur), draft.minTripMinutes, stringResource(R.string.ss_unit_min), "5", KeyboardType.Number,
                 onValueChange = { onDraftChange(draft.copy(minTripMinutes = it)) }, testKey = "min-trip-minutes",
                 modifier = Modifier.weight(1f), error = errors["minTripMinutes"], dimmed = dimmed,
             )
             CompactStepperValue(
-                "أقصى مدة", draft.maxTripMinutes, "د", "5", KeyboardType.Number,
+                stringResource(R.string.afe_max_dur), draft.maxTripMinutes, stringResource(R.string.ss_unit_min), "5", KeyboardType.Number,
                 onValueChange = { onDraftChange(draft.copy(maxTripMinutes = it)) }, testKey = "max-trip-minutes",
                 modifier = Modifier.weight(1f), error = errors["maxTripMinutes"], dimmed = dimmed,
             )
@@ -202,14 +204,14 @@ internal fun AdvancedFiltersEditor(
         NoDestinationCondition(draft, onDraftChange)
 
         FilterGroup(
-            title = "الكلمات المستثناة",
-            subtitle = "ارفض الطلب إذا ظهرت إحدى هذه الكلمات في تفاصيله؛ افصل بينها بفاصلة.",
+            title = stringResource(R.string.afe_excluded_title),
+            subtitle = stringResource(R.string.afe_excluded_sub),
             hasError = errors.containsKey("excludeKeywords"),
             filledCount = draft.excludeKeywords.split(',', '،', '\n', '\r').count { it.isNotBlank() },
         ) {
             DraftField(
                 value = draft.excludeKeywords,
-                label = "كلمات لا تناسبك",
+                label = stringResource(R.string.afe_excluded_label),
                 error = errors["excludeKeywords"],
                 keyboardType = KeyboardType.Text,
                 singleLine = false,
@@ -218,15 +220,15 @@ internal fun AdvancedFiltersEditor(
         }
 
         ProConditionCard(
-            title = "أوقات العمل",
-            subtitle = "يمكن أن يمتد بعد منتصف الليل",
+            title = stringResource(R.string.afe_schedule_title),
+            subtitle = stringResource(R.string.afe_schedule_sub),
             enabled = draft.scheduleEnabled,
             testKey = "schedule",
             onEnabledChange = { onDraftChange(draft.copy(scheduleEnabled = it)) },
         ) {
             DraftField(
                 value = draft.scheduleStart,
-                label = "البداية 08:30",
+                label = stringResource(R.string.afe_schedule_start),
                 error = errors["scheduleStart"],
                 keyboardType = KeyboardType.Ascii,
                 modifier = Modifier.weight(1f),
@@ -234,7 +236,7 @@ internal fun AdvancedFiltersEditor(
             )
             DraftField(
                 value = draft.scheduleEnd,
-                label = "النهاية 22:00",
+                label = stringResource(R.string.afe_schedule_end),
                 error = errors["scheduleEnd"],
                 keyboardType = KeyboardType.Ascii,
                 modifier = Modifier.weight(1f),
@@ -259,20 +261,20 @@ internal fun FareRangeCondition(
     framed: Boolean = true,
 ) {
     ProConditionCard(
-        title = "نطاق السعر",
-        subtitle = if (framed) "أدنى وأعلى أجرة للطلب" else null,
+        title = stringResource(R.string.afe_fare_range),
+        subtitle = if (framed) stringResource(R.string.afe_fare_range_sub) else null,
         enabled = draft.fareRangeEnabled,
         testKey = keyPrefix + "fare-range",
         framed = framed,
         onEnabledChange = { onDraftChange(draft.withFareRange(it)) },
     ) { dimmed ->
         CompactStepperValue(
-            "أدنى سعر", draft.minFare, "", "1", KeyboardType.Decimal,
+            stringResource(R.string.afe_min_fare), draft.minFare, "", "1", KeyboardType.Decimal,
             onValueChange = { onDraftChange(draft.copy(minFare = it)) }, testKey = keyPrefix + "min-fare",
             modifier = Modifier.weight(1f), error = errors["minFare"], dimmed = dimmed,
         )
         CompactStepperValue(
-            "أعلى سعر", draft.maxFare, "", "1", KeyboardType.Decimal,
+            stringResource(R.string.afe_max_fare), draft.maxFare, "", "1", KeyboardType.Decimal,
             onValueChange = { onDraftChange(draft.copy(maxFare = it)) }, testKey = keyPrefix + "max-fare",
             modifier = Modifier.weight(1f), error = errors["maxFare"], dimmed = dimmed,
         )
@@ -288,20 +290,20 @@ internal fun PickupTimeCondition(
     framed: Boolean = true,
 ) {
     ProConditionCard(
-        title = "وقت الوصول إلى الراكب (دقائق)",
-        subtitle = if (framed) "كم دقيقة تبعد عن الراكب: أقل وأقصى وقت تقبله" else null,
+        title = stringResource(R.string.afe_pickup_time_title),
+        subtitle = if (framed) stringResource(R.string.afe_pickup_time_sub) else null,
         enabled = draft.pickupTimeEnabled,
         testKey = keyPrefix + "pickup-time",
         framed = framed,
         onEnabledChange = { onDraftChange(draft.withPickupTime(it)) },
     ) { dimmed ->
         CompactStepperValue(
-            "أقل وقت", draft.minPickupMinutes, "د", "5", KeyboardType.Number,
+            stringResource(R.string.afe_min_time), draft.minPickupMinutes, stringResource(R.string.ss_unit_min), "5", KeyboardType.Number,
             onValueChange = { onDraftChange(draft.copy(minPickupMinutes = it)) }, testKey = keyPrefix + "min-pickup-minutes",
             modifier = Modifier.weight(1f), error = errors["minPickupMinutes"], dimmed = dimmed,
         )
         CompactStepperValue(
-            "أقصى وقت", draft.maxPickupMinutes, "د", "5", KeyboardType.Number,
+            stringResource(R.string.afe_max_time), draft.maxPickupMinutes, stringResource(R.string.ss_unit_min), "5", KeyboardType.Number,
             onValueChange = { onDraftChange(draft.copy(maxPickupMinutes = it)) }, testKey = keyPrefix + "max-pickup-minutes",
             modifier = Modifier.weight(1f), error = errors["maxPickupMinutes"], dimmed = dimmed,
         )
@@ -318,20 +320,20 @@ internal fun HighFareOverrideCondition(
 ) {
     var showHelp by rememberSaveable(keyPrefix) { mutableStateOf(false) }
     ProConditionCard(
-        title = "تجاوز الوقت عند سعر",
-        subtitle = if (framed) "وصول أطول عند الأجرة المجزية" else null,
+        title = stringResource(R.string.afe_highfare_title),
+        subtitle = if (framed) stringResource(R.string.afe_highfare_sub) else null,
         enabled = draft.highFareOverrideEnabled,
         testKey = keyPrefix + "high-fare-override",
         framed = framed,
         headerAction = {
             IconButton(onClick = { showHelp = true }, modifier = Modifier.size(28.dp)) {
-                Icon(Icons.Outlined.Info, contentDescription = "شرح تجاوز الوقت عند سعر", modifier = Modifier.size(16.dp))
+                Icon(Icons.Outlined.Info, contentDescription = stringResource(R.string.afe_highfare_help_cd), modifier = Modifier.size(16.dp))
             }
         },
         onEnabledChange = { onDraftChange(draft.withHighFareOverride(it)) },
     ) { dimmed ->
         CompactStepperValue(
-            "يبدأ من سعر", draft.highFareOverrideAmount, "", "1", KeyboardType.Decimal,
+            stringResource(R.string.afe_highfare_from), draft.highFareOverrideAmount, "", "1", KeyboardType.Decimal,
             onValueChange = { onDraftChange(draft.copy(highFareOverrideAmount = it)) }, testKey = keyPrefix + "high-fare-amount",
             modifier = Modifier.weight(1f), error = errors["highFareOverrideAmount"], dimmed = dimmed,
         )
@@ -343,11 +345,11 @@ internal fun HighFareOverrideCondition(
 internal fun HighFareOverrideHelp(onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("تجاوز الوقت عند سعر") },
+        title = { Text(stringResource(R.string.afe_highfare_title)) },
         text = {
-            Text("إذا كان سعر الطلب ظاهرًا ويبلغ العتبة أو يتجاوزها، يتجاوز سبّاق الحد الأقصى لوقت الوصول ومدة الرحلة ومسافة الوصول فقط. تبقى حدود الوقت الدنيا وحدود السعر والعائد والكلمات المستثناة وشروط السلامة الأخرى مطبّقة. إذا لم يظهر السعر فلا يحدث تجاوز.")
+            Text(stringResource(R.string.afe_highfare_body))
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("فهمت") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.afe_understood)) } },
     )
 }
 
@@ -381,7 +383,7 @@ internal fun NoDestinationCondition(
 ) {
     val hasExcludedWords = draft.excludeKeywords.split(',', '،', '\n', '\r').any { it.isNotBlank() }
     ProConditionCard(
-        title = "قنص الطلبات بدون وجهة",
+        title = stringResource(R.string.afe_no_dest_title),
         subtitle = null,
         enabled = draft.acceptNoDestination,
         switchEnabled = !hasExcludedWords,
@@ -390,8 +392,8 @@ internal fun NoDestinationCondition(
         onEnabledChange = { onDraftChange(draft.copy(acceptNoDestination = it)) },
     ) {
         Text(
-            if (hasExcludedWords) "موقوف بسبب الكلمات المستثناة؛ يعود عند حذفها"
-            else "اقبل العروض التي لا تعرض الوجهة؛ بقية الشروط تبقى مطبّقة",
+            if (hasExcludedWords) stringResource(R.string.afe_no_dest_blocked)
+            else stringResource(R.string.afe_no_dest_on),
             style = MaterialTheme.typography.bodySmall,
             color = if (hasExcludedWords) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(1f),
@@ -435,7 +437,7 @@ private fun FilterGroup(
                 Column(Modifier.weight(1f)) {
                     Text(title, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.semantics { heading() })
                     Text(
-                        if (expanded || filledCount == 0) subtitle else "المحدد: ${ArabicCount.conditions(filledCount)}",
+                        if (expanded || filledCount == 0) subtitle else stringResource(R.string.afe_group_selected, ArabicCount.conditions(filledCount)),
                         style = MaterialTheme.typography.labelSmall,
                         color = if (hasError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 2,
@@ -443,7 +445,7 @@ private fun FilterGroup(
                 }
                 Icon(
                     imageVector = Icons.Outlined.ExpandMore,
-                    contentDescription = if (expanded) "إخفاء الخيارات" else "عرض الخيارات",
+                    contentDescription = if (expanded) stringResource(R.string.afe_hide_options) else stringResource(R.string.afe_show_options),
                     modifier = Modifier.size(18.dp).graphicsLayer { rotationZ = chevron },
                 )
             }

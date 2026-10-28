@@ -33,6 +33,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
+import app.sabbaq.R
+import androidx.compose.ui.res.stringResource
 import app.sabbaq.Settings
 import app.sabbaq.voice.OfferEvents
 import app.sabbaq.voice.VoiceAnnouncer
@@ -55,65 +57,67 @@ internal fun VoiceAlertsCard(modifier: Modifier = Modifier) {
     }
 
     SabbaqCard(
-        title = "التنبيهات الصوتية",
-        subtitle = "يخبرك سبّاق بصوته بما يحدث دون أن تنظر إلى الجوال.",
+        title = stringResource(R.string.vac_title),
+        subtitle = stringResource(R.string.vac_sub),
         icon = Icons.Outlined.RecordVoiceOver,
         modifier = modifier,
     ) {
-        VoiceToggle("تشغيل التنبيهات الصوتية", null, prefs.enabled) { update(prefs.copy(enabled = it)) }
+        VoiceToggle(stringResource(R.string.vac_enable), null, prefs.enabled) { update(prefs.copy(enabled = it)) }
 
         AnimatedVisibility(visible = prefs.enabled) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 when (readiness) {
                     VoiceAnnouncer.Readiness.NoArabicVoice -> VoiceProblem(
-                        "لا يوجد صوت عربي في جوالك، فستسمع نغمة التنبيه فقط. ثبّت الصوت العربي من محرك تحويل النص إلى كلام.",
-                        "تثبيت الصوت العربي",
+                        stringResource(R.string.vac_no_arabic_voice),
+                        stringResource(R.string.vac_install_arabic),
                     ) {
                         runCatching { context.startActivity(Intent(TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
                             .recoverCatching { context.startActivity(Intent("com.android.settings.TTS_SETTINGS").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
                     }
                     VoiceAnnouncer.Readiness.Unavailable -> VoiceProblem(
-                        "لا يوجد محرك لتحويل النص إلى كلام في جوالك. ثبّت «خدمات Google للتحدث» من المتجر لتسمع التنبيهات.",
-                        "فتح إعدادات الصوت",
+                        stringResource(R.string.vac_no_tts),
+                        stringResource(R.string.vac_open_tts),
                     ) {
                         runCatching { context.startActivity(Intent("com.android.settings.TTS_SETTINGS").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
                     }
                     else -> Unit
                 }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                VoiceToggle("بدء المتابعة وإيقافها", "عند التشغيل والإيقاف والاستئناف بعد إعادة التشغيل", prefs.status) {
+                VoiceToggle(stringResource(R.string.vac_status_title), stringResource(R.string.vac_status_detail), prefs.status) {
                     update(prefs.copy(status = it))
                 }
-                VoiceToggle("عندما يحتاج سبّاق إليك", "إذن أُغلق، أو توقفت المتابعة بسبب الاشتراك أو الدخول", prefs.problems) {
+                VoiceToggle(stringResource(R.string.vac_problems_title), stringResource(R.string.vac_problems_detail), prefs.problems) {
                     update(prefs.copy(problems = it))
                 }
-                VoiceToggle("انقطاع الإنترنت وعودته", "أثناء المتابعة فقط، وبعد انقطاع يستمر 20 ثانية", prefs.connection) {
+                VoiceToggle(stringResource(R.string.vac_connection_title), stringResource(R.string.vac_connection_detail), prefs.connection) {
                     update(prefs.copy(connection = it))
                 }
-                VoiceToggle("قرب انتهاء الاشتراك", "قبل يوم، ثم في الساعة الأخيرة", prefs.subscription) {
+                VoiceToggle(stringResource(R.string.vac_subscription_title), stringResource(R.string.vac_subscription_detail), prefs.subscription) {
                     update(prefs.copy(subscription = it))
                 }
                 if (OfferEvents.ENGINE_REPORTS_ACCEPTS) {
-                    VoiceToggle("عند قبول طلب", "الأجرة ومسافة الوصول", prefs.offers) { update(prefs.copy(offers = it)) }
+                    VoiceToggle(stringResource(R.string.vac_offers_title), stringResource(R.string.vac_offers_detail), prefs.offers) { update(prefs.copy(offers = it)) }
                 }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                VoiceToggle("التحدث في الوضع الصامت", "لا يتحدث أثناء المكالمات في كل الأحوال", prefs.evenWhenSilent) {
+                VoiceToggle(stringResource(R.string.vac_silent_title), stringResource(R.string.vac_silent_detail), prefs.evenWhenSilent) {
                     update(prefs.copy(evenWhenSilent = it))
                 }
                 val percent = (prefs.volume * 100).roundToInt()
-                Text("مستوى الصوت: $percent٪", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 8.dp))
+                val volumeCd = stringResource(R.string.vac_volume_cd)
+                val volumeState = stringResource(R.string.vac_percent, percent)
+                Text(stringResource(R.string.vac_volume, percent), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 8.dp))
                 Slider(
                     value = prefs.volume,
                     onValueChange = { prefs = prefs.copy(volume = it) },
                     onValueChangeFinished = { update(prefs) },
                     valueRange = 0.2f..1f,
                     modifier = Modifier.semantics {
-                        contentDescription = "مستوى صوت التنبيهات"
-                        stateDescription = "$percent٪"
+                        contentDescription = volumeCd
+                        stateDescription = volumeState
                     },
                 )
                 SabbaqButton(
-                    "جرّب الصوت",
+                    stringResource(R.string.vac_test),
                     onClick = { VoiceAnnouncer.test() },
                     style = SabbaqButtonStyle.Secondary,
                     icon = Icons.AutoMirrored.Outlined.VolumeUp,

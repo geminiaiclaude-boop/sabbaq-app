@@ -68,6 +68,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.sabbaq.R
+import app.sabbaq.LocaleManager
+import androidx.compose.ui.res.stringResource
 import app.sabbaq.network.LicenseState
 import app.sabbaq.network.SubscriptionSnapshot
 import app.sabbaq.ui.theme.LocalReducedMotion
@@ -117,20 +119,20 @@ internal object CelebrationCopy {
         else -> null
     }
 
-    fun headline(kind: CelebrationKind): String = when (kind) {
-        CelebrationKind.Subscribed -> "مبروك! أنت الآن من سائقي سبّاق"
-        CelebrationKind.TrialStarted -> "انطلقت تجربتك في سبّاق"
-    }
+    fun headline(kind: CelebrationKind): String = (when (kind) {
+        CelebrationKind.Subscribed -> "مبروك! أنت الآن من سائقي سبّاق" to "Congratulations! You are now a Sabbaq driver"
+        CelebrationKind.TrialStarted -> "انطلقت تجربتك في سبّاق" to "Your Sabbaq trial has started"
+    }).let { if (LocaleManager.isArabic()) it.first else it.second }
 
-    fun badge(kind: CelebrationKind): String = when (kind) {
-        CelebrationKind.Subscribed -> "عضوية سبّاق المميّزة"
-        CelebrationKind.TrialStarted -> "تجربة كاملة المزايا"
-    }
+    fun badge(kind: CelebrationKind): String = (when (kind) {
+        CelebrationKind.Subscribed -> "عضوية سبّاق المميّزة" to "Sabbaq premium membership"
+        CelebrationKind.TrialStarted -> "تجربة كاملة المزايا" to "Full-featured trial"
+    }).let { if (LocaleManager.isArabic()) it.first else it.second }
 
-    fun spoken(kind: CelebrationKind): String = when (kind) {
-        CelebrationKind.Subscribed -> "مبروك! اشتراكك في سبّاق فعّال. سبّاق جاهز ليلتقط لك الطلبات المناسبة."
-        CelebrationKind.TrialStarted -> "انطلقت تجربتك في سبّاق. جرّب قبول الطلبات المناسبة لشروطك."
-    }
+    fun spoken(kind: CelebrationKind): String = (when (kind) {
+        CelebrationKind.Subscribed -> "مبروك! اشتراكك في سبّاق فعّال. سبّاق جاهز ليلتقط لك الطلبات المناسبة." to "Congratulations! Your Sabbaq subscription is active. Sabbaq is ready to grab the right orders for you."
+        CelebrationKind.TrialStarted -> "انطلقت تجربتك في سبّاق. جرّب قبول الطلبات المناسبة لشروطك." to "Your Sabbaq trial has started. Try accepting the orders that match your conditions."
+    }).let { if (LocaleManager.isArabic()) it.first else it.second }
 
     /** Whole days left, rounded up, so "29 days and 3 hours" reads as 30. */
     fun daysLeft(until: Instant, now: Instant): Long {
@@ -144,10 +146,11 @@ internal object CelebrationCopy {
         until ?: return null
         val days = daysLeft(until, now)
         if (days <= 0) return null
-        val date = DateTimeFormatter.ofPattern("d MMMM yyyy", SabbaqLocale)
+        val date = DateTimeFormatter.ofPattern("d MMMM yyyy", sabbaqDateLocale())
             .withZone(ZoneId.of("Asia/Riyadh"))
             .format(until)
-        return "فعّال حتى $date · ${ArabicCount.days(days.toInt())}"
+        return if (LocaleManager.isArabic()) "فعّال حتى $date · ${ArabicCount.days(days.toInt())}"
+        else "Active until $date · ${ArabicCount.days(days.toInt())}"
     }
 }
 
@@ -274,7 +277,7 @@ internal fun ActivationCelebration(event: CelebrationEvent, onDone: () -> Unit) 
                 Text(it, style = MaterialTheme.typography.titleMedium, color = gold, textAlign = TextAlign.Center)
             }
             Text(
-                "سبّاق الآن يعمل لك: يلتقط الطلب المناسب لشروطك قبل غيرك، وأنت تركّز على الطريق.",
+                stringResource(R.string.cel_now_working),
                 style = MaterialTheme.typography.bodyLarge,
                 color = brand.onHeroMuted,
                 textAlign = TextAlign.Center,
@@ -282,14 +285,14 @@ internal fun ActivationCelebration(event: CelebrationEvent, onDone: () -> Unit) 
             )
 
             Column(Modifier.widthIn(max = 420.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Perk(Icons.Outlined.Bolt, "قبول تلقائي للطلبات المطابقة لشروطك", gold, brand.onHero)
-                Perk(Icons.Outlined.Autorenew, "يعمل مع قفل الشاشة ويعود بعد إعادة التشغيل", gold, brand.onHero)
-                Perk(Icons.Outlined.RecordVoiceOver, "تنبيهات صوتية بالعربية أثناء العمل", gold, brand.onHero)
+                Perk(Icons.Outlined.Bolt, stringResource(R.string.cel_perk_auto), gold, brand.onHero)
+                Perk(Icons.Outlined.Autorenew, stringResource(R.string.cel_perk_background), gold, brand.onHero)
+                Perk(Icons.Outlined.RecordVoiceOver, stringResource(R.string.cel_perk_voice), gold, brand.onHero)
             }
 
             Spacer(Modifier.height(6.dp))
             SabbaqButton(
-                "انطلق الآن",
+                stringResource(R.string.cel_go),
                 onClick = onDone,
                 modifier = Modifier.widthIn(max = 420.dp),
                 icon = Icons.Outlined.Bolt,

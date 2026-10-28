@@ -62,12 +62,13 @@ class LicenseStateException(
     message: String
 ) : IllegalStateException(message)
 
-/** الترخيص محلي الذاكرة فقط، ويحتاج إعادة تحقق ناجحة كل 15 دقيقة على الأكثر. */
+/**
+ * الترخيص محلي الذاكرة فقط، وصلاحيته للتشغيل تمتد طوال مدة الاشتراك التي حدّدها الخادم.
+ * إعادة التحقق الدورية مسؤولية الخادم: حين يصل رد صريح بحالة غير صالحة (حظر، انتهاء،
+ * ربط بجهاز آخر) يُبطَل الترخيص فورًا من [invalidate]. أمّا تعذّر الوصول إلى الخادم فلا
+ * يُبطل اشتراكًا ساريًا؛ المشترك لا يتوقف لأن فحصًا دوريًا لم يصل.
+ */
 internal class LicenseLease(private val clock: MonotonicClock) {
-    companion object {
-        const val MAX_REVALIDATION_AGE_MILLIS: Long = 15L * 60L * 1000L
-    }
-
     private var lease: LeaseSnapshot? = null
 
     /**
@@ -86,8 +87,7 @@ internal class LicenseLease(private val clock: MonotonicClock) {
 
     fun isValid(nowMillis: Long = clock.nowMillis()): Boolean {
         val current = lease ?: return false
-        return nowMillis < current.subscriptionDeadlineMillis &&
-            nowMillis < current.revalidationDeadlineMillis
+        return nowMillis < current.subscriptionDeadlineMillis
     }
 
     fun invalidate() {
@@ -110,11 +110,7 @@ internal class LicenseLease(private val clock: MonotonicClock) {
 
         val startedAt = requestStartedAtMillis.coerceAtLeast(0L)
         val subscriptionDeadline = saturatedAdd(startedAt, subscriptionDuration)
-        val revalidationDeadline = saturatedAdd(
-            startedAt,
-            minOf(subscriptionDuration, MAX_REVALIDATION_AGE_MILLIS)
-        )
-        return LeaseSnapshot(subscriptionDeadline, revalidationDeadline)
+        return LeaseSnapshot(subscriptionDeadline)
     }
 
     private fun durationMillis(serverTime: Instant, validUntil: Instant): Long? = try {
@@ -130,7 +126,6 @@ internal class LicenseLease(private val clock: MonotonicClock) {
         if (right > Long.MAX_VALUE - left) Long.MAX_VALUE else left + right
 
     private data class LeaseSnapshot(
-        val subscriptionDeadlineMillis: Long,
-        val revalidationDeadlineMillis: Long
+        val subscriptionDeadlineMillis: Long
     )
 }

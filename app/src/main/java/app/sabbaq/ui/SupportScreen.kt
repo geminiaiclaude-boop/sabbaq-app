@@ -54,6 +54,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
+import app.sabbaq.LocaleManager
+import app.sabbaq.R
+import androidx.compose.ui.res.stringResource
 import app.sabbaq.support.SupportConversation
 import app.sabbaq.support.SupportDelivery
 import app.sabbaq.support.SupportMessage
@@ -69,11 +72,16 @@ import kotlinx.coroutines.launch
 
 private const val SUPPORT_POLL_MILLIS = 15_000L
 
-private val SUPPORT_TOPICS = listOf(
+private fun supportTopics(ar: Boolean) = if (ar) listOf(
     "سبّاق لا يقبل الطلبات" to "سبّاق لا يقبل الطلبات رغم أن المتابعة تعمل. ",
     "الاشتراك والدفع" to "لدي سؤال عن الاشتراك أو الدفع: ",
     "نقل الحساب لجوال آخر" to "أريد نقل حسابي إلى جوال جديد. ",
     "اقتراح أو ملاحظة" to "لدي اقتراح: ",
+) else listOf(
+    "Sabbaq is not accepting orders" to "Sabbaq is not accepting orders even though monitoring is running. ",
+    "Subscription and payment" to "I have a question about the subscription or payment: ",
+    "Move the account to another phone" to "I want to move my account to a new phone. ",
+    "Suggestion or feedback" to "I have a suggestion: ",
 )
 
 /**
@@ -105,7 +113,7 @@ internal fun SupportPage() {
     Column(Modifier.fillMaxSize().imePadding()) {
         SupportHeader(closed = ui.closed)
         if (ui.loadFailed) {
-            SabbaqMessage(featureFailureText(ui.failure, "المحادثة"), isError = true,
+            SabbaqMessage(featureFailureText(ui.failure, stringResource(R.string.sup_conversation_noun)), isError = true,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -140,7 +148,7 @@ internal fun SupportPage() {
         }
         if (ui.closed) {
             Text(
-                "أُغلقت هذه المحادثة. اكتب رسالة جديدة لفتحها مرة أخرى.",
+                stringResource(R.string.sup_closed_note),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
@@ -173,9 +181,9 @@ private fun SupportHeader(closed: Boolean) {
                 Icon(Icons.Outlined.SupportAgent, contentDescription = null, tint = brand.onSignature)
             }
             Column(Modifier.weight(1f)) {
-                Text("دعم سبّاق", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.sup_header_title), style = MaterialTheme.typography.titleMedium)
                 Text(
-                    if (closed) "المحادثة مغلقة" else "نرد عادة خلال ساعات العمل. لا تشارك كلمات مرور أو بيانات بطاقة.",
+                    if (closed) stringResource(R.string.sup_header_closed) else stringResource(R.string.sup_header_hours),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -193,14 +201,14 @@ private fun SupportEmptyState(loading: Boolean, onTopic: (String) -> Unit) {
         verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
     ) {
         if (loading) {
-            Text("جارٍ تحميل المحادثة…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.sup_loading), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             return@Column
         }
         SupportWelcomeBubble()
-        Text("اختر موضوعًا أو اكتب مشكلتك:", style = MaterialTheme.typography.labelLarge,
+        Text(stringResource(R.string.sup_choose_topic), style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            SUPPORT_TOPICS.forEach { (label, starter) ->
+            supportTopics(LocaleManager.isArabic()).forEach { (label, starter) ->
                 AssistChip(onClick = { onTopic(starter) }, label = { Text(label) })
             }
         }
@@ -210,12 +218,12 @@ private fun SupportEmptyState(loading: Boolean, onTopic: (String) -> Unit) {
 /** The greeting every conversation opens with; local, so it shows even before the first sync. */
 @Composable
 private fun SupportWelcomeBubble() {
+    val welcomeBody = stringResource(R.string.sup_welcome)
     SupportBubble(
         message = SupportMessage(
             clientId = "welcome",
             sender = SupportSender.ADMIN,
-            body = "مرحبًا بك في دعم سبّاق 👋\nاكتب مشكلتك أو سؤالك وسيرد عليك فريقنا هنا خلال ساعات العمل، ويصلك إشعار عند الرد. " +
-                "لتسريع الحل نرفق تلقائيًا إصدار التطبيق ومعرّف الدعم، دون أي بيانات من طلباتك.",
+            body = welcomeBody,
             createdAtEpochMs = 0,
         ),
         onRetry = {},
@@ -238,13 +246,14 @@ private fun DaySeparator(label: String) {
 private fun SupportBubble(message: SupportMessage, onRetry: () -> Unit, onDiscard: () -> Unit, showTime: Boolean = true) {
     val colors = MaterialTheme.colorScheme
     val mine = message.sender == SupportSender.DRIVER
+    val bubbleCd = (if (mine) stringResource(R.string.sup_cd_you) else stringResource(R.string.sup_cd_admin)) + message.body
     val time = Instant.ofEpochMilli(message.createdAtEpochMs).atZone(ZoneId.systemDefault()).format(supportTimeFormat)
     Column(
         Modifier.fillMaxWidth(),
         horizontalAlignment = if (mine) Alignment.End else Alignment.Start,
     ) {
         if (!mine) {
-            Text("إدارة سبّاق", style = MaterialTheme.typography.labelSmall, color = colors.primary, fontWeight = FontWeight.Bold,
+            Text(stringResource(R.string.sup_admin), style = MaterialTheme.typography.labelSmall, color = colors.primary, fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
         }
         Surface(
@@ -256,7 +265,7 @@ private fun SupportBubble(message: SupportMessage, onRetry: () -> Unit, onDiscar
             color = if (mine) colors.primary else colors.surfaceVariant,
             contentColor = if (mine) colors.onPrimary else colors.onSurface,
             modifier = Modifier.widthIn(max = 300.dp).semantics {
-                contentDescription = (if (mine) "أنت: " else "إدارة سبّاق: ") + message.body
+                contentDescription = bubbleCd
             },
         ) {
             Text(message.body, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp))
@@ -270,17 +279,17 @@ private fun SupportBubble(message: SupportMessage, onRetry: () -> Unit, onDiscar
                 SupportDelivery.SENT -> if (showTime) Text(time, style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
                 SupportDelivery.SENDING -> {
                     Icon(Icons.Outlined.Schedule, contentDescription = null, tint = colors.onSurfaceVariant, modifier = Modifier.size(14.dp))
-                    Text("جارٍ الإرسال…", style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
+                    Text(stringResource(R.string.sup_sending), style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
                 }
                 SupportDelivery.FAILED, SupportDelivery.RATE_LIMITED -> {
                     Icon(Icons.Outlined.ErrorOutline, contentDescription = null, tint = colors.error, modifier = Modifier.size(14.dp))
                     Text(
-                        if (message.delivery == SupportDelivery.RATE_LIMITED) "رسائل كثيرة خلال ساعة؛ أعد المحاولة لاحقًا" else "لم تُرسل",
+                        if (message.delivery == SupportDelivery.RATE_LIMITED) stringResource(R.string.sup_rate_limited) else stringResource(R.string.sup_not_sent),
                         style = MaterialTheme.typography.labelSmall,
                         color = colors.error,
                     )
-                    TextButton(onClick = onRetry) { Text("إعادة المحاولة") }
-                    TextButton(onClick = onDiscard) { Text("حذف") }
+                    TextButton(onClick = onRetry) { Text(stringResource(R.string.ss_retry)) }
+                    TextButton(onClick = onDiscard) { Text(stringResource(R.string.sup_discard)) }
                 }
             }
         }
@@ -296,7 +305,7 @@ private fun SupportComposer(value: String, onValueChange: (String) -> Unit, refu
                 OutlinedTextField(
                     value = value,
                     onValueChange = onValueChange,
-                    placeholder = { Text("اكتب رسالتك…") },
+                    placeholder = { Text(stringResource(R.string.sup_placeholder)) },
                     maxLines = 5,
                     modifier = Modifier.weight(1f).testTag("support-input"),
                 )
@@ -306,15 +315,15 @@ private fun SupportComposer(value: String, onValueChange: (String) -> Unit, refu
                     modifier = Modifier.size(52.dp).testTag("support-send"),
                     colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.primary),
                 ) {
-                    Icon(Icons.AutoMirrored.Outlined.Send, contentDescription = "إرسال الرسالة")
+                    Icon(Icons.AutoMirrored.Outlined.Send, contentDescription = stringResource(R.string.sup_send_cd))
                 }
             }
             val remaining = SupportConversation.MAX_LENGTH - value.length
             Text(
                 when {
-                    refused -> "تعذر إضافة الرسالة؛ انتظر حتى تُرسل الرسائل السابقة."
-                    remaining < 200 -> "متبقٍ $remaining حرف"
-                    else -> "يُرفق تلقائيًا إصدار التطبيق ومعرّف الدعم لتسريع التشخيص."
+                    refused -> stringResource(R.string.sup_refused)
+                    remaining < 200 -> stringResource(R.string.sup_remaining, remaining)
+                    else -> stringResource(R.string.sup_attach_note)
                 },
                 style = MaterialTheme.typography.labelSmall,
                 color = if (refused) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -325,13 +334,13 @@ private fun SupportComposer(value: String, onValueChange: (String) -> Unit, refu
 }
 
 private val supportTimeFormat = DateTimeFormatter.ofPattern("HH:mm", SabbaqLocale)
-private val supportDayFormat = DateTimeFormatter.ofPattern("d MMMM", SabbaqLocale)
+private fun supportDayFormat() = DateTimeFormatter.ofPattern("d MMMM", sabbaqDateLocale())
 
 private fun supportDayLabel(day: LocalDate): String {
     val today = LocalDate.now()
     return when (day) {
-        today -> "اليوم"
-        today.minusDays(1) -> "أمس"
-        else -> day.format(supportDayFormat)
+        today -> if (LocaleManager.isArabic()) "اليوم" else "Today"
+        today.minusDays(1) -> if (LocaleManager.isArabic()) "أمس" else "Yesterday"
+        else -> day.format(supportDayFormat())
     }
 }

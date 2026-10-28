@@ -1,5 +1,6 @@
 package app.sabbaq.voice
 
+import app.sabbaq.LocaleManager
 import app.sabbaq.network.LicenseState
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -105,49 +106,59 @@ object VoiceRules {
 
 /** The sentences, in one place, so wording stays consistent and testable. */
 object VoiceLines {
-    const val STARTED = "بدأت متابعة الطلبات."
-    const val STOPPED = "توقفت متابعة الطلبات."
-    const val RESUMED = "عادت متابعة الطلبات للعمل."
-    const val STOPPED_NOTIFICATIONS = "توقف سبّاق. إذن التنبيهات أُغلق، افتح التطبيق للسماح به."
-    const val STOPPED_LICENSE = "توقف سبّاق. اشتراكك يحتاج إلى تجديد."
-    const val STOPPED_UNVERIFIED = "توقف سبّاق. تعذر التحقق من اشتراكك، تحقق من الإنترنت وافتح التطبيق."
-    const val STOPPED_DEVICE_MOVED = "توقف سبّاق. حسابك مفعّل على جهاز آخر، افتح التطبيق لنقله إلى هذا الجوال."
-    const val SIGN_IN_NEEDED = "توقف سبّاق. افتح التطبيق وسجّل الدخول لاستئناف المتابعة."
-    const val ACCESSIBILITY_OFF = "تنبيه. إذن متابعة الطلبات مغلق، لن يقبل سبّاق أي طلب حتى تفعّله."
-    const val ACCESSIBILITY_BACK = "عاد إذن متابعة الطلبات."
-    const val CONNECTION_LOST = "انقطع الاتصال بالإنترنت. سيستمر سبّاق لفترة قصيرة، تحقق من اتصالك."
-    const val CONNECTION_BACK = "عاد الاتصال بالإنترنت."
-    const val TEST = "مرحبًا، هذا صوت سبّاق. ستسمع هنا تنبيهات متابعة الطلبات."
+    private val ar: Boolean get() = LocaleManager.isArabic()
+    val STARTED: String get() = if (ar) "بدأت متابعة الطلبات." else "Order monitoring started."
+    val STOPPED: String get() = if (ar) "توقفت متابعة الطلبات." else "Order monitoring stopped."
+    val RESUMED: String get() = if (ar) "عادت متابعة الطلبات للعمل." else "Order monitoring is back on."
+    val STOPPED_NOTIFICATIONS: String get() = if (ar) "توقف سبّاق. إذن التنبيهات أُغلق، افتح التطبيق للسماح به." else "Sabbaq stopped. The notifications permission is off; open the app to allow it."
+    val STOPPED_LICENSE: String get() = if (ar) "توقف سبّاق. اشتراكك يحتاج إلى تجديد." else "Sabbaq stopped. Your subscription needs renewal."
+    val STOPPED_UNVERIFIED: String get() = if (ar) "توقف سبّاق. تعذر التحقق من اشتراكك، تحقق من الإنترنت وافتح التطبيق." else "Sabbaq stopped. Your subscription could not be verified; check the internet and open the app."
+    val STOPPED_DEVICE_MOVED: String get() = if (ar) "توقف سبّاق. حسابك مفعّل على جهاز آخر، افتح التطبيق لنقله إلى هذا الجوال." else "Sabbaq stopped. Your account is active on another device; open the app to move it to this phone."
+    val SIGN_IN_NEEDED: String get() = if (ar) "توقف سبّاق. افتح التطبيق وسجّل الدخول لاستئناف المتابعة." else "Sabbaq stopped. Open the app and sign in to resume monitoring."
+    val ACCESSIBILITY_OFF: String get() = if (ar) "تنبيه. إذن متابعة الطلبات مغلق، لن يقبل سبّاق أي طلب حتى تفعّله." else "Alert. The order-monitoring permission is off; Sabbaq will not accept any order until you enable it."
+    val ACCESSIBILITY_BACK: String get() = if (ar) "عاد إذن متابعة الطلبات." else "The order-monitoring permission is back."
+    val CONNECTION_LOST: String get() = if (ar) "انقطع الاتصال بالإنترنت. سيستمر سبّاق لفترة قصيرة، تحقق من اتصالك." else "The internet connection dropped. Sabbaq will continue for a short while; check your connection."
+    val CONNECTION_BACK: String get() = if (ar) "عاد الاتصال بالإنترنت." else "The internet connection is back."
+    val TEST: String get() = if (ar) "مرحبًا، هذا صوت سبّاق. ستسمع هنا تنبيهات متابعة الطلبات." else "Hello, this is Sabbaq's voice. You will hear order-monitoring alerts here."
 
-    fun subscriptionEnding(hoursLeft: Long): String = when {
+    fun subscriptionEnding(hoursLeft: Long): String = if (ar) when {
         hoursLeft <= 1 -> "ينتهي اشتراكك خلال ساعة. جدّده لتستمر المتابعة."
         hoursLeft < 24 -> "ينتهي اشتراكك خلال ${hours(hoursLeft)}. جدّده لتستمر المتابعة."
         else -> "ينتهي اشتراكك خلال ${days((hoursLeft + 23) / 24)}. جدّده لتستمر المتابعة."
+    } else when {
+        hoursLeft <= 1 -> "Your subscription ends in 1 hour. Renew it to keep monitoring."
+        hoursLeft < 24 -> "Your subscription ends in ${hours(hoursLeft)}. Renew it to keep monitoring."
+        else -> "Your subscription ends in ${days((hoursLeft + 23) / 24)}. Renew it to keep monitoring."
     }
 
     /**
-     * «ضغطتُ قبول طلب بأجرة 45 ريال، الوصول 3 كيلومتر.» — it reports the tap, not a promise the
-     * platform kept the trip. Numbers are read as words by the voice.
+     * It reports the tap, not a promise the platform kept the trip. Numbers are read as words
+     * by the voice.
      */
-    fun offerAccepted(fare: BigDecimal?, pickupKm: BigDecimal?): String = buildString {
+    fun offerAccepted(fare: BigDecimal?, pickupKm: BigDecimal?): String = if (ar) buildString {
         append("ضغطتُ قبول طلب")
         fare?.let { append(" بأجرة ${amount(it)} ريال") }
         pickupKm?.let { append("، الوصول ${amount(it)} كيلومتر") }
+        append(".")
+    } else buildString {
+        append("I tapped accept on an order")
+        fare?.let { append(" with a fare of ${amount(it)} SAR") }
+        pickupKm?.let { append(", pickup ${amount(it)} km") }
         append(".")
     }
 
     private fun amount(value: BigDecimal): String = value.setScale(1, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString()
 
-    private fun hours(n: Long): String = when {
+    private fun hours(n: Long): String = if (ar) when {
         n == 2L -> "ساعتين"
         n in 3..10 -> "$n ساعات"
         else -> "$n ساعة"
-    }
+    } else if (n == 1L) "1 hour" else "$n hours"
 
-    private fun days(n: Long): String = when {
+    private fun days(n: Long): String = if (ar) when {
         n == 1L -> "يوم"
         n == 2L -> "يومين"
         n in 3..10 -> "$n أيام"
         else -> "$n يومًا"
-    }
+    } else if (n == 1L) "1 day" else "$n days"
 }

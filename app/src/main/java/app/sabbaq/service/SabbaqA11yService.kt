@@ -155,9 +155,12 @@ class SabbaqA11yService : AccessibilityService() {
             return
         }
         if (!SupabaseClient.hasValidLicense()) {
+            // Gate this event, but never turn monitoring off here: the KeeperService owns the
+            // licence lifecycle and pauses/resumes as a matched pair. Latching Settings.isActive
+            // off from the accessibility service left monitoring stuck off after a transient lease
+            // lapse, because the keeper's resume only re-enables what the keeper itself paused.
             liveness.pause("license_expired")
             runtimeStatus.lifecycle(false, "license_expired")
-            Settings.isActive = false
             recordDiagnostic(DiagnosticStage.GATE_BLOCKED, eventNow, "license_invalid", provider = provider)
             return
         }

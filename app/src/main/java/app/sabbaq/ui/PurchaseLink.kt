@@ -1,5 +1,6 @@
 package app.sabbaq.ui
 
+import app.sabbaq.LocaleManager
 import app.sabbaq.network.PublicOffer
 import java.net.URLEncoder
 
@@ -13,13 +14,13 @@ internal object PurchaseLink {
     private val whatsappDigits = Regex("^[1-9][0-9]{7,14}$")
 
     fun whatsappMessage(offer: PublicOffer): String =
-        "مرحبًا، أرغب في الاشتراك في سبّاق (${CustomerCommerceCopy.offerSummary(offer)}). أرجو إرسال طريقة الدفع ورمز التفعيل."
+        (if (LocaleManager.isArabic()) "مرحبًا، أرغب في الاشتراك في سبّاق (${CustomerCommerceCopy.offerSummary(offer)}). أرجو إرسال طريقة الدفع ورمز التفعيل." else "Hello, I would like to subscribe to Sabbaq (${CustomerCommerceCopy.offerSummary(offer)}). Please send the payment method and the activation code.")
 
     fun whatsappUrl(number: String, offer: PublicOffer): String? = chatUrl(number, whatsappMessage(offer))
 
     /** A chat with the administration about moving an account to a new device. */
     fun supportChatUrl(number: String): String? =
-        chatUrl(number, "مرحبًا، أحتاج إلى نقل حسابي في سبّاق إلى جهاز جديد.")
+        chatUrl(number, if (LocaleManager.isArabic()) "مرحبًا، أحتاج إلى نقل حسابي في سبّاق إلى جهاز جديد." else "Hello, I need to move my Sabbaq account to a new device.")
 
     private fun chatUrl(number: String, message: String): String? {
         if (!whatsappDigits.matches(number)) return null
