@@ -294,7 +294,7 @@ private fun FeaturesSubscriptionPage(
     }
 
     SabbaqCard(
-        title = if (loadingOffer) stringResource(R.string.onboarding_offer_loading) else offerCopy.headline,
+        title = if (loadingOffer) stringResource(R.string.onboarding_offer_loading) else offerCopy.headline(),
         modifier = Modifier.sabbaqEntrance(1),
     ) {
         if (loadingOffer) {
@@ -309,7 +309,7 @@ private fun FeaturesSubscriptionPage(
                 )
             }
         } else {
-            Text(offerCopy.detail, style = MaterialTheme.typography.bodyMedium)
+            Text(offerCopy.detail(), style = MaterialTheme.typography.bodyMedium)
             if (isDirectDistribution && !offerCopy.hasServerOffer) {
                 TextButton(
                     onClick = onRetryOffer,
@@ -366,7 +366,7 @@ private fun DecisionPreviewPage(
             FilterChip(
                 selected = signal in selectedSignals,
                 onClick = { onSignalChange(signal) },
-                label = { Text(signal.label) },
+                label = { Text(stringResource(signal.labelRes)) },
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
             )
         }

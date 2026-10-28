@@ -3,6 +3,9 @@ package app.sabbaq.ui
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotDisplayed
@@ -46,9 +49,21 @@ class DriverFlowTest {
         Settings.clearAccountData()
     }
 
+    // The UI strings now come from resources; these flows are authored against the Arabic text,
+    // so the content is composed with an Arabic context regardless of the emulator's language.
     private fun show(content: @Composable () -> Unit) = compose.setContent {
-        SabbaqTheme(darkTheme = false) {
-            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) { content() }
+        val base = InstrumentationRegistry.getInstrumentation().targetContext
+        val arabic = remember {
+            val config = android.content.res.Configuration(base.resources.configuration)
+            config.setLocale(java.util.Locale("ar"))
+            base.createConfigurationContext(config)
+        }
+        CompositionLocalProvider(
+            LocalContext provides arabic,
+            LocalConfiguration provides arabic.resources.configuration,
+            LocalLayoutDirection provides LayoutDirection.Rtl,
+        ) {
+            SabbaqTheme(darkTheme = false) { content() }
         }
     }
 

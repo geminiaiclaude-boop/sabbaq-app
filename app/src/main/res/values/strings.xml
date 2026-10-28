@@ -46,4 +46,31 @@
     <string name="onboarding_how">How does it work?</string>
     <string name="onboarding_page_of">Page %1$d of %2$d</string>
     <string name="onboarding_step_of">Step %1$d of %2$d</string>
+
+    <!-- Onboarding offer copy and decision preview -->
+    <string name="onboarding_cta_start">Start your trial</string>
+    <string name="onboarding_cta_continue">Continue to sign in</string>
+    <string name="onboarding_offer_store_headline">Discover Sabbaq from the store</string>
+    <string name="onboarding_offer_store_detail">Sign in to explore the service. Subscription options appear inside the store when available.</string>
+    <string name="onboarding_offer_discover_headline">Discover it first</string>
+    <string name="onboarding_offer_discover_detail">Continue after signing in to see your account options. Price and trial details are not available right now.</string>
+    <string name="onboarding_offer_trial_headline">Try it before subscribing</string>
+    <string name="onboarding_offer_choose_headline">Choose what fits your work</string>
+    <string name="onboarding_offer_trial_line">Try Sabbaq free for %1$s for eligible accounts. It starts after you confirm, once you sign in.</string>
+    <string name="onboarding_offer_no_trial">The trial is not available right now.</string>
+    <string name="onboarding_offer_detail">%1$s The current subscription price is %2$s SAR for %3$s.</string>
+    <string name="signal_pickup_distance">Pickup distance</string>
+    <string name="signal_trip_duration">Trip duration</string>
+    <string name="signal_displayed_fare">Displayed fare</string>
+    <string name="preview_empty">Pick one or more details to show them in the example.</string>
+    <string name="preview_intro">In this example:\n</string>
+    <string name="preview_fare">Displayed fare: 45 SAR\n</string>
+    <string name="preview_pickup">Pickup distance: 3 km + a 15 km trip\n</string>
+    <string name="preview_duration">Trip duration: 30 minutes\n</string>
+    <string name="preview_per_km">Return per km including pickup: 2.5 SAR before costs\n</string>
+    <string name="preview_note">It does not represent a real offer and does not change your settings.</string>
+    <plurals name="days_count">
+        <item quantity="one">%d day</item>
+        <item quantity="other">%d days</item>
+    </plurals>
 </resources>

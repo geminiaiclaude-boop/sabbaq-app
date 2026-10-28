@@ -45,4 +45,35 @@
     <string name="onboarding_how">كيف يعمل؟</string>
     <string name="onboarding_page_of">الصفحة %1$d من %2$d</string>
     <string name="onboarding_step_of">خطوة %1$d من %2$d</string>
+
+    <!-- Onboarding offer copy and decision preview -->
+    <string name="onboarding_cta_start">ابدأ تجربتك</string>
+    <string name="onboarding_cta_continue">متابعة لتسجيل الدخول</string>
+    <string name="onboarding_offer_store_headline">اكتشف سبّاق من المتجر</string>
+    <string name="onboarding_offer_store_detail">سجّل الدخول لاكتشاف الخدمة. خيارات الاشتراك داخل المتجر تظهر عند توفرها.</string>
+    <string name="onboarding_offer_discover_headline">اكتشفه أولًا</string>
+    <string name="onboarding_offer_discover_detail">تابع بعد تسجيل الدخول لمعرفة خيارات حسابك. تفاصيل السعر والتجربة غير متاحة الآن.</string>
+    <string name="onboarding_offer_trial_headline">جرّبه قبل الاشتراك</string>
+    <string name="onboarding_offer_choose_headline">اختر ما يناسب عملك</string>
+    <string name="onboarding_offer_trial_line">جرّب سبّاق %1$s دون رسوم للحسابات المؤهلة. تبدأ بعد تأكيدك عقب تسجيل الدخول.</string>
+    <string name="onboarding_offer_no_trial">التجربة غير متاحة حاليًا.</string>
+    <string name="onboarding_offer_detail">%1$s سعر الاشتراك الحالي %2$s ر.س لمدة %3$s.</string>
+    <string name="signal_pickup_distance">مسافة الوصول</string>
+    <string name="signal_trip_duration">مدة المشوار</string>
+    <string name="signal_displayed_fare">السعر الظاهر</string>
+    <string name="preview_empty">اختر تفصيلًا أو أكثر لتظهره في المثال.</string>
+    <string name="preview_intro">في هذا المثال:\n</string>
+    <string name="preview_fare">السعر الظاهر: 45 ر.س\n</string>
+    <string name="preview_pickup">مسافة الوصول: 3 كم + مشوار 15 كم\n</string>
+    <string name="preview_duration">مدة المشوار: 30 دقيقة\n</string>
+    <string name="preview_per_km">العائد لكل كم مع الوصول: 2.5 ر.س قبل التكاليف\n</string>
+    <string name="preview_note">لا يمثل طلبًا فعليًا ولا يغيّر إعداداتك.</string>
+    <plurals name="days_count">
+        <item quantity="zero">%d يوم</item>
+        <item quantity="one">يوم واحد</item>
+        <item quantity="two">يومان</item>
+        <item quantity="few">%d أيام</item>
+        <item quantity="many">%d يومًا</item>
+        <item quantity="other">%d يوم</item>
+    </plurals>
 </resources>

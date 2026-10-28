@@ -1,9 +1,15 @@
 package app.sabbaq.ui
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+/**
+ * The offer copy's logic is tested here (which state applies, the value bounds, trial handling).
+ * The displayed words live in string resources and are resolved by the composable helpers, so
+ * this asserts the decided [OnboardingOfferKind] and numbers, not any language's text.
+ */
 class OnboardingModelsTest {
     private val availableOffer = OnboardingOffer(
         trialEnabled = true,
@@ -27,91 +33,55 @@ class OnboardingModelsTest {
     fun `direct copy uses the current offer rather than a built-in trial`() {
         val copy = onboardingOfferCopy(isDirectDistribution = true, offer = availableOffer)
 
+        assertEquals(OnboardingOfferKind.TRIAL, copy.kind)
         assertTrue(copy.hasServerOffer)
         assertTrue(copy.canShowTrialJourney)
-        assertTrue(copy.detail.contains("7 أيام"))
-        assertTrue(copy.detail.contains("30 يومًا"))
-        assertTrue(copy.detail.contains("ر.س"))
-        assertTrue(copy.detail.contains("بعد تأكيدك"))
-        assertTrue(onboardingFinalCta(copy.canShowTrialJourney).contains("ابدأ تجربتك"))
+        assertEquals(7, copy.trialDays)
+        assertEquals(30, copy.subscriptionDays)
+        assertEquals(1875, copy.priceMinor)
     }
 
     @Test
-    fun `unavailable offer stays general and does not invent three-day trial`() {
+    fun `unavailable offer stays general and does not invent a trial`() {
         val copy = onboardingOfferCopy(isDirectDistribution = true, offer = null)
 
+        assertEquals(OnboardingOfferKind.DISCOVER, copy.kind)
         assertFalse(copy.hasServerOffer)
         assertFalse(copy.canShowTrialJourney)
-        assertTrue(copy.detail.contains("بعد تسجيل الدخول"))
-        assertFalse(copy.detail.contains("3 أيام"))
-        assertFalse(copy.detail.contains("3 يوم"))
+        assertEquals(0, copy.trialDays)
     }
 
     @Test
-    fun `disabled trial is stated as server policy and not a duration`() {
+    fun `an out-of-bounds offer is rejected and falls back to discover`() {
+        assertEquals(OnboardingOfferKind.DISCOVER,
+            onboardingOfferCopy(true, availableOffer.copy(currency = "USD")).kind)
+        assertEquals(OnboardingOfferKind.DISCOVER,
+            onboardingOfferCopy(true, availableOffer.copy(priceMinor = 0)).kind)
+        assertEquals(OnboardingOfferKind.DISCOVER,
+            onboardingOfferCopy(true, availableOffer.copy(subscriptionDays = 400)).kind)
+        assertEquals(OnboardingOfferKind.DISCOVER,
+            onboardingOfferCopy(true, availableOffer.copy(trialEnabled = true, trialDays = 0)).kind)
+    }
+
+    @Test
+    fun `disabled trial is a subscription-only offer, not a duration`() {
         val copy = onboardingOfferCopy(
             isDirectDistribution = true,
             offer = availableOffer.copy(trialEnabled = false, trialDays = 0)
         )
 
+        assertEquals(OnboardingOfferKind.SUBSCRIPTION_ONLY, copy.kind)
         assertTrue(copy.hasServerOffer)
         assertFalse(copy.canShowTrialJourney)
-        assertTrue(copy.detail.contains("التجربة غير متاحة"))
-        assertFalse(copy.detail.contains("7 أيام"))
-        assertFalse(onboardingFinalCta(copy.canShowTrialJourney).contains("ابدأ تجربتك"))
     }
 
     @Test
-    fun `play copy hides direct price and external activation paths`() {
+    fun `play copy hides the direct price and external activation paths`() {
         val copy = onboardingOfferCopy(isDirectDistribution = false, offer = availableOffer)
 
+        assertEquals(OnboardingOfferKind.STORE, copy.kind)
         assertFalse(copy.hasServerOffer)
         assertFalse(copy.canShowTrialJourney)
-        assertTrue(copy.headline.contains("المتجر"))
-        assertTrue(copy.detail.contains("خيارات الاشتراك"))
-        assertFalse(copy.detail.contains("رمز"))
-        assertFalse(copy.detail.contains("ر.س"))
-    }
-
-    @Test
-    fun `example preview is labelled and never changes a real setting`() {
-        val empty = localDecisionPreview(emptySet())
-        val selected = localDecisionPreview(
-            setOf(DecisionSignal.PICKUP_DISTANCE, DecisionSignal.DISPLAYED_FARE)
-        )
-
-        assertTrue(empty.contains("اختر تفصيلًا"))
-        assertTrue(selected.contains("مسافة الوصول"))
-        assertTrue(selected.contains("السعر الظاهر"))
-        assertTrue(selected.contains("هذا المثال"))
-        assertTrue(selected.contains("لا يمثل طلبًا فعليًا"))
-        assertTrue(selected.contains("لا يغيّر إعداداتك"))
-    }
-
-    @Test
-    fun `sample makes the value tangible without treating gross fare as profit`() {
-        val full = localDecisionPreview(DecisionSignal.entries.toSet())
-        assertTrue(full.contains("45 ر.س"))
-        assertTrue(full.contains("3 كم"))
-        assertTrue(full.contains("2.5 ر.س قبل التكاليف"))
-        assertFalse(localDecisionPreview(setOf(DecisionSignal.TRIP_DURATION)).contains("العائد لكل كم"))
-    }
-
-    @Test
-    fun `customer copy avoids technical jargon`() {
-        val visibleCopy = listOf(
-            onboardingOfferCopy(isDirectDistribution = true, offer = availableOffer).headline,
-            onboardingOfferCopy(isDirectDistribution = true, offer = availableOffer).detail,
-            onboardingOfferCopy(isDirectDistribution = true, offer = null).headline,
-            onboardingOfferCopy(isDirectDistribution = true, offer = null).detail,
-            onboardingOfferCopy(isDirectDistribution = false, offer = availableOffer).headline,
-            onboardingOfferCopy(isDirectDistribution = false, offer = availableOffer).detail,
-            localDecisionPreview(emptySet()),
-            localDecisionPreview(setOf(DecisionSignal.TRIP_DURATION)),
-        )
-
-        listOf("Supabase", "محلية", "قراءة فقط", "خادمي", "الخادم", "API", "قواعد للمطور").forEach { jargon ->
-            assertFalse("ظهر مصطلح تقني في النص المرئي: $jargon", visibleCopy.any { it.contains(jargon, ignoreCase = true) })
-        }
+        assertEquals(0, copy.priceMinor)
     }
 }
