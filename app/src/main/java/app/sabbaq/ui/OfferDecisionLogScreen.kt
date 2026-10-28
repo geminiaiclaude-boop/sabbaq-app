@@ -36,6 +36,9 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import app.sabbaq.LocaleManager
+import app.sabbaq.R
+import androidx.compose.ui.res.stringResource
 import app.sabbaq.service.RuntimeStatusRepository
 import app.sabbaq.stats.DecisionLogOutcome
 import app.sabbaq.stats.OfferDecisionLogEntry
@@ -62,18 +65,18 @@ fun OfferDecisionLogScreen(onBack: () -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(MaterialTheme.shapes.small)
-                .clickable(onClickLabel = "رجوع", role = Role.Button, onClick = onBack)
+                .clickable(onClickLabel = stringResource(R.string.odl_back), role = Role.Button, onClick = onBack)
                 .heightIn(min = 48.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             // RTL: «back» points to the right.
             Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null)
-            Text("رجوع", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+            Text(stringResource(R.string.odl_back), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
         }
-        Text("سجل القرارات", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
+        Text(stringResource(R.string.nav_history), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
         Text(
-            "نشاط سبّاق على هذا الجهاز: ما رآه من طلبات، وما قبله أو رفضه ولماذا.",
+            stringResource(R.string.odl_subtitle),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -84,15 +87,15 @@ fun OfferDecisionLogScreen(onBack: () -> Unit) {
         OfferStatsCard(Modifier.sabbaqEntrance(1))
 
         SabbaqCard(
-            title = "آخر القرارات",
-            subtitle = "آخر 7 أيام. لا يتضمن نص الطلب أو العناوين أو الأجرة، ولا يُرفع إلى الخادم.",
+            title = stringResource(R.string.odl_latest),
+            subtitle = stringResource(R.string.odl_latest_sub),
             icon = Icons.Outlined.History,
             modifier = Modifier.sabbaqEntrance(2),
         ) {
             if (rows.isEmpty()) {
-                Text("لا توجد قرارات مسجلة بعد.", style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(R.string.odl_empty), style = MaterialTheme.typography.titleSmall)
                 Text(
-                    "إن كانت الطلبات تصلك في تطبيق النقل ولا تظهر هنا، فسبّاق لا يراها: افتح «الإعدادات ← التشخيص والدعم» لمعرفة السبب وإرسال معرّف الدعم.",
+                    stringResource(R.string.odl_empty_hint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -103,13 +106,13 @@ fun OfferDecisionLogScreen(onBack: () -> Unit) {
                 }
                 if (rows.size > MAX_VISIBLE_ROWS) {
                     Text(
-                        "يُعرض آخر $MAX_VISIBLE_ROWS قرارًا من ${rows.size}.",
+                        stringResource(R.string.odl_showing, MAX_VISIBLE_ROWS, rows.size),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 SabbaqButton(
-                    text = "مسح السجل",
+                    text = stringResource(R.string.odl_clear),
                     onClick = { askClear = true },
                     style = SabbaqButtonStyle.Text,
                     icon = Icons.Outlined.DeleteOutline,
@@ -121,20 +124,20 @@ fun OfferDecisionLogScreen(onBack: () -> Unit) {
 
     if (askClear) AlertDialog(
         onDismissRequest = { askClear = false },
-        title = { Text("مسح سجل القرارات؟") },
-        text = { Text("سيُحذف السجل المحلي نهائيًا من هذا الجهاز. لن تتغير شروط الطلبات أو الإحصاءات.") },
+        title = { Text(stringResource(R.string.odl_clear_q)) },
+        text = { Text(stringResource(R.string.odl_clear_body)) },
         confirmButton = {
             TextButton(onClick = {
                 askClear = false
                 message = if (OfferDecisionLogStore.clear(context)) {
                     rows = emptyList()
-                    SabbaqStatus("تم مسح سجل القرارات من هذا الجهاز.", SabbaqTone.Success)
+                    SabbaqStatus((if (LocaleManager.isArabic()) "تم مسح سجل القرارات من هذا الجهاز." else "The decision log was cleared from this device."), SabbaqTone.Success)
                 } else {
-                    SabbaqStatus("تعذر مسح السجل؛ أعد المحاولة أو احذف بيانات التطبيق من إعدادات الجهاز.", SabbaqTone.Error)
+                    SabbaqStatus((if (LocaleManager.isArabic()) "تعذر مسح السجل؛ أعد المحاولة أو احذف بيانات التطبيق من إعدادات الجهاز." else "Could not clear the log; try again or delete the app data from the device settings."), SabbaqTone.Error)
                 }
-            }) { Text("مسح") }
+            }) { Text(stringResource(R.string.odl_clear_confirm)) }
         },
-        dismissButton = { TextButton(onClick = { askClear = false }) { Text("إلغاء") } },
+        dismissButton = { TextButton(onClick = { askClear = false }) { Text(stringResource(R.string.ss_cancel)) } },
     )
 }
 
@@ -142,29 +145,34 @@ private const val MAX_VISIBLE_ROWS = 60
 
 private data class SabbaqStatus(val text: String, val tone: SabbaqTone)
 
-private fun platformName(profileId: String): String = when (profileId) {
+private fun platformName(profileId: String): String = if (LocaleManager.isArabic()) when (profileId) {
     "jeeny" -> "جيني"
     "bolt" -> "بولت"
     "petra" -> "بترا"
     else -> profileId
+} else when (profileId) {
+    "jeeny" -> "Jeeny"
+    "bolt" -> "Bolt"
+    "petra" -> "Petra"
+    else -> profileId
 }
 
-private val rowTime = DateTimeFormatter.ofPattern("d MMM · HH:mm", SabbaqLocale)
+private fun rowTime() = DateTimeFormatter.ofPattern("d MMM · HH:mm", sabbaqDateLocale())
 
 /** One decision as a compact list row: outcome icon, plain outcome, platform and time, reason. */
 @Composable
 private fun DecisionRow(entry: OfferDecisionLogEntry) {
     val time = remember(entry.timestampEpochMs) {
-        rowTime.withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(entry.timestampEpochMs))
+        rowTime().withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(entry.timestampEpochMs))
     }
     val colors = MaterialTheme.colorScheme
     val (outcome, icon, tint) = when (entry.outcome) {
-        DecisionLogOutcome.REJECTED -> Triple("رُفض وفق شروطك", Icons.Outlined.DoNotDisturbOn, colors.onSurfaceVariant)
-        DecisionLogOutcome.MATCHED -> Triple("مطابق لشروطك", Icons.Outlined.CheckCircle, colors.primary)
+        DecisionLogOutcome.REJECTED -> Triple(stringResource(R.string.odl_out_rejected), Icons.Outlined.DoNotDisturbOn, colors.onSurfaceVariant)
+        DecisionLogOutcome.MATCHED -> Triple(stringResource(R.string.odl_out_matched), Icons.Outlined.CheckCircle, colors.primary)
         DecisionLogOutcome.SEMANTIC_CLICK_SENT,
-        DecisionLogOutcome.GESTURE_CLICK_SENT -> Triple("ضغط سبّاق على «قبول»؛ بانتظار التأكيد", Icons.Outlined.TouchApp, colors.primary)
-        DecisionLogOutcome.ACCEPTED_CONFIRMED -> Triple("تم قبول الرحلة", Icons.Outlined.CheckCircle, colors.primary)
-        DecisionLogOutcome.CONFIRMATION_TIMEOUT -> Triple("لم يتأكد القبول (ربما أخذه سائق آخر)", Icons.Outlined.HourglassTop, colors.error)
+        DecisionLogOutcome.GESTURE_CLICK_SENT -> Triple(stringResource(R.string.odl_out_click_sent), Icons.Outlined.TouchApp, colors.primary)
+        DecisionLogOutcome.ACCEPTED_CONFIRMED -> Triple(stringResource(R.string.odl_out_accepted), Icons.Outlined.CheckCircle, colors.primary)
+        DecisionLogOutcome.CONFIRMATION_TIMEOUT -> Triple(stringResource(R.string.odl_out_timeout), Icons.Outlined.HourglassTop, colors.error)
     }
     DecisionRowContent(outcome, icon, tint, "${platformName(entry.profileId)} · $time",
         entry.reasons.takeIf { it.isNotEmpty() }?.joinToString("، ") { reasonArabic(it).removeSuffix(".") })
@@ -188,7 +196,7 @@ private fun DecisionRowContent(
             Text(outcome, style = MaterialTheme.typography.titleSmall)
             Text(meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             reasons?.let {
-                Text("السبب: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.odl_reason, it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
