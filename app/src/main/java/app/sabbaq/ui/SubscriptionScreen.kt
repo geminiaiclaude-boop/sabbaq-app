@@ -698,10 +698,7 @@ private fun DeleteAccountDialog(
 /** The word the driver types; normalised so Arabic keyboard variants of the same word match. */
 internal object AccountDeletionConfirmation {
     val WORD: String get() = if (LocaleManager.isArabic()) "حذف" else "DELETE"
-    fun matches(input: String): Boolean {
-        val normalized = input.trim().replace("ـ", "")
-        return normalized == "حذف" || normalized.equals("DELETE", ignoreCase = true)
-    }
+    fun matches(input: String): Boolean = input.trim().replace("ـ", "").equals(WORD, ignoreCase = true)
 }
 
 private fun formatSaudiDate(value: Instant): String =
