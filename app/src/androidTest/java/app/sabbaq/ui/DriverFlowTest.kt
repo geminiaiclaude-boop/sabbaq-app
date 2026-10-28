@@ -45,10 +45,15 @@ class DriverFlowTest {
 
     @Before
     fun resetLocalState() {
-        // These flows assert the Arabic UI. The screens are composed with an Arabic context, so
-        // resources resolve to values-ar; pin the default locale too so the locale-aware helpers
-        // (LocaleManager.isArabic) agree, exactly as they do on a real Arabic device.
+        // These flows assert the Arabic UI. Compose dialog/popup windows do not inherit the
+        // CompositionLocal locale override from show(), so set the per-app locale the production
+        // way (AppCompatDelegate) and pin the default locale too; this makes the whole process —
+        // including AlertDialog windows and the locale-aware helpers (LocaleManager.isArabic) —
+        // resolve Arabic, exactly as on a real Arabic device.
         java.util.Locale.setDefault(java.util.Locale("ar"))
+        androidx.appcompat.app.AppCompatDelegate.setApplicationLocales(
+            androidx.core.os.LocaleListCompat.forLanguageTags("ar"),
+        )
         Settings.init(InstrumentationRegistry.getInstrumentation().targetContext)
         Settings.clearAccountData()
     }
