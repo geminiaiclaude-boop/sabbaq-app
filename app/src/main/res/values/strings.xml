@@ -169,4 +169,21 @@
     <string name="login_progress_awaiting">Awaiting activation</string>
     <string name="login_progress_transfer">Moving the account…</string>
     <string name="login_progress_continue">Continue</string>
+
+    <!-- Connectivity / legal / platforms -->
+    <string name="offline_banner">No internet connection. Signing in, renewing the subscription and deleting the account need a connection; your saved conditions stay on your device.</string>
+    <string name="privacy_policy">Privacy policy</string>
+    <string name="account_deletion_request">Request account deletion</string>
+    <string name="platforms_works_with_desc">Works with %1$s</string>
+    <string name="platform_installed">Installed</string>
+    <string name="platform_other_profile">In another profile</string>
+    <string name="platform_unsupported_version">Unsupported version</string>
+    <string name="platform_not_installed">Not installed</string>
+    <string name="platforms_card_title">Works with ride apps</string>
+    <string name="platforms_card_readable">Sabbaq follows the offers in the apps installed on your phone.</string>
+    <string name="platforms_card_none">We did not find a supported app Sabbaq can read. Install the driver app you work with in the phone's main space.</string>
+    <string name="platforms_other_profile">We found %1$s as a dual copy, or inside the work profile or the secure folder. No helper app can read a copy in another profile; install the app in the main space and sign in there so Sabbaq starts accepting its offers.</string>
+    <string name="platforms_unknown_package">We found %1$s with a version Sabbaq does not know yet, and the administration was notified automatically to add it without an app update. Message support to speed that up.</string>
+    <string name="list_separator">, </string>
+    <string name="list_conjunction"> and </string>
 </resources>

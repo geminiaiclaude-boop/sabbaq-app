@@ -21,6 +21,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import app.sabbaq.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
@@ -90,10 +92,11 @@ internal fun SupportedPlatformsRow(modifier: Modifier = Modifier, detectInstalle
         if (detectInstalled) runCatching { SupportedPlatforms.presence(context) }.getOrDefault(emptyMap()) else emptyMap()
     }
     val colors = MaterialTheme.colorScheme
+        val worksWithDesc = stringResource(R.string.platforms_works_with_desc, platforms.joinToString(stringResource(R.string.list_separator)) { it.brand })
     Row(
         modifier
             .fillMaxWidth()
-            .semantics { contentDescription = "يعمل مع " + platforms.joinToString("، ") { it.brand } },
+            .semantics { contentDescription = worksWithDesc },
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         platforms.forEachIndexed { index, platform ->
@@ -124,14 +127,14 @@ internal fun SupportedPlatformsRow(modifier: Modifier = Modifier, detectInstalle
                     if (detectInstalled) when (state) {
                         SupportedPlatforms.Presence.READABLE -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                             Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = colors.primary, modifier = Modifier.size(14.dp))
-                            Text("مثبت", style = MaterialTheme.typography.labelSmall, color = colors.primary)
+                            Text(stringResource(R.string.platform_installed), style = MaterialTheme.typography.labelSmall, color = colors.primary)
                         }
                         SupportedPlatforms.Presence.OTHER_PROFILE ->
-                            Text("في ملف آخر", style = MaterialTheme.typography.labelSmall, color = colors.error, textAlign = TextAlign.Center)
+                            Text(stringResource(R.string.platform_other_profile), style = MaterialTheme.typography.labelSmall, color = colors.error, textAlign = TextAlign.Center)
                         SupportedPlatforms.Presence.UNKNOWN_PACKAGE ->
-                            Text("إصدار غير مدعوم", style = MaterialTheme.typography.labelSmall, color = colors.error, textAlign = TextAlign.Center)
+                            Text(stringResource(R.string.platform_unsupported_version), style = MaterialTheme.typography.labelSmall, color = colors.error, textAlign = TextAlign.Center)
                         SupportedPlatforms.Presence.MISSING ->
-                            Text("غير مثبت", style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
+                            Text(stringResource(R.string.platform_not_installed), style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
                     }
                 }
             }
@@ -144,25 +147,26 @@ internal fun SupportedPlatformsRow(modifier: Modifier = Modifier, detectInstalle
 internal fun SupportedPlatformsCard(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val presence = remember { runCatching { SupportedPlatforms.presence(context) }.getOrDefault(emptyMap()) }
+    val conj = stringResource(R.string.list_conjunction)
     fun brands(state: SupportedPlatforms.Presence) =
-        SupportedPlatforms.all.filter { presence[it.id] == state }.joinToString(" و") { it.brand }
+        SupportedPlatforms.all.filter { presence[it.id] == state }.joinToString(conj) { it.brand }
     val otherProfile = brands(SupportedPlatforms.Presence.OTHER_PROFILE)
     val unknownPackage = brands(SupportedPlatforms.Presence.UNKNOWN_PACKAGE)
     val anyReadable = presence.values.any { it == SupportedPlatforms.Presence.READABLE }
     SabbaqCard(
-        title = "يعمل مع تطبيقات الرحلات",
-        subtitle = if (anyReadable) "يتابع سبّاق الطلبات في التطبيقات المثبتة على جوالك."
-            else "لم نجد تطبيقًا مدعومًا يستطيع سبّاق قراءته. ثبّت تطبيق السائق الذي تعمل عليه في المساحة الأساسية للجوال.",
+        title = stringResource(R.string.platforms_card_title),
+        subtitle = if (anyReadable) stringResource(R.string.platforms_card_readable)
+            else stringResource(R.string.platforms_card_none),
         modifier = modifier,
     ) {
         SupportedPlatformsRow(detectInstalled = true)
         if (otherProfile.isNotEmpty()) SabbaqMessage(
-            "وجدنا $otherProfile كنسخة مزدوجة أو داخل ملف العمل أو المجلد الآمن. لا يستطيع أي تطبيق مساعد قراءة نسخة في ملف آخر؛ " +
-                "ثبّت التطبيق في المساحة الأساسية وسجّل الدخول منه ليبدأ سبّاق بقبول طلباته.",
+            stringResource(R.string.platforms_other_profile, otherProfile),
+
             isError = true,
         )
         if (unknownPackage.isNotEmpty()) SabbaqMessage(
-            "وجدنا $unknownPackage بإصدار لا يعرفه سبّاق بعد، وأُبلغت الإدارة تلقائيًا لإضافته دون تحديث التطبيق. راسل الدعم لتسريع ذلك.",
+            stringResource(R.string.platforms_unknown_package, unknownPackage),
             isError = true,
         )
     }

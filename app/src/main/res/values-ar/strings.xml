@@ -172,4 +172,21 @@
     <string name="login_progress_awaiting">بانتظار التفعيل</string>
     <string name="login_progress_transfer">جارٍ نقل الحساب…</string>
     <string name="login_progress_continue">متابعة</string>
+
+    <!-- Connectivity / legal / platforms -->
+    <string name="offline_banner">لا يوجد اتصال بالإنترنت. الدخول وتحديث الاشتراك وحذف الحساب تحتاج اتصالًا؛ شروطك المحفوظة باقية على جهازك.</string>
+    <string name="privacy_policy">سياسة الخصوصية</string>
+    <string name="account_deletion_request">طلب حذف الحساب</string>
+    <string name="platforms_works_with_desc">يعمل مع %1$s</string>
+    <string name="platform_installed">مثبت</string>
+    <string name="platform_other_profile">في ملف آخر</string>
+    <string name="platform_unsupported_version">إصدار غير مدعوم</string>
+    <string name="platform_not_installed">غير مثبت</string>
+    <string name="platforms_card_title">يعمل مع تطبيقات الرحلات</string>
+    <string name="platforms_card_readable">يتابع سبّاق الطلبات في التطبيقات المثبتة على جوالك.</string>
+    <string name="platforms_card_none">لم نجد تطبيقًا مدعومًا يستطيع سبّاق قراءته. ثبّت تطبيق السائق الذي تعمل عليه في المساحة الأساسية للجوال.</string>
+    <string name="platforms_other_profile">وجدنا %1$s كنسخة مزدوجة أو داخل ملف العمل أو المجلد الآمن. لا يستطيع أي تطبيق مساعد قراءة نسخة في ملف آخر؛ ثبّت التطبيق في المساحة الأساسية وسجّل الدخول منه ليبدأ سبّاق بقبول طلباته.</string>
+    <string name="platforms_unknown_package">وجدنا %1$s بإصدار لا يعرفه سبّاق بعد، وأُبلغت الإدارة تلقائيًا لإضافته دون تحديث التطبيق. راسل الدعم لتسريع ذلك.</string>
+    <string name="list_separator">، </string>
+    <string name="list_conjunction"> و</string>
 </resources>
