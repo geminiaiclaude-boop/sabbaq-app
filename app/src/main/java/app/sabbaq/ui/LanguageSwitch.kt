@@ -17,7 +17,7 @@ import app.sabbaq.R
 
 /**
  * Arabic / English toggle for the first screens. Picking a language applies it immediately
- * (AndroidX recreates the activity and persists the choice), so the whole app switches at once.
+ * (the activity is recreated and [LocaleManager] persists the choice), so the whole app switches at once.
  * The current language reads from the resources themselves, so it is correct whether the user
  * chose it or it was inherited from the device.
  */
@@ -27,10 +27,10 @@ fun LanguageSwitch(modifier: Modifier = Modifier) {
     val arabic = LocaleManager.isArabic()
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         LanguageChip(stringResource(R.string.language_arabic), selected = arabic) {
-            if (!arabic) { LocaleManager.set(LocaleManager.Language.ARABIC); (context as? android.app.Activity)?.recreate() }
+            if (!arabic) { LocaleManager.set(context, LocaleManager.Language.ARABIC); (context as? android.app.Activity)?.recreate() }
         }
         LanguageChip(stringResource(R.string.language_english), selected = !arabic) {
-            if (arabic) { LocaleManager.set(LocaleManager.Language.ENGLISH); (context as? android.app.Activity)?.recreate() }
+            if (arabic) { LocaleManager.set(context, LocaleManager.Language.ENGLISH); (context as? android.app.Activity)?.recreate() }
         }
     }
 }

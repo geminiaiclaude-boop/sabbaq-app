@@ -94,16 +94,17 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
-        <!-- Per-app language with automatic persistence (AndroidX). Stores the user's chosen
-             language so it survives restarts; absent a choice, Android picks resources by the
-             device language (Arabic device -> values-ar, any other -> default English). -->
+        <!-- AndroidX locale auto-storage stays off: on its first Android 13+ run it overwrites the
+             framework's per-app language and can wipe the user's choice. LocaleManager persists
+             the choice below Android 13; absent a choice, Android picks resources by the device
+             language (Arabic device -> values-ar, any other -> default English). -->
         <service
             android:name="androidx.appcompat.app.AppLocalesMetadataHolderService"
             android:enabled="false"
             android:exported="false">
             <meta-data
                 android:name="autoStoreLocales"
-                android:value="true" />
+                android:value="false" />
         </service>
     </application>
 </manifest>
