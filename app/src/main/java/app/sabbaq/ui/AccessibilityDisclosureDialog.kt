@@ -12,6 +12,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import app.sabbaq.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -21,22 +23,22 @@ import androidx.compose.ui.unit.dp
 fun AccessibilityDisclosureDialog(onAccept: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("كيف يعمل القبول التلقائي؟") },
+        title = { Text(stringResource(R.string.adx_title)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("قراءة الطلبات", style = MaterialTheme.typography.titleSmall)
-                Text("عندما تشغّل سبّاق، يستخدم إذن «إمكانية الوصول» لقراءة شاشة الطلب الظاهرة في التطبيقات المدعومة فقط. يقرأ نصوص الطلب وتفاصيل عناصر الشاشة، مثل وصفها ومعرّفاتها ونوعها وموقع زر القبول وإمكانية الضغط عليه.", style = MaterialTheme.typography.bodyMedium)
-                Text("القبول وفق شروطك", style = MaterialTheme.typography.titleSmall)
-                Text("إذا طابق الطلب شروطك المحفوظة للأجرة والمسافة والوقت والكلمات المستبعدة، يستطيع سبّاق الضغط مرة واحدة على زر القبول. أنت تحدد الشروط وتقرر متى تشغّل الميزة أو توقفها. لا تتخذ الميزة قرارات مستقلة ولا تستخدم ذكاءً اصطناعيًا للاختيار.", style = MaterialTheme.typography.bodyMedium)
-                Text("خصوصية تفاصيل الطلب", style = MaterialTheme.typography.titleSmall)
-                Text("تُعالج تفاصيل الشاشة على جهازك، ولا ترسلها خدمة إمكانية الوصول عبر الإنترنت. تُحفظ بيانات الحساب والاشتراك عبر خدمة الحساب بشكل منفصل، كما توضح سياسة الخصوصية.", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.adx_read_title), style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(R.string.adx_read_body), style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.adx_accept_title), style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(R.string.adx_accept_body), style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.adx_privacy_title), style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(R.string.adx_privacy_body), style = MaterialTheme.typography.bodyMedium)
                 SabbaqLegalLinks(showDeletion = false)
-                Text("الموافقة لا تشغّل الميزة", style = MaterialTheme.typography.titleSmall)
-                Text("بعد موافقتك سنفتح إعدادات Android لتفعّل الإذن بنفسك، ثم يمكنك العودة وتشغيل سبّاق. اختيار «ليس الآن» أو إغلاق هذه النافذة لا يمنح موافقة، ولا يفعّل القبول التلقائي.", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.adx_consent_title), style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(R.string.adx_consent_body), style = MaterialTheme.typography.bodyMedium)
             }
         },
         icon = { Icon(Icons.Outlined.PrivacyTip, contentDescription = null) },
-        confirmButton = { SabbaqButton(text = "أوافق، افتح إعدادات الإذن", onClick = onAccept, fillWidth = false) },
-        dismissButton = { TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) { Text("ليس الآن") } }
+        confirmButton = { SabbaqButton(text = stringResource(R.string.adx_accept_btn), onClick = onAccept, fillWidth = false) },
+        dismissButton = { TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.adx_not_now)) } }
     )
 }

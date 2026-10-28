@@ -168,6 +168,13 @@ kotlin {
     jvmToolchain(17)
 }
 
+// Unit tests assert the Arabic wording of locale-aware helpers, so pin the test JVM to Arabic;
+// a test that needs English sets the locale itself and restores it.
+tasks.withType<Test>().configureEach {
+    systemProperty("user.language", "ar")
+    systemProperty("user.country", "SA")
+}
+
 val verifyReleaseConfiguration by tasks.registering {
     group = "verification"
     description = "يتحقق من إعدادات الخدمة والتوقيع اللازمة قبل إنتاج حزمة release."

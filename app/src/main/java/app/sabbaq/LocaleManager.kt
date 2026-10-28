@@ -16,7 +16,9 @@ object LocaleManager {
 
     /** The language in force now, or null when following the device language (no explicit choice). */
     fun current(): Language? {
-        val tag = AppCompatDelegate.getApplicationLocales().takeUnless { it.isEmpty }?.get(0)?.language
+        val tag = runCatching {
+            AppCompatDelegate.getApplicationLocales().takeUnless { it.isEmpty }?.get(0)?.language
+        }.getOrNull()
         return Language.entries.firstOrNull { it.tag == tag }
     }
 

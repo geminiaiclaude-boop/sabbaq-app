@@ -30,6 +30,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
+import app.sabbaq.LocaleManager
+import app.sabbaq.R
+import androidx.compose.ui.res.stringResource
 import app.sabbaq.ui.theme.LocalSabbaqBrand
 import app.sabbaq.ui.theme.sabbaqEntrance
 import kotlinx.coroutines.delay
@@ -80,35 +83,36 @@ internal fun SetupGuidePage(
 
     LaunchedEffect(doneCount) {
         if (doneCount > observedDoneCount) {
-            successMessage = "تم إكمال الإعداد بنجاح. ننتقل بك إلى الخطوة التالية."
+            successMessage = if (LocaleManager.isArabic()) "تم إكمال الإعداد بنجاح. ننتقل بك إلى الخطوة التالية." else "Setup step completed. Moving you to the next step."
             delay(2_800)
             successMessage = null
         }
         observedDoneCount = doneCount
     }
 
+    val progressCd = stringResource(R.string.sg_progress_cd, doneCount, steps.size)
     SabbaqHeroSurface(Modifier.sabbaqEntrance(0)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(if (allDone) "سبّاق جاهز لك" else "لنجهّز سبّاق معًا", style = MaterialTheme.typography.headlineSmall)
+                Text(if (allDone) stringResource(R.string.sg_ready_title) else stringResource(R.string.sg_prepare_title), style = MaterialTheme.typography.headlineSmall)
                 Text(
-                    if (allDone) "أكملت كل الخطوات. ابدأ متابعة الطلبات متى شئت."
-                    else "نرتب الإعدادات حسب الأهمية ونقودك خطوة واحدة في كل مرة.",
+                    if (allDone) stringResource(R.string.sg_ready_sub)
+                    else stringResource(R.string.sg_prepare_sub),
                     style = MaterialTheme.typography.bodyMedium, color = brand.onHeroMuted,
                 )
             }
             SabbaqProgressCoin(done = doneCount, total = steps.size,
-                modifier = Modifier.semantics { stateDescription = "اكتمل $doneCount من ${steps.size}" })
+                modifier = Modifier.semantics { stateDescription = progressCd })
         }
     }
 
     SabbaqAnimatedMessage(successMessage, SabbaqTone.Success, Modifier.sabbaqEntrance(1))
 
     if (allDone) {
-        SabbaqCard(title = "كل شيء جاهز", subtitle = "الأذونات مفعّلة واشتراكك صالح. اضبط شروطك ثم ابدأ المتابعة.",
+        SabbaqCard(title = stringResource(R.string.sg_all_ready), subtitle = stringResource(R.string.sg_all_ready_sub),
             icon = Icons.Outlined.Celebration, modifier = Modifier.sabbaqEntrance(1)) {
-            SabbaqButton("انتقل إلى حالة العمل", onClick = onFinish)
-            SabbaqButton("جرّب طلبًا كمثال أولًا", onClick = onTryExample, style = SabbaqButtonStyle.Secondary, icon = Icons.Outlined.Visibility)
+            SabbaqButton(stringResource(R.string.sg_go_dashboard), onClick = onFinish)
+            SabbaqButton(stringResource(R.string.sg_try_example), onClick = onTryExample, style = SabbaqButtonStyle.Secondary, icon = Icons.Outlined.Visibility)
         }
         return
     }
@@ -125,8 +129,8 @@ internal fun SetupGuidePage(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("الخطوة ${current + 1} من ${steps.size}", style = MaterialTheme.typography.labelLarge, color = colors.primary)
-            Text("${ArabicCount.steps(steps.size - doneCount)} متبقية", style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+            Text(stringResource(R.string.sg_step_of, current + 1, steps.size), style = MaterialTheme.typography.labelLarge, color = colors.primary)
+            Text(stringResource(R.string.sg_remaining, ArabicCount.steps(steps.size - doneCount)), style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
         }
         LinearProgressIndicator(
             progress = { progress },
@@ -140,22 +144,22 @@ internal fun SetupGuidePage(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(Icons.Outlined.Check, contentDescription = null, tint = colors.primary, modifier = Modifier.size(18.dp))
-                Text("أكملت $doneCount من الإعدادات المطلوبة", style = MaterialTheme.typography.bodySmall, color = colors.primary)
+                Text(stringResource(R.string.sg_completed_count, doneCount), style = MaterialTheme.typography.bodySmall, color = colors.primary)
             }
         }
         SabbaqCard(title = step.title, icon = step.icon) {
-            Text("إعداد ذو أولوية", style = MaterialTheme.typography.labelLarge, color = colors.secondary)
+            Text(stringResource(R.string.sg_priority), style = MaterialTheme.typography.labelLarge, color = colors.secondary)
             Spacer(Modifier.size(4.dp))
             Text(step.why, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
             step.extra?.invoke()
             SabbaqButton(step.actionLabel, onClick = step.onAction)
         }
         Text(
-            "بعد إكمال هذه الخطوة والعودة، سيتحقق سبّاق من حالتها وينقلك تلقائيًا إلى الخطوة التالية.",
+            stringResource(R.string.sg_after_step),
             style = MaterialTheme.typography.bodySmall,
             color = colors.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 4.dp),
         )
-        TextButton(onClick = onLater, modifier = Modifier.heightIn(min = 48.dp)) { Text("سأكمل لاحقًا من حالة العمل") }
+        TextButton(onClick = onLater, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.sg_later)) }
     }
 }
