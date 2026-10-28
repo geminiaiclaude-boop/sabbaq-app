@@ -34,6 +34,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import app.sabbaq.LocaleManager
 import app.sabbaq.admin.AdminCode
 import app.sabbaq.admin.AdminRepository
 import app.sabbaq.admin.AdminRepository.ExportResult
@@ -77,10 +78,10 @@ internal fun AdminCodesSection(session: AdminSession) {
         AdminRepository.codes(offset).fold(
             onSuccess = { page ->
                 codes = page.items; hasMore = page.hasMore
-                notice = kept ?: success("تم تحميل ${page.items.size} سجل من أكواد التفعيل.")
+                notice = kept ?: success((if (LocaleManager.isArabic()) "تم تحميل ${page.items.size} سجل من أكواد التفعيل." else "Loaded ${page.items.size} activation-code records."))
                 kept = null
             },
-            onFailure = { notice = session.failureOf(it, "تعذر تحميل أكواد التفعيل. تحقق من الاتصال ثم أعد المحاولة.") },
+            onFailure = { notice = session.failureOf(it, (if (LocaleManager.isArabic()) "تعذر تحميل أكواد التفعيل. تحقق من الاتصال ثم أعد المحاولة." else "Could not load the activation codes. Check the connection, then try again.")) },
         )
         loading = false
     }
@@ -94,45 +95,45 @@ internal fun AdminCodesSection(session: AdminSession) {
                 runCatching { context.contentResolver.openOutputStream(uri, "wt")?.use { it.write(export.first.toByteArray(Charsets.UTF_8)) } != null }
                     .getOrDefault(false)
             }
-            notice = if (written) success("تم إنشاء ملف يضم ${export.second} كودًا متاحًا. احفظه في موقع آمن.")
-            else failure("تعذر حفظ الملف في الموقع المختار.")
+            notice = if (written) success((if (LocaleManager.isArabic()) "تم إنشاء ملف يضم ${export.second} كودًا متاحًا. احفظه في موقع آمن." else "Created a file with ${export.second} available codes. Save it in a secure place."))
+            else failure((if (LocaleManager.isArabic()) "تعذر حفظ الملف في الموقع المختار." else "Could not save the file at the chosen location."))
         }
     }
 
     LazyColumn(Modifier.fillMaxSize().testTag("admin-codes"), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item(key = "intro") {
-            Text("أنشئ دفعات محددة المدة وصدّر الأكواد المتاحة فقط.", style = MaterialTheme.typography.bodyMedium,
+            Text((if (LocaleManager.isArabic()) "أنشئ دفعات محددة المدة وصدّر الأكواد المتاحة فقط." else "Create fixed-duration batches and export the available codes only."), style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         item(key = "generate") {
-            SabbaqCard(title = "توليد أكواد جديدة", subtitle = "حدّد الدفعة ومدة الاشتراك قبل الإنشاء.", icon = Icons.Outlined.Key) {
-                AdminField("عدد الأكواد", count, { count = it.filter { c -> c.isDigit() } }, maxLength = 3, keyboard = KeyboardType.Number,
-                    hint = "من 1 إلى 500.", modifier = Modifier.testTag("admin-code-count"))
-                AdminChoice("مدة الاشتراك", listOf(7 to "7 أيام (أسبوع)", 30 to "30 يومًا (شهر)", 90 to "90 يومًا (3 أشهر)", 365 to "365 يومًا (سنة)"),
+            SabbaqCard(title = (if (LocaleManager.isArabic()) "توليد أكواد جديدة" else "Generate new codes"), subtitle = (if (LocaleManager.isArabic()) "حدّد الدفعة ومدة الاشتراك قبل الإنشاء." else "Set the batch and subscription duration before creating."), icon = Icons.Outlined.Key) {
+                AdminField((if (LocaleManager.isArabic()) "عدد الأكواد" else "Number of codes"), count, { count = it.filter { c -> c.isDigit() } }, maxLength = 3, keyboard = KeyboardType.Number,
+                    hint = (if (LocaleManager.isArabic()) "من 1 إلى 500." else "From 1 to 500."), modifier = Modifier.testTag("admin-code-count"))
+                AdminChoice((if (LocaleManager.isArabic()) "مدة الاشتراك" else "Subscription duration"), listOf(7 to (if (LocaleManager.isArabic()) "7 أيام (أسبوع)" else "7 days (a week)"), 30 to (if (LocaleManager.isArabic()) "30 يومًا (شهر)" else "30 days (a month)"), 90 to (if (LocaleManager.isArabic()) "90 يومًا (3 أشهر)" else "90 days (3 months)"), 365 to (if (LocaleManager.isArabic()) "365 يومًا (سنة)" else "365 days (a year)")),
                     days, onSelect = { days = it })
-                AdminField("اسم الدفعة (اختياري)", batch, { batch = it }, maxLength = 80)
-                SabbaqButton("توليد الأكواد", busy = generating, busyText = "جارٍ التوليد…", modifier = Modifier.testTag("admin-code-generate"), onClick = {
+                AdminField((if (LocaleManager.isArabic()) "اسم الدفعة (اختياري)" else "Batch name (optional)"), batch, { batch = it }, maxLength = 80)
+                SabbaqButton((if (LocaleManager.isArabic()) "توليد الأكواد" else "Generate the codes"), busy = generating, busyText = (if (LocaleManager.isArabic()) "جارٍ التوليد…" else "Generating…"), modifier = Modifier.testTag("admin-code-generate"), onClick = {
                     val values = AdminRepository.generationValues(count, days, batch)
                     if (values == null) {
                         notice = failure(when {
-                            app.sabbaq.admin.AdminInputs.boundedInt(count, 1, 500) == null -> "يجب أن يكون عدد الأكواد رقمًا صحيحًا بين 1 و500."
-                            else -> "اسم الدفعة غير صالح. استخدم نصًا حتى 80 حرفًا دون محارف تحكم."
+                            app.sabbaq.admin.AdminInputs.boundedInt(count, 1, 500) == null -> (if (LocaleManager.isArabic()) "يجب أن يكون عدد الأكواد رقمًا صحيحًا بين 1 و500." else "The number of codes must be an integer between 1 and 500.")
+                            else -> (if (LocaleManager.isArabic()) "اسم الدفعة غير صالح. استخدم نصًا حتى 80 حرفًا دون محارف تحكم." else "The batch name is invalid. Use text up to 80 characters with no control characters.")
                         })
                     } else scope.launch {
                         generating = true
                         AdminRepository.generateCodes(values.first, values.second, values.third).fold(
                             onSuccess = { list ->
                                 generated = list
-                                kept = success("تم توليد ${list.size.takeIf { it > 0 } ?: values.first} كود تفعيل.")
+                                kept = success((if (LocaleManager.isArabic()) "تم توليد ${list.size.takeIf { it > 0 } ?: values.first} كود تفعيل." else "Generated ${list.size.takeIf { it > 0 } ?: values.first} activation codes."))
                                 notice = kept
                                 batch = ""; offset = 0; reload++
                             },
-                            onFailure = { notice = session.failureOf(it, "تعذر توليد أكواد التفعيل.") },
+                            onFailure = { notice = session.failureOf(it, (if (LocaleManager.isArabic()) "تعذر توليد أكواد التفعيل." else "Could not generate the activation codes.")) },
                         )
                         generating = false
                     }
                 })
-                SabbaqButton("تصدير الأكواد المتاحة CSV", style = SabbaqButtonStyle.Secondary, busy = exporting, busyText = "جارٍ التحقق من الاكتمال…", onClick = {
+                SabbaqButton((if (LocaleManager.isArabic()) "تصدير الأكواد المتاحة CSV" else "Export available codes CSV"), style = SabbaqButtonStyle.Secondary, busy = exporting, busyText = (if (LocaleManager.isArabic()) "جارٍ التحقق من الاكتمال…" else "Verifying completeness…"), onClick = {
                     scope.launch {
                         exporting = true
                         AdminRepository.exportAvailableCodes().fold(
@@ -141,13 +142,13 @@ internal fun AdminCodesSection(session: AdminSession) {
                                     pendingCsv = result.csv to result.count
                                     saveFile.launch("sabbaq_available_codes.csv")
                                 } else notice = when (result) {
-                                    ExportResult.TooMany -> failure("التصدير محصور في ${AdminRepository.MAX_EXPORT_ROWS} كود. استخدم واجهة تصدير خادمية مؤمنة للدفعات الأكبر؛ لم يُنشأ أي ملف.")
-                                    ExportResult.Incomplete -> failure("تعذر التأكد من اكتمال التصدير؛ لم يُنشأ أي ملف.")
-                                    else -> info("لا توجد أكواد متاحة للتصدير.")
+                                    ExportResult.TooMany -> failure((if (LocaleManager.isArabic()) "التصدير محصور في ${AdminRepository.MAX_EXPORT_ROWS} كود. استخدم واجهة تصدير خادمية مؤمنة للدفعات الأكبر؛ لم يُنشأ أي ملف." else "Export is limited to ${AdminRepository.MAX_EXPORT_ROWS} codes. Use a secure server-side export for larger batches; no file was created."))
+                                    ExportResult.Incomplete -> failure((if (LocaleManager.isArabic()) "تعذر التأكد من اكتمال التصدير؛ لم يُنشأ أي ملف." else "Could not confirm the export is complete; no file was created."))
+                                    else -> info((if (LocaleManager.isArabic()) "لا توجد أكواد متاحة للتصدير." else "No available codes to export."))
                                 }
                                 Unit
                             },
-                            onFailure = { notice = session.failureOf(it, "تعذر تصدير أكواد التفعيل. تحقق من الاتصال ثم أعد المحاولة.") },
+                            onFailure = { notice = session.failureOf(it, (if (LocaleManager.isArabic()) "تعذر تصدير أكواد التفعيل. تحقق من الاتصال ثم أعد المحاولة." else "Could not export the activation codes. Check the connection, then try again.")) },
                         )
                         exporting = false
                     }
@@ -155,11 +156,11 @@ internal fun AdminCodesSection(session: AdminSession) {
                 SabbaqAnimatedMessage(notice?.text, notice?.tone ?: SabbaqTone.Info)
                 if (generated.isNotEmpty()) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("الأكواد الجديدة (${generated.size})", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                        Text((if (LocaleManager.isArabic()) "الأكواد الجديدة (${generated.size})" else "New codes (${generated.size})"), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                         IconButton(onClick = {
                             clipboard.setText(AnnotatedString(generated.joinToString("\n")))
-                            notice = success("نُسخت ${generated.size} أكواد. الصقها في مكان آمن.")
-                        }) { Icon(Icons.Outlined.ContentCopy, contentDescription = "نسخ الأكواد الجديدة") }
+                            notice = success((if (LocaleManager.isArabic()) "نُسخت ${generated.size} أكواد. الصقها في مكان آمن." else "Copied ${generated.size} codes. Paste them in a secure place."))
+                        }) { Icon(Icons.Outlined.ContentCopy, contentDescription = (if (LocaleManager.isArabic()) "نسخ الأكواد الجديدة" else "Copy the new codes")) }
                     }
                     SelectionContainer { Text(generated.joinToString("\n"), style = monoStyle) }
                 }
@@ -167,25 +168,25 @@ internal fun AdminCodesSection(session: AdminSession) {
         }
         item(key = "list-head") {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                SabbaqButton("تحديث الأكواد", onClick = { offset = 0; reload++ }, style = SabbaqButtonStyle.Secondary, busy = loading, busyText = "جارٍ التحميل…")
+                SabbaqButton((if (LocaleManager.isArabic()) "تحديث الأكواد" else "Refresh the codes"), onClick = { offset = 0; reload++ }, style = SabbaqButtonStyle.Secondary, busy = loading, busyText = (if (LocaleManager.isArabic()) "جارٍ التحميل…" else "Loading…"))
                 AdminPager(offset, AdminRepository.PAGE_SIZE, hasMore, loading) { offset = (offset + it * AdminRepository.PAGE_SIZE).coerceAtLeast(0) }
             }
         }
         val list = codes
         when {
-            list == null -> item(key = "loading") { Text("جارٍ التحميل…", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            list.isEmpty() -> item(key = "empty") { Text("لا توجد أكواد في هذه الصفحة.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            list == null -> item(key = "loading") { Text((if (LocaleManager.isArabic()) "جارٍ التحميل…" else "Loading…"), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            list.isEmpty() -> item(key = "empty") { Text((if (LocaleManager.isArabic()) "لا توجد أكواد في هذه الصفحة." else "No codes on this page."), color = MaterialTheme.colorScheme.onSurfaceVariant) }
             else -> items(list, key = { it.code }) { code ->
                 SabbaqCard {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         SelectionContainer(Modifier.weight(1f)) { Text(code.code, style = monoStyle) }
-                        SabbaqStatusPill(if (code.available) "متاح" else "مستخدم/ملغى", ready = code.available)
+                        SabbaqStatusPill(if (code.available) (if (LocaleManager.isArabic()) "متاح" else "Available") else (if (LocaleManager.isArabic()) "مستخدم/ملغى" else "Used / canceled"), ready = code.available)
                     }
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        AdminFact("المدة (أيام)", code.days?.toString() ?: "غير محدد")
-                        AdminFact("الدفعة", code.batch ?: "-")
-                        AdminFact("تاريخ الإنشاء", formatDate(code.createdAt))
-                        AdminFact("المستخدم (ID)", code.redeemedBy ?: "-", ltr = code.redeemedBy != null)
+                        AdminFact((if (LocaleManager.isArabic()) "المدة (أيام)" else "Duration (days)"), code.days?.toString() ?: (if (LocaleManager.isArabic()) "غير محدد" else "Not set"))
+                        AdminFact((if (LocaleManager.isArabic()) "الدفعة" else "Batch"), code.batch ?: "-")
+                        AdminFact((if (LocaleManager.isArabic()) "تاريخ الإنشاء" else "Created date"), formatDate(code.createdAt))
+                        AdminFact((if (LocaleManager.isArabic()) "المستخدم (ID)" else "User (ID)"), code.redeemedBy ?: "-", ltr = code.redeemedBy != null)
                     }
                 }
             }

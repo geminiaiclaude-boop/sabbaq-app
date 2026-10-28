@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
+import app.sabbaq.LocaleManager
 import app.sabbaq.admin.AdminConversation
 import app.sabbaq.admin.AdminRepository
 import app.sabbaq.admin.AdminThread
@@ -95,7 +96,7 @@ internal fun AdminSupportSection(session: AdminSession, consume: () -> AdminRequ
                 if (filter == "open") onUnread(list.sumOf { it.unread })
                 else AdminRepository.threads("open").onSuccess { open -> onUnread(open.sumOf { it.unread }) }
             },
-            onFailure = { val text = session.failureOf(it, "تعذر تحميل المحادثات. تحقق من الاتصال."); if (!quiet) notice = text },
+            onFailure = { val text = session.failureOf(it, (if (LocaleManager.isArabic()) "تعذر تحميل المحادثات. تحقق من الاتصال." else "Could not load the conversations. Check the connection.")); if (!quiet) notice = text },
         )
         loadingList = false
     }
@@ -103,7 +104,7 @@ internal fun AdminSupportSection(session: AdminSession, consume: () -> AdminRequ
     suspend fun loadConversation(driverId: String, quiet: Boolean) {
         AdminRepository.conversation(driverId).fold(
             onSuccess = { if (selected == driverId) conversation = it },
-            onFailure = { val text = session.failureOf(it, "تعذر فتح المحادثة."); if (!quiet) notice = text },
+            onFailure = { val text = session.failureOf(it, (if (LocaleManager.isArabic()) "تعذر فتح المحادثة." else "Could not open the conversation.")); if (!quiet) notice = text },
         )
     }
 
@@ -134,17 +135,17 @@ internal fun AdminSupportSection(session: AdminSession, consume: () -> AdminRequ
             onSend = {
                 val body = reply.trim()
                 if (body.isEmpty() || body.length > 1000) {
-                    notice = failure("اكتب ردًا بين حرف و1000 حرف.")
+                    notice = failure((if (LocaleManager.isArabic()) "اكتب ردًا بين حرف و1000 حرف." else "Write a reply between 1 and 1000 characters."))
                 } else scope.launch {
                     val clientId = pendingClientId ?: AdminRepository.newClientId().also { pendingClientId = it }
                     sending = true
                     AdminRepository.reply(current, clientId, body).fold(
                         onSuccess = {
                             pendingClientId = null; reply = ""
-                            notice = success("أُرسل الرد وسيصل السائق كإشعار.")
+                            notice = success((if (LocaleManager.isArabic()) "أُرسل الرد وسيصل السائق كإشعار." else "The reply was sent and reaches the driver as a notification."))
                             loadConversation(current, quiet = true); loadList(quiet = true)
                         },
-                        onFailure = { notice = session.failureOf(it, "تعذر إرسال الرد. أعد المحاولة؛ لن يتكرر الرد.") },
+                        onFailure = { notice = session.failureOf(it, (if (LocaleManager.isArabic()) "تعذر إرسال الرد. أعد المحاولة؛ لن يتكرر الرد." else "Could not send the reply. Try again; the reply will not be duplicated.")) },
                     )
                     sending = false
                 }
@@ -155,10 +156,10 @@ internal fun AdminSupportSection(session: AdminSession, consume: () -> AdminRequ
                     toggling = true
                     AdminRepository.setThreadClosed(current, closing).fold(
                         onSuccess = {
-                            notice = success(if (closing) "أُغلقت المحادثة. ستُفتح تلقائيًا إذا كتب السائق." else "أُعيد فتح المحادثة.")
+                            notice = success(if (closing) (if (LocaleManager.isArabic()) "أُغلقت المحادثة. ستُفتح تلقائيًا إذا كتب السائق." else "The conversation was closed. It reopens automatically if the driver writes.") else (if (LocaleManager.isArabic()) "أُعيد فتح المحادثة." else "The conversation was reopened."))
                             refreshTick++
                         },
-                        onFailure = { notice = session.failureOf(it, "تعذر تغيير حالة المحادثة.") },
+                        onFailure = { notice = session.failureOf(it, (if (LocaleManager.isArabic()) "تعذر تغيير حالة المحادثة." else "Could not change the conversation status.")) },
                     )
                     toggling = false
                 }
@@ -173,17 +174,17 @@ internal fun AdminSupportSection(session: AdminSession, consume: () -> AdminRequ
     LazyColumn(Modifier.fillMaxSize().testTag("admin-support"), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item(key = "head") {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("محادثات السائقين داخل التطبيق. يصل ردك للسائق في المحادثة وكإشعار على جواله. تتحدث القائمة تلقائيًا كل 20 ثانية.",
+                Text((if (LocaleManager.isArabic()) "محادثات السائقين داخل التطبيق. يصل ردك للسائق في المحادثة وكإشعار على جواله. تتحدث القائمة تلقائيًا كل 20 ثانية." else "Drivers' in-app conversations. Your reply reaches the driver in the chat and as a phone notification. The list refreshes automatically every 20 seconds."),
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                AdminChoice("العرض", listOf("open" to "المفتوحة", "closed" to "المغلقة", "all" to "الكل"), filter, onSelect = { filter = it })
-                OutlinedButton(onClick = { refreshTick++ }, enabled = !loadingList) { Text(if (loadingList) "جارٍ التحديث…" else "تحديث") }
+                AdminChoice((if (LocaleManager.isArabic()) "العرض" else "View"), listOf("open" to (if (LocaleManager.isArabic()) "المفتوحة" else "Open"), "closed" to (if (LocaleManager.isArabic()) "المغلقة" else "Closed"), "all" to (if (LocaleManager.isArabic()) "الكل" else "All")), filter, onSelect = { filter = it })
+                OutlinedButton(onClick = { refreshTick++ }, enabled = !loadingList) { Text(if (loadingList) (if (LocaleManager.isArabic()) "جارٍ التحديث…" else "Refreshing…") else (if (LocaleManager.isArabic()) "تحديث" else "Refresh")) }
                 SabbaqAnimatedMessage(notice?.text, notice?.tone ?: SabbaqTone.Info)
             }
         }
         val list = threads
         when {
-            list == null -> item(key = "loading") { Text("جارٍ تحميل المحادثات…", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            list.isEmpty() -> item(key = "empty") { Text("لا توجد محادثات في هذا العرض.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            list == null -> item(key = "loading") { Text((if (LocaleManager.isArabic()) "جارٍ تحميل المحادثات…" else "Loading conversations…"), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            list.isEmpty() -> item(key = "empty") { Text((if (LocaleManager.isArabic()) "لا توجد محادثات في هذا العرض." else "No conversations in this view."), color = MaterialTheme.colorScheme.onSurfaceVariant) }
             else -> items(list, key = { it.driverId }) { thread ->
                 ThreadRow(thread, onClick = { notice = null; reply = ""; pendingClientId = null; conversation = null; selected = thread.driverId })
             }
@@ -199,12 +200,12 @@ private fun ThreadRow(thread: AdminThread, onClick: () -> Unit) {
                 fontWeight = if (thread.unread > 0) FontWeight.Bold else FontWeight.Normal)
             if (thread.unread > 0) Badge { Text(thread.unread.toString()) }
         }
-        Text(thread.preview?.let { (if (thread.previewFromAdmin) "أنت: " else "") + it } ?: "لا رسائل",
+        Text(thread.preview?.let { (if (thread.previewFromAdmin) (if (LocaleManager.isArabic()) "أنت: " else "You: ") else "") + it } ?: (if (LocaleManager.isArabic()) "لا رسائل" else "No messages"),
             style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
         Text(buildString {
             append(formatDateTime(thread.lastAt))
-            if (thread.unread > 0) append(" · ${thread.unread} جديدة")
-            if (thread.closed) append(" · مغلقة")
+            if (thread.unread > 0) append(if (LocaleManager.isArabic()) " · ${thread.unread} جديدة" else " · ${thread.unread} new")
+            if (thread.closed) append(if (LocaleManager.isArabic()) " · مغلقة" else " · closed")
         }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
@@ -233,17 +234,17 @@ private fun ConversationView(
         Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = 2.dp) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "العودة إلى المحادثات") }
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = (if (LocaleManager.isArabic()) "العودة إلى المحادثات" else "Back to conversations")) }
                     Column(Modifier.weight(1f)) {
                         Text(conversation?.name ?: "…", style = MaterialTheme.typography.titleMedium)
-                        val meta = listOfNotNull(conversation?.phone?.takeIf { it.isNotEmpty() }, conversation?.appVersion?.let { "الإصدار $it" }).joinToString(" · ")
-                        Text(meta.ifEmpty { "لا توجد بيانات إضافية" }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        val meta = listOfNotNull(conversation?.phone?.takeIf { it.isNotEmpty() }, conversation?.appVersion?.let { (if (LocaleManager.isArabic()) "الإصدار $it" else "version $it") }).joinToString(" · ")
+                        Text(meta.ifEmpty { (if (LocaleManager.isArabic()) "لا توجد بيانات إضافية" else "No additional data") }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(horizontal = 8.dp)) {
-                    OutlinedButton(onClick = onDiagnose, enabled = conversation?.correlationId != null) { Text("تشخيص الشكوى") }
+                    OutlinedButton(onClick = onDiagnose, enabled = conversation?.correlationId != null) { Text((if (LocaleManager.isArabic()) "تشخيص الشكوى" else "Diagnose complaint")) }
                     OutlinedButton(onClick = onToggle, enabled = conversation != null && !toggling) {
-                        Text(if (conversation?.closed == true) "إعادة فتح المحادثة" else "إغلاق المحادثة")
+                        Text(if (conversation?.closed == true) (if (LocaleManager.isArabic()) "إعادة فتح المحادثة" else "Reopen the conversation") else (if (LocaleManager.isArabic()) "إغلاق المحادثة" else "Close the conversation"))
                     }
                 }
             }
@@ -252,8 +253,8 @@ private fun ConversationView(
         LazyColumn(state = listState, modifier = Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
             when {
-                conversation == null -> item { Text("جارٍ فتح المحادثة…", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                conversation.messages.isEmpty() -> item { Text("لا رسائل بعد. يمكنك بدء المحادثة مع السائق.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                conversation == null -> item { Text((if (LocaleManager.isArabic()) "جارٍ فتح المحادثة…" else "Opening the conversation…"), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                conversation.messages.isEmpty() -> item { Text((if (LocaleManager.isArabic()) "لا رسائل بعد. يمكنك بدء المحادثة مع السائق." else "No messages yet. You can start the conversation with the driver."), color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 else -> items(conversation.messages) { message ->
                     val colors = MaterialTheme.colorScheme
                     // The administration's messages sit on the reading side's end, like the driver's own view.
@@ -262,9 +263,9 @@ private fun ConversationView(
                             shape = RoundedCornerShape(16.dp),
                             color = if (message.fromAdmin) colors.primary else colors.surfaceVariant,
                             contentColor = if (message.fromAdmin) colors.onPrimary else colors.onSurface,
-                            modifier = Modifier.widthIn(max = 320.dp).semantics { contentDescription = (if (message.fromAdmin) "الإدارة: " else "السائق: ") + message.body },
+                            modifier = Modifier.widthIn(max = 320.dp).semantics { contentDescription = (if (message.fromAdmin) (if (LocaleManager.isArabic()) "الإدارة: " else "Administration: ") else (if (LocaleManager.isArabic()) "السائق: " else "Driver: ")) + message.body },
                         ) { Text(message.body, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) }
-                        Text("${if (message.fromAdmin) "الإدارة" else "السائق"} · ${formatDateTime(message.at)}",
+                        Text("${if (message.fromAdmin) (if (LocaleManager.isArabic()) "الإدارة" else "Administration") else (if (LocaleManager.isArabic()) "السائق" else "Driver")} · ${formatDateTime(message.at)}",
                             style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant, modifier = Modifier.padding(horizontal = 6.dp))
                     }
                 }
@@ -273,11 +274,11 @@ private fun ConversationView(
         HorizontalDivider()
         Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(
-                value = reply, onValueChange = onReplyChange, placeholder = { Text("اكتب ردك…") }, maxLines = 5,
+                value = reply, onValueChange = onReplyChange, placeholder = { Text((if (LocaleManager.isArabic()) "اكتب ردك…" else "Write your reply…")) }, maxLines = 5,
                 supportingText = { Text("${reply.length} / 1000") }, modifier = Modifier.weight(1f).testTag("admin-reply").focusRequester(replyFocus),
             )
             FilledIconButton(onClick = onSend, enabled = !sending && reply.isNotBlank() && conversation != null, modifier = Modifier.size(52.dp).testTag("admin-reply-send")) {
-                Icon(Icons.AutoMirrored.Outlined.Send, contentDescription = "إرسال الرد")
+                Icon(Icons.AutoMirrored.Outlined.Send, contentDescription = (if (LocaleManager.isArabic()) "إرسال الرد" else "Send the reply"))
             }
         }
     }
