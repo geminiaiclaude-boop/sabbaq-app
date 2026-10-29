@@ -20,7 +20,11 @@ object Settings {
     /** Saved settings may carry fields a later release removed; they must not reset the rest. */
     private val storedJson = Json { ignoreUnknownKeys = true }
 
+    @Volatile
+    private var appContext: Context? = null
+
     fun init(context: Context) {
+        appContext = context.applicationContext
         synchronized(this) {
             preferences = context.applicationContext.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
             cachedConfig = null
@@ -120,7 +124,10 @@ object Settings {
             if (saved) cachedConfig = null
             saved
         }.also { saved ->
-            if (saved) withContext(Dispatchers.Main) { app.sabbaq.service.SabbaqA11yService.instance?.onConfigSaved() }
+            if (saved) withContext(Dispatchers.Main) {
+                app.sabbaq.service.SabbaqA11yService.instance?.onConfigSaved()
+                appContext?.let { app.sabbaq.service.KeeperService.resumeIfWanted(it) }
+            }
         }
     }
 
