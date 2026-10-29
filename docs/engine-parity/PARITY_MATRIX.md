@@ -24,17 +24,17 @@ Each row is one behaviour of FareSniper's cycle (QANNAS_ENGINE_FACTS.md §). Sta
 | 16 | read | addresses, labels, destination/pickup (§12.1,§13) | ✗ | ✓ |
 | 17 | read | online → no offer; active ride (§13) | ✗ | ✓ |
 | 18 | read | offer = accept + minutes, price optional when price filter off (§13) | ✗ | ✓ |
-| 19 | read | Bolt reader `Y2` (only when targetApp bolt/both; default jeeny) | ✗ | ✗ not ported |
-| 20 | read | Petra reader `Et` (only when targetApp petra/both) | ✗ | ✗ not ported |
+| 19 | read | Bolt reader `Y2` (targetApp bolt/both) | ✗ | ✓ BoltScreenReader (from smali) |
+| 20 | read | Petra reader `Et` (targetApp petra/both) | ✗ | ✓ PetraScreenReader (from smali) |
 | 21 | decide | no price and no time → reject (§14) | ✗ | ✓ |
 | 22 | decide | price range, 0 = unbounded (§14) | ✗ | ✓ |
 | 23 | decide | time range, bypass by price (§14) | ✗ | ✓ |
 | 24 | decide | AND / OR (§14) | ◐ | ✓ |
 | 25 | decide | destination include / exclude + reject-on-unknown (§14) | ✗ | ✓ |
 | 26 | decide | no rejection for missing data / no filters / no destination (§14) | ✗ | ✓ |
-| 27 | decide | payment filter (cash/card/all) (§14) | ✗ | ✗ |
-| 28 | decide | passenger rating filter (§14) | ✗ | ✗ |
-| 29 | decide | wait & save filter (§14) | ✗ | ✗ |
+| 27 | decide | payment filter (cash/card/all) (§14) | ✗ | ✓ |
+| 28 | decide | passenger rating filter (Bolt only, §14) | ✗ | ✓ |
+| 29 | decide | wait & save filter (Bolt only, §14) | ✗ | ✓ |
 | 30 | decide | geographic zones (§14) | ✗ | ✗ |
 | 31 | flow | active ride with nothing pending → reset (§11.4) | ✗ | ✓ |
 | 32 | flow | ride hash / identity, 100 / 2500 / 4000 ms (§11.8–9) | ✗ | ✓ |
@@ -43,8 +43,8 @@ Each row is one behaviour of FareSniper's cycle (QANNAS_ENGINE_FACTS.md §). Sta
 | 35 | tap | tap the very node that was read (§11.12) | ✗ | ✓ LiveNode |
 | 36 | tap | click → parent → 40 ms gesture at centre, no window gate (§8) | ✗ | ✓ clickLadder (+ empty-bounds and Jeeny-package guard) |
 | 37 | tap | click on main thread, delay via post (§11.12) | ◐ | ✓ |
-| 38 | tap | late capture 60 / 80 ms fills price/time/destination for the report (§10) | ◐ | ◐ reads but does not feed the report |
-| 39 | tap | turbo: saved coordinates, instant tap (§4) | ✗ | ✗ |
+| 38 | tap | late capture 60 / 80 ms fills price/time/destination for the report (§10) | ◐ | ✓ |
+| 39 | tap | turbo: saved coordinates, instant tap, blind tap (§4, §11) | ✗ | ✓ (point from last confirmed tap or typed) |
 | 40 | verify | StillOffer / Confirmed / Inconclusive (§15) | ◐ | ✓ |
 | 41 | verify | confirmed / new_offer_appeared / timeout / disappeared (§11.6) | ◐ | ✓ |
 | 42 | after | accept tone on Confirmed only, alarm stream, one ToneGenerator (§10) | ◐ | ✓ |
@@ -54,8 +54,8 @@ Each row is one behaviour of FareSniper's cycle (QANNAS_ENGINE_FACTS.md §). Sta
 | 46 | gate | engine switch + saved subscription end + clock guard, no network (§5) | ✗ (in-memory lease) | ✓ SnipingGate |
 | — | n/a | stealth jitter, root injection — off by default in FareSniper | n/a | n/a |
 
-## Score (46 rows, ✓ = 1, ◐ = 0.5) — 2026-10-29
+## Score (46 rows, ✓ = 1, ◐ = 0.5) — 2026-10-29, commit 691a59a
 - Installed 2.0.2: **≈ 15 %**
-- Branch `fix/next-batch` (commit 141cfa4): 38 ✓ + 1 ◐ = **38.5 / 46 = 84 %**
-- Open: 19–20 (Bolt/Petra readers), 27–29 (payment, rating, wait&save), 30 (zones), 38 (late capture into report), 39 (turbo).
-- Jeeny with default settings (FareSniper's default `targetApp = jeeny`, no payment/rating/zone filter, turbo off): every row on that path is ✓ except 38 (reporting only, no effect on accepting).
+- Branch `fix/next-batch`: 45 ✓ = **45 / 46 = 97.8 %**
+- Open: row 30, geographic zones (polygons drawn on a map, destination geocoding from FareSniper's server POI cache, Plus Codes and Saudi national-address codes, bearing / corridor / on-the-way rules). It is off by default in FareSniper (`dest_zones_enabled = false`) and is a separate subsystem with its own map UI and data source.
+- Verification: core 99/99 (scripts/core_engine_test.sh), Android engine code compiles against android.jar (scripts/android_engine_check.sh), conditions draft 5/5 (scripts/ui_draft_check.sh). Compose UI and the whole app compile only in CI (not run: owner gate).
