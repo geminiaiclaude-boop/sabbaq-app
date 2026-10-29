@@ -177,11 +177,13 @@ create index if not exists screen_samples_review on public.screen_samples (statu
 alter table public.screen_samples enable row level security;
 revoke all on public.screen_samples from anon, authenticated;
 
--- Server-side privacy guard on top of the phone's redaction: no long digit runs (phones, IDs),
--- no e-mail or link text, bounded text per node.
+-- Server-side privacy guard on top of the phone's redaction: fewer than seven digits per node,
+-- separators ignored (phones, IDs), no e-mail or link text, bounded text per node.
 create or replace function private.screen_text_ok(p_text text) returns boolean
 language sql immutable as $$
-    select p_text is null or (length(p_text) <= 40 and p_text !~ '[0-9٠-٩]{7,}' and p_text !~ '@' and p_text !~* 'https?:|www\.')
+    select p_text is null or (length(p_text) <= 40
+        and length(regexp_replace(p_text, '[^0-9٠-٩۰-۹]', '', 'g')) < 7
+        and p_text !~ '@' and p_text !~* 'https?:|www\.')
 $$;
 
 create or replace function public.ingest_screen_sample(p_sample jsonb) returns jsonb
@@ -205,7 +207,12 @@ begin
                and (n - array['c','v','b','k','e','t','d']) = '{}'::jsonb
                and coalesce(n ->> 'c', '') ~ '^[A-Za-z0-9.]{0,40}$'
                and coalesce(n ->> 'v', '') ~ '^[a-z0-9_]{0,64}$'
-               and (n -> 'b' is null or (jsonb_typeof(n -> 'b') = 'array' and jsonb_array_length(n -> 'b') = 4))
+               and (n -> 'b' is null or (jsonb_typeof(n -> 'b') = 'array' and jsonb_array_length(n -> 'b') = 4
+                    and not exists (select 1 from jsonb_array_elements(n -> 'b') e where jsonb_typeof(e) <> 'number')))
+               and coalesce(jsonb_typeof(n -> 'k'), 'boolean') = 'boolean'
+               and coalesce(jsonb_typeof(n -> 'e'), 'boolean') = 'boolean'
+               and (n -> 'd' is null or (jsonb_typeof(n -> 'd') = 'number' and (n ->> 'd')::numeric between 0 and 200))
+               and coalesce(jsonb_typeof(n -> 't'), 'string') = 'string'
                and private.screen_text_ok(n ->> 't'))
       into v_ok
       from jsonb_array_elements(case when jsonb_typeof(v_nodes) = 'array' then v_nodes else '[]'::jsonb end) n;
@@ -297,12 +304,15 @@ begin
                 select provider, target_app_version, reason, count(*) count from public.screen_samples
                 where received_at >= p_since group by 1, 2, 3) r), '[]'::jsonb)),
         'candidate_words', coalesce((select jsonb_agg(c order by c.drivers desc, c.count desc) from (
-            select w word, bool_or(coalesce((n ->> 'k')::boolean, false)) on_button, count(*) count, count(distinct s.ingested_by) drivers
+            select w word, bool_or(coalesce(n -> 'k' = 'true'::jsonb, false)) on_button, count(*) count, count(distinct s.ingested_by) drivers
             from public.screen_samples s, jsonb_array_elements(s.nodes) n,
                  regexp_split_to_table(coalesce(n ->> 't', ''), '\s+') w
             where s.received_at >= p_since and s.status = 'new'
               and w ~ '[A-Za-zء-ي]' and w !~ '^[اa]+$' and not (lower(w) = any (v_known))
-            group by 1 order by 4 desc, 3 desc limit 40) c), '[]'::jsonb));
+            group by 1
+            -- k-anonymity: a word is a candidate only once three different drivers saw it.
+            having count(distinct s.ingested_by) >= 3
+            order by 4 desc, 3 desc limit 40) c), '[]'::jsonb));
 end $$;
 revoke all on function public.admin_learning_report(timestamptz) from public, anon;
 grant execute on function public.admin_learning_report(timestamptz) to authenticated;

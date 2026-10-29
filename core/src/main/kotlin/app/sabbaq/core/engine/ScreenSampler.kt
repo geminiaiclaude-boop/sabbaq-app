@@ -51,7 +51,7 @@ object ScreenSampler {
                 bounds = if (b == null) intArrayOf(0, 0, 0, 0) else intArrayOf(b.left, b.top, b.right, b.bottom),
                 clickable = node.isClickable,
                 enabled = node.isEnabled,
-                text = redact(raw, node.isClickable, known),
+                text = redact(raw, node.isClickable && isButtonClass(node.className), known),
                 depth = depth,
             )
             for (i in 0 until node.childCount) {
@@ -62,7 +62,15 @@ object ScreenSampler {
         return Sample(nodes, signature(nodes))
     }
 
-    /** The redacted text of one node, or null when nothing is left. */
+    /** Verbatim labels only on button-type views: a clickable row may carry a rider's name. */
+    fun isButtonClass(className: String?): Boolean =
+        className.orEmpty().substringAfterLast('.').let { it.endsWith("Button") || it.endsWith("Chip") }
+
+    /**
+     * The redacted text of one node, or null when nothing is left. [clickable] means a button-type
+     * control (see [isButtonClass]). Seven or more digits in the whole text, separators ignored
+     * ("055 123 4567"), mean a phone or ID: every digit is then masked.
+     */
     fun redact(raw: String?, clickable: Boolean, known: Set<String>): String? {
         val text = JeenyLexicon.latinDigits(raw.orEmpty()).replace(WHITESPACE, " ").trim()
         if (text.isEmpty()) return null
@@ -74,8 +82,9 @@ object ScreenSampler {
                 label || word.lowercase() in known -> word
                 else -> shape(word)
             }
-        }.joinToString(" ").replace(LONG_DIGITS, "#").trim()
-        return out.take(MAX_TEXT).trim().ifEmpty { null }
+        }.joinToString(" ").trim()
+        val masked = if (out.count { it.isDigit() } >= MAX_DIGITS) out.map { if (it.isDigit()) '#' else it }.joinToString("") else out
+        return masked.take(MAX_TEXT).trim().ifEmpty { null }
     }
 
     /** Arabic letters → «ا», Latin letters → «a»; digits and currency/punctuation marks stay. */
@@ -101,6 +110,6 @@ object ScreenSampler {
     }
 
     private val WHITESPACE = Regex("\\s+")
-    private val LONG_DIGITS = Regex("\\d{7,}")
+    private const val MAX_DIGITS = 7
     private const val KEPT_MARKS = ".,:/%+-$€⃁﷼₡()"
 }

@@ -29,9 +29,30 @@ class ScreenSamplerTest {
         assertTrue(texts.none { "النرجس" in it || "سلطان" in it || "الأمير" in it })
         assertTrue("address shape kept", texts.any { it.startsWith("اا ااااا") })
         assertTrue(texts.none { "0551234567" in it })
-        assertTrue("phone replaced", "ااال #" in texts || texts.any { it.endsWith("#") })
+        assertTrue("phone replaced", texts.any { it.endsWith("##########") })
         assertTrue(texts.all { it.length <= ScreenSampler.MAX_TEXT })
-        assertTrue(texts.none { Regex("\\d{7,}").containsMatchIn(it) })
+        assertTrue(texts.none { t -> t.count { it.isDigit() } >= 7 })
+    }
+
+    /** Security review 2026-10-29: separators must not let a phone number through. */
+    @Test
+    fun spaced_or_dashed_phone_numbers_are_masked() {
+        for (phone in listOf("055 123 4567", "055-123-4567", "+966 55 123 4567", "0 5 5 1 2 3 4 5 6 7")) {
+            val out = ScreenSampler.redact("اتصل $phone", clickable = false, known = known)!!
+            assertTrue("$phone -> $out", out.count { it.isDigit() } == 0)
+        }
+        assertEquals("⃁ 25.50", ScreenSampler.redact("⃁ 25.50", clickable = false, known = known))
+    }
+
+    /** A clickable row that is not a button (a rider card) never sends its text verbatim. */
+    @Test
+    fun only_button_type_views_keep_their_label() {
+        val row = FakeNode(className = "android.widget.LinearLayout", isClickable = true, text = "محمد العتيبي", rect = row(500))
+        val button = FakeNode(className = "com.google.android.material.button.MaterialButton", isClickable = true, text = "انطلق الآن", rect = row(600))
+        val root = FakeNode(className = "android.widget.FrameLayout", rect = Bounds(0, 0, 1080, 2400), children = listOf(row, button))
+        val texts = ScreenSampler.capture(root, known).nodes.mapNotNull { it.text }
+        assertTrue(texts.none { "محمد" in it || "العتيبي" in it })
+        assertTrue("انطلق الآن" in texts)
     }
 
     @Test

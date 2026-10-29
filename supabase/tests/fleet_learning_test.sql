@@ -102,7 +102,11 @@ select pg_temp.expect(public.ingest_screen_sample((select v from sample)) ->> 'r
 do $$
 declare bad jsonb;
 begin
-    for bad in select jsonb_set((select v from sample), '{nodes,0,t}', to_jsonb(x)) from unnest(array['0551234567', 'me@x.com', 'https://x', repeat('a', 41)]) x
+    for bad in select jsonb_set((select v from sample), '{nodes,0,t}', to_jsonb(x)) from unnest(array['0551234567', '055 123 4567', '055-123-4567', 'me@x.com', 'https://x', repeat('a', 41)]) x
+    union all select jsonb_set((select v from sample), '{nodes,0,k}', '"yes"')
+    union all select jsonb_set((select v from sample), '{nodes,0,b}', '[0, 1, 2, "x"]')
+    union all select jsonb_set((select v from sample), '{nodes,0,d}', '"deep"')
+    union all select jsonb_set((select v from sample), '{nodes,0,t}', '7')
     union all select jsonb_set((select v from sample), '{nodes,0,x}', '"extra"')
     union all select jsonb_set((select v from sample), '{nodes}', '[]')
     union all select jsonb_set((select v from sample), '{provider}', '"Jeeny!"')
@@ -119,6 +123,14 @@ do $$ begin
         perform public.ingest_screen_sample(jsonb_set((select v from sample), '{signature}', to_jsonb(lpad(to_hex(i), 16, '0'))));
     end loop;
 end $$;
+-- Two more drivers see the same new button word (k-anonymity needs three).
+do $$ begin
+    for i in 1..3 by 2 loop
+        perform set_config('request.jwt.claim.sub', 'f1ee0000-0000-0000-0000-00000000000' || i, false);
+        perform public.ingest_screen_sample((select v from sample));
+    end loop;
+end $$;
+select set_config('request.jwt.claim.sub', 'f1ee0000-0000-0000-0000-000000000002', false);
 reset role;
 select pg_temp.expect((select count(*) from public.screen_samples where ingested_by = 'f1ee0000-0000-0000-0000-000000000002') = 20, 'daily cap of 20 samples');
 
@@ -163,4 +175,5 @@ reset role;
 -- Retention keeps learned samples.
 update public.screen_samples set received_at = now() - interval '40 days' where ingested_by = 'f1ee0000-0000-0000-0000-000000000002';
 select pg_temp.expect(public.purge_screen_samples() = 19, 'old unlearned samples purged');
+select pg_temp.expect((select count(*) from public.screen_samples where ingested_by <> 'f1ee0000-0000-0000-0000-000000000002') = 2, 'recent samples kept');
 select pg_temp.expect((select count(*) from public.screen_samples where status = 'learned') = 1, 'learned sample kept');
