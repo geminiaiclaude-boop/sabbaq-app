@@ -1,7 +1,9 @@
 ﻿package app.sabbaq.service
 
 import app.sabbaq.fleet.FleetRepository
+import app.sabbaq.fleet.FloatingBubble
 import app.sabbaq.fleet.ScreenSamples
+import app.sabbaq.fleet.ShadowTester
 import app.sabbaq.core.engine.UiNode
 import android.accessibilityservice.AccessibilityService
 import android.os.SystemClock
@@ -64,6 +66,7 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
         // Android rebinds the accessibility service after killing the process: bring the
         // foreground service back with it when the driver left monitoring on.
         if (Settings.monitoringWanted && !KeeperService.isRunning) KeeperService.resumeIfWanted(this)
+        FloatingBubble.attach(this)
     }
 
     /**
@@ -189,7 +192,10 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
         when (outcome) {
             is PendingOutcome.Confirmed -> {
                 DiagnosisRepository.funnel.confirmed()
-                lastTapSignature?.let { TelemetryRepository.trace(TelemetryStage.ACCEPT_LEARNED, "confirmed", detail = it, provider = provider) }
+                // One aggregation key per signature, so two signatures never merge their counts.
+                lastTapSignature?.let {
+                    TelemetryRepository.trace(TelemetryStage.ACCEPT_LEARNED, "confirmed:" + Integer.toHexString(it.hashCode()), detail = it, provider = provider)
+                }
                 lastTapSignature = null
                 if (p.tapX > 0 && p.tapY > 0) { Settings.lastConfirmedTapX = p.tapX; Settings.lastConfirmedTapY = p.tapY }
                 record(DiagnosticStage.CONFIRMATION_CONFIRMED, now, "post_click_confirmed")
@@ -253,7 +259,10 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
                 onTrip -> record(DiagnosticStage.STALE, now, "trip_screen", detail = detail)
                 reason != "not_offer_screen" -> record(DiagnosticStage.OFFER_NOT_PARSED, now, reason, detail = detail)
             }
-            if (!onTrip && ScreenSamples.eligibleMiss(reason)) ScreenSamples.capture(provider, packageName, "miss_$reason", screen)
+            if (!onTrip && ScreenSamples.eligibleMiss(reason)) {
+                ScreenSamples.capture(provider, packageName, "miss_$reason", screen)
+                ShadowTester.test(reason, screen, resources.displayMetrics.heightPixels)
+            }
         }
         DiagnosisRepository.refresh()
     }
@@ -348,6 +357,7 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
     }
 
     override fun onDestroy() {
+        FloatingBubble.detach()
         LiveAcceptTest.onArmChanged = null
         TelemetryRepository.serviceConnected = false
         DiagnosisRepository.funnel.serviceConnected(false)

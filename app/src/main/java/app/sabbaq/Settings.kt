@@ -117,6 +117,15 @@ object Settings {
         get() = runCatching { prefs().getBoolean("floating_bubble", true) }.getOrDefault(true)
         set(value) { runCatching { prefs().edit().putBoolean("floating_bubble", value).apply() } }
 
+    var floatingBubbleX: Int
+        get() = runCatching { prefs().getInt("floating_bubble_x", 0) }.getOrDefault(0)
+        set(value) { runCatching { prefs().edit().putInt("floating_bubble_x", value).apply() } }
+
+    /** The last sign-in was an administrator (shows «الأدمن» on the floating control). */
+    var lastSignedInAdmin: Boolean
+        get() = runCatching { prefs().getBoolean("last_signed_in_admin", false) }.getOrDefault(false)
+        set(value) { runCatching { prefs().edit().putBoolean("last_signed_in_admin", value).apply() } }
+
     var floatingBubbleY: Int
         get() = runCatching { prefs().getInt("floating_bubble_y", 200) }.getOrDefault(200)
         set(value) { runCatching { prefs().edit().putInt("floating_bubble_y", value).apply() } }

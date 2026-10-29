@@ -357,3 +357,253 @@ begin
         perform cron.schedule('purge_screen_samples', '27 3 * * *', 'select public.purge_screen_samples()');
     end if;
 end $$;
+
+-- 5. Automatic engine learning -------------------------------------------------------------------
+-- Every hour the server proposes words from the structure samples (time and fare words next to a
+-- number on screens that missed them, short labels on buttons of screens without an accept
+-- control) once three different drivers saw them. Proposals go to every app as a shadow list:
+-- when a screen fails to read, the app re-reads it, read-only and without tapping, with each
+-- shadow word and reports which one would have made a complete offer. A time or fare word that
+-- did so five times for three drivers is adopted automatically; an accept word waits for the
+-- administration. Words of the built-in vocabulary are never proposed (the app's contract test
+-- keeps this list equal to its own), each list holds at most 10 shadow words, and the
+-- administration can reject or revert any word.
+create or replace function private.reserved_words() returns text[]
+language sql immutable as $$
+    select array['$','accept','arrived','at','away','cancel','card','cash','confirm','coupon','credit','discount','earn','economy','end','in','jod','km','lite','location','m','mada','mastercard','meter','mi','min','mins','mn','money','navigate','net','offer','online','picking','pickup','progress','promo','reject','ride','rule','sar','standard','take','visa','wallet','you''re','أنت','إلغاء','إلى','إنهاء','إيكونومي','ائتمان','استلام','الإتجاهات','الإقلاع','الاتجاهات','الانطلاق','التوصيل','الطلب','العرض','الغاء','القبول','المشوار','الى','انهاء','بطاقة','بعيد','تأكيد','جارٍ','خصم','د.أ','دقائ','دقائق','دقيقة','دقيقه','دوج','دينار','ر.س','رفض','ريال','ستاندرد','شرط','صافي','عرض','في','فيزا','قبول','قتصل','قريب','قواعد','كاش','كم','لايت','م','متر','متصل','محفظة','مستلام','معدل','مواعد','موافق','نقد','نقدي','نقطة','وصلت','يبعد','يبعُد','₡','⃁','﷼']::text[]
+$$;
+
+create table if not exists public.lexicon_proposals (
+    id             bigserial primary key,
+    category       text not null check (category in ('accept', 'time', 'currency')),
+    word           text not null check (length(word) between 1 and 24 and word !~ '[0-9٠-٩,@]' and word = btrim(word)),
+    status         text not null default 'shadow'
+                   check (status in ('shadow', 'adopted', 'awaiting_approval', 'approved', 'rejected', 'reverted', 'expired')),
+    drivers        integer not null default 0,
+    samples        integer not null default 0,
+    shadow_hits    integer not null default 0,
+    shadow_drivers integer not null default 0,
+    created_at     timestamptz not null default now(),
+    decided_at     timestamptz,
+    decided_by     uuid,
+    unique (category, word)
+);
+alter table public.lexicon_proposals enable row level security;
+revoke all on public.lexicon_proposals from anon, authenticated;
+
+-- Which shadow word each (version, category, index) reported by a phone stood for.
+create table if not exists public.shadow_slots (
+    version     integer not null,
+    category    text not null check (category in ('accept', 'time', 'currency')),
+    idx         integer not null check (idx between 0 and 9),
+    proposal_id bigint not null references public.lexicon_proposals (id) on delete cascade,
+    primary key (version, category, idx)
+);
+alter table public.shadow_slots enable row level security;
+revoke all on public.shadow_slots from anon, authenticated;
+
+create or replace function private.shadow_lexicon_row() returns jsonb
+language sql stable security definer set search_path = pg_catalog, public as $$
+    select jsonb_build_object(
+        'version', coalesce((v ->> 'version')::int, 0),
+        'accept', coalesce(v -> 'accept', '[]'::jsonb), 'time', coalesce(v -> 'time', '[]'::jsonb),
+        'currency', coalesce(v -> 'currency', '[]'::jsonb))
+    from (select coalesce((select value from public.app_config where key = 'shadow_lexicon'), '{}'::jsonb) v) s
+$$;
+revoke all on function private.shadow_lexicon_row() from public, anon, authenticated;
+
+-- Every app reads the live words and the shadow words to test.
+create or replace function public.shared_lexicon() returns jsonb
+language plpgsql stable security definer set search_path = pg_catalog, public as $$
+begin
+    if auth.uid() is null then raise exception 'not_authenticated' using errcode = '42501'; end if;
+    return private.shared_lexicon_row() || jsonb_build_object('shadow', private.shadow_lexicon_row());
+end $$;
+revoke all on function public.shared_lexicon() from public, anon;
+grant execute on function public.shared_lexicon() to authenticated;
+
+-- Adds or removes one live word (new lexicon version, audited).
+create or replace function private.lexicon_change(p_category text, p_word text, p_add boolean, p_actor uuid) returns void
+language plpgsql security definer set search_path = pg_catalog, public as $$
+declare v_row jsonb := private.shared_lexicon_row(); v_list jsonb;
+begin
+    v_list := coalesce(v_row -> p_category, '[]'::jsonb);
+    if p_add then
+        if v_list @> to_jsonb(array[p_word]) or jsonb_array_length(v_list) >= 30 then return; end if;
+        v_list := v_list || to_jsonb(array[p_word]);
+    else
+        if not (v_list @> to_jsonb(array[p_word])) then return; end if;
+        v_list := coalesce((select jsonb_agg(x) from jsonb_array_elements(v_list) x where x <> to_jsonb(p_word)), '[]'::jsonb);
+    end if;
+    insert into public.app_config (key, value, updated_at)
+    values ('shared_lexicon', (v_row - 'version') || jsonb_build_object(p_category, v_list, 'version', (v_row ->> 'version')::int + 1), now())
+    on conflict (key) do update set value = excluded.value, updated_at = now();
+    insert into public.audit_log (actor, action, target, detail)
+    values (p_actor, case when p_add then 'lexicon_add' else 'lexicon_remove' end, p_category,
+            jsonb_build_object('word', p_word, 'version', (v_row ->> 'version')::int + 1));
+end $$;
+revoke all on function private.lexicon_change(text, text, boolean, uuid) from public, anon, authenticated;
+
+-- Rebuilds the shadow list from the open proposals (10 per category, most drivers first); a
+-- changed list gets a new version and its slots, so old reports never map to new words.
+create or replace function private.rebuild_shadow() returns void
+language plpgsql security definer set search_path = pg_catalog, public as $$
+declare v_old jsonb := private.shadow_lexicon_row(); v_new jsonb; v_version int; c text;
+begin
+    select jsonb_build_object(
+        'accept', coalesce((select jsonb_agg(word order by drivers desc, id) from (select * from public.lexicon_proposals where status = 'shadow' and category = 'accept' order by drivers desc, id limit 10) a), '[]'::jsonb),
+        'time', coalesce((select jsonb_agg(word order by drivers desc, id) from (select * from public.lexicon_proposals where status = 'shadow' and category = 'time' order by drivers desc, id limit 10) t), '[]'::jsonb),
+        'currency', coalesce((select jsonb_agg(word order by drivers desc, id) from (select * from public.lexicon_proposals where status = 'shadow' and category = 'currency' order by drivers desc, id limit 10) u), '[]'::jsonb))
+      into v_new;
+    if v_new = (v_old - 'version') then return; end if;
+    v_version := (v_old ->> 'version')::int + 1;
+    insert into public.app_config (key, value, updated_at) values ('shadow_lexicon', v_new || jsonb_build_object('version', v_version), now())
+    on conflict (key) do update set value = excluded.value, updated_at = now();
+    foreach c in array array['accept', 'time', 'currency'] loop
+        insert into public.shadow_slots (version, category, idx, proposal_id)
+        select v_version, c, (w.ord - 1)::int, p.id
+        from jsonb_array_elements_text(v_new -> c) with ordinality w(word, ord)
+        join public.lexicon_proposals p on p.category = c and p.word = w.word;
+    end loop;
+end $$;
+revoke all on function private.rebuild_shadow() from public, anon, authenticated;
+
+create or replace function private.learn_from_fleet() returns jsonb
+language plpgsql security definer set search_path = pg_catalog, public as $$
+declare
+    v_reserved text[] := private.reserved_words();
+    v_live text[];
+    v_proposed int := 0; v_adopted int := 0; v_awaiting int := 0; v_expired int := 0;
+    r record;
+begin
+    select coalesce(array_agg(lower(w)), '{}') into v_live from (
+        select jsonb_array_elements_text(l -> k) w from (select private.shared_lexicon_row() l) s, unnest(array['accept', 'time', 'currency', 'noise']) k) x;
+
+    -- 1. Proposals from the samples of the last 14 days, once three drivers saw the word.
+    for r in
+        with toks as (
+            select s.ingested_by, s.reason, btrim(n ->> 't') t, coalesce(n ->> 'c', '') c,
+                   coalesce(n -> 'k' = 'true'::jsonb, false) k, coalesce(n -> 'e' = 'true'::jsonb, true) e
+            from public.screen_samples s, jsonb_array_elements(s.nodes) n
+            where s.received_at > now() - interval '14 days' and s.provider = 'jeeny' and n ? 't'),
+        cand as (
+            select 'time' category,
+                   coalesce(substring(t from '^[0-9]{1,3}\s*([^\s0-9]{2,24})$'), substring(t from '^([^\s0-9]{2,24})\s*[0-9]{1,3}$')) word,
+                   ingested_by
+            from toks where reason = 'miss_no_minutes'
+            union all
+            select 'currency',
+                   coalesce(substring(t from '^[0-9]+[.,][0-9]{1,2}\s*([^\s0-9.,]{1,12})$'), substring(t from '^([^\s0-9.,]{1,12})\s*[0-9]+[.,][0-9]{1,2}$')),
+                   ingested_by
+            from toks where reason = 'miss_no_price'
+            union all
+            select 'accept', t, ingested_by
+            from toks where reason = 'miss_no_accept' and k and e and c ~ '(Button|Chip)$' and t !~ '[0-9٠-٩]'
+              and length(t) <= 24 and array_length(regexp_split_to_array(t, '\s+'), 1) <= 3)
+        select category, word, count(*)::int samples, count(distinct ingested_by)::int drivers
+        from cand
+        where word is not null and word ~ '[A-Za-zء-ي]' and word !~ '^[اa ]+$' and word !~ '[0-9٠-٩,@]'
+          and not (lower(word) = any (v_live))
+          and not exists (select 1 from unnest(regexp_split_to_array(lower(word), '\s+')) p where p = any (v_reserved))
+        group by 1, 2
+        having count(distinct ingested_by) >= 3
+    loop
+        insert into public.lexicon_proposals (category, word, drivers, samples)
+        values (r.category, r.word, r.drivers, r.samples)
+        on conflict (category, word) do update
+            set drivers = greatest(public.lexicon_proposals.drivers, excluded.drivers),
+                samples = greatest(public.lexicon_proposals.samples, excluded.samples);
+        if found then v_proposed := v_proposed + 1; end if;
+    end loop;
+
+    -- 2. Shadow results reported by the phones: reason "shadow_hit:<version>:<c><i>", detail "lv=<version>,c=<a|t|c>,i=<index>".
+    update public.lexicon_proposals p set shadow_hits = h.hits, shadow_drivers = h.drivers
+    from (
+        select sl.proposal_id, sum(e.event_count)::int hits, count(distinct e.ingested_by)::int drivers
+        from public.offer_telemetry_events e
+        join public.shadow_slots sl
+          on sl.version = substring(e.detail from 'lv=([0-9]{1,6})')::int
+         and sl.category = case substring(e.detail from 'c=([atc])') when 'a' then 'accept' when 't' then 'time' else 'currency' end
+         and sl.idx = substring(e.detail from 'i=([0-9])')::int
+        where e.stage = 'ACCEPT_LEARNED' and e.reason_code like 'shadow\_hit:%' and e.received_at > now() - interval '14 days'
+          and e.detail ~ '^lv=[0-9]{1,6},c=[atc],i=[0-9]$'
+        group by 1) h
+    where p.id = h.proposal_id;
+
+    -- 3. Proven words: time and fare words go live, accept words wait for the administration.
+    for r in select * from public.lexicon_proposals where status = 'shadow' and shadow_hits >= 5 and shadow_drivers >= 3 loop
+        if r.category = 'accept' then
+            update public.lexicon_proposals set status = 'awaiting_approval' where id = r.id;
+            v_awaiting := v_awaiting + 1;
+        else
+            perform private.lexicon_change(r.category, r.word, true, null);
+            update public.lexicon_proposals set status = 'adopted', decided_at = now() where id = r.id;
+            v_adopted := v_adopted + 1;
+        end if;
+    end loop;
+
+    -- 4. A shadow word unproven after 30 days leaves the shadow list.
+    update public.lexicon_proposals set status = 'expired', decided_at = now()
+    where status = 'shadow' and created_at < now() - interval '30 days';
+    get diagnostics v_expired = row_count;
+
+    perform private.rebuild_shadow();
+    return jsonb_build_object('proposed', v_proposed, 'adopted', v_adopted, 'awaiting_approval', v_awaiting, 'expired', v_expired,
+                              'shadow', private.shadow_lexicon_row());
+end $$;
+revoke all on function private.learn_from_fleet() from public, anon, authenticated;
+
+create or replace function public.admin_run_learning() returns jsonb
+language plpgsql security definer set search_path = pg_catalog, public as $$
+begin
+    if not public.is_admin() then raise exception 'not_admin' using errcode = '42501'; end if;
+    return private.learn_from_fleet();
+end $$;
+revoke all on function public.admin_run_learning() from public, anon;
+grant execute on function public.admin_run_learning() to authenticated;
+
+create or replace function public.admin_lexicon_proposals() returns jsonb
+language plpgsql stable security definer set search_path = pg_catalog, public as $$
+begin
+    if not public.is_admin() then raise exception 'not_admin' using errcode = '42501'; end if;
+    return coalesce((select jsonb_agg(p order by p.status = 'awaiting_approval' desc, p.status = 'shadow' desc, p.shadow_hits desc, p.drivers desc) from (
+        select id, category, word, status, drivers, samples, shadow_hits, shadow_drivers, created_at, decided_at
+        from public.lexicon_proposals
+        where status in ('shadow', 'awaiting_approval', 'adopted', 'approved') or decided_at > now() - interval '30 days'
+        limit 100) p), '[]'::jsonb);
+end $$;
+revoke all on function public.admin_lexicon_proposals() from public, anon;
+grant execute on function public.admin_lexicon_proposals() to authenticated;
+
+-- approve: the word goes live; reject: it leaves the shadow list; revert: a live word is withdrawn.
+create or replace function public.admin_decide_proposal(p_id bigint, p_decision text) returns jsonb
+language plpgsql security definer set search_path = pg_catalog, public as $$
+declare v public.lexicon_proposals;
+begin
+    if not public.is_admin() then raise exception 'not_admin' using errcode = '42501'; end if;
+    select * into v from public.lexicon_proposals where id = p_id for update;
+    if not found then raise exception 'not_found' using errcode = 'P0002'; end if;
+    if p_decision = 'approve' and v.status in ('shadow', 'awaiting_approval', 'rejected', 'expired', 'reverted') then
+        perform private.lexicon_change(v.category, v.word, true, auth.uid());
+        update public.lexicon_proposals set status = 'approved', decided_at = now(), decided_by = auth.uid() where id = p_id;
+    elsif p_decision = 'reject' and v.status in ('shadow', 'awaiting_approval') then
+        update public.lexicon_proposals set status = 'rejected', decided_at = now(), decided_by = auth.uid() where id = p_id;
+    elsif p_decision = 'revert' and v.status in ('adopted', 'approved') then
+        perform private.lexicon_change(v.category, v.word, false, auth.uid());
+        update public.lexicon_proposals set status = 'reverted', decided_at = now(), decided_by = auth.uid() where id = p_id;
+    else
+        raise exception 'invalid_decision' using errcode = '22023';
+    end if;
+    perform private.rebuild_shadow();
+    return (select to_jsonb(p) from public.lexicon_proposals p where id = p_id);
+end $$;
+revoke all on function public.admin_decide_proposal(bigint, text) from public, anon;
+grant execute on function public.admin_decide_proposal(bigint, text) to authenticated;
+
+do $$
+begin
+    if exists (select 1 from pg_extension where extname = 'pg_cron') then
+        perform cron.unschedule(jobid) from cron.job where jobname = 'learn_from_fleet';
+        perform cron.schedule('learn_from_fleet', '41 * * * *', 'select private.learn_from_fleet()');
+    end if;
+end $$;

@@ -35,6 +35,9 @@ object FleetParser {
         return SharedLexicon(version, words("accept"), words("time"), words("currency"), words("noise"))
     }
 
+    /** The shadow words to test (the "shadow" object of `shared_lexicon`); empty when none. */
+    fun shadow(o: JsonObject): SharedLexicon = (o["shadow"] as? JsonObject)?.let(::lexicon) ?: SharedLexicon()
+
     private fun JsonObject.str(key: String): String? = (this[key] as? JsonPrimitive)?.contentOrNull
     private fun JsonObject.long(key: String): Long? = (this[key] as? JsonPrimitive)?.let { it.longOrNull ?: it.contentOrNull?.toLongOrNull() }
 }

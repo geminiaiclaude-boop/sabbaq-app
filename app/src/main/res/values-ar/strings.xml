@@ -969,6 +969,6 @@
     <string name="keep_standby_b">صنّف أندرويد سبّاق كتطبيق نادر الاستخدام فيؤخر عمله. اجعل استهلاك البطارية «غير مقيد» وافتح سبّاق يوميًا.</string>
     <string name="keep_open">فتح الإعداد</string>
     <string name="keep_bubble_t">زر سبّاق العائم</string>
-    <string name="keep_bubble_b">يظهر زر صغير «سبّاق ●» فوق التطبيقات أثناء الرصد، فيعامل أندرويد سبّاق كتطبيق ظاهر ولا يوقفه.</string>
+    <string name="keep_bubble_b">زر تحكم عائم فوق التطبيقات: شغّل سبّاق أو أوقفه وافتحه دون مغادرة تطبيق الرحلات. ومع هذا الإذن يعامل أندرويد سبّاق كتطبيق ظاهر فلا يوقفه.</string>
     <string name="keep_bubble_done">الزر العائم مسموح</string>
 </resources>

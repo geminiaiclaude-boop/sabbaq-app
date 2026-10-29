@@ -16,8 +16,6 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-import kotlinx.serialization.json.putJsonArray
-import kotlinx.serialization.json.add
 
 /**
  * What the administration publishes to every app: the newest release (with the minimum version)
@@ -34,6 +32,7 @@ object FleetRepository {
     @Volatile private var lastRefreshAt = 0L
     private val releaseState = MutableStateFlow(AppRelease())
     @Volatile private var lexicon = SharedLexicon()
+    @Volatile private var shadow = SharedLexicon()
     @Volatile private var merged: Triple<EngineConfig, Int, EngineConfig>? = null
 
     val release: StateFlow<AppRelease> = releaseState.asStateFlow()
@@ -43,7 +42,10 @@ object FleetRepository {
         appContext = app
         val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         prefs.getString(KEY_RELEASE, null)?.let { decode(it)?.let(FleetParser::release) }?.let { releaseState.value = it }
-        prefs.getString(KEY_LEXICON, null)?.let { decode(it)?.let(FleetParser::lexicon) }?.let { lexicon = it }
+        prefs.getString(KEY_LEXICON, null)?.let(::decode)?.let { o ->
+            FleetParser.lexicon(o)?.let { lexicon = it }
+            shadow = FleetParser.shadow(o)
+        }
     }
 
     fun updateState(): UpdateState = releaseState.value.state(BuildConfig.VERSION_CODE.toLong())
@@ -52,6 +54,9 @@ object FleetRepository {
     fun updateRequired(): Boolean = updateState() == UpdateState.REQUIRED
 
     fun lexicon(): SharedLexicon = lexicon
+
+    /** Words the server asks every phone to test read-only (ShadowCheck). */
+    fun shadow(): SharedLexicon = shadow
 
     /** The driver's settings with the shared words merged in; recomputed only when either changes. */
     fun effectiveConfig(own: EngineConfig): EngineConfig {
@@ -76,12 +81,11 @@ object FleetRepository {
             if (updateState() != UpdateState.NONE && updateState() != before) UpdateTelemetry.offered(r)
             any = true
         }
-        SupabaseClient.sharedLexicon().getOrNull()?.let { l ->
-            if (l.version != lexicon.version) {
-                lexicon = l
-                merged = null
-                prefs?.edit()?.putString(KEY_LEXICON, encode(l))?.apply()
-            }
+        SupabaseClient.sharedLexicon().getOrNull()?.let { o ->
+            val l = FleetParser.lexicon(o) ?: return@let
+            if (l.version != lexicon.version) { lexicon = l; merged = null }
+            shadow = FleetParser.shadow(o)
+            prefs?.edit()?.putString(KEY_LEXICON, o.toString())?.apply()
             any = true
         }
         if (any) lastRefreshAt = now
@@ -93,13 +97,5 @@ object FleetRepository {
         put("latest_code", r.latestCode); put("latest_name", r.latestName); put("apk_url", r.apkUrl)
         put("apk_sha256", r.apkSha256); put("apk_size", r.apkSize); put("notes_ar", r.notesAr)
         put("notes_en", r.notesEn); put("min_code", r.minCode)
-    }.toString()
-
-    private fun encode(l: SharedLexicon): String = buildJsonObject {
-        put("version", l.version)
-        putJsonArray("accept") { l.accept.forEach { add(it) } }
-        putJsonArray("time") { l.time.forEach { add(it) } }
-        putJsonArray("currency") { l.currency.forEach { add(it) } }
-        putJsonArray("noise") { l.noise.forEach { add(it) } }
     }.toString()
 }

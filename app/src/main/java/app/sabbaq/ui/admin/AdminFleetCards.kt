@@ -97,6 +97,7 @@ internal fun AdminLearningCard(session: AdminSession) {
     var time by remember { mutableStateOf("") }
     var currency by remember { mutableStateOf("") }
     var noise by remember { mutableStateOf("") }
+    var proposals by remember { mutableStateOf<List<AdminFleet.Proposal>>(emptyList()) }
 
     fun show(r: AdminFleet.LearningReport) {
         report = r
@@ -111,10 +112,43 @@ internal fun AdminLearningCard(session: AdminSession) {
         AdminFleet.learningReport().fold({ show(it); message = null }, {
             message = session.failureOf(it, if (ar) "تعذر تحميل تقرير التعلم." else "Could not load the learning report.").text
         })
+        AdminFleet.proposals().onSuccess { proposals = it }
         busy = false
     }
     SabbaqCard(title = if (ar) "تعلّم المحرك من شاشات الأسطول" else "Engine learning from fleet screens", icon = Icons.Outlined.Psychology,
         modifier = Modifier.testTag("admin-learning")) {
+        Text(if (ar) "التعلم التلقائي: كل ساعة تُقترح الكلمات التي رآها 3 سائقين، وتُختبر على الهواتف دون ضغط. كلمات الوقت والأجرة تُعتمد تلقائيًا بعد 5 قراءات ناجحة من 3 سائقين، وكلمات القبول تنتظر موافقتك."
+             else "Automatic learning: every hour words seen by 3 drivers are proposed and tested on the phones without tapping. Time and fare words go live after 5 successful reads from 3 drivers; accept words wait for your approval.",
+            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        proposals.forEach { p ->
+            val category = when (p.category) { "accept" -> if (ar) "قبول" else "accept"; "time" -> if (ar) "وقت" else "time"; else -> if (ar) "أجرة" else "fare" }
+            val status = when (p.status) {
+                "shadow" -> if (ar) "قيد الاختبار" else "testing"
+                "awaiting_approval" -> if (ar) "بانتظار موافقتك" else "awaiting your approval"
+                "adopted" -> if (ar) "اعتُمدت تلقائيًا" else "adopted automatically"
+                "approved" -> if (ar) "اعتمدتها" else "approved"
+                "rejected" -> if (ar) "مرفوضة" else "rejected"
+                "reverted" -> if (ar) "سُحبت" else "reverted"
+                else -> if (ar) "انتهت" else "expired"
+            }
+            Text("«${p.word}» · $category · $status · ${if (ar) "سائقون" else "drivers"} ${p.drivers} · ${if (ar) "قراءات ناجحة" else "successful reads"} ${p.shadowHits}/${p.shadowDrivers}",
+                style = MaterialTheme.typography.bodySmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                fun decide(d: String) { scope.launch { busy = true; AdminFleet.decide(p.id, d).onFailure {
+                    message = session.failureOf(it, if (ar) "لم يُنفّذ القرار." else "The decision was not applied.").text }; reload++; busy = false } }
+                if (p.status in setOf("shadow", "awaiting_approval", "rejected", "expired", "reverted"))
+                    AssistChip(onClick = { decide("approve") }, enabled = !busy, label = { Text(if (ar) "اعتماد" else "Approve") })
+                if (p.status in setOf("shadow", "awaiting_approval"))
+                    AssistChip(onClick = { decide("reject") }, enabled = !busy, label = { Text(if (ar) "رفض" else "Reject") })
+                if (p.status in setOf("adopted", "approved"))
+                    AssistChip(onClick = { decide("revert") }, enabled = !busy, label = { Text(if (ar) "سحب" else "Revert") })
+            }
+        }
+        SabbaqButton(if (ar) "تشغيل التعلم الآن" else "Run learning now", enabled = !busy, style = SabbaqButtonStyle.Secondary,
+            modifier = Modifier.testTag("admin-learning-run"), onClick = {
+                scope.launch { busy = true; AdminFleet.runLearning().onFailure {
+                    message = session.failureOf(it, if (ar) "تعذر تشغيل التعلم." else "Could not run learning.").text }; reload++; busy = false }
+            })
         report?.let { r ->
             Text(if (ar) "المعجم المشترك: النسخة ${r.lexicon.version} · عينات جديدة ${r.newSamples}"
                  else "Shared lexicon: version ${r.lexicon.version} · new samples ${r.newSamples}", style = MaterialTheme.typography.labelMedium)

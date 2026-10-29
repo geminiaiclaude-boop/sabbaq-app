@@ -177,3 +177,65 @@ update public.screen_samples set received_at = now() - interval '40 days' where 
 select pg_temp.expect(public.purge_screen_samples() = 19, 'old unlearned samples purged');
 select pg_temp.expect((select count(*) from public.screen_samples where ingested_by <> 'f1ee0000-0000-0000-0000-000000000002') = 2, 'recent samples kept');
 select pg_temp.expect((select count(*) from public.screen_samples where status = 'learned') = 1, 'learned sample kept');
+
+-- Automatic engine learning: proposal from three drivers, shadow test on the phones, automatic
+-- adoption of a proven time word, administration approval for an accept word, revert.
+insert into auth.users (id, email, raw_app_meta_data, raw_user_meta_data)
+select ('f1ee0000-0000-0000-0000-00000000001' || n)::uuid, 'learn-' || n || '@example.test',
+       '{"provider":"google","providers":["google"]}'::jsonb, '{}'::jsonb
+from generate_series(1, 3) n;
+insert into public.screen_samples (ingested_by, provider, app_version, reason, signature, nodes)
+select ('f1ee0000-0000-0000-0000-00000000001' || n)::uuid, 'jeeny', '2.0.4', r.reason, lpad(to_hex(n * 16 + r.k), 16, 'a'), r.nodes
+from generate_series(1, 3) n, (values
+    (1, 'miss_no_minutes', '[{"c":"TextView","t":"5 دقايق"},{"c":"TextView","t":"7 دقائق"},{"c":"TextView","t":"ااا ااا"}]'::jsonb),
+    (2, 'miss_no_accept', '[{"c":"MaterialButton","k":true,"e":true,"t":"خذ الرحلة"},{"c":"Button","k":true,"e":true,"t":"رفض"},{"c":"LinearLayout","k":true,"t":"محمد"}]'::jsonb)
+) r(k, reason, nodes);
+select pg_temp.expect(((private.learn_from_fleet()) -> 'shadow' -> 'time') @> '["دقايق"]', 'new time word goes to the shadow list');
+select pg_temp.expect(not exists (select 1 from public.lexicon_proposals where word in ('دقائق', 'رفض', 'محمد', 'ااا')),
+    'built-in words, reject words, non-button rows and shape tokens are never proposed');
+select pg_temp.expect((select status from public.lexicon_proposals where word = 'خذ الرحلة') = 'shadow', 'button label proposed for accept');
+set role authenticated;
+select set_config('request.jwt.claim.sub', 'f1ee0000-0000-0000-0000-000000000011', false);
+select pg_temp.expect((public.shared_lexicon() -> 'shadow' -> 'accept') @> '["خذ الرحلة"]', 'phones receive the shadow words');
+reset role;
+-- Two phones only: not enough.
+insert into public.offer_telemetry_events (event_id, occurred_at, correlation_id, app_id, app_version, android_api, provider, stage, reason_code, event_count, detail, ingested_by)
+select gen_random_uuid(), now(), 'c0ffee00c0ffee00c0ffee00c0ffee0' || n, 'app.sabbaq', '2.0.4', 34, 'jeeny', 'ACCEPT_LEARNED', 'shadow_hit:' || c, 3,
+       'lv=' || (private.shadow_lexicon_row() ->> 'version') || ',c=' || c || ',i=0', ('f1ee0000-0000-0000-0000-00000000001' || n)::uuid
+from generate_series(1, 2) n, unnest(array['t', 'a']) c;
+select pg_temp.expect((private.learn_from_fleet() ->> 'adopted')::int = 0, 'two drivers are not enough to adopt');
+insert into public.offer_telemetry_events (event_id, occurred_at, correlation_id, app_id, app_version, android_api, provider, stage, reason_code, event_count, detail, ingested_by)
+select gen_random_uuid(), now(), 'c0ffee00c0ffee00c0ffee00c0ffee03', 'app.sabbaq', '2.0.4', 34, 'jeeny', 'ACCEPT_LEARNED', 'shadow_hit:' || c, 1,
+       'lv=' || (private.shadow_lexicon_row() ->> 'version') || ',c=' || c || ',i=0', 'f1ee0000-0000-0000-0000-000000000013'
+from unnest(array['t', 'a']) c;
+select pg_temp.expect((private.learn_from_fleet() ->> 'adopted')::int = 1, 'proven time word adopted automatically');
+select pg_temp.expect((private.shared_lexicon_row() -> 'time') @> '["دقايق"]', 'adopted word is live for every phone');
+select pg_temp.expect((select status from public.lexicon_proposals where word = 'خذ الرحلة') = 'awaiting_approval', 'proven accept word waits for the administration');
+select pg_temp.expect(not ((private.shared_lexicon_row() -> 'accept') @> '["خذ الرحلة"]'), 'accept word not live before approval');
+select pg_temp.expect(not ((private.shadow_lexicon_row() -> 'time') @> '["دقايق"]'), 'adopted word leaves the shadow list');
+set role authenticated;
+select set_config('request.jwt.claim.sub', 'f1ee0000-0000-0000-0000-000000000011', false);
+do $$ begin
+    perform public.admin_run_learning();
+    raise exception 'EXPECTATION FAILED: a driver ran the learning job';
+exception when insufficient_privilege then null;
+end $$;
+select set_config('request.jwt.claim.sub', 'f1ee0000-0000-0000-0000-000000000001', false);
+select pg_temp.expect(jsonb_array_length(public.admin_lexicon_proposals()) >= 2, 'administration sees the proposals');
+reset role;
+create temp table accept_proposal as select id from public.lexicon_proposals where word = 'خذ الرحلة';
+create temp table time_proposal as select id from public.lexicon_proposals where word = 'دقايق';
+grant select on accept_proposal, time_proposal to authenticated;
+set role authenticated;
+select set_config('request.jwt.claim.sub', 'f1ee0000-0000-0000-0000-000000000001', false);
+select pg_temp.expect(public.admin_decide_proposal((select id from accept_proposal), 'approve') ->> 'status' = 'approved', 'accept word approved');
+select pg_temp.expect((public.shared_lexicon() -> 'accept') @> '["خذ الرحلة"]', 'approved accept word is live');
+select pg_temp.expect(public.admin_decide_proposal((select id from time_proposal), 'revert') ->> 'status' = 'reverted', 'adopted word reverted');
+select pg_temp.expect(not ((public.shared_lexicon() -> 'time') @> '["دقايق"]'), 'reverted word withdrawn');
+do $$ begin
+    perform public.admin_decide_proposal((select id from time_proposal), 'reject');
+    raise exception 'EXPECTATION FAILED: rejecting a reverted word';
+exception when invalid_parameter_value then null;
+end $$;
+reset role;
+select pg_temp.expect(exists (select 1 from public.audit_log where action = 'lexicon_add') and exists (select 1 from public.audit_log where action = 'lexicon_remove'), 'lexicon changes audited');

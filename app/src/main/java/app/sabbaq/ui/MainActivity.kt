@@ -157,10 +157,12 @@ class SessionNavigationViewModel : ViewModel() {
         }
     }
     fun authenticated(isAdmin: Boolean) {
+        Settings.lastSignedInAdmin = isAdmin && BuildConfig.DIRECT_DISTRIBUTION
+        app.sabbaq.fleet.FloatingBubble.refresh()
         sessionRestoreStatus = SessionRestoreStatus.NONE
         route = if (isAdmin && BuildConfig.DIRECT_DISTRIBUTION) AppState.ADMIN_PANEL else AppState.DRIVER_PANEL
     }
-    fun signedOut() { sessionRestoreStatus = SessionRestoreStatus.NONE; route = AppState.LOGIN }
+    fun signedOut() { sessionRestoreStatus = SessionRestoreStatus.NONE; route = AppState.LOGIN; app.sabbaq.fleet.FloatingBubble.refresh() }
 }
 
 class MainActivity : AppCompatActivity() {

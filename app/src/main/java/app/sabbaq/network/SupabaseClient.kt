@@ -1001,11 +1001,12 @@ object SupabaseClient {
                 ?.let { Result.success(it) } ?: Result.failure(FeatureException(FeatureFailure.UNAVAILABLE))
         }
 
-    /** `shared_lexicon`: words the administration taught every app. */
-    suspend fun sharedLexicon(): Result<app.sabbaq.core.SharedLexicon> =
+    /** `shared_lexicon`: the live words every app reads with, plus the shadow words to test. */
+    suspend fun sharedLexicon(): Result<JsonObject> =
         supportCall("rpc/shared_lexicon", buildJsonObject { }) { response ->
             if (!response.isSuccessful) return@supportCall Result.failure(FeatureException.fromStatus(response.code))
-            runCatching { FleetParser.lexicon(json.parseToJsonElement(response.body) as JsonObject) }.getOrNull()
+            (runCatching { json.parseToJsonElement(response.body) as JsonObject }.getOrNull())
+                ?.takeIf { FleetParser.lexicon(it) != null }
                 ?.let { Result.success(it) } ?: Result.failure(FeatureException(FeatureFailure.UNAVAILABLE))
         }
 

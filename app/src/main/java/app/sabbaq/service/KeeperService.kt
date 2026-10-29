@@ -124,7 +124,7 @@ class KeeperService : Service() {
             KeepAlive.startedOk(this)
             KeepAlive.schedule(this)
             acquireWakeLock()
-            FloatingBubble.sync(this, active = true)
+            FloatingBubble.monitoringStarted()
             // Android recreates a sticky service after killing it; monitor() restores the session.
             START_STICKY
         } catch (e: SecurityException) {
@@ -166,7 +166,7 @@ class KeeperService : Service() {
             refreshProfiles(force = false)
             runCatching { FleetRepository.refreshIfStale() }
             acquireWakeLock()
-            FloatingBubble.sync(this, active = true)
+            FloatingBubble.refresh()
             syncInbox()
         }
     }
@@ -401,8 +401,8 @@ class KeeperService : Service() {
     private fun shutDown() {
         stoppingOnPurpose = true
         releaseWakeLock()
-        FloatingBubble.hide(this)
         Settings.isActive = false
+        FloatingBubble.refresh()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -537,7 +537,7 @@ class KeeperService : Service() {
         val wasRunning = isRunning
         isRunning = false
         releaseWakeLock()
-        FloatingBubble.hide(this)
+        FloatingBubble.refresh()
         // Running and not stopped on purpose: Android or a cleaner ended it, come back with backoff.
         if (wasRunning && !stoppingOnPurpose && Settings.monitoringWanted) KeepAlive.restartWithBackoff(this)
         screenReceiver?.let { runCatching { unregisterReceiver(it) } }

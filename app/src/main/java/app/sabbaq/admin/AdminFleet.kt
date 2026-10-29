@@ -36,6 +36,26 @@ object AdminFleet {
         val misses: List<Miss>, val newSamples: Long,
     )
 
+    data class Proposal(
+        val id: Long, val category: String, val word: String, val status: String,
+        val drivers: Long, val samples: Long, val shadowHits: Long, val shadowDrivers: Long,
+    )
+
+    suspend fun proposals(): Result<List<Proposal>> = SupabaseClient.adminRpc("admin_lexicon_proposals").mapCatching { body ->
+        (json.parseToJsonElement(body) as? JsonArray ?: throw FeatureException(FeatureFailure.UNAVAILABLE)).mapNotNull { e ->
+            val o = e as? JsonObject ?: return@mapNotNull null
+            Proposal(o.l("id"), o.s("category"), o.s("word"), o.s("status"), o.l("drivers"), o.l("samples"), o.l("shadow_hits"), o.l("shadow_drivers"))
+        }
+    }
+
+    /** approve / reject / revert one proposal. */
+    suspend fun decide(id: Long, decision: String): Result<Unit> {
+        if (decision !in setOf("approve", "reject", "revert")) return Result.failure(FeatureException(FeatureFailure.REJECTED))
+        return SupabaseClient.adminRpc("admin_decide_proposal", buildJsonObject { put("p_id", id); put("p_decision", decision) }).map { }
+    }
+
+    suspend fun runLearning(): Result<Unit> = SupabaseClient.adminRpc("admin_run_learning").map { }
+
     data class Adoption(val version: String, val drivers: Long)
     data class Release(val release: app.sabbaq.core.AppRelease, val adoption: List<Adoption>)
 
