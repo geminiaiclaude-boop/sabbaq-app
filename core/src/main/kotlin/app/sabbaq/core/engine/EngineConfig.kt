@@ -57,6 +57,7 @@ data class EngineConfig(
     val timeKeywordsExtra: String = "",
     val currencyKeywordsExtra: String = "",
     val noiseKeywordsExtra: String = "",
+    val targetApp: TargetApp = TargetApp.JEENY,
 ) {
     /** FareSniper `priceEnabled && priceFilterEnabled` (the second flag is always on in its UI). */
     val priceFilterOn: Boolean get() = priceEnabled

@@ -111,6 +111,8 @@ object Settings {
             }.getOrDefault(false)
             if (saved) cachedConfig = null
             saved
+        }.also { saved ->
+            if (saved) withContext(Dispatchers.Main) { app.sabbaq.service.SabbaqA11yService.instance?.applyTargetPackages() }
         }
     }
 

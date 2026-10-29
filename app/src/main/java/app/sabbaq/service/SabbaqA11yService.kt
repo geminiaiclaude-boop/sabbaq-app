@@ -19,6 +19,7 @@ import app.sabbaq.core.engine.JeenyScreenReader
 import app.sabbaq.core.engine.ParsedRide
 import app.sabbaq.core.engine.PendingOutcome
 import app.sabbaq.core.engine.PendingRide
+import app.sabbaq.core.engine.RideApps
 import app.sabbaq.core.engine.SnipingGate
 import app.sabbaq.notifications.NotificationCenter
 import app.sabbaq.service.engine.EngineHost
@@ -51,6 +52,8 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
         TelemetryRepository.serviceConnected = true
         host = EngineHost(this, { Settings.engineConfig }, ::canProcess, this)
         host.onConnected()
+        instance = this
+        applyTargetPackages()
         TelemetryRepository.trace(TelemetryStage.SERVICE_CONNECTED, reasonCode = "ready", detail = "engine=faresniper")
     }
 
@@ -81,7 +84,7 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
             if (LiveAcceptTest.isArmed(now)) handleLiveAcceptTest(now)
             return
         }
-        if (!isJeeny(packageName)) return
+        if (RideApps.of(packageName, Settings.engineConfig.targetApp) == null) return
         record(DiagnosticStage.EVENT_RECEIVED, now)
         val gate = gate()
         if (!gate.allowed) {
@@ -97,10 +100,13 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
         }
     }
 
-    /** FareSniper's Jeeny routing (§5): the package itself or a name containing its keywords. */
-    private fun isJeeny(packageName: String): Boolean {
-        val p = packageName.lowercase()
-        return p == JEENY_PACKAGE || "jeeny" in p || "easytaxi" in p
+    /** FareSniper's `applyTargetAppRouting`: listen only to the ride apps the driver chose. */
+    fun applyTargetPackages() {
+        val info = serviceInfo ?: return
+        val wanted = RideApps.packages(Settings.engineConfig.targetApp)
+        if (info.packageNames?.contentEquals(wanted) == true) return
+        info.packageNames = wanted
+        runCatching { serviceInfo = info }
     }
 
     override fun onOffer(ride: ParsedRide, source: String) {
@@ -260,15 +266,17 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
         TelemetryRepository.serviceConnected = false
         TelemetryRepository.trace(TelemetryStage.SERVICE_DESTROYED, "destroyed")
         TelemetryRepository.flushNow()
+        if (instance === this) instance = null
         if (::host.isInitialized) host.onDestroy()
         liveness.pause("service_destroyed")
         runtimeStatus.reset()
         super.onDestroy()
     }
 
-    private companion object {
-        const val TAG = "SabbaqA11y"
-        const val JEENY_PROVIDER = "jeeny"
-        const val JEENY_PACKAGE = "me.com.easytaxista"
+    companion object {
+        /** The connected service, so a changed target app is applied without waiting for an event. */
+        @Volatile var instance: SabbaqA11yService? = null
+        private const val TAG = "SabbaqA11y"
+        private const val JEENY_PROVIDER = "jeeny"
     }
 }

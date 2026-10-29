@@ -48,6 +48,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import app.sabbaq.R
 import app.sabbaq.core.engine.PaymentMode
+import app.sabbaq.core.engine.TargetApp
 import app.sabbaq.ui.theme.LocalReducedMotion
 import app.sabbaq.ui.theme.SabbaqMotion
 
@@ -90,12 +91,14 @@ internal fun AdvancedFiltersEditor(
             }
         }
 
+        TargetAppCondition(draft, onDraftChange)
         FareRangeCondition(draft, errors, onDraftChange)
         PickupTimeCondition(draft, errors, onDraftChange)
         HighFareOverrideCondition(draft, errors, onDraftChange)
         DestinationCondition(draft, onDraftChange)
         NoDestinationCondition(draft, onDraftChange)
         PaymentCondition(draft, onDraftChange)
+        if (draft.targetApp == TargetApp.BOLT || draft.targetApp == TargetApp.BOTH) BoltOnlyConditions(draft, errors, onDraftChange)
         SmartDelayCondition(draft, errors, onDraftChange)
     }
 }
@@ -282,6 +285,68 @@ internal fun NoDestinationCondition(
             modifier = Modifier.weight(1f),
             maxLines = 2,
         )
+    }
+}
+
+/** FareSniper `targetApp`: which ride app Sabbaq watches (Jeeny by default). */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun TargetAppCondition(draft: FilterDraft, onDraftChange: (FilterDraft) -> Unit) {
+    FilterGroup(
+        title = stringResource(R.string.afe_target_title),
+        subtitle = stringResource(R.string.afe_target_sub),
+        filledCount = 1,
+    ) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            listOf(
+                TargetApp.JEENY to R.string.afe_target_jeeny, TargetApp.BOLT to R.string.afe_target_bolt,
+                TargetApp.PETRA to R.string.afe_target_petra, TargetApp.BOTH to R.string.afe_target_all,
+            ).forEach { (app, label) ->
+                FilterChip(
+                    selected = draft.targetApp == app,
+                    onClick = { onDraftChange(draft.copy(targetApp = app)) },
+                    label = { Text(stringResource(label), style = MaterialTheme.typography.labelSmall) },
+                    modifier = Modifier.height(32.dp).testTag("target-" + app.name.lowercase()),
+                )
+            }
+        }
+    }
+}
+
+/** Rating and wait-&-save: FareSniper reads them on Bolt only. */
+@Composable
+internal fun BoltOnlyConditions(draft: FilterDraft, errors: Map<String, String>, onDraftChange: (FilterDraft) -> Unit) {
+    ProConditionCard(
+        title = stringResource(R.string.afe_rating_title),
+        subtitle = stringResource(R.string.afe_rating_sub),
+        enabled = draft.ratingEnabled,
+        testKey = "rating",
+        onEnabledChange = { enabled ->
+            onDraftChange(draft.copy(ratingEnabled = enabled, minRating = if (enabled) draft.minRating.ifBlank { "4.5" } else draft.minRating))
+        },
+        footer = {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.afe_rating_reject_unknown), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                Switch(checked = draft.ratingRejectOnUnknown, onCheckedChange = { onDraftChange(draft.copy(ratingRejectOnUnknown = it)) },
+                    modifier = Modifier.testTag("rating-reject-unknown"))
+            }
+        },
+    ) { dimmed ->
+        CompactStepperValue(
+            stringResource(R.string.afe_rating_min), draft.minRating, "★", "0.1", KeyboardType.Decimal,
+            onValueChange = { onDraftChange(draft.copy(minRating = it)) }, testKey = "min-rating",
+            modifier = Modifier.weight(1f), error = errors["minRating"], dimmed = dimmed,
+        )
+    }
+    ProConditionCard(
+        title = stringResource(R.string.afe_waitsave_title),
+        subtitle = null,
+        enabled = draft.excludeWaitSave,
+        testKey = "wait-save",
+        onEnabledChange = { onDraftChange(draft.copy(excludeWaitSave = it)) },
+    ) {
+        Text(stringResource(R.string.afe_waitsave_sub), style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f), maxLines = 2)
     }
 }
 

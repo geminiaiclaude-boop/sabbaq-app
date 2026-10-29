@@ -5,6 +5,8 @@ import app.sabbaq.core.engine.DestinationMode
 import app.sabbaq.core.engine.EngineConfig
 import app.sabbaq.core.engine.LogicMode
 import app.sabbaq.core.engine.PaymentMode
+import app.sabbaq.core.engine.TargetApp
+import app.sabbaq.core.engine.WaitSaveMode
 import kotlinx.serialization.Serializable
 
 /**
@@ -31,6 +33,11 @@ data class FilterDraft(
     val snipingNoDest: Boolean = true,
     val bypassTimeEnabled: Boolean = false,
     val bypassTimePrice: String = "",
+    val targetApp: TargetApp = TargetApp.JEENY,
+    val ratingEnabled: Boolean = false,
+    val minRating: String = "",
+    val ratingRejectOnUnknown: Boolean = false,
+    val excludeWaitSave: Boolean = false,
     val paymentMode: PaymentMode = PaymentMode.ALL,
     val paymentRejectOnUnknown: Boolean = false,
     val smartDelayEnabled: Boolean = false,
@@ -47,6 +54,8 @@ data class FilterDraft(
         val bypass = decimal("bypassTimePrice", bypassTimePrice, errors)
         val dMin = whole("smartDelayMin", smartDelayMin, errors)
         val dMax = whole("smartDelayMax", smartDelayMax, errors)
+        val rating = decimal("minRating", minRating, errors)
+        if (rating != null && rating > 5.0) errors["minRating"] = invalid()
         if (minP != null && maxP != null && maxP > 0 && minP > maxP) { errors["minPrice"] = rangeError(); errors["maxPrice"] = rangeError() }
         if (minT != null && maxT != null && maxT > 0 && minT > maxT) { errors["minTime"] = rangeError(); errors["maxTime"] = rangeError() }
         if (dMin != null && dMax != null && dMin > dMax) { errors["smartDelayMin"] = rangeError(); errors["smartDelayMax"] = rangeError() }
@@ -62,8 +71,10 @@ data class FilterDraft(
             snipingNoDest = snipingNoDest,
             bypassTimeEnabled = bypassTimeEnabled, bypassTimePrice = bypass ?: 0.0,
             paymentFilterMode = paymentMode, paymentRejectOnUnknown = paymentRejectOnUnknown,
-            ratingFilterEnabled = base.ratingFilterEnabled, minRating = base.minRating,
-            ratingRejectOnUnknown = base.ratingRejectOnUnknown, waitSaveFilterMode = base.waitSaveFilterMode,
+            ratingFilterEnabled = ratingEnabled, minRating = rating ?: 0.0,
+            ratingRejectOnUnknown = ratingRejectOnUnknown,
+            waitSaveFilterMode = if (excludeWaitSave) WaitSaveMode.EXCLUDE else WaitSaveMode.OFF,
+            targetApp = targetApp,
             smartDelayEnabled = smartDelayEnabled, smartDelayMinMs = dMin ?: 0, smartDelayMaxMs = dMax ?: 0,
             acceptKeywordsExtra = base.acceptKeywordsExtra, timeKeywordsExtra = base.timeKeywordsExtra,
             currencyKeywordsExtra = base.currencyKeywordsExtra, noiseKeywordsExtra = base.noiseKeywordsExtra,
@@ -80,6 +91,8 @@ data class FilterDraft(
         destExcludeEnabled && excludeMode,
         bypassTimeEnabled,
         paymentMode != PaymentMode.ALL,
+        ratingEnabled && minRating.isNotBlank(),
+        excludeWaitSave,
     ).count { it }
 
     companion object {
@@ -94,6 +107,9 @@ data class FilterDraft(
             excludeMode = c.destHomeMode == DestinationMode.EXCLUDE, snipingNoDest = c.snipingNoDest,
             bypassTimeEnabled = c.bypassTimeEnabled, bypassTimePrice = number(c.bypassTimePrice),
             paymentMode = c.paymentFilterMode, paymentRejectOnUnknown = c.paymentRejectOnUnknown,
+            targetApp = c.targetApp, ratingEnabled = c.ratingFilterEnabled,
+            minRating = if (c.minRating <= 0.0) "" else c.minRating.toString(),
+            ratingRejectOnUnknown = c.ratingRejectOnUnknown, excludeWaitSave = c.waitSaveFilterMode == WaitSaveMode.EXCLUDE,
             smartDelayEnabled = c.smartDelayEnabled, smartDelayMin = whole(c.smartDelayMinMs), smartDelayMax = whole(c.smartDelayMaxMs),
         )
 

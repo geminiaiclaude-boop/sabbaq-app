@@ -803,4 +803,16 @@ Write your problem or question and our team will reply here during working hours
     <string name="afe_payment_cash">Cash only</string>
     <string name="afe_payment_card">Card only</string>
     <string name="afe_payment_reject_unknown">Reject the order when its payment method is not shown</string>
+    <string name="afe_target_title">Ride app</string>
+    <string name="afe_target_sub">Which app Sabbaq watches for orders</string>
+    <string name="afe_target_jeeny">Jeeny</string>
+    <string name="afe_target_bolt">Bolt</string>
+    <string name="afe_target_petra">PetraRide</string>
+    <string name="afe_target_all">All</string>
+    <string name="afe_rating_title">Rider rating (Bolt)</string>
+    <string name="afe_rating_sub">Accept riders rated at least this</string>
+    <string name="afe_rating_min">Lowest rating</string>
+    <string name="afe_rating_reject_unknown">Reject the order when the rating is not shown</string>
+    <string name="afe_waitsave_title">Skip «wait & save» orders (Bolt)</string>
+    <string name="afe_waitsave_sub">Bolt economy orders that make you wait are rejected</string>
 </resources>

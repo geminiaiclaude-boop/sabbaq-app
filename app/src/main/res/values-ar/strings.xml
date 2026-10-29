@@ -810,4 +810,16 @@
     <string name="afe_payment_cash">نقدًا فقط</string>
     <string name="afe_payment_card">بطاقة فقط</string>
     <string name="afe_payment_reject_unknown">ارفض الطلب حين لا تظهر طريقة الدفع</string>
+    <string name="afe_target_title">تطبيق الرحلات</string>
+    <string name="afe_target_sub">التطبيق الذي يتابع فيه سبّاق الطلبات</string>
+    <string name="afe_target_jeeny">جيني</string>
+    <string name="afe_target_bolt">بولت</string>
+    <string name="afe_target_petra">بترا رايد</string>
+    <string name="afe_target_all">الكل</string>
+    <string name="afe_rating_title">تقييم الراكب (بولت)</string>
+    <string name="afe_rating_sub">اقبل الركاب الذين تقييمهم لا يقل عن هذا</string>
+    <string name="afe_rating_min">أقل تقييم</string>
+    <string name="afe_rating_reject_unknown">ارفض الطلب حين لا يظهر التقييم</string>
+    <string name="afe_waitsave_title">تجاهل طلبات «انتظر ووفّر» (بولت)</string>
+    <string name="afe_waitsave_sub">تُرفض طلبات بولت الاقتصادية التي تتطلب الانتظار</string>
 </resources>

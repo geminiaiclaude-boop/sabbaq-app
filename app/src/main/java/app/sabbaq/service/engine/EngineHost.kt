@@ -15,6 +15,8 @@ import app.sabbaq.core.engine.Decision
 import app.sabbaq.core.engine.EngineConfig
 import app.sabbaq.core.engine.FlowAction
 import app.sabbaq.core.engine.JeenyScreenReader
+import app.sabbaq.core.engine.RideApp
+import app.sabbaq.core.engine.RideApps
 import app.sabbaq.core.engine.OfferFlow
 import app.sabbaq.core.engine.ParsedRide
 import app.sabbaq.core.engine.PendingOutcome
@@ -163,14 +165,15 @@ class EngineHost(
         var root: AccessibilityNodeInfo? = null
         var parsed: ParsedRide? = null
         if (!abort.get()) {
-            root = runCatching { service.rootInActiveWindow }.getOrNull()?.takeIf(::isRideAppRoot)
-            if (root != null) {
-                val reader = JeenyScreenReader(cfg) { SystemClock.uptimeMillis() }
-                val live = LiveNode(root)
+            root = runCatching { service.rootInActiveWindow }.getOrNull()
+            val app = root?.let { appOf(it.packageName?.toString(), cfg) }
+            if (root != null && app != null) {
                 val idle = if (frame.abandons < OfferFlow.MAX_BOOKED_READ_ABANDONS) start + OfferFlow.BOOKED_READ_IDLE_BUDGET_MS else 0L
-                parsed = flow.learnedIds?.let { runCatching { reader.readByLearnedIds(live, it) }.getOrNull() }
-                    ?: runCatching { reader.read(live, height, idleDeadline = idle, abort = abort) }.getOrNull()
-            }
+                parsed = runCatching {
+                    RideApps.read(app, LiveNode(root), height, cfg, flow.learnedIds, { SystemClock.uptimeMillis() },
+                        idleDeadline = idle, abort = abort)
+                }.getOrNull()
+            } else root = null
         }
         val aborted = abort.get() || parsed?.aborted == true
         synchronized(bookingLock) { inFlight.remove(abort) }
@@ -195,19 +198,20 @@ class EngineHost(
     private fun processFrame(detectedAtMs: Long, subtree: AccessibilityNodeInfo?, allowAsyncBook: Boolean, booked: BookedResult?) {
         val cfg = config()
         val height = service.resources.displayMetrics.heightPixels
-        val reader = JeenyScreenReader(cfg) { SystemClock.uptimeMillis() }
         val started = SystemClock.uptimeMillis()
+        var app: RideApp? = null
         var root: AccessibilityNodeInfo? = null
         var parsed: ParsedRide? = null
         var source = "root"
         if (booked != null) {
             root = booked.root
             parsed = booked.parsed
+            app = root?.let { appOf(it.packageName?.toString(), cfg) }
         } else if (subtree != null) {
             source = "subtree"
-            val live = LiveNode(subtree)
-            parsed = flow.learnedIds?.let { reader.readByLearnedIds(live, it) }
-                ?: reader.read(live, height, hardDeadline = SystemClock.uptimeMillis() + OfferFlow.SUBTREE_PARSE_BUDGET_MS)
+            app = appOf(subtree.packageName?.toString(), cfg) ?: return
+            parsed = RideApps.read(app, LiveNode(subtree), height, cfg, flow.learnedIds, { SystemClock.uptimeMillis() },
+                hardDeadline = SystemClock.uptimeMillis() + OfferFlow.SUBTREE_PARSE_BUDGET_MS)
             if (parsed?.aborted == true || (parsed?.acceptNode == null && parsed?.isActiveRide != true)) parsed = null
         }
         if (parsed == null && booked == null) {
@@ -217,39 +221,43 @@ class EngineHost(
                 return
             }
             newestDecidedReadStart = maxOf(newestDecidedReadStart, SystemClock.uptimeMillis())
-            root = runCatching { service.rootInActiveWindow }.getOrNull()?.takeIf(::isRideAppRoot) ?: run {
+            val active = runCatching { service.rootInActiveWindow }.getOrNull()
+            val activeApp = active?.let { appOf(it.packageName?.toString(), cfg) }
+            if (active == null || activeApp == null) {
                 lastEventProcessedMs = System.currentTimeMillis()
                 return
             }
-            val live = LiveNode(root)
-            parsed = flow.learnedIds?.let { reader.readByLearnedIds(live, it) } ?: reader.read(live, height)
+            root = active
+            app = activeApp
+            parsed = RideApps.read(activeApp, LiveNode(active), height, cfg, flow.learnedIds, { SystemClock.uptimeMillis() })
         }
         if (parsed?.fromFastIds == true) source = "fast_ids"
         val parseMs = booked?.elapsedMs ?: (SystemClock.uptimeMillis() - started)
         if (parsed != null && parsed.acceptNode != null) listener.onOffer(parsed, source)
         val verifyRoot = root
         val action = flow.onFrame(
-            parsed = parsed, config = cfg, fromRoot = verifyRoot != null, isJeeny = true, parseMs = parseMs,
+            parsed = parsed, config = cfg, fromRoot = verifyRoot != null, isJeeny = app == RideApp.JEENY, parseMs = parseMs,
             frameDetectedMs = detectedAtMs,
             verify = { verifyRoot?.let { PostAcceptVerifier.verify(LiveNode(it)) } ?: PostAcceptOutcome.Inconclusive },
+            isBolt = app == RideApp.BOLT,
             onPendingOutcome = ::handleOutcome,
         )
         lastEventProcessedMs = System.currentTimeMillis()
         when (action) {
             is FlowAction.Idle -> listener.onIdle(action.reason)
             is FlowAction.Rejected -> listener.onRejected(action.ride, action.decision, action.firstTimeForThisOffer)
-            is FlowAction.Tap -> scheduleTap(action, detectedAtMs, cfg, height)
+            is FlowAction.Tap -> scheduleTap(action, detectedAtMs, cfg, height, app == RideApp.JEENY)
         }
     }
 
-    private fun scheduleTap(action: FlowAction.Tap, detectedAtMs: Long, cfg: EngineConfig, height: Int) {
+    private fun scheduleTap(action: FlowAction.Tap, detectedAtMs: Long, cfg: EngineConfig, height: Int, isJeeny: Boolean) {
         val target = action.ride.acceptNode ?: return
         val pending = action.pending
         main.postDelayed({ flow.onWatchdog(pending)?.let(::handleOutcome) }, OfferFlow.WATCHDOG_MS + pending.delayMs)
         val tap = Runnable {
             val method = if (allowed() && isRideAppNode(target)) clickLadder(target) else "not_dispatched"
             listener.onTap(action.ride, action.decision, pending, method, System.currentTimeMillis() - detectedAtMs)
-            if (action.ride.destination == null) lateCapture(pending, cfg, height)
+            if (isJeeny && action.ride.destination == null) lateCapture(pending, cfg, height)
         }
         if (pending.delayMs > 0) main.postDelayed(tap, pending.delayMs) else tap.run()
     }
@@ -269,7 +277,8 @@ class EngineHost(
     /** Late capture (§10): 60 ms after the tap, a bounded re-read fills the destination for the report. */
     private fun lateCapture(pending: PendingRide, cfg: EngineConfig, height: Int) {
         main.postDelayed({
-            val root = runCatching { service.rootInActiveWindow }.getOrNull()?.takeIf(::isRideAppRoot) ?: return@postDelayed
+            val root = runCatching { service.rootInActiveWindow }.getOrNull()
+                ?.takeIf { appOf(it.packageName?.toString(), cfg) == RideApp.JEENY } ?: return@postDelayed
             val deadline = SystemClock.uptimeMillis() + OfferFlow.LATE_CAPTURE_BUDGET_MS
             val late = runCatching {
                 JeenyScreenReader(cfg) { SystemClock.uptimeMillis() }.read(LiveNode(root), height, collectAddresses = true, hardDeadline = deadline)
@@ -316,17 +325,13 @@ class EngineHost(
         main.post { runCatching { service.dispatchGesture(gesture, null, null) } }
     }
 
-    /** Only the ride app's own windows are read or tapped (FareSniper's Jeeny routing, §5). */
-    private fun isRideAppRoot(root: AccessibilityNodeInfo): Boolean = isRidePackage(root.packageName?.toString())
+    /** Only the watched ride apps' own windows are read or tapped (FareSniper's routing, §5). */
+    private fun appOf(packageName: String?, cfg: EngineConfig): RideApp? = RideApps.of(packageName, cfg.targetApp)
 
-    private fun isRideAppNode(node: UiNode): Boolean = (node as? LiveNode)?.let { isRidePackage(it.packageName) } ?: true
+    private fun isRideAppNode(node: UiNode): Boolean =
+        (node as? LiveNode)?.let { appOf(it.packageName, config()) != null } ?: true
 
     private companion object {
-        fun isRidePackage(packageName: String?): Boolean {
-            val p = packageName?.lowercase() ?: return false
-            return p == "me.com.easytaxista" || "jeeny" in p || "easytaxi" in p
-        }
-
         val NOISE_WIDGETS = listOf("scrollbar", "edittext", "progressbar", "seekbar", "switch", "toast")
         val PROBE_WORDS = listOf("jod", "sar", "$", "د.أ", "﷼", "ريال", "mins", "min ", "دقيق", "away",
             "accept", "reject", "قبول", "رفض", "عرض")
