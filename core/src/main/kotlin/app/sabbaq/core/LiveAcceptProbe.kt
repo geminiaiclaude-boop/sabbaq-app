@@ -13,6 +13,21 @@ object LiveAcceptProbe {
     const val PROFILE_ID = "selftest"
     const val TIMEOUT_MS = 20_000L
 
+    /**
+     * The mock card's lines, in the order the real Jeeny card (Oct 2026) shows them: trip kind,
+     * pickup time, pickup distance, earnings label, fare, the net-earnings note, two addresses.
+     */
+    val MOCK_CARD_LINES = listOf(
+        "مشوار داخل المدينة",
+        "يبعُد 4 دقائق",
+        "يبعُد 1.5كم",
+        "ستربح",
+        "25.50 ر.س",
+        "صافي الأرباح بعد الرسوم وضريبة القيمة المضافة",
+        "Al-Rehab - Abdullah Bin Al-Ashhab,",
+        "Near 3253, Awwad Al Qabidi",
+    )
+
     /** Steps in the order a real acceptance passes them. */
     enum class Step { EVENT, READ, PARSED, ACCEPT_FOUND, DISPATCHED, CLICK_RECEIVED, CONFIRMED }
 

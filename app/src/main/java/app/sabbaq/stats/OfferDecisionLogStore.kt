@@ -30,6 +30,9 @@ object OfferDecisionLogStore {
     private val json = Json { ignoreUnknownKeys = true }
     private var prefs: SharedPreferences? = null
     private var entries = emptyList<OfferDecisionLogEntry>()
+    private val _rows = kotlinx.coroutines.flow.MutableStateFlow(emptyList<OfferDecisionLogEntry>())
+    /** Newest first; updates on every decision so the log screen stays live. */
+    val rows: kotlinx.coroutines.flow.StateFlow<List<OfferDecisionLogEntry>> = _rows
     private val observedFingerprintHashes = LinkedHashSet<Int>()
 
     fun init(context: Context) = synchronized(lock) {
@@ -75,8 +78,12 @@ object OfferDecisionLogStore {
     fun clear(context: Context): Boolean = synchronized(lock) {
         val target = prefs ?: context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).also { prefs = it }
         val ok = runCatching { target.edit().remove(KEY).commit() }.getOrDefault(false)
-        if (ok) { entries = emptyList(); observedFingerprintHashes.clear() }
+        if (ok) { entries = emptyList(); observedFingerprintHashes.clear(); publishLocked() }
         ok
+    }
+
+    private fun publishLocked() {
+        _rows.value = entries.sortedByDescending { it.timestampEpochMs }
     }
 
     private fun appendLocked(entry: OfferDecisionLogEntry) {
@@ -84,6 +91,7 @@ object OfferDecisionLogStore {
         pruneLocked(entry.timestampEpochMs)
         entries = (entries + entry).takeLast(MAX_ENTRIES)
         persistLocked()
+        publishLocked()
     }
 
     private fun pruneLocked(now: Long) {

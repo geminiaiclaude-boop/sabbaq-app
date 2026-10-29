@@ -40,6 +40,9 @@ object ProfileRepository {
 
     fun versionOf(profileId: String): Int? = current().firstOrNull { it.id == profileId }?.version
 
+    /** Package names a profile watches, including administration updates. */
+    fun packagesOf(profileId: String): List<String> = current().firstOrNull { it.id == profileId }?.packages.orEmpty()
+
     /** Fetches published profiles when the cached copy is older than six hours (or [force]). */
     suspend fun refreshIfStale(force: Boolean = false) {
         val now = SystemClock.elapsedRealtime()

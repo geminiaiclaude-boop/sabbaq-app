@@ -8,6 +8,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -209,25 +210,32 @@ private fun LiveAcceptTestScreen(onOpenAccessibility: () -> Unit, onClose: () ->
     }
 }
 
-/** The mock offer, drawn with the same kind of texts a Jeeny offer shows. */
+/**
+ * The mock offer, laid out like the real Jeeny card seen in the field (Oct 2026): the same lines
+ * in the same order, no trip distance or duration (Jeeny shows none), and an accept area that is
+ * a clickable container around its label rather than a standard button.
+ */
 @Composable
 private fun MockOfferCard(accepted: Boolean, onAccept: () -> Unit) {
     val brand = LocalSabbaqBrand.current
     SabbaqCard {
-        Text("طلب تجريبي من سبّاق", style = MaterialTheme.typography.titleMedium)
-        Text("25 ر.س", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
-        Text("الوصول 1.2 كم · 4 دقائق", style = MaterialTheme.typography.bodyMedium)
-        Text("الرحلة 8.5 كم · 15 دقيقة", style = MaterialTheme.typography.bodyMedium)
-        Text("شارع الملك فهد", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("طريق الأمير محمد بن سلمان", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        LiveAcceptProbe.MOCK_CARD_LINES.forEach { line ->
+            Text(line, style = MaterialTheme.typography.bodyMedium)
+        }
         if (accepted) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = brand.success)
                 Text(LiveAcceptProbe.CONFIRM_LABEL, style = MaterialTheme.typography.titleMedium, color = brand.success)
             }
         } else {
-            Button(onClick = onAccept, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
-                Text(LiveAcceptProbe.ACCEPT_LABEL)
+            Box(
+                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)
+                    .clip(MaterialTheme.shapes.medium)
+                    .background(MaterialTheme.colorScheme.primary)
+                    .clickable(onClick = onAccept),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(LiveAcceptProbe.ACCEPT_LABEL, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onPrimary)
             }
         }
     }

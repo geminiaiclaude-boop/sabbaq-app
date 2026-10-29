@@ -312,15 +312,21 @@ object TelemetryRepository {
     /** Called on the worker only; cached so PackageManager is queried at most every few minutes. */
     @Suppress("DEPRECATION")
     private fun installedVersion(provider: String): String? {
-        val packageName = providerPackages[provider] ?: return null
+        val candidates = listOfNotNull(providerPackages[provider]) +
+            runCatching { ProfileRepository.packagesOf(provider) }.getOrDefault(emptyList())
+        if (candidates.isEmpty()) return null
         val now = SystemClock.elapsedRealtime()
         synchronized(targetVersions) {
             targetVersions[provider]?.let { (version, at) -> if (now - at < TARGET_VERSION_TTL_MS) return version }
         }
         val version = runCatching {
             val manager = appContext?.packageManager ?: return null
-            if (Build.VERSION.SDK_INT >= 33) manager.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(0)).versionName
-            else manager.getPackageInfo(packageName, 0).versionName
+            candidates.distinct().firstNotNullOfOrNull { packageName ->
+                runCatching {
+                    if (Build.VERSION.SDK_INT >= 33) manager.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(0)).versionName
+                    else manager.getPackageInfo(packageName, 0).versionName
+                }.getOrNull()
+            }
         }.getOrNull()
         synchronized(targetVersions) { targetVersions[provider] = version to now }
         return version

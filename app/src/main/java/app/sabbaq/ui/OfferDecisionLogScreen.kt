@@ -22,6 +22,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,7 +57,9 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun OfferDecisionLogScreen(onBack: () -> Unit) {
     val context = LocalContext.current
+    val liveRows by OfferDecisionLogStore.rows.collectAsState()
     var rows by remember { mutableStateOf(OfferDecisionLogStore.snapshot()) }
+    LaunchedEffect(liveRows) { rows = OfferDecisionLogStore.snapshot() }
     var askClear by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<SabbaqStatus?>(null) }
 
