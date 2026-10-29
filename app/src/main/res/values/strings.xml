@@ -945,4 +945,6 @@ Write your problem or question and our team will reply here during working hours
     <string name="ref_claim_window">The time to enter an invite code has ended.</string>
     <string name="ref_claim_paid">An invite code cannot be added after a paid subscription.</string>
     <string name="ref_claim_invalid">The invite code is not valid.</string>
+    <string name="diag_on_trip_t">On a trip</string>
+    <string name="diag_on_trip_b">Sabbaq accepted an order and you are on its trip. It watches for the next order when the trip ends.</string>
 </resources>

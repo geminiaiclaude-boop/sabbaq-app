@@ -14,6 +14,8 @@ data class FunnelSnapshot(
     val lastGateBlockAtMs: Long,
     val lastGateReason: String?,
     val lastTapAtMs: Long,
+    /** A trip is in progress (confirmed accept or trip screen, no new offer since). */
+    val onTrip: Boolean = false,
 ) {
     fun count(key: String): Int = counts[key] ?: 0
     fun sum(prefix: String): Int = counts.entries.sumOf { if (it.key.startsWith(prefix)) it.value else 0 }
@@ -46,6 +48,9 @@ class AcceptanceFunnel(private val nowMs: () -> Long) {
     private var lastGateBlockAtMs = 0L
     private var lastGateReason: String? = null
     private var lastTapAtMs = 0L
+    /** Set by a confirmed accept or a trip screen; cleared by the next offer read. */
+    private var tripSinceMs = 0L
+    private var lastOfferKey: String? = null
 
     fun serviceConnected(connected: Boolean) = synchronized(lock) { serviceConnected = connected }
 
@@ -53,17 +58,34 @@ class AcceptanceFunnel(private val nowMs: () -> Long) {
     fun gateBlocked(reason: String?) = synchronized(lock) {
         lastGateBlockAtMs = nowMs(); lastGateReason = reason; add("gate:" + (reason ?: "unknown"))
     }
-    /** A screen of the ride app gave no offer; [reason] from the reader ("no_accept", "not_offer_screen"…). */
-    fun readMiss(reason: String) = synchronized(lock) { add("miss:$reason") }
+    /**
+     * A screen of the ride app gave no offer; [reason] from the reader ("no_accept", "not_offer_screen"…).
+     * During a trip (after a confirmed accept, until the next offer) such screens are trip screens,
+     * not offers that failed to read.
+     */
+    fun readMiss(reason: String): Boolean = synchronized(lock) {
+        val onTrip = onTripLocked()
+        add(if (onTrip) "trip_screen" else "miss:$reason")
+        onTrip
+    }
+
+    /** The reader saw a trip in progress. */
+    fun activeRide() = synchronized(lock) { if (tripSinceMs == 0L) tripSinceMs = nowMs(); add("trip_screen") }
     /** The window could not be read at all ("root_unavailable", "other_app", "read_aborted"). */
     fun readFailed(reason: String) = synchronized(lock) { add("miss:$reason") }
-    fun offer() = synchronized(lock) { add("offer") }
+    /** An offer was read; [key] identifies it so its repeated frames count once. */
+    fun offer(key: String? = null) = synchronized(lock) {
+        tripSinceMs = 0L
+        if (key != null && key == lastOfferKey) return@synchronized
+        lastOfferKey = key
+        add("offer")
+    }
     fun rejected(reason: String) = synchronized(lock) { add("reject:$reason") }
     /** The flow held a decided offer back (cooldowns, post-tap suppression). */
     fun held(reason: String) = synchronized(lock) { add("held:$reason") }
     fun tapped() = synchronized(lock) { lastTapAtMs = nowMs(); add("tap") }
     fun notDispatched(cause: String) = synchronized(lock) { add("nd:$cause") }
-    fun confirmed() = synchronized(lock) { add("confirm") }
+    fun confirmed() = synchronized(lock) { tripSinceMs = nowMs(); add("confirm") }
     fun unconfirmed(kind: String) = synchronized(lock) { add("unconfirmed:$kind") }
 
     fun snapshot(): FunnelSnapshot = synchronized(lock) {
@@ -73,8 +95,10 @@ class AcceptanceFunnel(private val nowMs: () -> Long) {
             if (bucketMinute[i] < 0 || current - bucketMinute[i] >= WINDOW_MINUTES) continue
             for ((k, v) in buckets[i]) total[k] = (total[k] ?: 0) + v
         }
-        FunnelSnapshot(total, serviceConnected, lastEventAtMs, lastGateBlockAtMs, lastGateReason, lastTapAtMs)
+        FunnelSnapshot(total, serviceConnected, lastEventAtMs, lastGateBlockAtMs, lastGateReason, lastTapAtMs, onTripLocked())
     }
+
+    private fun onTripLocked(): Boolean = tripSinceMs != 0L && nowMs() - tripSinceMs < TRIP_MAX_MS
 
     private fun add(key: String) {
         val minute = nowMs() / 60_000L
@@ -88,6 +112,8 @@ class AcceptanceFunnel(private val nowMs: () -> Long) {
         /** No ride-app event for this long means the ride app is not reaching Sabbaq. */
         const val QUIET_MS = 15 * 60_000L
         const val GATE_RECENT_MS = 2 * 60_000L
+        /** Longest trip assumed; afterwards misses count again even without a new offer. */
+        const val TRIP_MAX_MS = 3 * 60 * 60_000L
 
         /**
          * The first step, in the order an offer travels, that explains why nothing was accepted
@@ -99,6 +125,7 @@ class AcceptanceFunnel(private val nowMs: () -> Long) {
             if (s.lastGateBlockAtMs > 0 && nowMs - s.lastGateBlockAtMs < GATE_RECENT_MS && s.lastGateBlockAtMs >= s.lastTapAtMs) {
                 return FunnelVerdict("gate_" + (s.lastGateReason ?: "blocked"), FunnelStep.GATE, s.lastGateReason)
             }
+            if (s.onTrip) return FunnelVerdict("on_trip", FunnelStep.WORKING)
             if (s.confirmed > 0) return FunnelVerdict("working", FunnelStep.WORKING)
             if (s.events == 0 || s.lastEventAtMs == 0L || nowMs - s.lastEventAtMs > QUIET_MS) {
                 return FunnelVerdict("no_ride_app_events", FunnelStep.EVENTS)

@@ -952,4 +952,6 @@
     <string name="ref_claim_window">انتهت مدة إدخال رمز الدعوة.</string>
     <string name="ref_claim_paid">لا يُقبل رمز الدعوة بعد وجود اشتراك مدفوع.</string>
     <string name="ref_claim_invalid">رمز الدعوة غير صحيح.</string>
+    <string name="diag_on_trip_t">في رحلة</string>
+    <string name="diag_on_trip_b">قبل سبّاق طلبًا وأنت في رحلته الآن. سيراقب الطلب التالي عند انتهاء الرحلة.</string>
 </resources>

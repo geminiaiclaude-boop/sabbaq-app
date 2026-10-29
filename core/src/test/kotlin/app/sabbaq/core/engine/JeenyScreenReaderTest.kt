@@ -47,6 +47,32 @@ class JeenyScreenReaderTest {
         assertEquals(540, ride.clickX)
     }
 
+    /** Field session 2026-10-29: a trip screen with a fare and «عرض الاتجاهات» is a trip, not an offer. */
+    @Test
+    fun a_trip_screen_with_a_fare_and_directions_is_an_active_ride() {
+        val directions = FakeNode(text = "عرض الاتجاهات", isClickable = true, rect = Bounds(80, 2180, 1000, 2310))
+        val root = FakeNode(className = "android.widget.FrameLayout", rect = Bounds(0, 0, 1080, 2400), children = listOf(
+            FakeNode(text = "⃁ 25.50", rect = row(1500)),
+            FakeNode(text = "تأكيد الاستلام", isClickable = true, rect = row(1700)),
+            directions,
+        ))
+        val ride = reader().read(root, height)!!
+        assertTrue(ride.isActiveRide)
+        assertNull(ride.acceptNode)
+    }
+
+    @Test
+    fun an_explicit_accept_still_wins_on_a_screen_with_a_trip_phrase() {
+        val (card, frame) = jeenyCard()
+        val root = FakeNode(className = "android.widget.FrameLayout", rect = Bounds(0, 0, 1080, 2400),
+            children = card.kids + FakeNode(className = "android.widget.LinearLayout", rect = row(2350),
+                children = listOf(FakeNode(text = "نقطة الانطلاق", rect = row(2350)))))
+        val ride = reader().read(root, height)!!
+        assertFalse(ride.isActiveRide)
+        assertSame(frame, ride.acceptNode)
+        assertEquals(JeenyLexicon.ACCEPT.indexOf("قبول"), ride.acceptWord)
+    }
+
     @Test
     fun accepts_a_button_that_no_ancestor_marks_clickable_by_tapping_the_text_itself() {
         val (root, _) = jeenyCard(acceptClickableFrame = false)

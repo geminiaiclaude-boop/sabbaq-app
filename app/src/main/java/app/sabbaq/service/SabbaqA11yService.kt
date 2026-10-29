@@ -133,7 +133,7 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
         liveness.offerDetected(now)
         runtimeStatus.offer(now)
         record(DiagnosticStage.OFFER_DETECTED, now, if (ride.price == null) "fare_missing" else "complete", detail = "src=$source,n=${ride.nodesVisited}")
-        DiagnosisRepository.funnel.offer()
+        DiagnosisRepository.funnel.offer(fingerprint(ride))
         runCatching { OfferStatsStore.recordVisible(fingerprint(ride)) }
     }
 
@@ -204,6 +204,7 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
 
     override fun onIdle(reason: String) {
         if (reason == "no_offer") return
+        if (reason == "active_ride") DiagnosisRepository.funnel.activeRide()
         if (reason in HELD_REASONS) DiagnosisRepository.funnel.held(reason)
         record(DiagnosticStage.STALE, SystemClock.elapsedRealtime(), reason)
     }
@@ -214,9 +215,12 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
             DiagnosisRepository.funnel.readFailed(reason)
             record(DiagnosticStage.ROOT_UNAVAILABLE, now, reason)
         } else {
-            DiagnosisRepository.funnel.readMiss(reason)
+            val onTrip = DiagnosisRepository.funnel.readMiss(reason)
             // A plain map or menu screen is normal; only half-read offers go to telemetry.
-            if (reason != "not_offer_screen") record(DiagnosticStage.OFFER_NOT_PARSED, now, reason, detail = detail)
+            when {
+                onTrip -> record(DiagnosticStage.STALE, now, "trip_screen", detail = detail)
+                reason != "not_offer_screen" -> record(DiagnosticStage.OFFER_NOT_PARSED, now, reason, detail = detail)
+            }
         }
         DiagnosisRepository.refresh()
     }

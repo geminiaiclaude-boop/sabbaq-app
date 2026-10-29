@@ -96,6 +96,7 @@ private fun diagnosisText(v: FunnelVerdict): Pair<String, String> {
         "tap_not_confirmed" -> stringResource(R.string.diag_not_confirmed_t) to stringResource(R.string.diag_not_confirmed_b)
         "tap_pending" -> stringResource(R.string.diag_pending_t) to stringResource(R.string.diag_pending_b)
         "working" -> stringResource(R.string.diag_working_t) to stringResource(R.string.diag_working_b)
+        "on_trip" -> stringResource(R.string.diag_on_trip_t) to stringResource(R.string.diag_on_trip_b)
         else -> if (v.code.startsWith("gate_")) stringResource(R.string.diag_paused_t) to stringResource(R.string.diag_paused_b)
         else stringResource(R.string.diag_waiting_t) to stringResource(R.string.diag_waiting_b)
     }

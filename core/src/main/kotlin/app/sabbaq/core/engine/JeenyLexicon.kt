@@ -63,6 +63,17 @@ class JeenyLexicon(
         val ONLINE_PATTERN: Pattern = anyOf(ONLINE)
         val UNIT_PATTERN: Pattern = anyOf(UNIT_WORDS)
         val ACTIVE_RIDE_PATTERN: Pattern = anyOf(ACTIVE_RIDE)
+
+        /**
+         * Explicit accept words. On a screen that also shows a trip phrase only these make an accept
+         * control: trip screens carry "عرض الاتجاهات" / confirm-pickup buttons whose words ("عرض",
+         * "تأكيد", "استلام") are in [ACCEPT] too (field session 2026-10-29).
+         */
+        val STRONG_ACCEPT_PATTERN: Pattern = anyOf(listOf("قبول", "accept"))
+
+        /** Index of the [ACCEPT] word in [lower] (privacy-safe telemetry), explicit words first, or -1. */
+        fun acceptWordIndex(lower: String): Int =
+            listOf("قبول", "accept").firstOrNull { it in lower }?.let { ACCEPT.indexOf(it) } ?: ACCEPT.indexOfFirst { it in lower }
         val NETWORK_PATTERN: Pattern = anyOf(NETWORK_ERRORS)
         val CARD_PATTERN: Pattern = anyOf(CARD)
         val CASH_PATTERN: Pattern = anyOf(CASH)

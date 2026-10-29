@@ -34,6 +34,8 @@ data class ParsedRide(
     val nodesVisited: Int = 0,
     /** Centres (x, y px) of the offer map's markers, read only when a zone needs the direction. */
     val markers: List<IntArray> = emptyList(),
+    /** Which accept word made the accept control (index in JeenyLexicon.ACCEPT), -1 when none. */
+    val acceptWord: Int = -1,
     /** Which ride app the screen came from: "jeeny", "bolt" or "petra" (telemetry and the decision log). */
     val provider: String = "jeeny",
 ) {
@@ -138,6 +140,8 @@ class JeenyScreenReader(private val config: EngineConfig, private val uptimeMs: 
         var minutes: Int? = null
         var accept: UiNode? = null
         var acceptFound = false
+        var acceptStrong = false
+        var acceptWord = -1
         var reject: UiNode? = null
         var activeRide = false
         var online = false
@@ -258,7 +262,8 @@ class JeenyScreenReader(private val config: EngineConfig, private val uptimeMs: 
                     }
                 }
 
-                val isAccept = lex.accept.found(norm) && !JeenyLexicon.RULE.found(norm)
+                // A trip phrase ("عرض الاتجاهات") is never an accept control, even though "عرض" is an accept word.
+                val isAccept = lex.accept.found(norm) && !JeenyLexicon.RULE.found(norm) && !JeenyLexicon.ACTIVE_RIDE_PATTERN.found(norm)
                 val isReject = JeenyLexicon.REJECT_PATTERN.found(norm)
 
                 if ((collect || (addressWhenNoPrice && price == null && fallbackPrice == null)) &&
@@ -290,6 +295,8 @@ class JeenyScreenReader(private val config: EngineConfig, private val uptimeMs: 
                     clickY = own.centerY
                     acceptViewId = target.viewIdSafe()
                     acceptFound = true
+                    acceptStrong = JeenyLexicon.STRONG_ACCEPT_PATTERN.found(norm)
+                    acceptWord = JeenyLexicon.acceptWordIndex(lower)
                 }
             }
 
@@ -310,7 +317,8 @@ class JeenyScreenReader(private val config: EngineConfig, private val uptimeMs: 
                 accept = node; clickX = x; clickY = y
             }
         }
-        if (activeRide && accept == null) return ParsedRide(isActiveRide = true, nodesVisited = visited)
+        // On a trip screen only an explicit accept word ("قبول" / "accept") makes an offer.
+        if (activeRide && (accept == null || !acceptStrong)) return ParsedRide(isActiveRide = true, nodesVisited = visited)
 
         val finalPrice = price ?: fallbackPrice ?: if (currencySeen) currencyLessPrice else null
         val collectMode = collect || (addressWhenNoPrice && finalPrice == null)
@@ -334,6 +342,7 @@ class JeenyScreenReader(private val config: EngineConfig, private val uptimeMs: 
                 payment = when { cardSeen -> Payment.CARD; cashSeen -> Payment.CASH; else -> Payment.UNKNOWN }, priceViewId = priceViewId, timeViewId = timeViewId,
                 nodesVisited = visited,
                 markers = markers.map { intArrayOf((it shr 32).toInt(), it.toInt()) },
+                acceptWord = acceptWord,
             )
         }
         val sawPrice = finalPrice != null || currencySeen
@@ -343,8 +352,8 @@ class JeenyScreenReader(private val config: EngineConfig, private val uptimeMs: 
             minutes == null -> "no_minutes"
             else -> "no_price"
         }
-        lastMissDetail = "p=${if (sawPrice) 1 else 0},m=${if (minutes != null) 1 else 0},a=${if (node != null) 1 else 0},n=$visited" +
-            if (visited >= maxNodes) ",cap=1" else ""
+        lastMissDetail = "p=${if (sawPrice) 1 else 0},m=${if (minutes != null) 1 else 0},a=${if (node != null) 1 else 0}," +
+            "aw=$acceptWord,t=${if (activeRide) 1 else 0},n=$visited" + if (visited >= maxNodes) ",cap=1" else ""
         return null
     }
 
