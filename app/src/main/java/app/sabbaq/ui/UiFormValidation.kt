@@ -1,6 +1,5 @@
 package app.sabbaq.ui
 
-import app.sabbaq.core.Filters
 import app.sabbaq.LocaleManager
 import app.sabbaq.core.Text
 import java.util.Locale
@@ -32,32 +31,6 @@ internal object UiFormValidation {
     }
 
     fun normalizeActivationCode(value: String): String = value.trim().uppercase(Locale.ROOT)
-
-    fun filtersError(filters: Filters): String? {
-        val values = buildList {
-            if (filters.isFareRangeEnabled) addAll(listOf(filters.minFare, filters.maxFare))
-            if (filters.isFarePerKmEnabled) add(filters.minFarePerKm)
-            if (filters.isPickupDistanceEnabled) add(filters.maxPickupKm)
-            if (filters.isTripDistanceEnabled) addAll(listOf(filters.minTripKm, filters.maxTripKm))
-            if (filters.highFareOverrideEnabled) add(filters.highFareOverrideAmount)
-        }
-        if (values.any { !it.isNullOrBlank() && (Text.parseNumber(Text.normalize(it))?.signum() ?: -1) < 0 }) return (if (LocaleManager.isArabic()) "أدخل قيمة صحيحة أكبر من أو تساوي صفرًا." else "Enter a valid value greater than or equal to zero.")
-        if (filters.highFareOverrideEnabled && filters.highFareOverrideAmount.isBlank()) return (if (LocaleManager.isArabic()) "أدخل سعرًا صالحًا لتفعيل التجاوز." else "Enter a valid price to enable the override.")
-        fun exceeds(min: String?, max: String?): Boolean {
-            val low = min?.let { Text.parseNumber(Text.normalize(it)) } ?: return false
-            val high = max?.let { Text.parseNumber(Text.normalize(it)) } ?: return false
-            return low > high
-        }
-        fun exceedsMinutes(min: Int?, max: Int?): Boolean = min != null && max != null && min > max
-        if ((filters.isFareRangeEnabled && exceeds(filters.minFare, filters.maxFare)) ||
-            (filters.isTripDistanceEnabled && exceeds(filters.minTripKm, filters.maxTripKm))) return (if (LocaleManager.isArabic()) "اجعل الحد الأقصى أكبر من أو مساويًا للحد الأدنى." else "Make the maximum greater than or equal to the minimum.")
-        if ((filters.isPickupTimeEnabled && exceedsMinutes(filters.minPickupMinutes, filters.maxPickupMinutes)) ||
-            (filters.isTripTimeEnabled && exceedsMinutes(filters.minTripMinutes, filters.maxTripMinutes))) return (if (LocaleManager.isArabic()) "اجعل الوقت الأقصى أكبر من أو مساويًا للوقت الأدنى." else "Make the maximum time greater than or equal to the minimum time.")
-        if ((filters.isPickupTimeEnabled && listOf(filters.minPickupMinutes, filters.maxPickupMinutes).any { it != null && it < 0 }) ||
-            (filters.isTripTimeEnabled && listOf(filters.minTripMinutes, filters.maxTripMinutes).any { it != null && it < 0 })) return (if (LocaleManager.isArabic()) "مدة غير صالحة" else "Invalid duration")
-        if (filters.scheduleEnabled && (filters.scheduleStartMinute !in 0..1439 || filters.scheduleEndMinute !in 0..1440)) return (if (LocaleManager.isArabic()) "وقت تشغيل غير صالح" else "Invalid working time")
-        return null
-    }
 
     private fun isEmailValid(value: String): Boolean =
         EMAIL_PATTERN.matches(value.trim())

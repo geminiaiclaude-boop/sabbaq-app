@@ -2,7 +2,7 @@ package app.sabbaq
 
 import android.content.Context
 import android.content.SharedPreferences
-import app.sabbaq.core.Filters
+import app.sabbaq.core.engine.EngineConfig
 import app.sabbaq.voice.VoicePreferences
 import app.sabbaq.voice.VoiceRules
 import kotlinx.coroutines.Dispatchers
@@ -15,15 +15,19 @@ object Settings {
     @Volatile
     private var preferences: SharedPreferences? = null
     @Volatile
-    private var cachedFilters: Filters? = null
+    private var cachedConfig: EngineConfig? = null
 
-    /** Saved filters may carry fields a later release removed; they must not reset the rest. */
+    /** Saved settings may carry fields a later release removed; they must not reset the rest. */
     private val storedJson = Json { ignoreUnknownKeys = true }
 
+    @Volatile
+    private var appContext: Context? = null
+
     fun init(context: Context) {
+        appContext = context.applicationContext
         synchronized(this) {
             preferences = context.applicationContext.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
-            cachedFilters = null
+            cachedConfig = null
         }
     }
 
@@ -35,23 +39,24 @@ object Settings {
         isActive = false
     }
 
-    var filters: Filters
+    /** The driver's acceptance settings, the reference engine's field set and defaults (engine notes). */
+    var engineConfig: EngineConfig
         get() = synchronized(this) {
-            cachedFilters ?: run {
-                val stored = prefs().getString(KEY_FILTERS, null)
+            cachedConfig ?: run {
+                val stored = prefs().getString(KEY_ENGINE_CONFIG, null)
                 val value = try {
-                    stored?.let { storedJson.decodeFromString<Filters>(it) } ?: Filters()
+                    stored?.let { storedJson.decodeFromString<EngineConfig>(it) } ?: EngineConfig()
                 } catch (_: Exception) {
-                    Filters()
+                    EngineConfig()
                 }
-                cachedFilters = value
+                cachedConfig = value
                 value
             }
         }
         set(value) {
             synchronized(this) {
-                prefs().edit().putString(KEY_FILTERS, Json.encodeToString(value)).apply()
-                cachedFilters = null
+                prefs().edit().putString(KEY_ENGINE_CONFIG, Json.encodeToString(value)).apply()
+                cachedConfig = null
             }
         }
 
@@ -75,6 +80,27 @@ object Settings {
         get() = runCatching { prefs().getBoolean(KEY_MONITORING_WANTED, false) }.getOrDefault(false)
         set(value) { runCatching { prefs().edit().putBoolean(KEY_MONITORING_WANTED, value).apply() } }
 
+    /**
+     * Subscription end (wall-clock epoch ms) saved from the last licence answer; 0 = not known
+     * yet. With [newestSeenMs] it is all the tap gate needs (the reference engine's isSnipingAllowedNow).
+     */
+    var subscriptionEndsAtMs: Long
+        get() = runCatching { prefs().getLong(KEY_SUBSCRIPTION_ENDS_AT, 0L) }.getOrDefault(0L)
+        set(value) { runCatching { prefs().edit().putLong(KEY_SUBSCRIPTION_ENDS_AT, value).apply() } }
+
+    /** Screen point of the last tap the ride app confirmed; turbo can reuse it. -1 = none. */
+    var lastConfirmedTapX: Int
+        get() = runCatching { prefs().getInt("last_confirmed_tap_x", -1) }.getOrDefault(-1)
+        set(value) { runCatching { prefs().edit().putInt("last_confirmed_tap_x", value).apply() } }
+    var lastConfirmedTapY: Int
+        get() = runCatching { prefs().getInt("last_confirmed_tap_y", -1) }.getOrDefault(-1)
+        set(value) { runCatching { prefs().edit().putInt("last_confirmed_tap_y", value).apply() } }
+
+    /** Newest wall-clock time seen, to refuse a clock set back to extend the subscription. */
+    var newestSeenMs: Long
+        get() = runCatching { prefs().getLong(KEY_NEWEST_SEEN, 0L) }.getOrDefault(0L)
+        set(value) { runCatching { prefs().edit().putLong(KEY_NEWEST_SEEN, value).apply() } }
+
     /** The driver confirmed the phone maker's auto-start setting (it cannot be read back). */
     var autostartConfirmed: Boolean
         get() = runCatching { prefs().getBoolean(KEY_AUTOSTART_CONFIRMED, false) }.getOrDefault(false)
@@ -90,13 +116,18 @@ object Settings {
         }
 
     /** A validated draft is committed as one document, on IO, before the UI reports success. */
-    suspend fun saveFilters(value: Filters): Boolean = withContext(Dispatchers.IO) {
+    suspend fun saveEngineConfig(value: EngineConfig): Boolean = withContext(Dispatchers.IO) {
         synchronized(this@Settings) {
             val saved = runCatching {
-                prefs().edit().putString(KEY_FILTERS, Json.encodeToString(value)).commit()
+                prefs().edit().putString(KEY_ENGINE_CONFIG, Json.encodeToString(value)).commit()
             }.getOrDefault(false)
-            if (saved) cachedFilters = null
+            if (saved) cachedConfig = null
             saved
+        }.also { saved ->
+            if (saved) withContext(Dispatchers.Main) {
+                app.sabbaq.service.SabbaqA11yService.instance?.onConfigSaved()
+                appContext?.let { app.sabbaq.service.KeeperService.resumeIfWanted(it) }
+            }
         }
     }
 
@@ -108,14 +139,15 @@ object Settings {
         return synchronized(this) {
             val cleared = runCatching {
                 prefs().edit()
-                    .remove(KEY_FILTERS)
+                    .remove(KEY_ENGINE_CONFIG)
+                    .remove(KEY_OLD_FILTERS)
                     .putBoolean(KEY_IS_ACTIVE, false)
                     .remove(KEY_A11Y_DISCLOSURE_VERSION)
                     .remove(KEY_KNOWN_SUBSCRIBER)
                     .remove(KEY_MONITORING_WANTED)
                     .commit()
             }.getOrDefault(false)
-            if (cleared) cachedFilters = null
+            if (cleared) cachedConfig = null
             cleared
         }
     }
@@ -164,12 +196,15 @@ object Settings {
         ?: throw IllegalStateException("يجب استدعاء Settings.init قبل استخدام الإعدادات")
 
     private const val PREFERENCES_NAME = "sabbaq_prefs"
-    private const val KEY_FILTERS = "filters"
+    private const val KEY_ENGINE_CONFIG = "engine_config"
+    private const val KEY_OLD_FILTERS = "filters"
     private const val KEY_IS_ACTIVE = "is_active"
     private const val KEY_A11Y_DISCLOSURE_VERSION = "a11y_disclosure_version"
     private const val KEY_KNOWN_SUBSCRIBER = "known_subscriber"
     private const val KEY_MONITORING_WANTED = "monitoring_wanted"
     private const val KEY_AUTOSTART_CONFIRMED = "autostart_confirmed"
+    private const val KEY_SUBSCRIPTION_ENDS_AT = "subscription_ends_at"
+    private const val KEY_NEWEST_SEEN = "newest_seen_ms"
     private const val A11Y_DISCLOSURE_VERSION = 1
 }
 

@@ -2,7 +2,6 @@ package app.sabbaq.ui
 
 import app.sabbaq.LocaleManager
 import app.sabbaq.core.DiagnosticStage
-import app.sabbaq.core.ReasonCode
 
 /**
  * Driver-facing wording for runtime and diagnostic codes. The cards used to print raw
@@ -60,8 +59,8 @@ internal object RuntimeLabels {
     /** Telemetry/diagnostic reason codes shown on the device. */
     fun reason(code: String?): String {
         if (code == null) return ""
-        runCatching { ReasonCode.valueOf(code.uppercase()) }.getOrNull()?.let { return reasonArabic(it).removeSuffix(".") }
-        return (when (code) {
+        if (code.startsWith("failed_") || code in ENGINE_REASON_KEYS) return reasonLabel(code).removeSuffix(".")
+        return (when (code.substringBefore(':')) {
             "cls_none" -> "الشاشة الحالية ليست طلبًا" to "The current screen is not an order"
             "cls_incomplete" -> "الطلب لم يكتمل ظهوره" to "The order is not fully shown"
             "cls_confirmed_or_active" -> "رحلة جارية" to "Trip in progress"
@@ -99,3 +98,9 @@ internal object RuntimeLabels {
         }).pick()
     }
 }
+
+/** Decision reasons that come from the reference engine engine (DecisionEngine). */
+private val ENGINE_REASON_KEYS = setOf(
+    "dest_excluded", "exclude_no_dest_safe_reject", "no_dest_sniping_disabled", "no_ride_data_detected", "conservative_ocr_reject",
+    "payment_not_cash", "payment_not_card", "payment_unknown_reject", "rating_below_min", "rating_unknown_reject", "wait_save_filtered",
+)

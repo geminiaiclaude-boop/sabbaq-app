@@ -183,6 +183,8 @@ object VoiceAnnouncer {
         runCatching { appContext?.getSystemService(AudioManager::class.java)?.abandonAudioFocusRequest(request) }
     }
 
+    private var toneGenerator: ToneGenerator? = null
+
     private fun playTone(kind: VoiceKind, volume: Float) {
         val tone = when (kind) {
             VoiceKind.Status -> ToneGenerator.TONE_PROP_ACK
@@ -190,11 +192,17 @@ object VoiceAnnouncer {
             VoiceKind.Connection, VoiceKind.Subscription -> ToneGenerator.TONE_PROP_BEEP2
             VoiceKind.Offer -> ToneGenerator.TONE_PROP_PROMPT
         }
+        // One native tone player at a time: the previous one is released before a new one exists.
+        toneGenerator?.let { old -> runCatching { old.release() } }
+        toneGenerator = null
         val generator = runCatching {
             ToneGenerator(AudioManager.STREAM_MUSIC, (VoiceRules.clampVolume(volume) * 80).toInt())
         }.getOrNull() ?: return
+        toneGenerator = generator
         runCatching { generator.startTone(tone, TONE_MILLIS) }
-        main.postDelayed({ runCatching { generator.release() } }, TONE_MILLIS + 400L)
+        main.postDelayed({
+            if (toneGenerator === generator) { runCatching { generator.release() }; toneGenerator = null }
+        }, TONE_MILLIS + 400L)
     }
 
     private fun phoneState(context: Context): PhoneAudioState {

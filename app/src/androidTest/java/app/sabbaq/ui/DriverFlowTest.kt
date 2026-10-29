@@ -26,7 +26,6 @@ import androidx.test.platform.app.InstrumentationRegistry
 import app.sabbaq.Settings
 import app.sabbaq.ThemeMode
 import app.sabbaq.ui.theme.SabbaqTheme
-import java.math.BigDecimal
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -137,129 +136,65 @@ class DriverFlowTest {
         compose.runOnIdle { assertTrue(loginRequested) }
     }
 
-    @Test
-    fun preset_auto_saves_the_filters() {
-        show {
-            SettingsScreen(
-                notificationPermissionGranted = false,
-                onRequestNotificationPermission = {},
-                onOpenA11y = { Result.success(Unit) },
-                onToggleKeeper = { Result.success(Unit) },
-                initialDestination = DriverDestination.Filters,
-            )
-        }
+    private fun showFilters(destination: DriverDestination = DriverDestination.Filters) = show {
+        SettingsScreen(
+            notificationPermissionGranted = false,
+            onRequestNotificationPermission = {},
+            onOpenA11y = { Result.success(Unit) },
+            onToggleKeeper = { Result.success(Unit) },
+            initialDestination = destination,
+        )
+    }
 
-        compose.onNodeWithText("قريب وسريع").performScrollTo().performClick()
-        compose.waitUntil(timeoutMillis = 10_000) { Settings.filters.maxPickupKm == "3" }
-        compose.runOnIdle {
-            val saved = Settings.filters
-            assertEquals(0, BigDecimal("3").compareTo(BigDecimal(saved.maxPickupKm)))
-            assertEquals(0, BigDecimal("15").compareTo(BigDecimal(saved.maxTripKm)))
-            assertTrue(saved.isPickupDistanceEnabled)
-            assertTrue(saved.isPickupTimeEnabled)
-            assertTrue(saved.isTripDistanceEnabled)
-        }
+    @Test
+    fun price_limit_auto_saves_on_reference_settings() {
+        showFilters()
+        compose.onNodeWithTag("filter-stepper-min-fare-increment").performScrollTo().performClick()
+        compose.waitUntil(timeoutMillis = 10_000) { Settings.engineConfig.minPrice == 1.0 }
+        compose.runOnIdle { assertTrue(Settings.engineConfig.priceEnabled) }
     }
 
     @Test
     fun condition_switch_auto_saves_and_preserves_its_numeric_values_when_off() {
-        show {
-            SettingsScreen(
-                notificationPermissionGranted = false,
-                onRequestNotificationPermission = {},
-                onOpenA11y = { Result.success(Unit) },
-                onToggleKeeper = { Result.success(Unit) },
-                initialDestination = DriverDestination.Filters,
-            )
-        }
-
-        val fareSwitch = compose.onNodeWithTag("filter-switch-fare-range")
+        showFilters()
         compose.onNodeWithTag("filter-stepper-min-fare-increment").performScrollTo().performClick()
-        compose.waitUntil(timeoutMillis = 10_000) { Settings.filters.minFare == "1" }
-        compose.runOnIdle { assertEquals(false, Settings.filters.isFareRangeEnabled) }
-
-        fareSwitch.performScrollTo().performClick()
-        compose.waitUntil(timeoutMillis = 10_000) { Settings.filters.isFareRangeEnabled }
-        compose.runOnIdle {
-            assertTrue(Settings.filters.isFareRangeEnabled)
-            assertEquals("1", Settings.filters.minFare)
-            assertEquals("100", Settings.filters.maxFare)
-        }
+        compose.waitUntil(timeoutMillis = 10_000) { Settings.engineConfig.minPrice == 1.0 }
 
         compose.onNodeWithTag("filter-switch-fare-range").performScrollTo().performClick()
-        compose.waitUntil(timeoutMillis = 10_000) { !Settings.filters.isFareRangeEnabled }
-        compose.runOnIdle {
-            assertEquals(false, Settings.filters.isFareRangeEnabled)
-            assertEquals("1", Settings.filters.minFare)
-            assertEquals("100", Settings.filters.maxFare)
-        }
+        compose.waitUntil(timeoutMillis = 10_000) { !Settings.engineConfig.priceEnabled }
+        compose.runOnIdle { assertEquals(1.0, Settings.engineConfig.minPrice, 0.0) }
+
+        compose.onNodeWithTag("filter-switch-fare-range").performScrollTo().performClick()
+        compose.waitUntil(timeoutMillis = 10_000) { Settings.engineConfig.priceEnabled }
+        compose.runOnIdle { assertEquals(1.0, Settings.engineConfig.minPrice, 0.0) }
     }
 
     @Test
     fun filters_show_horizontal_minimum_and_maximum_time_controls() {
-        show {
-            SettingsScreen(
-                notificationPermissionGranted = false,
-                onRequestNotificationPermission = {},
-                onOpenA11y = { Result.success(Unit) },
-                onToggleKeeper = { Result.success(Unit) },
-                initialDestination = DriverDestination.Filters,
-            )
-        }
-
+        showFilters()
         compose.onNodeWithText("أقل وقت").performScrollTo()
         compose.onNodeWithText("أقصى وقت").performScrollTo()
         compose.onNodeWithText("قنص الطلبات بدون وجهة").performScrollTo()
     }
 
     @Test
-    fun no_destination_choice_is_retained_but_temporarily_disabled_by_exclusion_words() {
-        show {
-            SettingsScreen(
-                notificationPermissionGranted = false,
-                onRequestNotificationPermission = {},
-                onOpenA11y = { Result.success(Unit) },
-                onToggleKeeper = { Result.success(Unit) },
-                initialDestination = DriverDestination.Filters,
-            )
-        }
-
-        compose.onNodeWithText("قريب وسريع").performScrollTo().performClick()
-        compose.waitUntil(timeoutMillis = 10_000) { Settings.filters.maxPickupKm == "3" }
-        compose.onNodeWithTag("filter-switch-no-destination").performScrollTo().performClick()
-        compose.waitUntil(timeoutMillis = 10_000) { Settings.filters.acceptNoDestination }
-
-        // Condition groups are open by default; the field is reachable without expanding anything.
-        compose.onNodeWithText("كلمات لا تناسبك").performScrollTo().performTextInput("airport")
-        compose.waitUntil(timeoutMillis = 10_000) { Settings.filters.excludeKeywords == listOf("airport") }
-        compose.onNodeWithTag("filter-switch-no-destination").performScrollTo().assertIsNotEnabled()
-        compose.runOnIdle {
-            assertTrue(Settings.filters.acceptNoDestination)
-            assertTrue(!Settings.filters.isAcceptNoDestinationEffective)
-        }
-        compose.onNodeWithText("كلمات لا تناسبك").performScrollTo().performTextClearance()
-        compose.waitUntil(timeoutMillis = 10_000) { Settings.filters.excludeKeywords.isEmpty() }
-        compose.onNodeWithTag("filter-switch-no-destination").performScrollTo().assertIsEnabled()
-        compose.runOnIdle { assertTrue(Settings.filters.isAcceptNoDestinationEffective) }
+    fun excluded_destination_words_auto_save() {
+        showFilters()
+        compose.onNodeWithTag("destination-exclude").performScrollTo().performClick()
+        compose.waitUntil(timeoutMillis = 10_000) { Settings.engineConfig.destHomeMode == app.sabbaq.core.engine.DestinationMode.EXCLUDE }
+        compose.onNodeWithTag("filter-switch-destination-words").performScrollTo().performClick()
+        compose.waitUntil(timeoutMillis = 10_000) { Settings.engineConfig.destExcludeEnabled }
+        compose.onNodeWithTag("destination-keywords").performScrollTo().performTextInput("airport")
+        compose.waitUntil(timeoutMillis = 10_000) { Settings.engineConfig.destExcludeKeywords == "airport" }
     }
 
     @Test
-    fun simulator_explains_why_an_offer_does_not_match() {
-        show {
-            SettingsScreen(
-                notificationPermissionGranted = false,
-                onRequestNotificationPermission = {},
-                onOpenA11y = { Result.success(Unit) },
-                onToggleKeeper = { Result.success(Unit) },
-                initialDestination = DriverDestination.Simulator,
-            )
-        }
-
+    fun simulator_accepts_any_offer_with_reference_defaults_and_explains_a_rejection() {
+        showFilters(DriverDestination.Simulator)
         compose.onNodeWithText("اعرف هل يناسبك").performScrollTo().assertIsNotEnabled()
         compose.onNodeWithText("سعر الطلب").performScrollTo().performTextInput("30")
         compose.onNodeWithText("اعرف هل يناسبك").performScrollTo().assertIsEnabled().performClick()
-        waitForText("نتيجة التجربة: لا يناسبك")
-        waitForText("• لم تحدد شرطًا لاختيار الطلبات.")
+        waitForText("نتيجة التجربة: يناسبك")
     }
 
     @Test

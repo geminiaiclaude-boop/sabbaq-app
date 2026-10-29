@@ -7,63 +7,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ClickGateAndProfilesTest {
-    @Test
-    fun sameOfferIsClickedOnce() {
-        val gate = ClickGate(perOfferSuppressMs = 60_000, minIntervalMs = 1_000)
-        assertTrue(gate.tryAcquire("a", 0))
-        assertFalse(gate.tryAcquire("a", 5_000))
-        assertTrue(gate.tryAcquire("a", 61_000))
-    }
 
-    @Test
-    fun differentOffersRespectTheMinimumInterval() {
-        val gate = ClickGate(perOfferSuppressMs = 60_000, minIntervalMs = 1_000)
-        assertTrue(gate.tryAcquire("a", 0))
-        assertFalse(gate.tryAcquire("b", 500))
-        assertTrue(gate.tryAcquire("b", 1_000))
-    }
 
-    @Test
-    fun suppressionExpiresAtItsExactBoundaryButClockRollbackAndBlankIdsDoNotBypassIt() {
-        val gate = ClickGate(perOfferSuppressMs = 60_000, minIntervalMs = 1_000)
-        assertFalse(gate.tryAcquire("", 0))
-        assertTrue(gate.tryAcquire("a", 1_000))
-        assertFalse(gate.tryAcquire("b", 999))
-        assertTrue(gate.tryAcquire("a", 61_000))
-    }
 
-    @Test(expected = IllegalArgumentException::class)
-    fun invalidSuppressionConfigurationIsRejected() {
-        ClickGate(perOfferSuppressMs = 0, minIntervalMs = 0)
-    }
 
-    @Test
-    fun fullGateRejectsNewOfferInsteadOfEvictingAnActiveFingerprint() {
-        val gate = ClickGate(perOfferSuppressMs = 100, minIntervalMs = 0, capacity = 1)
-        assertTrue(gate.tryAcquire("a", 0))
-        assertFalse(gate.tryAcquire("b", 1))
-        assertFalse(gate.tryAcquire("a", 2))
-        assertTrue(gate.tryAcquire("b", 100))
-    }
 
-    @Test
-    fun failedDispatchCanReleaseItsOfferReservationButStillRespectsGlobalInterval() {
-        val gate = ClickGate(perOfferSuppressMs = 20_000, minIntervalMs = 500)
-        assertTrue(gate.tryAcquire("a", 1_000))
-        assertTrue(gate.release("a", 1_000))
-        assertFalse(gate.tryAcquire("a", 1_499))
-        assertTrue(gate.tryAcquire("a", 1_500))
-    }
 
-    @Test
-    fun staleFailedDispatchCannotReleaseANewerReservation() {
-        val gate = ClickGate(perOfferSuppressMs = 20_000, minIntervalMs = 500)
-        assertTrue(gate.tryAcquire("a", 1_000))
-        assertTrue(gate.release("a", 1_000))
-        assertTrue(gate.tryAcquire("a", 1_500))
-        assertFalse(gate.release("a", 1_000))
-        assertFalse(gate.tryAcquire("a", 1_501))
-    }
 
     @Test
     fun newerRemoteProfileReplacesBundled() {

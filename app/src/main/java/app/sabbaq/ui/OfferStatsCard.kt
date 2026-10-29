@@ -27,7 +27,6 @@ import app.sabbaq.LocaleManager
 import app.sabbaq.R
 import androidx.compose.ui.res.stringResource
 import app.sabbaq.core.OfferStatsTotals
-import app.sabbaq.core.ReasonCode
 import app.sabbaq.stats.OfferStatsStore
 import app.sabbaq.ui.theme.LocalSabbaqBrand
 import java.text.NumberFormat
@@ -74,7 +73,7 @@ internal fun OfferStatsCard(modifier: Modifier = Modifier) {
         } else {
             topReasons.forEach { (reason, count) ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(reason.displayName(), style = MaterialTheme.typography.bodyMedium)
+                    Text(reasonLabel(reason).removeSuffix("."), style = MaterialTheme.typography.bodyMedium)
                     Text(numberFormat.format(count), style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold)
                 }
@@ -115,26 +114,3 @@ private fun StatValue(label: String, count: Long, numberFormat: NumberFormat, ti
     }
 }
 
-private fun ReasonCode.displayName(): String = (when (this) {
-    ReasonCode.NO_FILTERS -> "لم تُحدد شروط قبول" to "No acceptance conditions set"
-    ReasonCode.OUTSIDE_SCHEDULE -> "خارج وقت العمل" to "Outside working hours"
-    ReasonCode.INVALID_FILTER -> "شرط غير صالح" to "Invalid condition"
-    ReasonCode.FARE_MISSING -> "الأجرة غير واضحة" to "Fare not clear"
-    ReasonCode.FARE_TOO_LOW -> "الأجرة أقل من الحد" to "Fare below the limit"
-    ReasonCode.FARE_TOO_HIGH -> "الأجرة أعلى من الحد" to "Fare above the limit"
-    ReasonCode.PER_KM_MISSING -> "بيانات العائد لكل كم ناقصة" to "Return-per-km data missing"
-    ReasonCode.PER_KM_TOO_LOW -> "العائد لكل كم أقل من المطلوب" to "Return per km below target"
-    ReasonCode.PICKUP_KM_MISSING -> "مسافة الوصول غير واضحة" to "Pickup distance not clear"
-    ReasonCode.PICKUP_TOO_FAR -> "مسافة الوصول أبعد من الحد" to "Pickup distance beyond the limit"
-    ReasonCode.PICKUP_MIN_MISSING -> "وقت الوصول غير واضح" to "Pickup time not clear"
-    ReasonCode.PICKUP_TOO_LONG -> "وقت الوصول أطول من الحد" to "Pickup time above the limit"
-    ReasonCode.PICKUP_TOO_SHORT -> "وقت الوصول أقصر من الحد" to "Pickup time below the limit"
-    ReasonCode.DESTINATION_MISSING -> "الوجهة غير ظاهرة" to "Destination not shown"
-    ReasonCode.TRIP_KM_MISSING -> "مسافة الرحلة غير واضحة" to "Trip distance not clear"
-    ReasonCode.TRIP_TOO_SHORT -> "مسافة الرحلة أقصر من الحد" to "Trip distance below the limit"
-    ReasonCode.TRIP_TOO_LONG -> "مسافة الرحلة أطول من الحد" to "Trip distance above the limit"
-    ReasonCode.TRIP_MIN_MISSING -> "وقت الرحلة غير واضح" to "Trip time not clear"
-    ReasonCode.TRIP_MIN_TOO_SHORT -> "وقت الرحلة أقصر من الحد" to "Trip time below the limit"
-    ReasonCode.TRIP_MIN_TOO_LONG -> "وقت الرحلة أطول من الحد" to "Trip time above the limit"
-    ReasonCode.EXCLUDED_KEYWORD -> "كلمة مستبعدة" to "Excluded word"
-}).let { if (LocaleManager.isArabic()) it.first else it.second }

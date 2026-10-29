@@ -22,6 +22,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,7 +57,9 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun OfferDecisionLogScreen(onBack: () -> Unit) {
     val context = LocalContext.current
+    val liveRows by OfferDecisionLogStore.rows.collectAsState()
     var rows by remember { mutableStateOf(OfferDecisionLogStore.snapshot()) }
+    LaunchedEffect(liveRows) { rows = OfferDecisionLogStore.snapshot() }
     var askClear by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<SabbaqStatus?>(null) }
 
@@ -82,6 +85,7 @@ fun OfferDecisionLogScreen(onBack: () -> Unit) {
         )
 
         val runtime by RuntimeStatusRepository.snapshot.collectAsState()
+        DiagnosisCard(onAction = { }, detailed = true)
         RuntimeStatusCard(runtime, Modifier.sabbaqEntrance(0))
 
         OfferStatsCard(Modifier.sabbaqEntrance(1))
@@ -175,7 +179,7 @@ private fun DecisionRow(entry: OfferDecisionLogEntry) {
         DecisionLogOutcome.CONFIRMATION_TIMEOUT -> Triple(stringResource(R.string.odl_out_timeout), Icons.Outlined.HourglassTop, colors.error)
     }
     DecisionRowContent(outcome, icon, tint, "${platformName(entry.profileId)} · $time",
-        entry.reasons.takeIf { it.isNotEmpty() }?.joinToString("، ") { reasonArabic(it).removeSuffix(".") })
+        entry.reasons.takeIf { it.isNotEmpty() }?.joinToString("، ") { reasonLabel(it).removeSuffix(".") })
 }
 
 @Composable

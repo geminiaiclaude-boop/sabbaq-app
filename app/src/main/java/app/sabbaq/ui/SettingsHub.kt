@@ -61,7 +61,6 @@ import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.collectAsState
 import app.sabbaq.support.SupportRepository
-import app.sabbaq.service.ScreenSketchStore
 
 /** Settings categories; each opens its own page inside the «الإعدادات» destination. */
 internal enum class SettingsSection(val titleRes: Int, val icon: ImageVector) {
@@ -201,7 +200,6 @@ internal fun SettingsHubPage(
 
         SettingsSection.Diagnostics -> {
             LiveAcceptTestEntry(Modifier.sabbaqEntrance(0))
-            UnreadScreenCard()
             TelemetryDiagnosticsCard(Modifier.sabbaqEntrance(1))
             SupportIdCard(Modifier.sabbaqEntrance(2))
         }
@@ -239,33 +237,6 @@ internal fun LiveAcceptTestEntry(modifier: Modifier = Modifier) {
             text = stringResource(R.string.live_test_start),
             onClick = { runCatching { context.startActivity(android.content.Intent(context, LiveAcceptTestActivity::class.java)) } },
             icon = Icons.Outlined.PlayArrow,
-        )
-    }
-}
-
-/**
- * Shown after Jeeny displayed what looked like an offer that Sabbaq could not read: one tap
- * sends its anonymous outline to support, who can fix the reading profile without a release.
- */
-@Composable
-private fun UnreadScreenCard() {
-    val sketch by ScreenSketchStore.latest.collectAsState()
-    val current = sketch ?: return
-    val scope = rememberCoroutineScope()
-    var sent by remember(current.atEpochMs) { mutableStateOf<Boolean?>(null) }
-    SabbaqCard(
-        title = stringResource(R.string.unread_title),
-        subtitle = stringResource(R.string.unread_sub),
-        icon = Icons.Outlined.BugReport,
-    ) {
-        SabbaqButton(
-            text = when (sent) { true -> stringResource(R.string.unread_sent); false -> stringResource(R.string.unread_failed); null -> stringResource(R.string.unread_send) },
-            enabled = sent != true,
-            onClick = {
-                scope.launch {
-                    sent = SupportRepository.send((if (LocaleManager.isArabic()) "مخطط شاشة جيني غير المقروءة (${current.reason}):\n${current.text}" else "Unreadable Jeeny screen layout (${current.reason}):\n${current.text}").take(1000))
-                }
-            },
         )
     }
 }

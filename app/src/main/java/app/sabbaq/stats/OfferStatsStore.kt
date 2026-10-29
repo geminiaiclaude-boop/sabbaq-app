@@ -6,7 +6,6 @@ import app.sabbaq.core.OfferStatsDay
 import app.sabbaq.core.OfferStatsDeduplicator
 import app.sabbaq.core.OfferStatsPeriods
 import app.sabbaq.core.OfferStatsTotals
-import app.sabbaq.core.ReasonCode
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -81,11 +80,12 @@ object OfferStatsStore {
         }
     }
 
-    fun recordRejected(fingerprint: String, reasons: Collection<ReasonCode>) = synchronized(lock) {
+    fun recordRejected(fingerprint: String, reason: String) = synchronized(lock) {
+        if (reason.isBlank()) return@synchronized
         val today = LocalDate.now()
         rollLocked(today)
         if (deduplicator.firstRejection(fingerprint, today.format(isoDate))) {
-            updateDayLocked(today) { it.recordRejected(reasons) }
+            updateDayLocked(today) { it.recordRejected(listOf(reason)) }
         }
     }
 
@@ -126,7 +126,7 @@ object OfferStatsStore {
         val raw = preferences?.getString(KEY_DAILY_AGGREGATES, null)
             ?.takeIf { it.length <= MAX_SERIALIZED_CHARS }
         val decoded = runCatching {
-            raw?.let { json.decodeFromString<List<OfferStatsDay>>(StoredReasonCodes.dropRetired(json, it, "rejectionsByReason")) }
+            raw?.let { json.decodeFromString<List<OfferStatsDay>>(it) }
                 .orEmpty()
         }
             .getOrDefault(emptyList())

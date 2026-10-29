@@ -14,23 +14,23 @@ class OfferStatsTest {
     fun recordsCountsAndDistinctReasonsWithoutOfferDetails() {
         val day = OfferStatsDay("2026-10-22")
             .recordVisible()
-            .recordRejected(listOf(ReasonCode.FARE_TOO_LOW, ReasonCode.FARE_TOO_LOW, ReasonCode.PICKUP_TOO_FAR))
+            .recordRejected(listOf("fare_too_low", "fare_too_low", "pickup_too_far"))
             .recordAccepted()
 
         assertEquals(1L, day.visibleOffers)
         assertEquals(1L, day.rejectedOffers)
         assertEquals(1L, day.acceptedOffers)
-        assertEquals(1L, day.rejectionsByReason[ReasonCode.FARE_TOO_LOW])
-        assertEquals(1L, day.rejectionsByReason[ReasonCode.PICKUP_TOO_FAR])
+        assertEquals(1L, day.rejectionsByReason["fare_too_low"])
+        assertEquals(1L, day.rejectionsByReason["pickup_too_far"])
     }
 
     @Test
     fun aggregatesDailyBucketsForAnyRequestedPeriod() {
         val days = listOf(
             OfferStatsDay("2026-10-20", visibleOffers = 3, rejectedOffers = 2, acceptedOffers = 1,
-                rejectionsByReason = mapOf(ReasonCode.FARE_TOO_LOW to 2)),
+                rejectionsByReason = mapOf("fare_too_low" to 2)),
             OfferStatsDay("2026-10-21", visibleOffers = 5, rejectedOffers = 4, acceptedOffers = 1,
-                rejectionsByReason = mapOf(ReasonCode.PICKUP_TOO_FAR to 3)),
+                rejectionsByReason = mapOf("pickup_too_far" to 3)),
             OfferStatsDay("2026-11-01", visibleOffers = 100, rejectedOffers = 90, acceptedOffers = 10),
         )
 
@@ -59,17 +59,17 @@ class OfferStatsTest {
     @Test
     fun topReasonsAreLimitedAndOrderedByCountThenStableCode() {
         val totals = OfferStatsTotals(rejectionsByReason = mapOf(
-            ReasonCode.PICKUP_TOO_FAR to 8,
-            ReasonCode.FARE_TOO_LOW to 8,
-            ReasonCode.EXCLUDED_KEYWORD to 3,
-            ReasonCode.OUTSIDE_SCHEDULE to 1,
+            "pickup_too_far" to 8,
+            "fare_too_low" to 8,
+            "excluded_keyword" to 3,
+            "outside_schedule" to 1,
         ))
 
         assertEquals(
             listOf(
-                ReasonCode.FARE_TOO_LOW to 8L,
-                ReasonCode.PICKUP_TOO_FAR to 8L,
-                ReasonCode.EXCLUDED_KEYWORD to 3L,
+                "fare_too_low" to 8L,
+                "pickup_too_far" to 8L,
+                "excluded_keyword" to 3L,
             ),
             totals.topRejectionReasons(),
         )
@@ -79,11 +79,11 @@ class OfferStatsTest {
     @Test
     fun persistedDaySchemaContainsOnlyDateAndAggregateCounters() {
         val encoded = Json.encodeToString(
-            OfferStatsDay("2026-10-22", 4, 2, 1, mapOf(ReasonCode.FARE_TOO_LOW to 2)),
+            OfferStatsDay("2026-10-22", 4, 2, 1, mapOf("fare_too_low" to 2)),
         )
 
         assertTrue(encoded.contains("2026-10-22"))
-        assertTrue(encoded.contains("FARE_TOO_LOW"))
+        assertTrue(encoded.contains("fare_too_low"))
         assertFalse(encoded.contains("address"))
         assertFalse(encoded.contains("fingerprint"))
         assertFalse(encoded.contains("passenger"))

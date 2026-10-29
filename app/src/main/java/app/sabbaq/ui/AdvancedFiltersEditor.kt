@@ -7,8 +7,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -26,6 +26,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -37,6 +38,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -44,14 +47,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import app.sabbaq.R
-import androidx.compose.ui.res.stringResource
-import app.sabbaq.core.PerKmBasis
-import app.sabbaq.core.FilterCombination
-import app.sabbaq.core.Text as CoreText
+import app.sabbaq.core.engine.PaymentMode
+import app.sabbaq.core.engine.TargetApp
 import app.sabbaq.ui.theme.LocalReducedMotion
 import app.sabbaq.ui.theme.SabbaqMotion
-import java.math.BigDecimal
 
+/**
+ * «طلبات تناسبك»: the reference engine's conditions (engine notes) in Sabbaq's own condition cards.
+ * An empty limit is "no limit", so with nothing set every offer is accepted, as in the reference engine.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun AdvancedFiltersEditor(
@@ -60,7 +64,6 @@ internal fun AdvancedFiltersEditor(
     onDraftChange: (FilterDraft) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         SabbaqSectionTitle(
             title = stringResource(R.string.afe_section_title),
@@ -74,184 +77,49 @@ internal fun AdvancedFiltersEditor(
         ) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 FilterChip(
-                    selected = draft.combination == FilterCombination.ALL,
-                    onClick = { onDraftChange(draft.copy(combination = FilterCombination.ALL)) },
+                    selected = !draft.logicOr,
+                    onClick = { onDraftChange(draft.copy(logicOr = false)) },
                     label = { Text(stringResource(R.string.afe_combo_all), style = MaterialTheme.typography.labelSmall) },
-                    modifier = Modifier.height(32.dp),
+                    modifier = Modifier.height(32.dp).testTag("logic-and"),
                 )
                 FilterChip(
-                    selected = draft.combination == FilterCombination.ANY,
-                    onClick = { onDraftChange(draft.copy(combination = FilterCombination.ANY)) },
+                    selected = draft.logicOr,
+                    onClick = { onDraftChange(draft.copy(logicOr = true)) },
                     label = { Text(stringResource(R.string.afe_combo_any), style = MaterialTheme.typography.labelSmall) },
-                    modifier = Modifier.height(32.dp),
+                    modifier = Modifier.height(32.dp).testTag("logic-or"),
                 )
             }
         }
 
+        TargetAppCondition(draft, onDraftChange)
         FareRangeCondition(draft, errors, onDraftChange)
-
-        ProConditionCard(
-            title = stringResource(R.string.afe_perkm_title),
-            subtitle = stringResource(R.string.afe_perkm_sub),
-            enabled = draft.farePerKmEnabled,
-            testKey = "fare-per-km",
-            onEnabledChange = { enabled ->
-                onDraftChange(draft.copy(
-                    farePerKmEnabled = enabled,
-                    minFarePerKm = if (enabled) draft.minFarePerKm.ifBlank { "0.5" } else draft.minFarePerKm,
-                ))
-            },
-            footer = {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.afe_perkm_basis), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    FilterChip(
-                        selected = draft.perKmBasis == PerKmBasis.TRIP,
-                        onClick = { onDraftChange(draft.copy(perKmBasis = PerKmBasis.TRIP)) },
-                        label = { Text(stringResource(R.string.afe_trip_distance), style = MaterialTheme.typography.labelSmall) },
-                        modifier = Modifier.height(32.dp),
-                    )
-                    FilterChip(
-                        selected = draft.perKmBasis == PerKmBasis.TOTAL,
-                        onClick = { onDraftChange(draft.copy(perKmBasis = PerKmBasis.TOTAL)) },
-                        label = { Text(stringResource(R.string.afe_perkm_basis_total), style = MaterialTheme.typography.labelSmall) },
-                        modifier = Modifier.height(32.dp),
-                    )
-                }
-            },
-        ) { dimmed ->
-            CompactStepperValue(
-                stringResource(R.string.afe_min_perkm), draft.minFarePerKm, stringResource(R.string.afe_unit_perkm), "0.1", KeyboardType.Decimal,
-                onValueChange = { onDraftChange(draft.copy(minFarePerKm = it)) }, testKey = "min-fare-per-km",
-                modifier = Modifier.weight(1f), error = errors["minFarePerKm"], dimmed = dimmed,
-            )
-        }
-
-        ProConditionCard(
-            title = stringResource(R.string.afe_pickup_distance),
-            subtitle = stringResource(R.string.afe_pickup_distance_sub),
-            enabled = draft.pickupDistanceEnabled,
-            testKey = "pickup-distance",
-            onEnabledChange = { enabled ->
-                onDraftChange(draft.copy(
-                    pickupDistanceEnabled = enabled,
-                    maxPickupKm = if (enabled) draft.maxPickupKm.ifBlank { "10" } else draft.maxPickupKm,
-                ))
-            },
-        ) { dimmed ->
-            CompactStepperValue(
-                stringResource(R.string.afe_max_pickup), draft.maxPickupKm, stringResource(R.string.ss_unit_km), "0.5", KeyboardType.Decimal,
-                onValueChange = { onDraftChange(draft.copy(maxPickupKm = it)) }, testKey = "max-pickup-km",
-                modifier = Modifier.weight(1f), error = errors["maxPickupKm"], dimmed = dimmed,
-            )
-        }
-
         PickupTimeCondition(draft, errors, onDraftChange)
-
-        ProConditionCard(
-            title = stringResource(R.string.afe_trip_distance),
-            subtitle = stringResource(R.string.afe_trip_distance_sub),
-            enabled = draft.tripDistanceEnabled,
-            testKey = "trip-distance",
-            onEnabledChange = { enabled ->
-                val lower = if (enabled) draft.minTripKm.ifBlank { "0" } else draft.minTripKm
-                onDraftChange(draft.copy(
-                    tripDistanceEnabled = enabled,
-                    minTripKm = lower,
-                    maxTripKm = if (enabled) upperDefault(lower, draft.maxTripKm, "100") else draft.maxTripKm,
-                ))
-            },
-        ) { dimmed ->
-            CompactStepperValue(
-                stringResource(R.string.afe_min_trip), draft.minTripKm, stringResource(R.string.ss_unit_km), "0.5", KeyboardType.Decimal,
-                onValueChange = { onDraftChange(draft.copy(minTripKm = it)) }, testKey = "min-trip-km",
-                modifier = Modifier.weight(1f), error = errors["minTripKm"], dimmed = dimmed,
-            )
-            CompactStepperValue(
-                stringResource(R.string.afe_max_trip), draft.maxTripKm, stringResource(R.string.ss_unit_km), "0.5", KeyboardType.Decimal,
-                onValueChange = { onDraftChange(draft.copy(maxTripKm = it)) }, testKey = "max-trip-km",
-                modifier = Modifier.weight(1f), error = errors["maxTripKm"], dimmed = dimmed,
-            )
-        }
-
-        ProConditionCard(
-            title = stringResource(R.string.afe_trip_time),
-            subtitle = stringResource(R.string.afe_trip_time_sub),
-            enabled = draft.tripTimeEnabled,
-            testKey = "trip-time",
-            onEnabledChange = { enabled ->
-                val lower = if (enabled) draft.minTripMinutes.ifBlank { "0" } else draft.minTripMinutes
-                onDraftChange(draft.copy(
-                    tripTimeEnabled = enabled,
-                    minTripMinutes = lower,
-                    maxTripMinutes = if (enabled) upperDefault(lower, draft.maxTripMinutes, "240") else draft.maxTripMinutes,
-                ))
-            },
-        ) { dimmed ->
-            CompactStepperValue(
-                stringResource(R.string.afe_min_dur), draft.minTripMinutes, stringResource(R.string.ss_unit_min), "5", KeyboardType.Number,
-                onValueChange = { onDraftChange(draft.copy(minTripMinutes = it)) }, testKey = "min-trip-minutes",
-                modifier = Modifier.weight(1f), error = errors["minTripMinutes"], dimmed = dimmed,
-            )
-            CompactStepperValue(
-                stringResource(R.string.afe_max_dur), draft.maxTripMinutes, stringResource(R.string.ss_unit_min), "5", KeyboardType.Number,
-                onValueChange = { onDraftChange(draft.copy(maxTripMinutes = it)) }, testKey = "max-trip-minutes",
-                modifier = Modifier.weight(1f), error = errors["maxTripMinutes"], dimmed = dimmed,
-            )
-        }
-
         HighFareOverrideCondition(draft, errors, onDraftChange)
-
+        DestinationCondition(draft, onDraftChange)
         NoDestinationCondition(draft, onDraftChange)
-
+        PaymentCondition(draft, onDraftChange)
+        if (draft.targetApp == TargetApp.BOLT || draft.targetApp == TargetApp.BOTH) BoltOnlyConditions(draft, errors, onDraftChange)
         FilterGroup(
-            title = stringResource(R.string.afe_excluded_title),
-            subtitle = stringResource(R.string.afe_excluded_sub),
-            hasError = errors.containsKey("excludeKeywords"),
-            filledCount = draft.excludeKeywords.split(',', '،', '\n', '\r').count { it.isNotBlank() },
+            title = stringResource(R.string.zone_group_title),
+            subtitle = stringResource(R.string.zone_group_sub),
+            hasError = errors.keys.any { it == "zones" || it == "excludeZones" || it.startsWith("smartDest") },
+            filledCount = listOf(draft.zonesEnabled, draft.excludeZonesEnabled, draft.smartDestActive).count { it },
         ) {
-            DraftField(
-                value = draft.excludeKeywords,
-                label = stringResource(R.string.afe_excluded_label),
-                error = errors["excludeKeywords"],
-                keyboardType = KeyboardType.Text,
-                singleLine = false,
-                onValueChange = { onDraftChange(draft.copy(excludeKeywords = it)) },
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                ZoneConditions(draft, errors, onDraftChange)
+                Text(stringResource(R.string.zone_privacy_note), style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
-
-        ProConditionCard(
-            title = stringResource(R.string.afe_schedule_title),
-            subtitle = stringResource(R.string.afe_schedule_sub),
-            enabled = draft.scheduleEnabled,
-            testKey = "schedule",
-            onEnabledChange = { onDraftChange(draft.copy(scheduleEnabled = it)) },
-        ) {
-            DraftField(
-                value = draft.scheduleStart,
-                label = stringResource(R.string.afe_schedule_start),
-                error = errors["scheduleStart"],
-                keyboardType = KeyboardType.Ascii,
-                modifier = Modifier.weight(1f),
-                onValueChange = { onDraftChange(draft.copy(scheduleStart = it)) },
-            )
-            DraftField(
-                value = draft.scheduleEnd,
-                label = stringResource(R.string.afe_schedule_end),
-                error = errors["scheduleEnd"],
-                keyboardType = KeyboardType.Ascii,
-                modifier = Modifier.weight(1f),
-                onValueChange = { onDraftChange(draft.copy(scheduleEnd = it)) },
-            )
-        }
+        SmartDelayCondition(draft, errors, onDraftChange)
+        TurboCondition(draft, errors, onDraftChange)
     }
 }
 
-/*
- * The four most-used conditions, shared by «طلبات تناسبك» (framed cards) and the «شروط القيادة»
- * card on «حالة العمل» (unframed rows, [keyPrefix] "quick-"): one implementation, so both places
- * edit the same draft with the same defaults, validation and auto-save.
+/**
+ * The quick conditions, shared by «طلبات تناسبك» (framed cards) and the «شروط القيادة» card on
+ * «حالة العمل» (unframed rows, [keyPrefix] "quick-"): one implementation for both.
  */
-
 @Composable
 internal fun FareRangeCondition(
     draft: FilterDraft,
@@ -263,20 +131,20 @@ internal fun FareRangeCondition(
     ProConditionCard(
         title = stringResource(R.string.afe_fare_range),
         subtitle = if (framed) stringResource(R.string.afe_fare_range_sub) else null,
-        enabled = draft.fareRangeEnabled,
+        enabled = draft.priceEnabled,
         testKey = keyPrefix + "fare-range",
         framed = framed,
-        onEnabledChange = { onDraftChange(draft.withFareRange(it)) },
+        onEnabledChange = { onDraftChange(draft.copy(priceEnabled = it)) },
     ) { dimmed ->
         CompactStepperValue(
-            stringResource(R.string.afe_min_fare), draft.minFare, "", "1", KeyboardType.Decimal,
-            onValueChange = { onDraftChange(draft.copy(minFare = it)) }, testKey = keyPrefix + "min-fare",
-            modifier = Modifier.weight(1f), error = errors["minFare"], dimmed = dimmed,
+            stringResource(R.string.afe_min_fare), draft.minPrice, "", "1", KeyboardType.Decimal,
+            onValueChange = { onDraftChange(draft.copy(minPrice = it)) }, testKey = keyPrefix + "min-fare",
+            modifier = Modifier.weight(1f), error = errors["minPrice"], dimmed = dimmed,
         )
         CompactStepperValue(
-            stringResource(R.string.afe_max_fare), draft.maxFare, "", "1", KeyboardType.Decimal,
-            onValueChange = { onDraftChange(draft.copy(maxFare = it)) }, testKey = keyPrefix + "max-fare",
-            modifier = Modifier.weight(1f), error = errors["maxFare"], dimmed = dimmed,
+            stringResource(R.string.afe_max_fare), draft.maxPrice, "", "1", KeyboardType.Decimal,
+            onValueChange = { onDraftChange(draft.copy(maxPrice = it)) }, testKey = keyPrefix + "max-fare",
+            modifier = Modifier.weight(1f), error = errors["maxPrice"], dimmed = dimmed,
         )
     }
 }
@@ -292,20 +160,20 @@ internal fun PickupTimeCondition(
     ProConditionCard(
         title = stringResource(R.string.afe_pickup_time_title),
         subtitle = if (framed) stringResource(R.string.afe_pickup_time_sub) else null,
-        enabled = draft.pickupTimeEnabled,
+        enabled = draft.timeEnabled,
         testKey = keyPrefix + "pickup-time",
         framed = framed,
-        onEnabledChange = { onDraftChange(draft.withPickupTime(it)) },
+        onEnabledChange = { onDraftChange(draft.copy(timeEnabled = it)) },
     ) { dimmed ->
         CompactStepperValue(
-            stringResource(R.string.afe_min_time), draft.minPickupMinutes, stringResource(R.string.ss_unit_min), "5", KeyboardType.Number,
-            onValueChange = { onDraftChange(draft.copy(minPickupMinutes = it)) }, testKey = keyPrefix + "min-pickup-minutes",
-            modifier = Modifier.weight(1f), error = errors["minPickupMinutes"], dimmed = dimmed,
+            stringResource(R.string.afe_min_time), draft.minTime, stringResource(R.string.ss_unit_min), "1", KeyboardType.Number,
+            onValueChange = { onDraftChange(draft.copy(minTime = it)) }, testKey = keyPrefix + "min-pickup-minutes",
+            modifier = Modifier.weight(1f), error = errors["minTime"], dimmed = dimmed,
         )
         CompactStepperValue(
-            stringResource(R.string.afe_max_time), draft.maxPickupMinutes, stringResource(R.string.ss_unit_min), "5", KeyboardType.Number,
-            onValueChange = { onDraftChange(draft.copy(maxPickupMinutes = it)) }, testKey = keyPrefix + "max-pickup-minutes",
-            modifier = Modifier.weight(1f), error = errors["maxPickupMinutes"], dimmed = dimmed,
+            stringResource(R.string.afe_max_time), draft.maxTime, stringResource(R.string.ss_unit_min), "1", KeyboardType.Number,
+            onValueChange = { onDraftChange(draft.copy(maxTime = it)) }, testKey = keyPrefix + "max-pickup-minutes",
+            modifier = Modifier.weight(1f), error = errors["maxTime"], dimmed = dimmed,
         )
     }
 }
@@ -322,7 +190,7 @@ internal fun HighFareOverrideCondition(
     ProConditionCard(
         title = stringResource(R.string.afe_highfare_title),
         subtitle = if (framed) stringResource(R.string.afe_highfare_sub) else null,
-        enabled = draft.highFareOverrideEnabled,
+        enabled = draft.bypassTimeEnabled,
         testKey = keyPrefix + "high-fare-override",
         framed = framed,
         headerAction = {
@@ -330,12 +198,14 @@ internal fun HighFareOverrideCondition(
                 Icon(Icons.Outlined.Info, contentDescription = stringResource(R.string.afe_highfare_help_cd), modifier = Modifier.size(16.dp))
             }
         },
-        onEnabledChange = { onDraftChange(draft.withHighFareOverride(it)) },
+        onEnabledChange = { enabled ->
+            onDraftChange(draft.copy(bypassTimeEnabled = enabled, bypassTimePrice = if (enabled) draft.bypassTimePrice.ifBlank { "35" } else draft.bypassTimePrice))
+        },
     ) { dimmed ->
         CompactStepperValue(
-            stringResource(R.string.afe_highfare_from), draft.highFareOverrideAmount, "", "1", KeyboardType.Decimal,
-            onValueChange = { onDraftChange(draft.copy(highFareOverrideAmount = it)) }, testKey = keyPrefix + "high-fare-amount",
-            modifier = Modifier.weight(1f), error = errors["highFareOverrideAmount"], dimmed = dimmed,
+            stringResource(R.string.afe_highfare_from), draft.bypassTimePrice, "", "1", KeyboardType.Decimal,
+            onValueChange = { onDraftChange(draft.copy(bypassTimePrice = it)) }, testKey = keyPrefix + "high-fare-amount",
+            modifier = Modifier.weight(1f), error = errors["bypassTimePrice"], dimmed = dimmed,
         )
     }
     if (showHelp) HighFareOverrideHelp { showHelp = false }
@@ -346,33 +216,65 @@ internal fun HighFareOverrideHelp(onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.afe_highfare_title)) },
-        text = {
-            Text(stringResource(R.string.afe_highfare_body))
-        },
+        text = { Text(stringResource(R.string.afe_highfare_body)) },
         confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.afe_understood)) } },
     )
 }
 
-/** Toggle rules shared by the full page and the quick card: switching on fills sensible bounds. */
-internal fun FilterDraft.withFareRange(enabled: Boolean): FilterDraft = copy(
-    fareRangeEnabled = enabled,
-    minFare = if (enabled) minFare.ifBlank { "0" } else minFare,
-    maxFare = if (enabled) upperDefault(minFare, maxFare, "100") else maxFare,
-)
-
-internal fun FilterDraft.withPickupTime(enabled: Boolean): FilterDraft {
-    val lower = if (enabled) minPickupMinutes.ifBlank { "0" } else minPickupMinutes
-    return copy(
-        pickupTimeEnabled = enabled,
-        minPickupMinutes = lower,
-        maxPickupMinutes = if (enabled) upperDefault(lower, maxPickupMinutes, "30") else maxPickupMinutes,
-    )
+/** Destination words: only orders going there (include) or never there (exclude), as in the reference engine. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun DestinationCondition(draft: FilterDraft, onDraftChange: (FilterDraft) -> Unit) {
+    val include = !draft.excludeMode
+    val on = if (include) draft.destCheckEnabled else draft.destExcludeEnabled
+    ProConditionCard(
+        title = stringResource(R.string.afe_dest_title),
+        subtitle = stringResource(R.string.afe_dest_sub),
+        enabled = on,
+        testKey = "destination-words",
+        onEnabledChange = { enabled ->
+            onDraftChange(if (include) draft.copy(destCheckEnabled = enabled) else draft.copy(destExcludeEnabled = enabled))
+        },
+        footer = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FilterChip(
+                        selected = include,
+                        onClick = { onDraftChange(draft.copy(excludeMode = false)) },
+                        label = { Text(stringResource(R.string.afe_dest_mode_include), style = MaterialTheme.typography.labelSmall) },
+                        modifier = Modifier.height(32.dp).testTag("destination-include"),
+                    )
+                    FilterChip(
+                        selected = !include,
+                        onClick = { onDraftChange(draft.copy(excludeMode = true)) },
+                        label = { Text(stringResource(R.string.afe_dest_mode_exclude), style = MaterialTheme.typography.labelSmall) },
+                        modifier = Modifier.height(32.dp).testTag("destination-exclude"),
+                    )
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(R.string.afe_dest_reject_unknown), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = if (include) draft.destIncludeRejectOnUnknown else draft.destExcludeRejectOnUnknown,
+                        onCheckedChange = {
+                            onDraftChange(if (include) draft.copy(destIncludeRejectOnUnknown = it) else draft.copy(destExcludeRejectOnUnknown = it))
+                        },
+                        modifier = Modifier.testTag("destination-reject-unknown"),
+                    )
+                }
+            }
+        },
+    ) { dimmed ->
+        DraftField(
+            value = if (include) draft.destKeywords else draft.destExcludeKeywords,
+            label = stringResource(if (include) R.string.afe_dest_include_label else R.string.afe_dest_exclude_label),
+            error = null,
+            keyboardType = KeyboardType.Text,
+            singleLine = false,
+            modifier = Modifier.weight(1f).testTag("destination-keywords"),
+            enabled = !dimmed,
+        ) { onDraftChange(if (include) draft.copy(destKeywords = it) else draft.copy(destExcludeKeywords = it)) }
+    }
 }
-
-internal fun FilterDraft.withHighFareOverride(enabled: Boolean): FilterDraft = copy(
-    highFareOverrideEnabled = enabled,
-    highFareOverrideAmount = if (enabled) highFareOverrideAmount.ifBlank { "35" } else highFareOverrideAmount,
-)
 
 @Composable
 internal fun NoDestinationCondition(
@@ -381,23 +283,187 @@ internal fun NoDestinationCondition(
     keyPrefix: String = "",
     framed: Boolean = true,
 ) {
-    val hasExcludedWords = draft.excludeKeywords.split(',', '،', '\n', '\r').any { it.isNotBlank() }
     ProConditionCard(
         title = stringResource(R.string.afe_no_dest_title),
         subtitle = null,
-        enabled = draft.acceptNoDestination,
-        switchEnabled = !hasExcludedWords,
+        enabled = draft.snipingNoDest,
         testKey = keyPrefix + "no-destination",
         framed = framed,
-        onEnabledChange = { onDraftChange(draft.copy(acceptNoDestination = it)) },
+        onEnabledChange = { onDraftChange(draft.copy(snipingNoDest = it)) },
     ) {
         Text(
-            if (hasExcludedWords) stringResource(R.string.afe_no_dest_blocked)
-            else stringResource(R.string.afe_no_dest_on),
+            stringResource(R.string.afe_no_dest_on),
             style = MaterialTheme.typography.bodySmall,
-            color = if (hasExcludedWords) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(1f),
             maxLines = 2,
+        )
+    }
+}
+
+/** The reference engine `targetApp`: which ride app Sabbaq watches (Jeeny by default). */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun TargetAppCondition(draft: FilterDraft, onDraftChange: (FilterDraft) -> Unit) {
+    FilterGroup(
+        title = stringResource(R.string.afe_target_title),
+        subtitle = stringResource(R.string.afe_target_sub),
+        filledCount = 1,
+    ) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            listOf(
+                TargetApp.JEENY to R.string.afe_target_jeeny, TargetApp.BOLT to R.string.afe_target_bolt,
+                TargetApp.PETRA to R.string.afe_target_petra, TargetApp.BOTH to R.string.afe_target_all,
+            ).forEach { (app, label) ->
+                FilterChip(
+                    selected = draft.targetApp == app,
+                    onClick = { onDraftChange(draft.copy(targetApp = app)) },
+                    label = { Text(stringResource(label), style = MaterialTheme.typography.labelSmall) },
+                    modifier = Modifier.height(32.dp).testTag("target-" + app.name.lowercase()),
+                )
+            }
+        }
+    }
+}
+
+/** Rating and wait-&-save: the reference engine reads them on Bolt only. */
+@Composable
+internal fun BoltOnlyConditions(draft: FilterDraft, errors: Map<String, String>, onDraftChange: (FilterDraft) -> Unit) {
+    ProConditionCard(
+        title = stringResource(R.string.afe_rating_title),
+        subtitle = stringResource(R.string.afe_rating_sub),
+        enabled = draft.ratingEnabled,
+        testKey = "rating",
+        onEnabledChange = { enabled ->
+            onDraftChange(draft.copy(ratingEnabled = enabled, minRating = if (enabled) draft.minRating.ifBlank { "4.5" } else draft.minRating))
+        },
+        footer = {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.afe_rating_reject_unknown), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                Switch(checked = draft.ratingRejectOnUnknown, onCheckedChange = { onDraftChange(draft.copy(ratingRejectOnUnknown = it)) },
+                    modifier = Modifier.testTag("rating-reject-unknown"))
+            }
+        },
+    ) { dimmed ->
+        CompactStepperValue(
+            stringResource(R.string.afe_rating_min), draft.minRating, "★", "0.1", KeyboardType.Decimal,
+            onValueChange = { onDraftChange(draft.copy(minRating = it)) }, testKey = "min-rating",
+            modifier = Modifier.weight(1f), error = errors["minRating"], dimmed = dimmed,
+        )
+    }
+    ProConditionCard(
+        title = stringResource(R.string.afe_waitsave_title),
+        subtitle = null,
+        enabled = draft.excludeWaitSave,
+        testKey = "wait-save",
+        onEnabledChange = { onDraftChange(draft.copy(excludeWaitSave = it)) },
+    ) {
+        Text(stringResource(R.string.afe_waitsave_sub), style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f), maxLines = 2)
+    }
+}
+
+/**
+ * The reference engine turbo: tap the saved point the instant an offer word appears, before reading it.
+ * It fires only while no condition is switched on; with conditions, the point is used when the
+ * accept control cannot be read. The point comes from the last confirmed tap or is typed.
+ */
+@Composable
+internal fun TurboCondition(draft: FilterDraft, errors: Map<String, String>, onDraftChange: (FilterDraft) -> Unit) {
+    ProConditionCard(
+        title = stringResource(R.string.afe_turbo_title),
+        subtitle = stringResource(R.string.afe_turbo_sub),
+        enabled = draft.turboEnabled,
+        testKey = "turbo",
+        onEnabledChange = { onDraftChange(draft.copy(turboEnabled = it)) },
+        footer = {
+            val x = app.sabbaq.Settings.lastConfirmedTapX
+            val y = app.sabbaq.Settings.lastConfirmedTapY
+            TextButton(
+                onClick = { onDraftChange(draft.copy(clickX = x.toString(), clickY = y.toString())) },
+                enabled = x > 0 && y > 0,
+                modifier = Modifier.testTag("turbo-use-last"),
+            ) { Text(stringResource(R.string.afe_turbo_use_last)) }
+        },
+    ) { dimmed ->
+        CompactStepperValue(
+            "X", draft.clickX, "px", "10", KeyboardType.Number,
+            onValueChange = { onDraftChange(draft.copy(clickX = it)) }, testKey = "turbo-x",
+            modifier = Modifier.weight(1f), error = errors["clickX"], dimmed = dimmed,
+        )
+        CompactStepperValue(
+            "Y", draft.clickY, "px", "10", KeyboardType.Number,
+            onValueChange = { onDraftChange(draft.copy(clickY = it)) }, testKey = "turbo-y",
+            modifier = Modifier.weight(1f), error = errors["clickY"], dimmed = dimmed,
+        )
+    }
+}
+
+/** The reference engine's payment filter: all, cash only or card only, with its own reject-on-unknown. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun PaymentCondition(draft: FilterDraft, onDraftChange: (FilterDraft) -> Unit) {
+    ProConditionCard(
+        title = stringResource(R.string.afe_payment_title),
+        subtitle = stringResource(R.string.afe_payment_sub),
+        enabled = draft.paymentMode != PaymentMode.ALL,
+        testKey = "payment",
+        onEnabledChange = { onDraftChange(draft.copy(paymentMode = if (it) PaymentMode.CASH else PaymentMode.ALL)) },
+        footer = {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.afe_payment_reject_unknown), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                Switch(
+                    checked = draft.paymentRejectOnUnknown,
+                    onCheckedChange = { onDraftChange(draft.copy(paymentRejectOnUnknown = it)) },
+                    modifier = Modifier.testTag("payment-reject-unknown"),
+                )
+            }
+        },
+    ) { dimmed ->
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.weight(1f)) {
+            FilterChip(
+                selected = draft.paymentMode == PaymentMode.CASH,
+                enabled = !dimmed,
+                onClick = { onDraftChange(draft.copy(paymentMode = PaymentMode.CASH)) },
+                label = { Text(stringResource(R.string.afe_payment_cash), style = MaterialTheme.typography.labelSmall) },
+                modifier = Modifier.height(32.dp).testTag("payment-cash"),
+            )
+            FilterChip(
+                selected = draft.paymentMode == PaymentMode.CARD,
+                enabled = !dimmed,
+                onClick = { onDraftChange(draft.copy(paymentMode = PaymentMode.CARD)) },
+                label = { Text(stringResource(R.string.afe_payment_card), style = MaterialTheme.typography.labelSmall) },
+                modifier = Modifier.height(32.dp).testTag("payment-card"),
+            )
+        }
+    }
+}
+
+/** The reference engine's smart delay: wait a random time inside the range before tapping. */
+@Composable
+internal fun SmartDelayCondition(draft: FilterDraft, errors: Map<String, String>, onDraftChange: (FilterDraft) -> Unit) {
+    ProConditionCard(
+        title = stringResource(R.string.afe_delay_title),
+        subtitle = stringResource(R.string.afe_delay_sub),
+        enabled = draft.smartDelayEnabled,
+        testKey = "smart-delay",
+        onEnabledChange = { enabled ->
+            onDraftChange(draft.copy(
+                smartDelayEnabled = enabled,
+                smartDelayMin = if (enabled) draft.smartDelayMin.ifBlank { "200" } else draft.smartDelayMin,
+                smartDelayMax = if (enabled) draft.smartDelayMax.ifBlank { "800" } else draft.smartDelayMax,
+            ))
+        },
+    ) { dimmed ->
+        CompactStepperValue(
+            stringResource(R.string.afe_delay_min), draft.smartDelayMin, stringResource(R.string.afe_unit_ms), "100", KeyboardType.Number,
+            onValueChange = { onDraftChange(draft.copy(smartDelayMin = it)) }, testKey = "smart-delay-min",
+            modifier = Modifier.weight(1f), error = errors["smartDelayMin"], dimmed = dimmed,
+        )
+        CompactStepperValue(
+            stringResource(R.string.afe_delay_max), draft.smartDelayMax, stringResource(R.string.afe_unit_ms), "100", KeyboardType.Number,
+            onValueChange = { onDraftChange(draft.copy(smartDelayMax = it)) }, testKey = "smart-delay-max",
+            modifier = Modifier.weight(1f), error = errors["smartDelayMax"], dimmed = dimmed,
         )
     }
 }
@@ -467,6 +533,7 @@ private fun DraftField(
     keyboardType: KeyboardType,
     singleLine: Boolean = true,
     modifier: Modifier = Modifier.fillMaxWidth(),
+    enabled: Boolean = true,
     onValueChange: (String) -> Unit,
 ) {
     OutlinedTextField(
@@ -477,24 +544,8 @@ private fun DraftField(
         supportingText = error?.let { message -> { Text(message) } },
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
         singleLine = singleLine,
+        enabled = enabled,
         textStyle = MaterialTheme.typography.bodyMedium,
         modifier = modifier,
     )
-}
-
-private fun upperDefault(lower: String, currentUpper: String, fallback: String): String {
-    if (currentUpper.isNotBlank()) return currentUpper
-    val lowerNumber = CoreText.parseNumber(CoreText.normalize(lower)) ?: return fallback
-    val fallbackNumber = BigDecimal(fallback)
-    return if (lowerNumber > fallbackNumber) lower else fallback
-}
-
-/** Kept as a pure helper for the existing schedule validation tests. */
-internal fun parseScheduleMinute(raw: String, allowEndOfDay: Boolean): Int? {
-    val match = Regex("^(\\d{1,2}):(\\d{2})$").matchEntire(CoreText.normalize(raw)) ?: return null
-    val hour = match.groupValues[1].toIntOrNull() ?: return null
-    val minute = match.groupValues[2].toIntOrNull() ?: return null
-    if (hour == 24 && minute == 0 && allowEndOfDay) return 1440
-    if (hour !in 0..23 || minute !in 0..59) return null
-    return hour * 60 + minute
 }

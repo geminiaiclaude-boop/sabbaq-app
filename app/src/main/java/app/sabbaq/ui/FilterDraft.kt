@@ -1,351 +1,184 @@
 package app.sabbaq.ui
 
-import app.sabbaq.core.Filters
-import app.sabbaq.core.FilterCombination
-import app.sabbaq.core.PerKmBasis
 import app.sabbaq.LocaleManager
-import app.sabbaq.core.Text
-import java.math.BigDecimal
+import app.sabbaq.core.engine.DestinationMode
+import app.sabbaq.core.engine.EngineConfig
+import app.sabbaq.core.engine.LogicMode
+import app.sabbaq.core.engine.PaymentMode
+import app.sabbaq.core.engine.TargetApp
+import app.sabbaq.core.engine.zones.ZoneGeo
+import app.sabbaq.core.engine.WaitSaveMode
 import kotlinx.serialization.Serializable
 
 /**
- * حالة تحرير فلاتر العرض. تبقى النصوص كما أدخلها السائق حتى تستطيع الشاشة عرض
- * الخطأ نفسه، فيما تبقى الحقول غير المعروضة في [original] عند إعادة بناء العقد.
- * لا يعتمد هذا النموذج على Android أو Compose.
+ * What the driver is typing on the conditions page: the reference engine's settings as text fields
+ * (reference engine notes). An empty limit means "no limit" (0), exactly
+ * like the reference engine, so a fresh install accepts every offer until the driver sets one.
  */
 @Serializable
-class FilterDraft private constructor(
-    val minFare: String,
-    val maxFare: String,
-    val fareRangeEnabled: Boolean,
-    val minFarePerKm: String,
-    val farePerKmEnabled: Boolean,
-    val maxPickupKm: String,
-    val pickupDistanceEnabled: Boolean,
-    val minPickupMinutes: String,
-    val maxPickupMinutes: String,
-    val pickupTimeEnabled: Boolean,
-    val minTripKm: String,
-    val maxTripKm: String,
-    val tripDistanceEnabled: Boolean,
-    val minTripMinutes: String,
-    val maxTripMinutes: String,
-    val tripTimeEnabled: Boolean,
-    val highFareOverrideEnabled: Boolean,
-    val highFareOverrideAmount: String,
-    val acceptNoDestination: Boolean,
-    val excludeKeywords: String,
-    val scheduleStart: String,
-    val scheduleEnd: String,
-    val perKmBasis: PerKmBasis,
-    val scheduleEnabled: Boolean,
-    private val original: Filters,
-    private val initialExcludeKeywords: String,
-    val combination: FilterCombination = FilterCombination.ALL,
+data class FilterDraft(
+    val priceEnabled: Boolean = true,
+    val minPrice: String = "",
+    val maxPrice: String = "",
+    val timeEnabled: Boolean = true,
+    val minTime: String = "",
+    val maxTime: String = "",
+    val logicOr: Boolean = false,
+    val destCheckEnabled: Boolean = false,
+    val destKeywords: String = "",
+    val destIncludeRejectOnUnknown: Boolean = true,
+    val destExcludeEnabled: Boolean = false,
+    val destExcludeKeywords: String = "",
+    val destExcludeRejectOnUnknown: Boolean = false,
+    val excludeMode: Boolean = false,
+    val snipingNoDest: Boolean = true,
+    val bypassTimeEnabled: Boolean = false,
+    val bypassTimePrice: String = "",
+    val targetApp: TargetApp = TargetApp.JEENY,
+    val turboEnabled: Boolean = false,
+    val clickX: String = "",
+    val clickY: String = "",
+    val ratingEnabled: Boolean = false,
+    val minRating: String = "",
+    val ratingRejectOnUnknown: Boolean = false,
+    val excludeWaitSave: Boolean = false,
+    val paymentMode: PaymentMode = PaymentMode.ALL,
+    val paymentRejectOnUnknown: Boolean = false,
+    val smartDelayEnabled: Boolean = false,
+    val smartDelayMin: String = "",
+    val smartDelayMax: String = "",
+    val zonesEnabled: Boolean = false,
+    val zonesJson: String = "[]",
+    val zonesRejectOnUnknown: Boolean = true,
+    val zonesOnTheWay: Boolean = false,
+    val excludeZonesEnabled: Boolean = false,
+    val excludeZonesJson: String = "[]",
+    val excludeZonesRejectOnUnknown: Boolean = false,
+    val smartDestActive: Boolean = false,
+    val smartDestLat: Double = 0.0,
+    val smartDestLng: Double = 0.0,
+    val smartDestAngle: String = "45",
 ) {
-    /**
-     * نسخة immutable مناسبة لتحديث حقل واحد من واجهة Compose من دون كشف [original].
-     */
-    fun copy(
-        minFare: String = this.minFare,
-        maxFare: String = this.maxFare,
-        fareRangeEnabled: Boolean = this.fareRangeEnabled,
-        minFarePerKm: String = this.minFarePerKm,
-        farePerKmEnabled: Boolean = this.farePerKmEnabled,
-        maxPickupKm: String = this.maxPickupKm,
-        pickupDistanceEnabled: Boolean = this.pickupDistanceEnabled,
-        minPickupMinutes: String = this.minPickupMinutes,
-        maxPickupMinutes: String = this.maxPickupMinutes,
-        pickupTimeEnabled: Boolean = this.pickupTimeEnabled,
-        minTripKm: String = this.minTripKm,
-        maxTripKm: String = this.maxTripKm,
-        tripDistanceEnabled: Boolean = this.tripDistanceEnabled,
-        minTripMinutes: String = this.minTripMinutes,
-        maxTripMinutes: String = this.maxTripMinutes,
-        tripTimeEnabled: Boolean = this.tripTimeEnabled,
-        highFareOverrideEnabled: Boolean = this.highFareOverrideEnabled,
-        highFareOverrideAmount: String = this.highFareOverrideAmount,
-        acceptNoDestination: Boolean = this.acceptNoDestination,
-        excludeKeywords: String = this.excludeKeywords,
-        scheduleStart: String = this.scheduleStart,
-        scheduleEnd: String = this.scheduleEnd,
-        perKmBasis: PerKmBasis = this.perKmBasis,
-        scheduleEnabled: Boolean = this.scheduleEnabled,
-        combination: FilterCombination = this.combination,
-    ): FilterDraft = FilterDraft(
-        minFare = minFare,
-        maxFare = maxFare,
-        fareRangeEnabled = fareRangeEnabled,
-        minFarePerKm = minFarePerKm,
-        farePerKmEnabled = farePerKmEnabled,
-        maxPickupKm = maxPickupKm,
-        pickupDistanceEnabled = pickupDistanceEnabled,
-        minPickupMinutes = minPickupMinutes,
-        maxPickupMinutes = maxPickupMinutes,
-        pickupTimeEnabled = pickupTimeEnabled,
-        minTripKm = minTripKm,
-        maxTripKm = maxTripKm,
-        tripDistanceEnabled = tripDistanceEnabled,
-        minTripMinutes = minTripMinutes,
-        maxTripMinutes = maxTripMinutes,
-        tripTimeEnabled = tripTimeEnabled,
-        highFareOverrideEnabled = highFareOverrideEnabled,
-        highFareOverrideAmount = highFareOverrideAmount,
-        acceptNoDestination = acceptNoDestination,
-        excludeKeywords = excludeKeywords,
-        scheduleStart = scheduleStart,
-        scheduleEnd = scheduleEnd,
-        perKmBasis = perKmBasis,
-        scheduleEnabled = scheduleEnabled,
-        original = original,
-        initialExcludeKeywords = initialExcludeKeywords,
-        combination = combination,
-    )
+    val homeSet: Boolean get() = !(smartDestLat == 0.0 && smartDestLng == 0.0)
 
-    /**
-     * يتحقق من المسودة كلها قبل إنشاء Filters. لا يعني عدم وجود مرشح أن المسودة
-     * غير صالحة؛ قرار قبول العروض بلا مرشحات مسؤولية وقت التشغيل في OfferEvaluator.
-     */
-    fun validate(): DraftValidation {
+    /** [base] supplies the fields this page does not edit (extra keyword lists, zones, smart destination). */
+    fun validate(base: EngineConfig = EngineConfig()): DraftValidation {
         val errors = linkedMapOf<String, String>()
-        val minFareValue = decimal("minFare", minFare, errors, fareRangeEnabled)
-        val maxFareValue = decimal("maxFare", maxFare, errors, fareRangeEnabled)
-        decimal("minFarePerKm", minFarePerKm, errors, farePerKmEnabled)
-        decimal("maxPickupKm", maxPickupKm, errors, pickupDistanceEnabled)
-        val highFareOverrideValue = decimal("highFareOverrideAmount", highFareOverrideAmount, errors, highFareOverrideEnabled)
-        if (highFareOverrideEnabled && highFareOverrideValue == null && highFareOverrideAmount.isBlank()) {
-            errors["highFareOverrideAmount"] = (if (LocaleManager.isArabic()) "أدخل سعرًا صالحًا لتفعيل التجاوز." else "Enter a valid price to enable the override.")
-        }
-        val minPickupMinutesValue = if (pickupTimeEnabled) nonNegativeInt("minPickupMinutes", minPickupMinutes, errors)
-            else inactiveInt(minPickupMinutes, original.minPickupMinutes)
-        val maxPickupMinutesValue = if (pickupTimeEnabled) nonNegativeInt("maxPickupMinutes", maxPickupMinutes, errors)
-            else inactiveInt(maxPickupMinutes, original.maxPickupMinutes)
-        val minTripKmValue = decimal("minTripKm", minTripKm, errors, tripDistanceEnabled)
-        val maxTripKmValue = decimal("maxTripKm", maxTripKm, errors, tripDistanceEnabled)
-        val minTripMinutesValue = if (tripTimeEnabled) nonNegativeInt("minTripMinutes", minTripMinutes, errors)
-            else inactiveInt(minTripMinutes, original.minTripMinutes)
-        val maxTripMinutesValue = if (tripTimeEnabled) nonNegativeInt("maxTripMinutes", maxTripMinutes, errors)
-            else inactiveInt(maxTripMinutes, original.maxTripMinutes)
-
-        if (fareRangeEnabled && minFareValue != null && maxFareValue != null && minFareValue > maxFareValue) {
-            errors["minFare"] = rangeError()
-            errors["maxFare"] = rangeError()
-        }
-        if (tripDistanceEnabled && minTripKmValue != null && maxTripKmValue != null && minTripKmValue > maxTripKmValue) {
-            errors["minTripKm"] = rangeError()
-            errors["maxTripKm"] = rangeError()
-        }
-        if (pickupTimeEnabled && minPickupMinutesValue != null && maxPickupMinutesValue != null && minPickupMinutesValue > maxPickupMinutesValue) {
-            errors["minPickupMinutes"] = rangeError()
-            errors["maxPickupMinutes"] = rangeError()
-        }
-        if (tripTimeEnabled && minTripMinutesValue != null && maxTripMinutesValue != null && minTripMinutesValue > maxTripMinutesValue) {
-            errors["minTripMinutes"] = rangeError()
-            errors["maxTripMinutes"] = rangeError()
-        }
-        if (excludeKeywords.length > MAX_KEYWORDS_LENGTH) {
-            errors["excludeKeywords"] = (if (LocaleManager.isArabic()) "الكلمات المستبعدة أطول من الحد المسموح." else "The excluded words exceed the allowed length.")
-        }
-
-        val schedule = if (scheduleEnabled) {
-            val start = scheduleMinute("scheduleStart", scheduleStart, allowEndOfDay = false, errors = errors)
-            val end = scheduleMinute("scheduleEnd", scheduleEnd, allowEndOfDay = true, errors = errors)
-            if (start != null && end != null) Schedule(start, end) else null
-        } else {
-            // الحقول مخفية عند التعطيل؛ لا نرفض نصًا قديمًا لا يراه السائق.
-            null
-        }
-
-        if (errors.isNotEmpty()) return DraftValidation(filters = null, errors = errors.toMap())
-
-        return DraftValidation(
-            filters = original.copy(
-                minFare = optional(minFare),
-                maxFare = optional(maxFare),
-                fareRangeEnabled = fareRangeEnabled,
-                minFarePerKm = optional(minFarePerKm),
-                farePerKmEnabled = farePerKmEnabled,
-                perKmBasis = perKmBasis,
-                maxPickupKm = optional(maxPickupKm),
-                pickupDistanceEnabled = pickupDistanceEnabled,
-                minPickupMinutes = minPickupMinutesValue,
-                maxPickupMinutes = maxPickupMinutesValue,
-                pickupTimeEnabled = pickupTimeEnabled,
-                minTripKm = optional(minTripKm),
-                maxTripKm = optional(maxTripKm),
-                tripDistanceEnabled = tripDistanceEnabled,
-                minTripMinutes = minTripMinutesValue,
-                maxTripMinutes = maxTripMinutesValue,
-                tripTimeEnabled = tripTimeEnabled,
-                highFareOverrideEnabled = highFareOverrideEnabled,
-                highFareOverrideAmount = highFareOverrideAmount,
-                acceptNoDestination = acceptNoDestination,
-                excludeKeywords = keywordsForFilters(),
-                scheduleEnabled = scheduleEnabled,
-                scheduleStartMinute = if (scheduleEnabled) schedule!!.start else original.scheduleStartMinute,
-                scheduleEndMinute = if (scheduleEnabled) schedule!!.end else original.scheduleEndMinute,
-                combination = combination,
-            ),
-            errors = emptyMap(),
-        )
+        val minP = decimal("minPrice", minPrice, errors)
+        val maxP = decimal("maxPrice", maxPrice, errors)
+        val minT = whole("minTime", minTime, errors)
+        val maxT = whole("maxTime", maxTime, errors)
+        val bypass = decimal("bypassTimePrice", bypassTimePrice, errors)
+        val dMin = whole("smartDelayMin", smartDelayMin, errors)
+        val dMax = whole("smartDelayMax", smartDelayMax, errors)
+        val rating = decimal("minRating", minRating, errors)
+        val angle = whole("smartDestAngle", smartDestAngle, errors)
+        if (smartDestActive && (angle == null || angle !in 1..180)) errors["smartDestAngle"] = invalid()
+        if (smartDestActive && !homeSet) errors["smartDest"] = needHome()
+        if (zonesEnabled && ZoneGeo.polygons(zonesJson).isEmpty()) errors["zones"] = needZone()
+        if (excludeZonesEnabled && ZoneGeo.polygons(excludeZonesJson).isEmpty()) errors["excludeZones"] = needZone()
+        val cx = whole("clickX", clickX, errors)
+        val cy = whole("clickY", clickY, errors)
+        if (turboEnabled && (cx == null || cy == null)) { errors["clickX"] = needPoint(); errors["clickY"] = needPoint() }
+        if (rating != null && rating > 5.0) errors["minRating"] = invalid()
+        if (minP != null && maxP != null && maxP > 0 && minP > maxP) { errors["minPrice"] = rangeError(); errors["maxPrice"] = rangeError() }
+        if (minT != null && maxT != null && maxT > 0 && minT > maxT) { errors["minTime"] = rangeError(); errors["maxTime"] = rangeError() }
+        if (dMin != null && dMax != null && dMin > dMax) { errors["smartDelayMin"] = rangeError(); errors["smartDelayMax"] = rangeError() }
+        if (errors.isNotEmpty()) return DraftValidation(null, errors)
+        return DraftValidation(base.copy(
+            minPrice = minP ?: 0.0, maxPrice = maxP ?: 0.0, minTime = minT ?: 0, maxTime = maxT ?: 0,
+            priceEnabled = priceEnabled, timeEnabled = timeEnabled,
+            logicMode = if (logicOr) LogicMode.OR else LogicMode.AND,
+            destCheckEnabled = destCheckEnabled, destKeywords = destKeywords.trim(),
+            destHomeMode = if (excludeMode) DestinationMode.EXCLUDE else DestinationMode.INCLUDE,
+            destExcludeEnabled = destExcludeEnabled, destExcludeKeywords = destExcludeKeywords.trim(),
+            destIncludeRejectOnUnknown = destIncludeRejectOnUnknown, destExcludeRejectOnUnknown = destExcludeRejectOnUnknown,
+            snipingNoDest = snipingNoDest,
+            bypassTimeEnabled = bypassTimeEnabled, bypassTimePrice = bypass ?: 0.0,
+            paymentFilterMode = paymentMode, paymentRejectOnUnknown = paymentRejectOnUnknown,
+            ratingFilterEnabled = ratingEnabled, minRating = rating ?: 0.0,
+            ratingRejectOnUnknown = ratingRejectOnUnknown,
+            waitSaveFilterMode = if (excludeWaitSave) WaitSaveMode.EXCLUDE else WaitSaveMode.OFF,
+            targetApp = targetApp,
+            turboModeEnabled = turboEnabled, clickX = cx, clickY = cy,
+            smartDelayEnabled = smartDelayEnabled, smartDelayMinMs = dMin ?: 0, smartDelayMaxMs = dMax ?: 0,
+            destZonesEnabled = zonesEnabled, destZonesJson = zonesJson, destZonesRejectOnUnknown = zonesRejectOnUnknown,
+            destZonesOnTheWayEnabled = zonesOnTheWay,
+            destExcludeZonesEnabled = excludeZonesEnabled, destExcludeZonesJson = excludeZonesJson,
+            destExcludeZonesRejectOnUnknown = excludeZonesRejectOnUnknown,
+            smartDestActive = smartDestActive, smartDestLat = smartDestLat, smartDestLng = smartDestLng,
+            smartDestAngle = (angle ?: 45).toDouble(),
+        ), errors)
     }
 
-    /** تكون المسودة المعدلة أو غير الصالحة مختلفة عن Filters المرجعية. */
-    fun isDirtyComparedTo(filters: Filters): Boolean = validate().filters?.let { it != normalizeLegacySwitches(filters) } ?: true
+    fun isDirtyComparedTo(saved: EngineConfig): Boolean = validate(saved).config?.let { it != saved } ?: true
 
-    private fun normalizeLegacySwitches(filters: Filters): Filters = filters.copy(
-        fareRangeEnabled = filters.isFareRangeEnabled,
-        farePerKmEnabled = filters.isFarePerKmEnabled,
-        pickupDistanceEnabled = filters.isPickupDistanceEnabled,
-        pickupTimeEnabled = filters.isPickupTimeEnabled,
-        tripDistanceEnabled = filters.isTripDistanceEnabled,
-        tripTimeEnabled = filters.isTripTimeEnabled,
-    )
-
-    private fun keywordsForFilters(): List<String> {
-        // إعادة فتح مسودة موجودة لا تفكك كلمة أصلية قد تحتوي فاصلة بالفعل.
-        if (excludeKeywords == initialExcludeKeywords) return original.excludeKeywords
-        return excludeKeywords
-            .split(',', '،', '\n', '\r')
-            .map(String::trim)
-            .filter(String::isNotEmpty)
-    }
-
-    private fun decimal(field: String, raw: String, errors: MutableMap<String, String>, enabled: Boolean): BigDecimal? {
-        if (!enabled) return null
-        val value = Text.normalize(raw)
-        if (value.isEmpty()) return null
-        if (raw.length > MAX_DECIMAL_LENGTH) {
-            errors[field] = (if (LocaleManager.isArabic()) "الرقم أطول من الحد المسموح." else "The number exceeds the allowed length.")
-            return null
-        }
-        if (DECIMAL_PATTERN.matchEntire(value) == null) {
-            errors[field] = (if (LocaleManager.isArabic()) "أدخل رقمًا غير سالب صالحًا." else "Enter a valid non-negative number.")
-            return null
-        }
-        val parsed = Text.parseNumber(value)
-        if (parsed == null || parsed.signum() < 0) {
-            errors[field] = (if (LocaleManager.isArabic()) "أدخل رقمًا غير سالب صالحًا." else "Enter a valid non-negative number.")
-            return null
-        }
-        return parsed
-    }
-
-    private fun inactiveInt(raw: String, previous: Int?): Int? {
-        val value = Text.normalize(raw)
-        if (value.isEmpty()) return null
-        return value.toIntOrNull()?.takeIf { it >= 0 } ?: previous
-    }
-
-    private fun nonNegativeInt(field: String, raw: String, errors: MutableMap<String, String>): Int? {
-        val value = Text.normalize(raw)
-        if (value.isEmpty()) return null
-        if (raw.length > MAX_INTEGER_LENGTH) {
-            errors[field] = (if (LocaleManager.isArabic()) "العدد أطول من الحد المسموح." else "The integer exceeds the allowed length.")
-            return null
-        }
-        if (INTEGER_PATTERN.matchEntire(value) == null) {
-            errors[field] = (if (LocaleManager.isArabic()) "أدخل عددًا صحيحًا غير سالب." else "Enter a valid non-negative integer.")
-            return null
-        }
-        return value.toIntOrNull().also {
-            if (it == null) errors[field] = (if (LocaleManager.isArabic()) "العدد أكبر من الحد المسموح." else "The integer is larger than allowed.")
-        }
-    }
-
-    private fun scheduleMinute(
-        field: String,
-        raw: String,
-        allowEndOfDay: Boolean,
-        errors: MutableMap<String, String>,
-    ): Int? {
-        val value = Text.normalize(raw)
-        if (raw.length > MAX_SCHEDULE_LENGTH) {
-            errors[field] = (if (LocaleManager.isArabic()) "الوقت أطول من الحد المسموح." else "The time exceeds the allowed length.")
-            return null
-        }
-        val match = TIME_PATTERN.matchEntire(value)
-        if (match == null) {
-            errors[field] = (if (LocaleManager.isArabic()) "أدخل وقتًا صالحًا مثل 08:30." else "Enter a valid time like 08:30.")
-            return null
-        }
-        val hour = match.groupValues[1].toInt()
-        val minute = match.groupValues[2].toInt()
-        if (hour == 24 && minute == 0) {
-            if (allowEndOfDay) return MINUTES_PER_DAY
-            errors[field] = (if (LocaleManager.isArabic()) "24:00 مسموح لوقت النهاية فقط." else "24:00 is allowed for the end time only.")
-            return null
-        }
-        if (hour !in 0..23 || minute !in 0..59) {
-            errors[field] = (if (LocaleManager.isArabic()) "أدخل وقتًا صالحًا مثل 08:30." else "Enter a valid time like 08:30.")
-            return null
-        }
-        return hour * 60 + minute
-    }
-
-    private fun optional(raw: String): String? = raw.takeIf { Text.normalize(it).isNotEmpty() }
-
-    private data class Schedule(val start: Int, val end: Int)
+    /** How many conditions are switched on, for the dashboard summary. */
+    fun activeCount(): Int = listOf(
+        priceEnabled && (minPrice.isNotBlank() || maxPrice.isNotBlank()),
+        timeEnabled && (minTime.isNotBlank() || maxTime.isNotBlank()),
+        destCheckEnabled && !excludeMode,
+        destExcludeEnabled && excludeMode,
+        bypassTimeEnabled,
+        paymentMode != PaymentMode.ALL,
+        ratingEnabled && minRating.isNotBlank(),
+        excludeWaitSave,
+        zonesEnabled,
+        excludeZonesEnabled,
+        smartDestActive,
+    ).count { it }
 
     companion object {
-        private const val MAX_DECIMAL_LENGTH = 32
-        private const val MAX_INTEGER_LENGTH = 10
-        private const val MAX_KEYWORDS_LENGTH = 1_000
-        private const val MAX_SCHEDULE_LENGTH = 5
-        private const val MINUTES_PER_DAY = 24 * 60
+        fun from(c: EngineConfig) = FilterDraft(
+            priceEnabled = c.priceEnabled, minPrice = number(c.minPrice), maxPrice = number(c.maxPrice),
+            timeEnabled = c.timeEnabled, minTime = whole(c.minTime), maxTime = whole(c.maxTime),
+            logicOr = c.logicMode == LogicMode.OR,
+            destCheckEnabled = c.destCheckEnabled, destKeywords = c.destKeywords,
+            destIncludeRejectOnUnknown = c.destIncludeRejectOnUnknown,
+            destExcludeEnabled = c.destExcludeEnabled, destExcludeKeywords = c.destExcludeKeywords,
+            destExcludeRejectOnUnknown = c.destExcludeRejectOnUnknown,
+            excludeMode = c.destHomeMode == DestinationMode.EXCLUDE, snipingNoDest = c.snipingNoDest,
+            bypassTimeEnabled = c.bypassTimeEnabled, bypassTimePrice = number(c.bypassTimePrice),
+            paymentMode = c.paymentFilterMode, paymentRejectOnUnknown = c.paymentRejectOnUnknown,
+            targetApp = c.targetApp, turboEnabled = c.turboModeEnabled,
+            clickX = c.clickX?.toString().orEmpty(), clickY = c.clickY?.toString().orEmpty(),
+            ratingEnabled = c.ratingFilterEnabled,
+            minRating = if (c.minRating <= 0.0) "" else c.minRating.toString(),
+            ratingRejectOnUnknown = c.ratingRejectOnUnknown, excludeWaitSave = c.waitSaveFilterMode == WaitSaveMode.EXCLUDE,
+            smartDelayEnabled = c.smartDelayEnabled, smartDelayMin = whole(c.smartDelayMinMs), smartDelayMax = whole(c.smartDelayMaxMs),
+            zonesEnabled = c.destZonesEnabled, zonesJson = c.destZonesJson, zonesRejectOnUnknown = c.destZonesRejectOnUnknown,
+            zonesOnTheWay = c.destZonesOnTheWayEnabled, excludeZonesEnabled = c.destExcludeZonesEnabled,
+            excludeZonesJson = c.destExcludeZonesJson, excludeZonesRejectOnUnknown = c.destExcludeZonesRejectOnUnknown,
+            smartDestActive = c.smartDestActive, smartDestLat = c.smartDestLat, smartDestLng = c.smartDestLng,
+            smartDestAngle = c.smartDestAngle.toInt().toString(),
+        )
+
+        private fun number(v: Double): String = if (v <= 0.0) "" else if (v % 1.0 == 0.0) v.toLong().toString() else v.toString()
+        private fun whole(v: Int): String = if (v <= 0) "" else v.toString()
+        private fun needHome() = if (LocaleManager.isArabic()) "حدد نقطة الوجهة على الخريطة." else "Set the destination point on the map."
+        private fun needZone() = if (LocaleManager.isArabic()) "ارسم منطقة واحدة على الأقل على الخريطة." else "Draw at least one zone on the map."
         private fun rangeError() = if (LocaleManager.isArabic()) "يجب ألا يتجاوز الحد الأدنى الحد الأقصى." else "The minimum must not exceed the maximum."
+        private fun needPoint() = if (LocaleManager.isArabic()) "حدد موضع زر القبول أولًا." else "Set the accept button position first."
+        private fun invalid() = if (LocaleManager.isArabic()) "اكتب رقمًا صحيحًا موجبًا أو اتركه فارغًا." else "Enter a positive number or leave it empty."
 
-        // Text.NUMBER يدعم ١٬٢٥٠٫٥٠ بعد التطبيع، ويستبعد exponent وNaN بالصيغة الكاملة.
-        private val DECIMAL_PATTERN = Regex("(?:${Text.NUMBER})")
-        private val INTEGER_PATTERN = Regex("\\d+")
-        private val TIME_PATTERN = Regex("(\\d{1,2}):(\\d{2})")
+        private fun latin(raw: String): String = raw.trim().map { if (it in '٠'..'٩') '0' + (it - '٠') else if (it == '٫') '.' else it }.joinToString("")
 
-        /** ينشئ مسودة من الإعدادات مع الاحتفاظ بالعقد الكامل لإعادة النسخ بأمان. */
-        fun from(filters: Filters): FilterDraft {
-            val keywordText = filters.excludeKeywords.joinToString(", ")
-            return FilterDraft(
-                minFare = filters.minFare.orEmpty(),
-                maxFare = filters.maxFare.orEmpty(),
-                fareRangeEnabled = filters.isFareRangeEnabled,
-                minFarePerKm = filters.minFarePerKm.orEmpty(),
-                farePerKmEnabled = filters.isFarePerKmEnabled,
-                maxPickupKm = filters.maxPickupKm.orEmpty(),
-                pickupDistanceEnabled = filters.isPickupDistanceEnabled,
-                minPickupMinutes = filters.minPickupMinutes?.toString().orEmpty(),
-                maxPickupMinutes = filters.maxPickupMinutes?.toString().orEmpty(),
-                pickupTimeEnabled = filters.isPickupTimeEnabled,
-                minTripKm = filters.minTripKm.orEmpty(),
-                maxTripKm = filters.maxTripKm.orEmpty(),
-                tripDistanceEnabled = filters.isTripDistanceEnabled,
-                minTripMinutes = filters.minTripMinutes?.toString().orEmpty(),
-                maxTripMinutes = filters.maxTripMinutes?.toString().orEmpty(),
-                tripTimeEnabled = filters.isTripTimeEnabled,
-                highFareOverrideEnabled = filters.highFareOverrideEnabled,
-                highFareOverrideAmount = filters.highFareOverrideAmount,
-                acceptNoDestination = filters.acceptNoDestination,
-                excludeKeywords = keywordText,
-                scheduleStart = formatMinute(filters.scheduleStartMinute),
-                scheduleEnd = formatMinute(filters.scheduleEndMinute),
-                perKmBasis = filters.perKmBasis,
-                scheduleEnabled = filters.scheduleEnabled,
-                original = filters,
-                initialExcludeKeywords = keywordText,
-                combination = filters.combination,
-            )
+        private fun decimal(field: String, raw: String, errors: MutableMap<String, String>): Double? {
+            if (raw.isBlank()) return null
+            val v = latin(raw).replace(',', '.').toDoubleOrNull()
+            if (v == null || v < 0 || v.isNaN() || v.isInfinite() || v > 100_000) { errors[field] = invalid(); return null }
+            return v
         }
 
-        private fun formatMinute(value: Int): String {
-            if (value !in 0..MINUTES_PER_DAY) return value.toString()
-            return "${(value / 60).toString().padStart(2, '0')}:${(value % 60).toString().padStart(2, '0')}"
+        private fun whole(field: String, raw: String, errors: MutableMap<String, String>): Int? {
+            if (raw.isBlank()) return null
+            val v = latin(raw).toIntOrNull()
+            if (v == null || v < 0 || v > 100_000) { errors[field] = invalid(); return null }
+            return v
         }
     }
 }
 
-/** نتيجة تحقق غير قابلة للتغيير؛ لا تكون [filters] متاحة إلا عند صحة كل الحقول. */
-data class DraftValidation(
-    val filters: Filters?,
-    val errors: Map<String, String>,
-) {
-    val isValid: Boolean
-        get() = errors.isEmpty()
+data class DraftValidation(val config: EngineConfig?, val errors: Map<String, String>) {
+    val isValid: Boolean get() = config != null
 }

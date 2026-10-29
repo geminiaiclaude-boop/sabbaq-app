@@ -103,7 +103,7 @@ object SupportRepository {
         val key = SupabaseClient.accountKey() ?: return
         synchronized(lock) {
             outbox = outbox.copy(pending = outbox.pending.map {
-                if (it.clientId == clientId) it.copy(failed = false, rateLimited = false) else it
+                if (it.clientId == clientId) it.copy(failed = false, rateLimited = false, rejected = false) else it
             })
             persist()
             publish()
@@ -129,7 +129,7 @@ object SupportRepository {
     private suspend fun flushLocked(key: String) {
         while (true) {
             val next = synchronized(lock) {
-                if (outbox.owner != key) null else outbox.pending.firstOrNull { !it.failed && !it.rateLimited }
+                if (outbox.owner != key) null else outbox.pending.firstOrNull { !it.rejected && !it.rateLimited }
             } ?: break
             val result = SupabaseClient.sendSupportMessage(
                 clientId = next.clientId,
@@ -146,7 +146,7 @@ object SupportRepository {
                             outbox.copy(pending = outbox.pending.filterNot { it.clientId == next.clientId })
                         }
                         SupabaseClient.SupportSendResult.RATE_LIMITED -> outbox.markPending(next.clientId) { it.copy(rateLimited = true) }
-                        SupabaseClient.SupportSendResult.REJECTED,
+                        SupabaseClient.SupportSendResult.REJECTED -> outbox.markPending(next.clientId) { it.copy(failed = true, rejected = true) }
                         SupabaseClient.SupportSendResult.RETRY -> outbox.markPending(next.clientId) { it.copy(failed = true) }
                     }
                     persist()

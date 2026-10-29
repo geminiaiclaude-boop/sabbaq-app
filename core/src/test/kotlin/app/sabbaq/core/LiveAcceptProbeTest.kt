@@ -37,29 +37,8 @@ class LiveAcceptProbeTest {
         assertTrue(probe.weakConfirmLabels.isEmpty())
     }
 
-    @Test
-    fun `mock offer parses with a fare, distances and a tappable accept control`() {
-        val parsed = OfferParser(probe).parse(offerScreen())
-        assertFalse(parsed.confirmed)
-        val offer = assertNotNull(parsed.offer).let { parsed.offer!! }
-        assertEquals(BigDecimal("25"), offer.fare)
-        assertEquals(BigDecimal("1.2"), offer.pickupKm)
-        assertEquals(BigDecimal("8.5"), offer.tripKm)
-        assertTrue(parsed.acceptNode!!.clickable)
-    }
 
-    @Test
-    fun `confirmation screen is recognised and offers nothing to tap`() {
-        val parsed = OfferParser(probe).parse(offerScreen(confirmed = true))
-        assertTrue(parsed.confirmed)
-        assertNull(parsed.offer)
-    }
 
-    @Test
-    fun `a real Jeeny accept label is never the probe's target`() {
-        val root = node(children = listOf(node("25 ر.س"), node("قبول", clickable = true)))
-        assertNull(OfferParser(probe).parse(root).acceptNode)
-    }
 
     @Test
     fun `diagnosis names the first missing step`() {

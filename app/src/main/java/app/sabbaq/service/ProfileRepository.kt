@@ -3,7 +3,7 @@ package app.sabbaq.service
 import android.content.Context
 import android.os.SystemClock
 import app.sabbaq.core.Profiles
-import app.sabbaq.core.RideAppAdapters
+
 import app.sabbaq.core.RideProfile
 import app.sabbaq.core.TelemetryStage
 import app.sabbaq.network.SupabaseClient
@@ -40,6 +40,9 @@ object ProfileRepository {
 
     fun versionOf(profileId: String): Int? = current().firstOrNull { it.id == profileId }?.version
 
+    /** Package names a profile watches, including administration updates. */
+    fun packagesOf(profileId: String): List<String> = current().firstOrNull { it.id == profileId }?.packages.orEmpty()
+
     /** Fetches published profiles when the cached copy is older than six hours (or [force]). */
     suspend fun refreshIfStale(force: Boolean = false) {
         val now = SystemClock.elapsedRealtime()
@@ -63,8 +66,8 @@ object ProfileRepository {
     private fun decodeRemote(text: String): List<RideProfile> {
         val allowedPackages = bundled.flatMap { it.packages }.toSet()
         return runCatching { Profiles.decode(text) }.getOrDefault(emptyList())
-            // An unknown id has no adapter; RideAppAdapters would throw and disable every platform.
-            .filter { profile -> profile.id in RideAppAdapters.supportedProfileIds() && profile.packages.all { it in allowedPackages } }
+            // Only the ride apps Sabbaq knows; an unknown id from the server is ignored, never fatal.
+            .filter { profile -> profile.id in SUPPORTED_PROFILE_IDS && profile.packages.all { it in allowedPackages } }
     }
 
     @Synchronized
@@ -76,3 +79,5 @@ object ProfileRepository {
         }
     }
 }
+
+private val SUPPORTED_PROFILE_IDS = setOf("jeeny", "bolt", "petra")

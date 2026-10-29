@@ -67,12 +67,6 @@ object OfferTelemetryContract {
         return sha256(material).take(32)
     }
 
-    /**
-     * A rule's reason as telemetry carries it. "fare" is a refused word in reason codes (it would
-     * read as offer content), so fare rules travel as "price": FARE_TOO_LOW is price_too_low, not
-     * the anonymous "redacted" that hid why offers were rejected.
-     */
-    fun reasonFor(code: ReasonCode): String = code.name.lowercase().replace("fare", "price")
 
     fun sanitizeReason(raw: String?): String? {
         if (raw == null) return null

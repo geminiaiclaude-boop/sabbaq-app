@@ -4,19 +4,6 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class OfferTelemetryTest {
-    @Test
-    fun everyRejectionReasonReachesTelemetryReadable() {
-        // FARE_TOO_LOW used to travel as "fare_too_low", which the privacy filter turns into
-        // "redacted": support could not see why an offer was rejected.
-        for (code in ReasonCode.entries) {
-            val sent = OfferTelemetryContract.sanitizeReason(OfferTelemetryContract.reasonFor(code))
-            assertNotEquals("$code must not be redacted", "redacted", sent)
-            assertEquals(OfferTelemetryContract.reasonFor(code), sent)
-        }
-        assertEquals("price_too_low", OfferTelemetryContract.reasonFor(ReasonCode.FARE_TOO_LOW))
-        assertEquals("trip_km_missing", OfferTelemetryContract.reasonFor(ReasonCode.TRIP_KM_MISSING))
-        assertEquals("redacted", OfferTelemetryContract.sanitizeReason(ReasonCode.FARE_TOO_LOW.name))
-    }
 
     @Test fun `reason redaction removes identifiers and keeps bounded code`() {
         val reason = OfferTelemetryContract.sanitizeReason("fare=5.50 address 12 Main Street phone +966512345678")

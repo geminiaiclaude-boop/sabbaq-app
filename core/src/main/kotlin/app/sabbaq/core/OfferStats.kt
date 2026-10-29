@@ -9,11 +9,11 @@ data class OfferStatsDay(
     val visibleOffers: Long = 0,
     val rejectedOffers: Long = 0,
     val acceptedOffers: Long = 0,
-    val rejectionsByReason: Map<ReasonCode, Long> = emptyMap(),
+    val rejectionsByReason: Map<String, Long> = emptyMap(),
 ) {
     fun recordVisible(): OfferStatsDay = copy(visibleOffers = visibleOffers.increment())
 
-    fun recordRejected(reasons: Collection<ReasonCode>): OfferStatsDay {
+    fun recordRejected(reasons: Collection<String>): OfferStatsDay {
         if (reasons.isEmpty()) return this
         val reasonCounts = rejectionsByReason.toMutableMap()
         reasons.distinct().forEach { reason ->
@@ -35,14 +35,14 @@ data class OfferStatsTotals(
     val visibleOffers: Long = 0,
     val rejectedOffers: Long = 0,
     val acceptedOffers: Long = 0,
-    val rejectionsByReason: Map<ReasonCode, Long> = emptyMap(),
+    val rejectionsByReason: Map<String, Long> = emptyMap(),
 ) {
-    fun topRejectionReasons(limit: Int = 3): List<Pair<ReasonCode, Long>> {
+    fun topRejectionReasons(limit: Int = 3): List<Pair<String, Long>> {
         if (limit <= 0) return emptyList()
         return rejectionsByReason.entries
             .asSequence()
             .filter { it.value > 0 }
-            .sortedWith(compareByDescending<Map.Entry<ReasonCode, Long>> { it.value }.thenBy { it.key.name })
+            .sortedWith(compareByDescending<Map.Entry<String, Long>> { it.value }.thenBy { it.key })
             .take(limit)
             .map { it.key to it.value }
             .toList()
@@ -53,7 +53,7 @@ data class OfferStatsTotals(
             var visible = 0L
             var rejected = 0L
             var accepted = 0L
-            val reasons = mutableMapOf<ReasonCode, Long>()
+            val reasons = mutableMapOf<String, Long>()
             for (day in days) {
                 visible = visible.saturatingAdd(day.visibleOffers.coerceAtLeast(0))
                 rejected = rejected.saturatingAdd(day.rejectedOffers.coerceAtLeast(0))

@@ -1,6 +1,5 @@
 package app.sabbaq.ui
 
-import app.sabbaq.core.Filters
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -36,20 +35,5 @@ class ProductionHardeningUiFormValidationTest {
         assertNull(UiFormValidation.activationCodeError("0123456789ABCDEF"))
     }
 
-    @Test
-    fun `filters reject inverted ranges and invalid schedules`() {
-        assertNotNull(UiFormValidation.filtersError(Filters(minFare = "20", maxFare = "10")))
-        assertNotNull(UiFormValidation.filtersError(Filters(minTripKm = "10", maxTripKm = "5")))
-        assertNotNull(UiFormValidation.filtersError(Filters(scheduleEnabled = true, scheduleStartMinute = 1440)))
-        assertNull(UiFormValidation.filtersError(Filters(minFare = "10", scheduleEnabled = true, scheduleStartMinute = 1320, scheduleEndMinute = 240)))
-    }
 
-    @Test
-    fun `schedule input handles midnight and rejects overflow`() {
-        assertEquals(510, parseScheduleMinute("08:30", false))
-        assertEquals(1440, parseScheduleMinute("24:00", true))
-        assertNull(parseScheduleMinute("24:00", false))
-        assertNull(parseScheduleMinute("12:60", true))
-        assertNull(parseScheduleMinute("-1:00", true))
-    }
 }

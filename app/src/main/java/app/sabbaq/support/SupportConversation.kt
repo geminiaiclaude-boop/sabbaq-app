@@ -29,6 +29,8 @@ data class PendingSupportMessage(
     val createdAtEpochMs: Long,
     val failed: Boolean = false,
     val rateLimited: Boolean = false,
+    /** The server refused it for good; a network failure only sets [failed] and is retried. */
+    val rejected: Boolean = false,
 )
 
 @Serializable

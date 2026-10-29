@@ -60,6 +60,29 @@ class KeeperService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    /**
+     * Special use always; plus location while a geographic rule is on and location is granted, so
+     * the zone stage keeps the driver's position while the ride app is in front. Android refuses
+     * the location type when the start comes from the background (boot, sticky restart): then the
+     * service runs without it and the zones use the last saved position.
+     */
+    private fun startForegroundWithTypes(notification: android.app.Notification) {
+        val base = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0
+        val wantsLocation = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+            Settings.engineConfig.zoneStageOn && app.sabbaq.service.zones.DriverLocationTracker.hasPermission(this)
+        if (wantsLocation) {
+            try {
+                ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, base or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
+                return
+            } catch (e: SecurityException) {
+                Log.w(TAG, "location type refused, running without it")
+            } catch (e: IllegalStateException) {
+                Log.w(TAG, "location type refused, running without it")
+            }
+        }
+        ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, base)
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
             // The driver stopped it: do not resume after a restart either.
@@ -85,13 +108,7 @@ class KeeperService : Service() {
         createChannel()
         return try {
             // Visible first: Android requires the notification within seconds of the start.
-            ServiceCompat.startForeground(
-                this,
-                NOTIFICATION_ID,
-                buildNotification(resuming = !SupabaseClient.hasValidLicense()),
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0,
-            )
+            startForegroundWithTypes(buildNotification(resuming = !SupabaseClient.hasValidLicense()))
             registerScreenReceiver()
             if (licenseMonitor?.isActive != true) {
                 licenseMonitor = serviceScope.launch { monitor() }
