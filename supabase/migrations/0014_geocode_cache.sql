@@ -125,7 +125,8 @@ begin
         v_lng := round(p_lng * 2) / 2.0;
         v_bounds := format('%s,%s|%s,%s', v_lat - 1, v_lng - 1, v_lat + 1, v_lng + 1);
     end if;
-    v_result := private.geocode_fetch(btrim(p_text), v_bounds, v_settings.google_api_key);
+    -- Google is asked for exactly the folded text the key is, so one key always means one query.
+    v_result := private.geocode_fetch(v_key, v_bounds, v_settings.google_api_key);
     if v_result is null then return jsonb_build_object('status', 'unavailable', 'reason', 'fetch_failed'); end if;
 
     insert into public.geocode_cache (key, points, source) values (v_key, v_result -> 'points', 'google')

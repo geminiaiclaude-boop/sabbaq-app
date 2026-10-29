@@ -89,3 +89,6 @@ reset role;
 
 -- Shared geocode cache for destination zones (kept here so the existing CI step runs it).
 \ir geocode_cache_test.sql
+
+-- Referrals and rewards (kept here so the existing CI step runs it).
+\ir referrals_test.sql
