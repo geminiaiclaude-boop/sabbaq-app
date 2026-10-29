@@ -34,24 +34,47 @@ object KeepAlive {
     private const val PREFS = "sabbaq_fleet"
     private const val KEY_LAST_EXIT = "last_exit_ts"
 
-    /** Arms the repeating watchdog while the driver wants monitoring; cancels it otherwise. */
+    private const val KEY_RETRIES = "restart_retries"
+    private const val MAX_RETRIES = 5
+    private const val FIRST_RETRY_MS = 2_000L
+
+    /**
+     * Arms the next watchdog check while the driver wants monitoring; cancels it otherwise. A
+     * one-shot alarm allowed while idle, re-armed by every check: repeating alarms do not fire in Doze.
+     */
     fun schedule(context: Context) {
         val app = context.applicationContext
         val alarms = app.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
         val pending = pending(app, REQUEST_WATCHDOG)
         if (!Settings.monitoringWanted) { alarms.cancel(pending); return }
-        runCatching {
-            alarms.setInexactRepeating(AlarmManager.ELAPSED_REALTIME_WAKEUP,
-                SystemClock.elapsedRealtime() + WATCHDOG_MS, WATCHDOG_MS, pending)
-        }
+        runCatching { alarms.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, SystemClock.elapsedRealtime() + WATCHDOG_MS, pending) }
     }
 
-    /** One restart attempt shortly after the task was removed from recents. */
-    fun restartSoon(context: Context, delayMs: Long = 3_000L) {
+    /**
+     * The reference engine's restart after an unrequested stop (task swiped away, service
+     * destroyed by the system): 2, 4, 8, 16 and 32 seconds, then the 15-minute watchdog takes
+     * over. An exact alarm when Android allows one, otherwise the nearest allowed while idle.
+     */
+    fun restartWithBackoff(context: Context) {
         if (!Settings.monitoringWanted) return
         val app = context.applicationContext
+        val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val retries = prefs.getInt(KEY_RETRIES, 0)
+        if (retries >= MAX_RETRIES) return
+        prefs.edit().putInt(KEY_RETRIES, retries + 1).apply()
         val alarms = app.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
-        runCatching { alarms.set(AlarmManager.ELAPSED_REALTIME_WAKEUP, SystemClock.elapsedRealtime() + delayMs, pending(app, REQUEST_SOON)) }
+        val at = SystemClock.elapsedRealtime() + FIRST_RETRY_MS * (1L shl retries)
+        val pending = pending(app, REQUEST_SOON)
+        val exact = Build.VERSION.SDK_INT < 31 || runCatching { alarms.canScheduleExactAlarms() }.getOrDefault(false)
+        runCatching {
+            if (exact) alarms.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, at, pending)
+            else alarms.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, at, pending)
+        }.recoverCatching { alarms.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, at, pending) }
+    }
+
+    /** A successful start clears the backoff, like the reference's crash_retry_count reset. */
+    fun startedOk(context: Context) {
+        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putInt(KEY_RETRIES, 0).apply()
     }
 
     private fun pending(context: Context, request: Int): PendingIntent =

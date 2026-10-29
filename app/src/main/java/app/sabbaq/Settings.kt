@@ -112,6 +112,15 @@ object Settings {
         set(value) { runCatching { prefs().edit().putLong(KEY_NEWEST_SEEN, value).apply() } }
 
     /** The driver confirmed the phone maker's auto-start setting (it cannot be read back). */
+    /** The floating «سبّاق ●» button while monitoring runs (FloatingBubble); on by default like the reference. */
+    var floatingBubble: Boolean
+        get() = runCatching { prefs().getBoolean("floating_bubble", true) }.getOrDefault(true)
+        set(value) { runCatching { prefs().edit().putBoolean("floating_bubble", value).apply() } }
+
+    var floatingBubbleY: Int
+        get() = runCatching { prefs().getInt("floating_bubble_y", 200) }.getOrDefault(200)
+        set(value) { runCatching { prefs().edit().putInt("floating_bubble_y", value).apply() } }
+
     var autostartConfirmed: Boolean
         get() = runCatching { prefs().getBoolean(KEY_AUTOSTART_CONFIRMED, false) }.getOrDefault(false)
         set(value) { runCatching { prefs().edit().putBoolean(KEY_AUTOSTART_CONFIRMED, value).apply() } }

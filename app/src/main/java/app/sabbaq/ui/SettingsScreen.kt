@@ -772,6 +772,13 @@ fun SettingsScreen(
                     power = buildList {
                         add(ReadinessItem(Icons.Outlined.BatteryChargingFull, stringResource(R.string.ss_perm_batt_title), batteryUnrestricted,
                             stringResource(R.string.ss_setup_batt_done), stringResource(R.string.ss_ready_batt_why), stringResource(R.string.ss_allow), openBattery))
+                        add(ReadinessItem(Icons.Outlined.BatteryAlert, stringResource(R.string.keep_bubble_t),
+                            app.sabbaq.fleet.FloatingBubble.permitted(context), stringResource(R.string.keep_bubble_done), stringResource(R.string.keep_bubble_b),
+                            stringResource(R.string.ss_allow)) {
+                            Settings.floatingBubble = true
+                            runCatching { context.startActivity(app.sabbaq.fleet.FloatingBubble.permissionIntent(context)) }
+                                .recoverCatching { context.startActivity(PowerSetup.appDetailsIntent(context)) }
+                        })
                         if (android.os.Build.VERSION.SDK_INT >= 30) add(ReadinessItem(Icons.Outlined.BatteryAlert, stringResource(R.string.keep_hib_t),
                             !app.sabbaq.fleet.KeepAlive.hibernationOn(context), stringResource(R.string.keep_hib_done), stringResource(R.string.keep_hib_b),
                             stringResource(R.string.ss_setup_open_setting)) {

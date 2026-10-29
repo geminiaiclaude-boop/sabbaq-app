@@ -52,7 +52,7 @@ internal object PowerSetup {
 
     private val AUTOSTART_BRANDS = setOf(
         "xiaomi", "redmi", "poco", "huawei", "honor", "oppo", "realme", "oneplus",
-        "vivo", "iqoo", "asus", "meizu", "letv", "tecno", "infinix", "itel",
+        "vivo", "iqoo", "asus", "meizu", "letv", "tecno", "infinix", "itel", "samsung",
     )
 
     private val AUTOSTART_SCREENS = listOf(
@@ -69,5 +69,12 @@ internal object PowerSetup {
         ComponentName("com.meizu.safe", "com.meizu.safe.permission.SmartBGActivity"),
         ComponentName("com.letv.android.letvsafe", "com.letv.android.letvsafe.AutobootManageActivity"),
         ComponentName("com.transsion.phonemaster", "com.cyin.himgr.autostart.AutoStartActivity"),
+        // Battery screens the reference engine also queries (MIUI, Samsung, OnePlus, ColorOS, vivo).
+        ComponentName("com.miui.powerkeeper", "com.miui.powerkeeper.ui.HiddenAppsConfigActivity"),
+        ComponentName("com.samsung.android.lool", "com.samsung.android.sm.ui.battery.BatteryActivity"),
+        ComponentName("com.samsung.android.sm", "com.samsung.android.sm.ui.battery.BatteryActivity"),
+        ComponentName("com.oneplus.security", "com.oneplus.security.chainlaunch.view.ChainLaunchAppListActivity"),
+        ComponentName("com.coloros.oppoguardelf", "com.coloros.powermanager.fuelgaue.PowerUsageModelActivity"),
+        ComponentName("com.vivo.abe", "com.vivo.applicationbehaviorengine.ui.ExcessivePowerManagerActivity"),
     )
 }

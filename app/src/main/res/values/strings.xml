@@ -961,4 +961,7 @@ Write your problem or question and our team will reply here during working hours
     <string name="keep_standby_t">Android is restricting Sabbaq</string>
     <string name="keep_standby_b">Android rated Sabbaq as rarely used and delays it. Set its battery use to Unrestricted and open Sabbaq daily.</string>
     <string name="keep_open">Open the setting</string>
+    <string name="keep_bubble_t">Floating Sabbaq button</string>
+    <string name="keep_bubble_b">Shows a small “Sabbaq ●” button over other apps while monitoring runs. Android then treats Sabbaq as visible and does not stop it.</string>
+    <string name="keep_bubble_done">The floating button is allowed</string>
 </resources>
