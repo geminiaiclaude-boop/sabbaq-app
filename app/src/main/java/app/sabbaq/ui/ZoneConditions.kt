@@ -218,6 +218,8 @@ internal fun ZoneConditions(draft: FilterDraft, errors: Map<String, String>, onD
         )
     }
 
+    if (draft.zonesEnabled || draft.excludeZonesEnabled) ZoneAdvancedSettings(draft, errors, onDraftChange)
+
     mapMode?.let { mode ->
         ZoneMapDialog(
             mode = mode,
@@ -235,6 +237,52 @@ internal fun ZoneConditions(draft: FilterDraft, errors: Map<String, String>, onD
         )
     }
 }
+
+/**
+ * The engine's fine zone settings, folded by default: how far a destination may lie off the
+ * map's direction, what counts as "on the way", and how far an address may be matched.
+ */
+@Composable
+private fun ZoneAdvancedSettings(draft: FilterDraft, errors: Map<String, String>, onDraftChange: (FilterDraft) -> Unit) {
+    var open by rememberSaveable { mutableStateOf(errors.keys.any { it in ADVANCED_KEYS }) }
+    TextButton(onClick = { open = !open }, modifier = Modifier.testTag("zone-advanced-toggle")) {
+        Text(stringResource(if (open) R.string.zone_adv_hide else R.string.zone_adv_show))
+    }
+    if (!open) return
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.testTag("zone-advanced")) {
+        SwitchLine(stringResource(R.string.zone_adv_bearing), draft.zonesBearingEnabled, "zone-adv-bearing") {
+            onDraftChange(draft.copy(zonesBearingEnabled = it))
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            CompactStepperValue(stringResource(R.string.zone_adv_bearing_margin), draft.zonesBearingMargin, "°", "5", KeyboardType.Number,
+                onValueChange = { onDraftChange(draft.copy(zonesBearingMargin = it)) }, testKey = "zone-adv-bearing-margin",
+                modifier = Modifier.weight(1f), error = errors["zonesBearingMargin"], dimmed = !draft.zonesBearingEnabled)
+            CompactStepperValue(stringResource(R.string.zone_adv_search_radius), draft.excludeProximityKm, "km", "5", KeyboardType.Number,
+                onValueChange = { onDraftChange(draft.copy(excludeProximityKm = it)) }, testKey = "zone-adv-search-radius",
+                modifier = Modifier.weight(1f), error = errors["excludeProximityKm"])
+        }
+        if (draft.zonesOnTheWay) {
+            Text(stringResource(R.string.zone_adv_on_the_way), style = MaterialTheme.typography.labelMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CompactStepperValue(stringResource(R.string.zone_adv_angle), draft.travelAngleTol, "°", "5", KeyboardType.Number,
+                    onValueChange = { onDraftChange(draft.copy(travelAngleTol = it)) }, testKey = "zone-adv-angle",
+                    modifier = Modifier.weight(1f), error = errors["travelAngleTol"])
+                CompactStepperValue(stringResource(R.string.zone_adv_overshoot), draft.travelOvershootKm, "km", "0.5", KeyboardType.Decimal,
+                    onValueChange = { onDraftChange(draft.copy(travelOvershootKm = it)) }, testKey = "zone-adv-overshoot",
+                    modifier = Modifier.weight(1f), error = errors["travelOvershootKm"])
+                CompactStepperValue(stringResource(R.string.zone_adv_corridor), draft.corridorHalfWidthKm, "km", "0.5", KeyboardType.Decimal,
+                    onValueChange = { onDraftChange(draft.copy(corridorHalfWidthKm = it)) }, testKey = "zone-adv-corridor",
+                    modifier = Modifier.weight(1f), error = errors["corridorHalfWidthKm"])
+            }
+        }
+        TextButton(onClick = {
+            onDraftChange(draft.copy(zonesBearingEnabled = true, zonesBearingMargin = "25", travelAngleTol = "20",
+                travelOvershootKm = "2", corridorHalfWidthKm = "1.5", excludeProximityKm = "60"))
+        }, modifier = Modifier.testTag("zone-adv-reset")) { Text(stringResource(R.string.zone_adv_reset)) }
+    }
+}
+
+private val ADVANCED_KEYS = setOf("zonesBearingMargin", "travelAngleTol", "travelOvershootKm", "corridorHalfWidthKm", "excludeProximityKm")
 
 @Composable
 private fun SwitchLine(label: String, checked: Boolean, tag: String, onChange: (Boolean) -> Unit) {

@@ -894,4 +894,14 @@ Write your problem or question and our team will reply here during working hours
     <string name="diag_working_b">Sabbaq accepted at least one order in the last hour.</string>
     <string name="diag_waiting_t">Ready, waiting for orders</string>
     <string name="diag_waiting_b">Everything works; the ride app has not shown an order in the last hour.</string>
+    <string name="zone_adv_show">Fine zone settings</string>
+    <string name="zone_adv_hide">Hide fine settings</string>
+    <string name="zone_adv_bearing">Use the order map\'s direction when the address cannot be placed</string>
+    <string name="zone_adv_bearing_margin">Direction margin</string>
+    <string name="zone_adv_search_radius">Address search radius</string>
+    <string name="zone_adv_on_the_way">What counts as on the way</string>
+    <string name="zone_adv_angle">Angle</string>
+    <string name="zone_adv_overshoot">Past the zone</string>
+    <string name="zone_adv_corridor">Road width</string>
+    <string name="zone_adv_reset">Restore the default values</string>
 </resources>

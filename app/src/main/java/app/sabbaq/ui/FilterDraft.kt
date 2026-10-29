@@ -58,6 +58,13 @@ data class FilterDraft(
     val smartDestLat: Double = 0.0,
     val smartDestLng: Double = 0.0,
     val smartDestAngle: String = "45",
+    /** Fine zone settings; blank means the engine default shown as the hint. */
+    val zonesBearingEnabled: Boolean = true,
+    val zonesBearingMargin: String = "25",
+    val travelAngleTol: String = "20",
+    val travelOvershootKm: String = "2",
+    val corridorHalfWidthKm: String = "1.5",
+    val excludeProximityKm: String = "60",
 ) {
     val homeSet: Boolean get() = !(smartDestLat == 0.0 && smartDestLng == 0.0)
 
@@ -74,6 +81,11 @@ data class FilterDraft(
         val rating = decimal("minRating", minRating, errors)
         val angle = whole("smartDestAngle", smartDestAngle, errors)
         if (smartDestActive && (angle == null || angle !in 1..180)) errors["smartDestAngle"] = invalid()
+        val bearingMargin = ranged("zonesBearingMargin", zonesBearingMargin, 25.0, 5.0, 90.0, errors)
+        val angleTol = ranged("travelAngleTol", travelAngleTol, 20.0, 5.0, 90.0, errors)
+        val overshoot = ranged("travelOvershootKm", travelOvershootKm, 2.0, 0.5, 20.0, errors)
+        val corridor = ranged("corridorHalfWidthKm", corridorHalfWidthKm, 1.5, 0.2, 10.0, errors)
+        val proximity = ranged("excludeProximityKm", excludeProximityKm, 60.0, 5.0, 300.0, errors)
         if (smartDestActive && !homeSet) errors["smartDest"] = needHome()
         if (zonesEnabled && ZoneGeo.polygons(zonesJson).isEmpty()) errors["zones"] = needZone()
         if (excludeZonesEnabled && ZoneGeo.polygons(excludeZonesJson).isEmpty()) errors["excludeZones"] = needZone()
@@ -108,6 +120,9 @@ data class FilterDraft(
             destExcludeZonesRejectOnUnknown = excludeZonesRejectOnUnknown,
             smartDestActive = smartDestActive, smartDestLat = smartDestLat, smartDestLng = smartDestLng,
             smartDestAngle = (angle ?: 45).toDouble(),
+            destZonesBearingEnabled = zonesBearingEnabled, destZonesBearingMarginDeg = bearingMargin,
+            travelAngleTolDeg = angleTol, travelOvershootKm = overshoot, corridorHalfWidthKm = corridor,
+            destExcludeProximityMaxKm = proximity,
         ), errors)
     }
 
@@ -151,6 +166,9 @@ data class FilterDraft(
             excludeZonesJson = c.destExcludeZonesJson, excludeZonesRejectOnUnknown = c.destExcludeZonesRejectOnUnknown,
             smartDestActive = c.smartDestActive, smartDestLat = c.smartDestLat, smartDestLng = c.smartDestLng,
             smartDestAngle = c.smartDestAngle.toInt().toString(),
+            zonesBearingEnabled = c.destZonesBearingEnabled, zonesBearingMargin = plain(c.destZonesBearingMarginDeg),
+            travelAngleTol = plain(c.travelAngleTolDeg), travelOvershootKm = plain(c.travelOvershootKm),
+            corridorHalfWidthKm = plain(c.corridorHalfWidthKm), excludeProximityKm = plain(c.destExcludeProximityMaxKm),
         )
 
         private fun number(v: Double): String = if (v <= 0.0) "" else if (v % 1.0 == 0.0) v.toLong().toString() else v.toString()
@@ -159,6 +177,20 @@ data class FilterDraft(
         private fun needZone() = if (LocaleManager.isArabic()) "ارسم منطقة واحدة على الأقل على الخريطة." else "Draw at least one zone on the map."
         private fun rangeError() = if (LocaleManager.isArabic()) "يجب ألا يتجاوز الحد الأدنى الحد الأقصى." else "The minimum must not exceed the maximum."
         private fun needPoint() = if (LocaleManager.isArabic()) "حدد موضع زر القبول أولًا." else "Set the accept button position first."
+        /** 25.0 -> "25", 1.5 -> "1.5". */
+        private fun plain(v: Double): String = if (v % 1.0 == 0.0) v.toLong().toString() else v.toString()
+
+        /** Blank means [default]; otherwise a number inside [min]..[max]. */
+        private fun ranged(field: String, raw: String, default: Double, min: Double, max: Double, errors: MutableMap<String, String>): Double {
+            if (raw.isBlank()) return default
+            val v = decimal(field, raw, errors) ?: return default
+            if (v < min || v > max) {
+                errors[field] = if (LocaleManager.isArabic()) "اختر قيمة بين ${plain(min)} و${plain(max)}." else "Choose a value between ${plain(min)} and ${plain(max)}."
+                return default
+            }
+            return v
+        }
+
         private fun invalid() = if (LocaleManager.isArabic()) "اكتب رقمًا صحيحًا موجبًا أو اتركه فارغًا." else "Enter a positive number or leave it empty."
 
         private fun latin(raw: String): String = raw.trim().map { if (it in '٠'..'٩') '0' + (it - '٠') else if (it == '٫') '.' else it }.joinToString("")

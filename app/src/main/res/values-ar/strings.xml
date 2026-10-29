@@ -901,4 +901,14 @@
     <string name="diag_working_b">قبل سبّاق طلبًا واحدًا على الأقل خلال آخر ساعة.</string>
     <string name="diag_waiting_t">جاهز وينتظر الطلبات</string>
     <string name="diag_waiting_b">كل شيء يعمل؛ لم يعرض تطبيق الرحلات طلبًا خلال آخر ساعة.</string>
+    <string name="zone_adv_show">إعدادات المناطق الدقيقة</string>
+    <string name="zone_adv_hide">إخفاء الإعدادات الدقيقة</string>
+    <string name="zone_adv_bearing">استخدم اتجاه خريطة الطلب حين لا يُعرف موقع العنوان</string>
+    <string name="zone_adv_bearing_margin">هامش الاتجاه</string>
+    <string name="zone_adv_search_radius">نطاق البحث عن العنوان</string>
+    <string name="zone_adv_on_the_way">ما يُعد «في الطريق»</string>
+    <string name="zone_adv_angle">الزاوية</string>
+    <string name="zone_adv_overshoot">بعد المنطقة</string>
+    <string name="zone_adv_corridor">عرض الطريق</string>
+    <string name="zone_adv_reset">استعادة القيم الافتراضية</string>
 </resources>
