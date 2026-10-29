@@ -118,7 +118,8 @@ class EngineHost(
         if (cfg.instantTurbo && flow.pending == null) {
             val src = event.source
             if (src != null && quickScan(src, 0)) {
-                val pending = flow.onTurboSignal(cfg, now)
+                val turboApp = RideApps.of(event.packageName?.toString(), cfg.targetApp)
+                val pending = flow.onTurboSignal(cfg, now, turboApp?.name?.lowercase() ?: "jeeny")
                 if (pending != null) {
                     turboTap(pending, cfg, event.packageName?.toString())
                     return
@@ -304,7 +305,7 @@ class EngineHost(
     private fun turboTap(pending: PendingRide, cfg: EngineConfig, packageName: String?) {
         main.postDelayed({ flow.onWatchdog(pending)?.let(::handleOutcome) }, OfferFlow.WATCHDOG_MS)
         val method = if (gestureAt(pending.tapX.toFloat(), pending.tapY.toFloat())) "turbo" else "not_dispatched"
-        val ride = ParsedRide(clickX = pending.tapX, clickY = pending.tapY)
+        val ride = ParsedRide(clickX = pending.tapX, clickY = pending.tapY, provider = pending.provider)
         listener.onTap(ride, Decision(true, true, true, true, null), pending, method, System.currentTimeMillis() - pending.detectedAtMs)
         val app = RideApps.of(packageName, cfg.targetApp)
         if (app == RideApp.JEENY) lateCapture(pending, cfg, service.resources.displayMetrics.heightPixels)

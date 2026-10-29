@@ -18,6 +18,8 @@ class PendingRide(
     /** Where the tap landed; the saved turbo point when tapped blind. */
     val tapX: Int = 0,
     val tapY: Int = 0,
+    /** Ride app of the tapped offer ("jeeny", "bolt", "petra"). */
+    val provider: String = "jeeny",
 ) {
     /** Filled by the late capture after the tap when the frame lacked them (FareSniper `late*`). */
     @Volatile var latePrice: Double? = null
@@ -190,6 +192,7 @@ class OfferFlow(
             price = parsed.price, minutes = parsed.minutes, destination = parsed.destination,
             identity = parsed.identity, detectedAtMs = rideDetectedAtMs, clickedAtMs = now + delay, delayMs = delay,
             tapX = if (blind) config.clickX!! else parsed.clickX, tapY = if (blind) config.clickY!! else parsed.clickY,
+            provider = parsed.provider,
         )
         pending?.let { old -> onPendingOutcome(PendingOutcome.Disappeared(old)) }
         pending = created
@@ -202,7 +205,7 @@ class OfferFlow(
      * Turbo's instant tap (`handleJeenyEvent` turbo branch): an offer word was seen, nothing is
      * pending and 100 ms passed since the last tap. Returns the pending tap to dispatch, or null.
      */
-    fun onTurboSignal(config: EngineConfig, frameDetectedMs: Long): PendingRide? {
+    fun onTurboSignal(config: EngineConfig, frameDetectedMs: Long, provider: String = "jeeny"): PendingRide? {
         if (!config.instantTurbo || pending != null) return null
         val now = nowMs()
         if (now - lastClickTime < GLOBAL_CLICK_COOLDOWN_MS) return null
@@ -210,7 +213,7 @@ class OfferFlow(
         lastHandledWasAccepted = true
         val created = PendingRide(
             price = null, minutes = null, destination = null, identity = 0, detectedAtMs = frameDetectedMs,
-            clickedAtMs = now, delayMs = 0L, tapX = config.clickX!!, tapY = config.clickY!!,
+            clickedAtMs = now, delayMs = 0L, tapX = config.clickX!!, tapY = config.clickY!!, provider = provider,
         )
         pending = created
         return created

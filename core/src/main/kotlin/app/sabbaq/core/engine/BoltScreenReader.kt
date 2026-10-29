@@ -123,10 +123,11 @@ class BoltScreenReader(private val config: EngineConfig) {
     }
 
     companion object {
+        /** Patterns FareSniper builds with `Xw(pattern, flags)` compile CASE_INSENSITIVE | UNICODE_CASE (0x42). */
         private val BIDI: Pattern = Pattern.compile("[\\u200E\\u200F\\u061C\\u202A-\\u202E\\u2066-\\u2069]")
-        val MINUTES: Pattern = Pattern.compile("(?<!\\d)(\\d+)\\s*(?:دقيقة|دقائق|دقيقه|دقائ|mins|min)")
-        val PRICE: Pattern = Pattern.compile("(\\d+(?:[.,]\\d+)?)\\s*(?:ر\\.?\\s?س|﷼|sar)|(?:ر\\.?\\s?س|﷼|sar)\\s*(\\d+(?:[.,]\\d+)?)")
-        val DISTANCE: Pattern = Pattern.compile("\\d+(?:[.,]\\d+)?\\s*(?:km|كم|متر)")
+        val MINUTES: Pattern = Pattern.compile("(?<!\\d)(\\d+)\\s*(?:دقيقة|دقائق|دقيقه|دقائ|mins|min)", Pattern.CASE_INSENSITIVE or Pattern.UNICODE_CASE)
+        val PRICE: Pattern = Pattern.compile("(\\d+(?:[.,]\\d+)?)\\s*(?:ر\\.?\\s?س|﷼|sar)|(?:ر\\.?\\s?س|﷼|sar)\\s*(\\d+(?:[.,]\\d+)?)", Pattern.CASE_INSENSITIVE or Pattern.UNICODE_CASE)
+        val DISTANCE: Pattern = Pattern.compile("\\d+(?:[.,]\\d+)?\\s*(?:km|كم|متر)", Pattern.CASE_INSENSITIVE or Pattern.UNICODE_CASE)
         val CITY: Pattern = Pattern.compile("جدة|الرياض|مكة|المكرمة|المدينة|الدمام|الخبر|الطائف|تبوك|بريدة|خميس|أبها|الجبيل|ينبع|نجران|جازان|حائل|القطيف|الأحساء|عرعر|سكاكا")
         val POSTCODE: Pattern = Pattern.compile("\\d{4,5}")
         val STAR: Pattern = Pattern.compile("(\\d(?:[.,]\\d)?)\\s*[★☆]")

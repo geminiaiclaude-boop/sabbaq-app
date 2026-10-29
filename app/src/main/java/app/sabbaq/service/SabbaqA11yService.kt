@@ -39,6 +39,8 @@ import java.math.BigDecimal
 class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
 
     private lateinit var host: EngineHost
+    /** Ride app of the offer being reported ("jeeny", "bolt", "petra"). */
+    private var provider = "jeeny"
     private val diagnostics = BoundedDiagnostics()
     private val liveness = LivenessState()
     private val runtimeStatus = RuntimeStatusRepository
@@ -66,12 +68,18 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
             monitoringWanted = Settings.monitoringWanted,
             disclosureAccepted = Settings.a11yDisclosureAccepted,
             subscriptionEndsAtMs = Settings.subscriptionEndsAtMs,
-            newestSeenMs = Settings.newestSeenMs,
+            newestSeenMs = maxOf(Settings.newestSeenMs, persistedNewestSeenMs),
             nowMs = System.currentTimeMillis(),
         )
-        if (result.newestSeenMs != Settings.newestSeenMs) Settings.newestSeenMs = result.newestSeenMs
+        if (result.newestSeenMs - persistedNewestSeenMs >= NEWEST_SEEN_WRITE_STEP_MS || result.newestSeenMs < persistedNewestSeenMs) {
+            Settings.newestSeenMs = result.newestSeenMs
+            persistedNewestSeenMs = result.newestSeenMs
+        }
         return result
     }
+
+    /** Last value written; the gate advances it on every event, the disk only once a minute. */
+    private var persistedNewestSeenMs = Settings.newestSeenMs
 
     private fun canProcess(): Boolean = gate().allowed
 
@@ -100,16 +108,16 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
         }
     }
 
-    /** FareSniper's `applyTargetAppRouting`: listen only to the ride apps the driver chose. */
     /** Called on the main thread after the driver saves settings. */
     fun onConfigSaved() {
         applyTargetPackages()
         if (::host.isInitialized) host.onConfigSaved()
     }
 
+    /** FareSniper's `applyTargetAppRouting`: listen only to the ride apps the driver chose (and Sabbaq's own test card). */
     private fun applyTargetPackages() {
         val info = serviceInfo ?: return
-        val wanted = RideApps.packages(Settings.engineConfig.targetApp)
+        val wanted = RideApps.packages(Settings.engineConfig.targetApp, applicationContext.packageName)
         if (info.packageNames?.contentEquals(wanted) == true) return
         info.packageNames = wanted
         runCatching { serviceInfo = info }
@@ -117,6 +125,7 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
 
     override fun onOffer(ride: ParsedRide, source: String) {
         val now = SystemClock.elapsedRealtime()
+        provider = ride.provider
         liveness.offerDetected(now)
         runtimeStatus.offer(now)
         record(DiagnosticStage.OFFER_DETECTED, now, if (ride.price == null) "fare_missing" else "complete", detail = "src=$source,n=${ride.nodesVisited}")
@@ -130,7 +139,8 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
         runtimeStatus.decision(now, report(ride, decision))
         record(DiagnosticStage.REJECTED, now, decision.reason?.take(40))
         val reason = decision.reason.orEmpty()
-        runCatching { OfferDecisionLogStore.recordDecision(fingerprint(ride), JEENY_PROVIDER, reason) }
+        provider = ride.provider
+        runCatching { OfferDecisionLogStore.recordDecision(fingerprint(ride), ride.provider, reason) }
         runCatching { OfferStatsStore.recordRejected(fingerprint(ride), reason) }
     }
 
@@ -140,23 +150,25 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
         liveness.click(now)
         runtimeStatus.decision(now, report(ride, decision))
         runtimeStatus.click(now)
-        TelemetryRepository.trace(TelemetryStage.DECISION_ACCEPTED, "rules_passed", provider = JEENY_PROVIDER)
+        provider = ride.provider
+        TelemetryRepository.trace(TelemetryStage.DECISION_ACCEPTED, "rules_passed", provider = provider)
         record(DiagnosticStage.CLICK_PATH, now, method, latencyMs = latencyMs.coerceAtLeast(0))
-        runCatching { OfferDecisionLogStore.recordDecision(fingerprint(ride), JEENY_PROVIDER, "") }
-        runCatching {
-            OfferDecisionLogStore.recordOutcome(JEENY_PROVIDER,
-                if (method == "gesture") DecisionLogOutcome.GESTURE_CLICK_SENT else DecisionLogOutcome.SEMANTIC_CLICK_SENT)
+        runCatching { OfferDecisionLogStore.recordDecision(fingerprint(ride), provider, "") }
+        if (method != "not_dispatched") runCatching {
+            OfferDecisionLogStore.recordOutcome(provider,
+                if (method == "gesture" || method == "turbo") DecisionLogOutcome.GESTURE_CLICK_SENT else DecisionLogOutcome.SEMANTIC_CLICK_SENT)
         }
     }
 
     override fun onPendingOutcome(outcome: PendingOutcome) {
         val now = SystemClock.elapsedRealtime()
         val p = outcome.pending
+        provider = p.provider
         when (outcome) {
             is PendingOutcome.Confirmed -> {
                 if (p.tapX > 0 && p.tapY > 0) { Settings.lastConfirmedTapX = p.tapX; Settings.lastConfirmedTapY = p.tapY }
                 record(DiagnosticStage.CONFIRMATION_CONFIRMED, now, "post_click_confirmed")
-                runCatching { OfferDecisionLogStore.recordOutcome(JEENY_PROVIDER, DecisionLogOutcome.ACCEPTED_CONFIRMED) }
+                runCatching { OfferDecisionLogStore.recordOutcome(provider, DecisionLogOutcome.ACCEPTED_CONFIRMED) }
                 runCatching { OfferStatsStore.recordAcceptedConfirmed() }
                 val fare = p.reportPrice?.let { BigDecimal.valueOf(it) }
                 runCatching { NotificationCenter.postAcceptedRide(fare, null) }
@@ -165,11 +177,11 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
             is PendingOutcome.NewOfferAppeared -> record(DiagnosticStage.CONFIRMATION_TIMEOUT, now, "new_offer_appeared")
             is PendingOutcome.ConfirmationTimeout -> {
                 record(DiagnosticStage.CONFIRMATION_TIMEOUT, now, "confirmation_timeout")
-                runCatching { OfferDecisionLogStore.recordOutcome(JEENY_PROVIDER, DecisionLogOutcome.CONFIRMATION_TIMEOUT) }
+                runCatching { OfferDecisionLogStore.recordOutcome(provider, DecisionLogOutcome.CONFIRMATION_TIMEOUT) }
             }
             is PendingOutcome.Disappeared -> {
                 record(DiagnosticStage.CONFIRMATION_TIMEOUT, now, "offer_disappeared_after_click")
-                runCatching { OfferDecisionLogStore.recordOutcome(JEENY_PROVIDER, DecisionLogOutcome.CONFIRMATION_TIMEOUT) }
+                runCatching { OfferDecisionLogStore.recordOutcome(provider, DecisionLogOutcome.CONFIRMATION_TIMEOUT) }
             }
         }
     }
@@ -265,7 +277,7 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
             DiagnosticStage.ROOT_UNAVAILABLE -> TelemetryStage.ROOT_UNAVAILABLE
             DiagnosticStage.TREE_REJECTED -> TelemetryStage.TREE_REJECTED
         }
-        TelemetryRepository.trace(telemetryStage, reasonCode = reason, detail = detail, provider = JEENY_PROVIDER, latencyMs = latencyMs)
+        TelemetryRepository.trace(telemetryStage, reasonCode = reason, detail = detail, provider = provider, latencyMs = latencyMs)
     }
 
     override fun onDestroy() {
@@ -284,6 +296,6 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
         /** The connected service, so a changed target app is applied without waiting for an event. */
         @Volatile var instance: SabbaqA11yService? = null
         private const val TAG = "SabbaqA11y"
-        private const val JEENY_PROVIDER = "jeeny"
+        private const val NEWEST_SEEN_WRITE_STEP_MS = 60_000L
     }
 }

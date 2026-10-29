@@ -75,4 +75,28 @@ class BoltPetraReaderTest {
         assertEquals(RideApp.PETRA, RideApps.of("com.PetraRide_Captain", TargetApp.PETRA))
         assertNull(RideApps.of("app.sabbaq.driver", TargetApp.BOTH))
     }
+
+    @Test
+    fun latin_units_match_in_any_case_as_faresniper_compiles_them() {
+        val accept = FakeNode(text = "قبول", viewId = "ee.mtakso.driver:id/acceptButton", isClickable = true, rect = Bounds(60, 2150, 1020, 2300))
+        val root = FakeNode(rect = Bounds(0, 0, 1080, 2400), children = listOf(
+            FakeNode(text = "SAR 21.84", rect = row(1300)),
+            FakeNode(text = "3 Min", rect = row(1400)),
+            accept,
+        ))
+        val ride = BoltScreenReader(EngineConfig()).read(root, 2400)!!
+        assertEquals(21.84, ride.price!!, 1e-9)
+        assertEquals(3, ride.minutes)
+        assertTrue(PetraScreenReader.PRICE.matcher("JOD 1.68").find())
+        assertTrue(PetraScreenReader.CITY.matcher("Abdoun, Amman").find())
+    }
+
+    @Test
+    fun the_service_also_listens_to_sabbaq_for_the_live_accept_test() {
+        val pk = RideApps.packages(TargetApp.JEENY, "app.sabbaq.driver")
+        assertTrue("me.com.easytaxista" in pk && "app.sabbaq.driver" in pk)
+        assertEquals("bolt", RideApps.read(RideApp.BOLT, FakeNode(rect = Bounds(0, 0, 1080, 2400), children = listOf(
+            FakeNode(text = "21 ر.س", rect = row(1300)), FakeNode(text = "3 دقيقة", rect = row(1400)),
+            FakeNode(text = "قبول", isClickable = true, rect = Bounds(60, 2150, 1020, 2300)))), 2400, EngineConfig(), null, { 0L })!!.provider)
+    }
 }

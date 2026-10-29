@@ -55,8 +55,6 @@ object ZoneStore : ZoneEnvironment {
     private const val MAX_PENDING = 150
     private const val MAX_CACHE_KEYS = 4000
     private const val MAX_FAILS = 3
-    /** A position older than this is not used: the driver may have moved far. */
-    private const val FIX_MAX_AGE_MS = 30 * 60_000L
 
     private val json = Json { ignoreUnknownKeys = true }
     private val lock = Any()
@@ -65,6 +63,8 @@ object ZoneStore : ZoneEnvironment {
     @Volatile private var cacheRoot: JsonObject = JsonObject(emptyMap())
     @Volatile private var index: PoiIndex? = null
     @Volatile private var appContext: Context? = null
+    /** Addresses already queued this session: the decision asks again on every frame of the same offer. */
+    private val recentRequests = LinkedHashSet<String>()
 
     fun init(context: Context) {
         val app = context.applicationContext
@@ -80,14 +80,17 @@ object ZoneStore : ZoneEnvironment {
         }
     }
 
+    /** The last saved position, however old, as FareSniper uses `driver_lat/lng` (see [fixAgeMs]). */
     override fun driverLocation(): DoubleArray? {
         val p = prefs ?: return null
-        val at = p.getLong(KEY_FIX_AT, 0L)
-        if (at == 0L || System.currentTimeMillis() - at > FIX_MAX_AGE_MS) return null
+        if (p.getLong(KEY_FIX_AT, 0L) == 0L) return null
         val lat = java.lang.Double.longBitsToDouble(p.getLong(KEY_LAT, 0L))
         val lng = java.lang.Double.longBitsToDouble(p.getLong(KEY_LNG, 0L))
         return if (lat == 0.0 && lng == 0.0) null else doubleArrayOf(lat, lng)
     }
+
+    /** Age of the saved position, or null when none was ever saved. */
+    fun fixAgeMs(): Long? = prefs?.getLong(KEY_FIX_AT, 0L)?.takeIf { it > 0L }?.let { System.currentTimeMillis() - it }
 
     fun saveDriverLocation(lat: Double, lng: Double) {
         prefs?.edit()
@@ -107,6 +110,8 @@ object ZoneStore : ZoneEnvironment {
         if (clean.isEmpty()) return
         val p = prefs ?: return
         synchronized(lock) {
+            if (!recentRequests.add(clean)) return
+            if (recentRequests.size > MAX_PENDING * 2) recentRequests.remove(recentRequests.first())
             val list = pending(p)
             if (clean in list) return
             if (cacheKey(clean) in cacheRoot) return
@@ -132,6 +137,7 @@ object ZoneStore : ZoneEnvironment {
             val fails = runCatching { json.parseToJsonElement(p.getString(KEY_FAILS, "{}")!!).jsonObject.toMutableMap() }
                 .getOrDefault(mutableMapOf())
             if (points.isEmpty()) {
+                recentRequests.remove(text)
                 val n = (fails[text]?.jsonPrimitive?.content?.toIntOrNull() ?: 0) + 1
                 if (n < MAX_FAILS) { list += text; fails[text] = JsonPrimitive(n) } else fails.remove(text)
             } else {

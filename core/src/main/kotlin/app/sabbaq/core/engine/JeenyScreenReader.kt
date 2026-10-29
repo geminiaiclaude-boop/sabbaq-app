@@ -34,6 +34,8 @@ data class ParsedRide(
     val nodesVisited: Int = 0,
     /** Centres (x, y px) of the offer map's markers, read only when a zone needs the direction. */
     val markers: List<IntArray> = emptyList(),
+    /** Which ride app the screen came from: "jeeny", "bolt" or "petra" (telemetry and the decision log). */
+    val provider: String = "jeeny",
 ) {
     /** FareSniper's screen-offer hash: same values at the same tap point = same frame. */
     val screenHash: Int get() = identityHash(price, minutes, destination) * 31 * 31 + clickX * 31 + clickY

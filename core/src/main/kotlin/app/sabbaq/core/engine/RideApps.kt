@@ -28,8 +28,10 @@ object RideApps {
         }
     }
 
-    /** Package names the accessibility service listens to for [target]. */
-    fun packages(target: TargetApp): Array<String> = when (target) {
+    /** Package names the accessibility service listens to for [target], plus Sabbaq's own (live accept test). */
+    fun packages(target: TargetApp, ownPackage: String): Array<String> = ridePackages(target) + ownPackage
+
+    private fun ridePackages(target: TargetApp): Array<String> = when (target) {
         TargetApp.JEENY -> arrayOf(JEENY_PACKAGE)
         TargetApp.BOLT -> arrayOf(BOLT_PACKAGE)
         TargetApp.PETRA -> arrayOf(PETRA_PACKAGE, "com.PetraRide_Captain")
@@ -49,8 +51,8 @@ object RideApps {
         abort: AtomicBoolean? = null,
         collectAddresses: Boolean = false,
     ): ParsedRide? = when (app) {
-        RideApp.BOLT -> BoltScreenReader(config).read(root, screenHeight)
-        RideApp.PETRA -> PetraScreenReader().read(root, screenHeight)
+        RideApp.BOLT -> BoltScreenReader(config).read(root, screenHeight)?.copy(provider = "bolt")
+        RideApp.PETRA -> PetraScreenReader().read(root, screenHeight)?.copy(provider = "petra")
         RideApp.JEENY -> {
             val reader = JeenyScreenReader(config, uptimeMs)
             learnedIds?.let { reader.readByLearnedIds(root, it) }

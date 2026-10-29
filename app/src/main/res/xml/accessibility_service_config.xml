@@ -5,6 +5,6 @@
     android:accessibilityFlags="flagDefault|flagReportViewIds|flagRetrieveInteractiveWindows"
     android:canRetrieveWindowContent="true"
     android:canPerformGestures="true"
-    android:packageNames="me.com.easytaxista"
+    android:packageNames="me.com.easytaxista,app.sabbaq.driver,app.sabbaq.driver.debug"
     android:description="@string/accessibility_service_description"
     android:notificationTimeout="0" />

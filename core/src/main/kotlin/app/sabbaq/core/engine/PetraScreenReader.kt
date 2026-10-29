@@ -113,11 +113,12 @@ class PetraScreenReader {
     }
 
     companion object {
-        val PRICE: Pattern = Pattern.compile("(\\d+(?:[.,]\\d+)?)\\s*(?:د\\.?\\s?أ|دينار|jod)|(?:د\\.?\\s?أ|دينار|jod)\\s*(\\d+(?:[.,]\\d+)?)")
-        val CURRENCY: Pattern = Pattern.compile("د\\.?\\s?أ|دينار|jod")
-        val MINUTES: Pattern = Pattern.compile("(\\d+(?:[.,]\\d+)?)\\s*(?:دقيقة|دقائق|دقيقه|دقائ)")
-        val DISTANCE: Pattern = Pattern.compile("\\d+(?:[.,]\\d+)?\\s*(?:km|كم|متر)")
-        val CITY: Pattern = Pattern.compile("عمّان|عمان|الأردن|اردن|إربد|اربد|الزرقاء|العقبة|إربد|مادبا|السلط|جرش|عجلون|الكرك|amman|jordan")
+        /** Patterns FareSniper builds with `Xw(pattern, flags)` compile CASE_INSENSITIVE | UNICODE_CASE (0x42). */
+        val PRICE: Pattern = Pattern.compile("(\\d+(?:[.,]\\d+)?)\\s*(?:د\\.?\\s?أ|دينار|jod)|(?:د\\.?\\s?أ|دينار|jod)\\s*(\\d+(?:[.,]\\d+)?)", Pattern.CASE_INSENSITIVE or Pattern.UNICODE_CASE)
+        val CURRENCY: Pattern = Pattern.compile("د\\.?\\s?أ|دينار|jod", Pattern.CASE_INSENSITIVE or Pattern.UNICODE_CASE)
+        val MINUTES: Pattern = Pattern.compile("(\\d+(?:[.,]\\d+)?)\\s*(?:دقيقة|دقائق|دقيقه|دقائ)", Pattern.CASE_INSENSITIVE or Pattern.UNICODE_CASE)
+        val DISTANCE: Pattern = Pattern.compile("\\d+(?:[.,]\\d+)?\\s*(?:km|كم|متر)", Pattern.CASE_INSENSITIVE or Pattern.UNICODE_CASE)
+        val CITY: Pattern = Pattern.compile("عمّان|عمان|الأردن|اردن|إربد|اربد|الزرقاء|العقبة|إربد|مادبا|السلط|جرش|عجلون|الكرك|amman|jordan", Pattern.CASE_INSENSITIVE or Pattern.UNICODE_CASE)
         val PLUS_CODE: Pattern = Pattern.compile("[A-Z0-9]{3,6}\\+[A-Z0-9]{2,6}")
         val NOISE = listOf("سفير بترا", "قبول", "رفض", "دقيقة", "د.أ", "دينار")
         val IGNORED_IDS = setOf("estimated_trip_price", "estimated_time_to_pick_up", "accept_button", "reject_button", "left_buttons_layout", "map_view")

@@ -135,6 +135,16 @@ internal fun ZoneConditions(draft: FilterDraft, errors: Map<String, String>, onD
         }
     }
 
+    val fixAge = ZoneStore.fixAgeMs()
+    if (needsLocation && location.granted && (fixAge == null || fixAge > 30 * 60_000L)) {
+        Text(
+            if (fixAge == null) stringResource(R.string.zone_location_none) else stringResource(R.string.zone_location_old, (fixAge / 60_000L).toInt()),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.testTag("zone-location-age"),
+        )
+    }
+
     ProConditionCard(
         title = stringResource(R.string.zone_include_title),
         subtitle = stringResource(R.string.zone_include_sub),
