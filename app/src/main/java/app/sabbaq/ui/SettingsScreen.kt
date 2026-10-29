@@ -144,15 +144,14 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import app.sabbaq.BuildConfig
 import app.sabbaq.R
+import app.sabbaq.core.engine.Decision
+import app.sabbaq.core.engine.DecisionEngine
+import app.sabbaq.core.engine.EngineConfig
+import app.sabbaq.core.engine.ParsedRide
 import app.sabbaq.LocaleManager
 import androidx.compose.ui.res.stringResource
 import app.sabbaq.Settings
 import app.sabbaq.ThemeMode
-import app.sabbaq.core.Filters
-import app.sabbaq.core.Offer
-import app.sabbaq.core.OfferEvaluator
-import app.sabbaq.core.ReasonCode
-import app.sabbaq.core.Verdict
 import app.sabbaq.network.LicenseState
 import app.sabbaq.network.SubscriptionSnapshot
 import app.sabbaq.network.SupabaseClient
@@ -181,7 +180,7 @@ private data class DriverStatus(val message: String, val isError: Boolean = fals
         else -> SabbaqTone.Info
     }
 }
-private data class PreviewResult(val verdict: Verdict, val error: String? = null)
+private data class PreviewResult(val decision: Decision?, val error: String? = null)
 private data class DriverNavItem(
     val destination: DriverDestination,
     val labelRes: Int,
@@ -243,7 +242,7 @@ fun SettingsScreen(
         save = { stack -> stack.map { it.name } },
         restore = { names -> names.mapNotNull { name -> DriverDestination.entries.firstOrNull { it.name == name } }.toMutableStateList() },
     )) { mutableStateListOf() }
-    var savedFilters by remember { mutableStateOf(Settings.filters) }
+    var savedFilters by remember { mutableStateOf(Settings.engineConfig) }
     val draftSaver = remember {
         Saver<FilterDraft, String>(
             save = { Json.encodeToString(it) },
@@ -251,7 +250,7 @@ fun SettingsScreen(
         )
     }
     var draft by rememberSaveable(stateSaver = draftSaver) { mutableStateOf(FilterDraft.from(savedFilters)) }
-    val draftValidation = remember(draft) { draft.validate() }
+    val draftValidation = remember(draft, savedFilters) { draft.validate(savedFilters) }
     val filtersDirty = remember(draft, savedFilters) { draft.isDirtyComparedTo(savedFilters) }
     var filtersMessage by remember { mutableStateOf<DriverStatus?>(null) }
     var runtimeMessage by remember { mutableStateOf<DriverStatus?>(null) }
@@ -363,17 +362,14 @@ fun SettingsScreen(
      * and switches whose value is validated before the debounced save, and the service reads
      * the saved filters on the next offer, so a mid-shift adjustment applies without a restart.
      */
-    fun updateDraft(next: FilterDraft, stopIfActive: Boolean = true) {
+    fun updateDraft(next: FilterDraft, @Suppress("UNUSED_PARAMETER") stopIfActive: Boolean = false) {
         if (next === draft) return
-        if (isActive && stopIfActive) {
-            stopKeeper(context.getString(R.string.ss_stop_before_edit))
-        }
         draft = next
         filtersMessage = null
         val revision = filterRevision + 1
         filterRevision = revision
-        val validation = next.validate()
-        val filters = validation.filters
+        val validation = next.validate(savedFilters)
+        val filters = validation.config
         if (filters == null) {
             isSavingFilters = false
             filtersMessage = DriverStatus(context.getString(R.string.ss_review_marked_values), isError = true)
@@ -386,11 +382,11 @@ fun SettingsScreen(
             filterSaveMutex.withLock {
                 if (revision != filterRevision) return@withLock
                 try {
-                    val saved = Settings.saveFilters(filters)
+                    val saved = Settings.saveEngineConfig(filters)
                     if (revision != filterRevision) {
                         // A later invalid edit has no save job of its own. Restore the last
                         // durable filters so an older in-flight commit cannot replace them.
-                        if (saved && draft.validate().filters == null && !Settings.saveFilters(savedFilters)) {
+                        if (saved && draft.validate(savedFilters).config == null && !Settings.saveEngineConfig(savedFilters)) {
                             filtersMessage = DriverStatus(context.getString(R.string.ss_restore_failed_after_invalid), isError = true)
                         }
                         return@withLock
@@ -456,15 +452,8 @@ fun SettingsScreen(
             runtimeMessage = DriverStatus(context.getString(R.string.ss_autosave_wait), isError = true)
             return
         }
-        if (!draftValidation.isValid || UiFormValidation.filtersError(savedFilters) != null) {
+        if (!draftValidation.isValid) {
             runtimeMessage = DriverStatus(context.getString(R.string.ss_fix_conditions_before_start), isError = true)
-            return
-        }
-        // Conditions are not a setup step: they are what starting needs, so starting takes the
-        // driver straight to them.
-        if (!savedFilters.anyActive()) {
-            navigateTo(DriverDestination.Filters)
-            filtersMessage = DriverStatus(context.getString(R.string.ss_set_one_condition), isError = true)
             return
         }
         refreshRuntimePrerequisites()
@@ -478,7 +467,9 @@ fun SettingsScreen(
         scope.launch {
             try {
                 // هذا هو موضع الفحص الشبكي الصريح الوحيد في مسار بدء التشغيل.
-                val verified = SupabaseClient.revalidateLicense().getOrNull() == true && SupabaseClient.hasValidLicense()
+                // A failed network check never blocks a subscriber whose end date is already saved.
+                val verified = SupabaseClient.revalidateLicense().getOrNull() == true && SupabaseClient.hasValidLicense() ||
+                    Settings.subscriptionEndsAtMs > System.currentTimeMillis()
                 licenseInMemory = SupabaseClient.hasValidLicense()
                 if (verified) {
                     showActivationConsent = true
@@ -501,8 +492,8 @@ fun SettingsScreen(
     fun confirmActivation() {
         showActivationConsent = false
         refreshRuntimePrerequisites()
-        if (filtersDirty || isSavingFilters || !savedFilters.anyActive() ||
-            !SupabaseClient.hasValidLicense() || !accessibilityEnabled || !notificationsEnabled) {
+        if (filtersDirty || isSavingFilters || !accessibilityEnabled || !notificationsEnabled ||
+            (!SupabaseClient.hasValidLicense() && Settings.subscriptionEndsAtMs <= System.currentTimeMillis())) {
             Settings.isActive = false
             isActive = false
             runtimeMessage = DriverStatus(context.getString(R.string.ss_requirements_changed), isError = true)
@@ -614,7 +605,7 @@ fun SettingsScreen(
             confirmButton = {
                 TextButton(onClick = {
                     showResetFilters = false
-                    updateDraft(FilterDraft.from(Filters()))
+                    updateDraft(FilterDraft.from(EngineConfig()))
                 }) { Text(stringResource(R.string.ss_reset)) }
             },
             dismissButton = { TextButton(onClick = { showResetFilters = false }) { Text(stringResource(R.string.ss_cancel)) } },
@@ -645,7 +636,7 @@ fun SettingsScreen(
                 draftErrors = draftValidation.errors,
                 filtersMessage = filtersMessage,
                 onQuickDraftChange = { updateDraft(it, stopIfActive = false) },
-                activeFilterCount = activeFilterCount(savedFilters),
+                activeFilterCount = FilterDraft.from(savedFilters).activeCount(),
                 message = runtimeMessage,
                 onToggle = { enabled -> if (enabled) requestActivation() else stopKeeper() },
                 onOpenA11y = {
@@ -1208,7 +1199,7 @@ internal fun RuntimeStatusCard(status: RuntimeStatusSnapshot, modifier: Modifier
         status.latestReport?.let { report ->
             Text(stringResource(R.string.ss_runtime_clarity, report.score), style = MaterialTheme.typography.bodySmall)
             if (report.reasons.isNotEmpty()) {
-                Text(stringResource(R.string.ss_runtime_reject_reason, report.reasons.take(2).joinToString(" · ") { reasonArabic(it).removeSuffix(".") }),
+                Text(stringResource(R.string.ss_runtime_reject_reason, report.reasons.take(2).joinToString(" · ") { reasonLabel(it).removeSuffix(".") }),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
         }
@@ -1643,7 +1634,6 @@ private fun FiltersPage(
         if (validationErrors.isNotEmpty()) stringResource(R.string.ss_filters_fix_marked) else null,
         SabbaqTone.Error,
     )
-    FilterPresetsCard(draft = draft, enabled = !isSaving, onDraftChange = onDraftChange)
     AdvancedFiltersEditor(
         draft = draft,
         errors = validationErrors,
@@ -1675,91 +1665,34 @@ private fun FiltersPage(
     }
 }
 
-/** One-tap starting points for distance/time conditions; the selected preset is auto-saved. */
-@OptIn(ExperimentalLayoutApi::class)
+/** Tries a made-up offer against the saved conditions with the same decision the service uses. */
 @Composable
-private fun FilterPresetsCard(draft: FilterDraft, enabled: Boolean, onDraftChange: (FilterDraft) -> Unit) {
-    val selected = FilterPreset.entries.firstOrNull { it.matches(draft) }
-    SabbaqCard(
-        title = stringResource(R.string.ss_preset_title),
-        subtitle = selected?.let { stringResource(it.descriptionRes) } ?: stringResource(R.string.ss_preset_sub),
-        icon = Icons.Outlined.Tune,
-    ) {
-        FilterPresetChips(draft, enabled, onDraftChange)
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun FilterPresetChips(draft: FilterDraft, enabled: Boolean, onDraftChange: (FilterDraft) -> Unit) {
-    val selected = FilterPreset.entries.firstOrNull { it.matches(draft) }
-    run {
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterPreset.entries.forEach { preset ->
-                FilterChip(
-                    selected = preset == selected,
-                    enabled = enabled,
-                    onClick = { onDraftChange(preset.applyTo(draft)) },
-                    label = { Text(stringResource(preset.labelRes)) },
-                    leadingIcon = if (preset == selected) {
-                        { Icon(Icons.Outlined.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp)) }
-                    } else null,
-                    modifier = Modifier.heightIn(min = 48.dp),
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun SimulatorPage(savedFilters: Filters) {
+private fun SimulatorPage(savedFilters: EngineConfig) {
     var fare by rememberSaveable { mutableStateOf("") }
     var hasDestination by rememberSaveable { mutableStateOf(true) }
-    var pickupKm by rememberSaveable { mutableStateOf("") }
-    var tripKm by rememberSaveable { mutableStateOf("") }
     var pickupMinutes by rememberSaveable { mutableStateOf("") }
-    var tripMinutes by rememberSaveable { mutableStateOf("") }
-    var offerText by rememberSaveable { mutableStateOf("") }
+    var destination by rememberSaveable { mutableStateOf("") }
     var result by remember { mutableStateOf<PreviewResult?>(null) }
-    val hasInput = listOf(fare, pickupKm, tripKm, pickupMinutes, tripMinutes, offerText).any { it.isNotBlank() } || !hasDestination
+    val hasInput = listOf(fare, pickupMinutes, destination).any { it.isNotBlank() } || !hasDestination
     val invalidNumberMsg = stringResource(R.string.ss_sim_invalid_number)
 
     fun evaluate() {
         val fareValue = parsePreviewDecimal(fare)
-        val pickupKmValue = parsePreviewDecimal(pickupKm)
-        val tripKmValue = parsePreviewDecimal(tripKm)
-        val pickupMinutesValue = parsePreviewMinutes(pickupMinutes)
-        val tripMinutesValue = parsePreviewMinutes(tripMinutes)
-        val invalid = listOf(
-            fare to fareValue,
-            pickupKm to pickupKmValue,
-            tripKm to tripKmValue,
-        ).any { (raw, parsed) -> raw.isNotBlank() && parsed == null } ||
-            listOf(pickupMinutes to pickupMinutesValue, tripMinutes to tripMinutesValue)
-                .any { (raw, parsed) -> raw.isNotBlank() && parsed == null }
-        if (invalid) {
-            result = PreviewResult(
-                verdict = OfferEvaluator.evaluate(emptyPreviewOffer(), savedFilters, currentMinuteOfDay()),
-                error = invalidNumberMsg,
-            )
+        val minutesValue = parsePreviewMinutes(pickupMinutes)
+        if ((fare.isNotBlank() && fareValue == null) || (pickupMinutes.isNotBlank() && minutesValue == null)) {
+            result = PreviewResult(null, invalidNumberMsg)
             return
         }
-        val offer = Offer(
-            profileId = "local-preview",
-            fare = fareValue,
-            currency = null,
-            pickupKm = pickupKmValue,
-            tripKm = tripKmValue,
-            pickupMinutes = pickupMinutesValue,
-            tripMinutes = tripMinutesValue,
-            addresses = if (hasDestination) listOf("عنوان الانطلاق", "الوجهة") else emptyList(),
-            texts = offerText.takeIf { it.isNotBlank() }?.let(::listOf).orEmpty(),
+        val dest = destination.trim().takeIf { hasDestination && it.isNotEmpty() }
+        val ride = ParsedRide(
+            price = fareValue?.toDouble(), minutes = minutesValue, destination = dest,
+            addressAmbiguous = dest == null, addresses = listOfNotNull(dest),
         )
-        result = PreviewResult(OfferEvaluator.evaluate(offer, savedFilters, currentMinuteOfDay()))
+        result = PreviewResult(DecisionEngine.decide(ride, savedFilters))
     }
 
     fun clearAll() {
-        fare = ""; hasDestination = true; pickupKm = ""; tripKm = ""; pickupMinutes = ""; tripMinutes = ""; offerText = ""
+        fare = ""; hasDestination = true; pickupMinutes = ""; destination = ""
         result = null
     }
 
@@ -1768,6 +1701,7 @@ private fun SimulatorPage(savedFilters: Filters) {
         SabbaqMessage(stringResource(R.string.ss_sim_note))
         SabbaqCard(title = stringResource(R.string.ss_sim_card_title), subtitle = stringResource(R.string.ss_sim_card_sub), icon = Icons.Outlined.Visibility) {
             PreviewField(fare, stringResource(R.string.ss_sim_fare), KeyboardType.Decimal) { fare = it; result = null }
+            PreviewField(pickupMinutes, stringResource(R.string.ss_sim_pickup_min), KeyboardType.Number, unit = stringResource(R.string.ss_unit_min)) { pickupMinutes = it; result = null }
             Row(
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -1779,15 +1713,9 @@ private fun SimulatorPage(savedFilters: Filters) {
                 }
                 Switch(checked = hasDestination, onCheckedChange = { hasDestination = it; result = null })
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                PreviewField(pickupKm, stringResource(R.string.ss_sim_pickup_km), KeyboardType.Decimal, Modifier.weight(1f), unit = stringResource(R.string.ss_unit_km)) { pickupKm = it; result = null }
-                PreviewField(pickupMinutes, stringResource(R.string.ss_sim_pickup_min), KeyboardType.Number, Modifier.weight(1f), unit = stringResource(R.string.ss_unit_min)) { pickupMinutes = it; result = null }
+            AnimatedVisibility(hasDestination) {
+                PreviewField(destination, stringResource(R.string.ss_sim_destination), KeyboardType.Text) { destination = it; result = null }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                PreviewField(tripKm, stringResource(R.string.ss_sim_trip_km), KeyboardType.Decimal, Modifier.weight(1f), unit = stringResource(R.string.ss_unit_km)) { tripKm = it; result = null }
-                PreviewField(tripMinutes, stringResource(R.string.ss_sim_trip_min), KeyboardType.Number, Modifier.weight(1f), unit = stringResource(R.string.ss_unit_min)) { tripMinutes = it; result = null }
-            }
-            PreviewField(offerText, stringResource(R.string.ss_sim_offer_text), KeyboardType.Text, singleLine = false) { offerText = it; result = null }
             SabbaqButton(text = stringResource(R.string.ss_sim_check), onClick = ::evaluate, enabled = hasInput, icon = Icons.Outlined.Visibility)
             AnimatedVisibility(hasInput) {
                 SabbaqButton(text = stringResource(R.string.ss_sim_clear), onClick = ::clearAll, style = SabbaqButtonStyle.Text, icon = Icons.Outlined.Refresh)
@@ -1827,27 +1755,20 @@ private fun PreviewField(
 
 @Composable
 private fun PreviewVerdictCard(result: PreviewResult) {
-    if (result.error != null) {
-        SabbaqMessage(result.error, tone = SabbaqTone.Error)
+    val decision = result.decision
+    if (result.error != null || decision == null) {
+        SabbaqMessage(result.error.orEmpty(), tone = SabbaqTone.Error)
         return
     }
-    val verdict = result.verdict
     SabbaqCard(
-        title = if (verdict.accept) stringResource(R.string.ss_verdict_match) else stringResource(R.string.ss_verdict_nomatch),
-        subtitle = if (verdict.accept) stringResource(R.string.ss_verdict_match_sub) else stringResource(R.string.ss_verdict_nomatch_sub),
-        icon = if (verdict.accept) Icons.Outlined.CheckCircle else Icons.Outlined.WarningAmber,
+        title = if (decision.accept) stringResource(R.string.ss_verdict_match) else stringResource(R.string.ss_verdict_nomatch),
+        subtitle = if (decision.accept) stringResource(R.string.ss_verdict_match_sub) else stringResource(R.string.ss_verdict_nomatch_sub),
+        icon = if (decision.accept) Icons.Outlined.CheckCircle else Icons.Outlined.WarningAmber,
     ) {
         SabbaqMessage(
-            if (verdict.accept) stringResource(R.string.ss_verdict_match_msg) else stringResource(R.string.ss_verdict_nomatch_msg, ArabicCount.conditionsObject(verdict.reasons.size)),
-            tone = if (verdict.accept) SabbaqTone.Success else SabbaqTone.Error,
+            if (decision.accept) stringResource(R.string.ss_verdict_match_msg) else reasonLabel(decision.reason.orEmpty()),
+            tone = if (decision.accept) SabbaqTone.Success else SabbaqTone.Error,
         )
-        verdict.reasons.forEach { reason ->
-            Text("• " + reasonArabic(reason.code), style = MaterialTheme.typography.bodyMedium)
-        }
-        verdict.farePerKm?.let { perKm ->
-            Text(stringResource(R.string.ss_verdict_perkm, perKm.stripTrailingZeros().toPlainString()), style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
     }
 }
 
@@ -1875,17 +1796,6 @@ private fun AccountPage(
     )
 }
 
-private fun activeFilterCount(filters: Filters): Int = buildList {
-    if (filters.isFareRangeEnabled && (!filters.minFare.isNullOrBlank() || !filters.maxFare.isNullOrBlank())) add(Unit)
-    if (filters.isFarePerKmEnabled && !filters.minFarePerKm.isNullOrBlank()) add(Unit)
-    if (filters.isPickupDistanceEnabled && !filters.maxPickupKm.isNullOrBlank()) add(Unit)
-    if (filters.isPickupTimeEnabled && ((filters.minPickupMinutes?.let { it > 0 } == true) || filters.maxPickupMinutes != null)) add(Unit)
-    if (filters.isTripDistanceEnabled && (!filters.minTripKm.isNullOrBlank() || !filters.maxTripKm.isNullOrBlank())) add(Unit)
-    if (filters.isTripTimeEnabled && ((filters.minTripMinutes?.let { it > 0 } == true) || filters.maxTripMinutes != null)) add(Unit)
-    if (filters.excludeKeywords.any { it.isNotBlank() }) add(Unit)
-    if (filters.scheduleEnabled) add(Unit)
-}.size
-
 internal fun parsePreviewDecimal(raw: String): BigDecimal? {
     if (raw.isBlank() || raw.length > 32) return null
     val normalized = app.sabbaq.core.Text.normalize(raw)
@@ -1901,70 +1811,6 @@ internal fun parsePreviewMinutes(raw: String): Int? {
     return normalized.toIntOrNull()?.takeIf { it >= 0 }
 }
 
-private fun emptyPreviewOffer(): Offer = Offer(
-    profileId = "local-preview",
-    fare = null,
-    currency = null,
-    pickupKm = null,
-    tripKm = null,
-    pickupMinutes = null,
-    tripMinutes = null,
-    addresses = listOf("عنوان الانطلاق", "الوجهة"),
-    texts = emptyList(),
-)
-
-private fun currentMinuteOfDay(): Int = Calendar.getInstance().let { it.get(Calendar.HOUR_OF_DAY) * 60 + it.get(Calendar.MINUTE) }
-
-internal fun reasonArabic(code: ReasonCode): String {
-    if (!LocaleManager.isArabic()) return reasonEnglish(code)
-    return when (code) {
-    ReasonCode.NO_FILTERS -> "لم تحدد شرطًا لاختيار الطلبات."
-    ReasonCode.OUTSIDE_SCHEDULE -> "الوقت خارج أوقات العمل التي حددتها."
-    ReasonCode.INVALID_FILTER -> "أحد شروط الطلبات غير صالح."
-    ReasonCode.FARE_MISSING -> "سعر الطلب غير ظاهر."
-    ReasonCode.FARE_TOO_LOW -> "سعر الطلب أقل من الحد الذي حددته."
-    ReasonCode.FARE_TOO_HIGH -> "سعر الطلب أعلى من الحد الذي حددته."
-    ReasonCode.PER_KM_MISSING -> "لا يمكن حساب العائد لكل كم من التفاصيل المتاحة."
-    ReasonCode.PER_KM_TOO_LOW -> "العائد لكل كم أقل من الحد الذي حددته."
-    ReasonCode.PICKUP_KM_MISSING -> "مسافة الوصول غير ظاهرة."
-    ReasonCode.PICKUP_TOO_FAR -> "مسافة الوصول أبعد مما حددته."
-    ReasonCode.PICKUP_MIN_MISSING -> "وقت الوصول غير ظاهر."
-    ReasonCode.PICKUP_TOO_LONG -> "وقت الوصول أطول مما حددته."
-    ReasonCode.PICKUP_TOO_SHORT -> "وقت الوصول أقصر مما حددته."
-    ReasonCode.DESTINATION_MISSING -> "وجهة الطلب غير ظاهرة، وخيار الطلبات بلا وجهة متوقف."
-    ReasonCode.TRIP_KM_MISSING -> "مسافة الرحلة غير ظاهرة."
-    ReasonCode.TRIP_TOO_SHORT -> "مسافة الرحلة أقصر مما حددته."
-    ReasonCode.TRIP_TOO_LONG -> "مسافة الرحلة أطول مما حددته."
-    ReasonCode.TRIP_MIN_MISSING -> "مدة الرحلة غير ظاهرة."
-    ReasonCode.TRIP_MIN_TOO_LONG -> "مدة الرحلة أطول مما حددته."
-    ReasonCode.TRIP_MIN_TOO_SHORT -> "مدة الرحلة أقصر مما حددته."
-    ReasonCode.EXCLUDED_KEYWORD -> "وصف الطلب يحتوي كلمة لا تناسبك."
-    }
-}
-
-private fun reasonEnglish(code: ReasonCode): String = when (code) {
-    ReasonCode.NO_FILTERS -> "You have not set a condition for selecting orders."
-    ReasonCode.OUTSIDE_SCHEDULE -> "The time is outside the working hours you set."
-    ReasonCode.INVALID_FILTER -> "One of the order conditions is invalid."
-    ReasonCode.FARE_MISSING -> "The order price is not shown."
-    ReasonCode.FARE_TOO_LOW -> "The order price is below the limit you set."
-    ReasonCode.FARE_TOO_HIGH -> "The order price is above the limit you set."
-    ReasonCode.PER_KM_MISSING -> "The return per km cannot be computed from the available details."
-    ReasonCode.PER_KM_TOO_LOW -> "The return per km is below the limit you set."
-    ReasonCode.PICKUP_KM_MISSING -> "The pickup distance is not shown."
-    ReasonCode.PICKUP_TOO_FAR -> "The pickup distance is farther than you set."
-    ReasonCode.PICKUP_MIN_MISSING -> "The pickup time is not shown."
-    ReasonCode.PICKUP_TOO_LONG -> "The pickup time is longer than you set."
-    ReasonCode.PICKUP_TOO_SHORT -> "The pickup time is shorter than you set."
-    ReasonCode.DESTINATION_MISSING -> "The order destination is not shown, and the no-destination orders option is off."
-    ReasonCode.TRIP_KM_MISSING -> "The trip distance is not shown."
-    ReasonCode.TRIP_TOO_SHORT -> "The trip distance is shorter than you set."
-    ReasonCode.TRIP_TOO_LONG -> "The trip distance is longer than you set."
-    ReasonCode.TRIP_MIN_MISSING -> "The trip duration is not shown."
-    ReasonCode.TRIP_MIN_TOO_LONG -> "The trip duration is longer than you set."
-    ReasonCode.TRIP_MIN_TOO_SHORT -> "The trip duration is shorter than you set."
-    ReasonCode.EXCLUDED_KEYWORD -> "The order description contains a word that does not suit you."
-}
 
 private fun Context.isSabbaqAccessibilityEnabled(): Boolean {
     val expectedId = ComponentName(this, SabbaqA11yService::class.java).flattenToString()

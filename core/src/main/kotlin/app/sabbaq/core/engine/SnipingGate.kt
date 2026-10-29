@@ -12,7 +12,10 @@ object SnipingGate {
 
     data class Result(val allowed: Boolean, val reason: String?, val newestSeenMs: Long)
 
-    /** [subscriptionEndsAtMs] 0 = not known yet (allowed); a past date = expired. */
+    /**
+     * [subscriptionEndsAtMs] is saved from every licence answer that confirmed the subscription;
+     * 0 means none was ever confirmed on this device, which is refused.
+     */
     fun check(
         monitoringWanted: Boolean,
         disclosureAccepted: Boolean,
@@ -29,7 +32,8 @@ object SnipingGate {
             nowMs > newestSeenMs -> nowMs
             else -> newestSeenMs
         }
-        if (subscriptionEndsAtMs > 0 && nowMs > subscriptionEndsAtMs) return Result(false, "subscription_expired", newest)
+        if (subscriptionEndsAtMs <= 0L) return Result(false, "subscription_unknown", newest)
+        if (nowMs > subscriptionEndsAtMs) return Result(false, "subscription_expired", newest)
         return Result(true, null, newest)
     }
 }

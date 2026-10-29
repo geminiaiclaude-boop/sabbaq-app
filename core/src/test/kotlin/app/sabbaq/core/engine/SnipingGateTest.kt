@@ -10,9 +10,14 @@ class SnipingGateTest {
     private val now = 1_800_000_000_000L
 
     @Test
-    fun an_unknown_end_date_allows_taps_after_a_restart() {
+    fun a_saved_end_date_survives_a_restart_without_the_network() {
         // The old in-memory lease made every restart "license_invalid" until the server answered.
-        assertTrue(SnipingGate.check(true, true, 0L, 0L, now).allowed)
+        assertTrue(SnipingGate.check(true, true, now + 3_600_000L, 0L, now).allowed)
+    }
+
+    @Test
+    fun a_device_that_never_confirmed_a_subscription_is_refused() {
+        assertEquals("subscription_unknown", SnipingGate.check(true, true, 0L, 0L, now).reason)
     }
 
     @Test
@@ -27,8 +32,8 @@ class SnipingGateTest {
 
     @Test
     fun the_drivers_switch_and_consent_decide_first() {
-        assertEquals("service_paused", SnipingGate.check(false, true, 0L, 0L, now).reason)
-        assertEquals("disclosure_required", SnipingGate.check(true, false, 0L, 0L, now).reason)
+        assertEquals("service_paused", SnipingGate.check(false, true, now + 1000, 0L, now).reason)
+        assertEquals("disclosure_required", SnipingGate.check(true, false, now + 1000, 0L, now).reason)
     }
 
     @Test
@@ -36,6 +41,6 @@ class SnipingGateTest {
         val back = SnipingGate.check(true, true, now + 1000, now + 3 * 3_600_000L, now)
         assertFalse(back.allowed)
         assertEquals("clock_tampered", back.reason)
-        assertTrue(SnipingGate.check(true, true, 0L, now + 60_000L, now).allowed)
+        assertTrue(SnipingGate.check(true, true, now + 1000, now + 60_000L, now).allowed)
     }
 }
