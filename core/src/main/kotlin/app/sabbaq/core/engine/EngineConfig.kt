@@ -62,6 +62,32 @@ data class EngineConfig(
     val turboModeEnabled: Boolean = false,
     val clickX: Int? = null,
     val clickY: Int? = null,
+    /** Geographic zones (FareSniper `dest_zones_*`): accept only destinations inside these polygons. */
+    val destZonesEnabled: Boolean = false,
+    val destZonesJson: String = "[]",
+    val destZonesRejectOnUnknown: Boolean = true,
+    val destZonesBearingEnabled: Boolean = true,
+    val destZonesBearingMarginDeg: Double = 25.0,
+    val destZonesOnTheWayEnabled: Boolean = false,
+    val travelAngleTolDeg: Double = 20.0,
+    val travelOvershootKm: Double = 2.0,
+    val corridorHalfWidthKm: Double = 1.5,
+    val destZonesRouteApiBudgetMs: Long = 0L,
+    /** Exclude zones: reject destinations inside these polygons. */
+    val destExcludeZonesEnabled: Boolean = false,
+    val destExcludeZonesJson: String = "[]",
+    val destExcludeZonesRejectOnUnknown: Boolean = false,
+    val destExcludeProximityMaxKm: Double = 60.0,
+    val destExcludeBearingMarginDeg: Double = 30.0,
+    /** Shared exclude zones published to every driver; [globalDestExcludeOptOut] ignores them. */
+    val globalDestExcludeZonesJson: String = "[]",
+    val globalDestExcludeOptOut: Boolean = false,
+    val globalZoneProximityKm: Double = 0.0,
+    /** Smart destination ("heading home"): accept only destinations within [smartDestAngle]° of this point's bearing. */
+    val smartDestActive: Boolean = false,
+    val smartDestLat: Double = 0.0,
+    val smartDestLng: Double = 0.0,
+    val smartDestAngle: Double = 45.0,
 ) {
     /** FareSniper `priceEnabled && priceFilterEnabled` (the second flag is always on in its UI). */
     val priceFilterOn: Boolean get() = priceEnabled
@@ -82,7 +108,14 @@ data class EngineConfig(
     val instantTurbo: Boolean get() = hasBlindCoords && !anyFilterActive
 
     /** `Pk.execute(config)`: destination rules need the whole tree, never the subtree or view-id shortcut. */
-    val needsFullTree: Boolean get() = destCheckEnabled || excludeOn
+    val needsFullTree: Boolean get() = destCheckEnabled || excludeOn || zoneStageOn
+
+    /** Any geographic rule is switched on, so the decision takes the full path (b9 fast-path guard). */
+    val zoneStageOn: Boolean get() = smartDestActive || destZonesEnabled || destExcludeZonesEnabled
+
+    /** The reader records map markers for the direction check (`Pk`: bearing on and some zone list in use). */
+    val markersWanted: Boolean get() = destZonesBearingEnabled && (destZonesEnabled ||
+        (destExcludeZonesEnabled && destExcludeZonesJson.length > 2) || (!globalDestExcludeOptOut && globalDestExcludeZonesJson.length > 2))
 
     fun lexicon(): JeenyLexicon = JeenyLexicon(acceptKeywordsExtra, timeKeywordsExtra, currencyKeywordsExtra, noiseKeywordsExtra)
 }

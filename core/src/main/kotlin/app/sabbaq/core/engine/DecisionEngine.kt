@@ -8,6 +8,7 @@ data class Decision(
     val matchedDestination: Boolean,
     val reason: String?,
     val diagnostic: String? = null,
+    val zoneEvidence: app.sabbaq.core.engine.zones.ZoneEvidence? = null,
 )
 
 /**
@@ -20,7 +21,7 @@ data class Decision(
 object DecisionEngine {
 
     /** [isBolt] enables the rating and wait-&-save filters, which FareSniper applies to Bolt only. */
-    fun decide(ride: ParsedRide, config: EngineConfig, isBolt: Boolean = false): Decision {
+    fun decide(ride: ParsedRide, config: EngineConfig, isBolt: Boolean = false, zones: app.sabbaq.core.engine.zones.ZoneEngine? = null): Decision {
         val price = ride.price
         val minutes = ride.minutes
         if (price == null && minutes == null) return reject("no_ride_data_detected")
@@ -28,7 +29,7 @@ object DecisionEngine {
 
         val ratingOn = isBolt && config.ratingFilterEnabled && config.minRating > 0.0
         val waitSaveOn = isBolt && config.waitSaveFilterMode == WaitSaveMode.EXCLUDE
-        if (!config.includeOn && !config.excludeOn && config.paymentFilterMode == PaymentMode.ALL && !ratingOn && !waitSaveOn) {
+        if (!config.includeOn && !config.excludeOn && !config.zoneStageOn && config.paymentFilterMode == PaymentMode.ALL && !ratingOn && !waitSaveOn) {
             if (ambiguous && !config.snipingNoDest && price == null) return reject("no_dest_sniping_disabled")
             val priceOk = priceMatches(price, ambiguous, config)
             val timeOk = timeMatches(price, minutes, config)
@@ -87,7 +88,11 @@ object DecisionEngine {
             if (config.timeFilterOn) add("time" to timeOk)
             if (config.destCheckEnabled) add("destination" to destinationOk)
         }
-        return combine(checks, config.logicMode, priceOk, timeOk, destinationOk, diagnostic)
+        val combined = combine(checks, config.logicMode, priceOk, timeOk, destinationOk, diagnostic)
+        if (zones == null || !config.zoneStageOn) return combined
+        val zone = runCatching { zones.evaluate(ride, config, combined.accept, diagnostic) }.getOrNull() ?: return combined
+        zone.rejectReason?.let { return Decision(false, priceOk, timeOk, destinationOk, it, zone.diagnostic, zone.evidence) }
+        return combined.copy(diagnostic = zone.diagnostic)
     }
 
     /** FareSniper's payment filter: the other method rejects; unknown rejects only when asked to. */

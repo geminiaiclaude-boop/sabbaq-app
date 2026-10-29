@@ -32,6 +32,8 @@ data class ParsedRide(
     val fromFastIds: Boolean = false,
     val aborted: Boolean = false,
     val nodesVisited: Int = 0,
+    /** Centres (x, y px) of the offer map's markers, read only when a zone needs the direction. */
+    val markers: List<IntArray> = emptyList(),
 ) {
     /** FareSniper's screen-offer hash: same values at the same tap point = same frame. */
     val screenHash: Int get() = identityHash(price, minutes, destination) * 31 * 31 + clickX * 31 + clickY
@@ -133,6 +135,8 @@ class JeenyScreenReader(private val config: EngineConfig, private val uptimeMs: 
         var priceViewId: String? = null
         var timeViewId: String? = null
         val addresses = LinkedHashSet<String>()
+        val wantMarkers = config.markersWanted
+        val markers = LinkedHashSet<Long>()
         var pickupLabelled: String? = null
         var dropoffLabelled: String? = null
         var nextLabel = 0
@@ -168,6 +172,12 @@ class JeenyScreenReader(private val config: EngineConfig, private val uptimeMs: 
                 }
                 val className = node.className.orEmpty()
                 if ("TextureView" in className || "google map" in lower || "map marker" in lower) {
+                    if (wantMarkers && "map marker" in lower) {
+                        val b = node.bounds()
+                        val w = b.right - b.left
+                        val h = b.bottom - b.top
+                        if (w in 1..400 && h in 1..600) markers += (b.centerX.toLong() shl 32) or (b.centerY.toLong() and 0xffffffffL)
+                    }
                     enqueueChildren(node, queue, maxNodes)
                     continue
                 }
@@ -310,6 +320,7 @@ class JeenyScreenReader(private val config: EngineConfig, private val uptimeMs: 
                 pickup = pickup, acceptViewId = acceptViewId,
                 payment = when { cardSeen -> Payment.CARD; cashSeen -> Payment.CASH; else -> Payment.UNKNOWN }, priceViewId = priceViewId, timeViewId = timeViewId,
                 nodesVisited = visited,
+                markers = markers.map { intArrayOf((it shr 32).toInt(), it.toInt()) },
             )
         }
         return null
