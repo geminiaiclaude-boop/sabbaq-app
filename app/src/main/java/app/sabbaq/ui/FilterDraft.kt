@@ -6,6 +6,7 @@ import app.sabbaq.core.engine.EngineConfig
 import app.sabbaq.core.engine.LogicMode
 import app.sabbaq.core.engine.PaymentMode
 import app.sabbaq.core.engine.TargetApp
+import app.sabbaq.core.engine.zones.ZoneGeo
 import app.sabbaq.core.engine.WaitSaveMode
 import kotlinx.serialization.Serializable
 
@@ -46,7 +47,20 @@ data class FilterDraft(
     val smartDelayEnabled: Boolean = false,
     val smartDelayMin: String = "",
     val smartDelayMax: String = "",
+    val zonesEnabled: Boolean = false,
+    val zonesJson: String = "[]",
+    val zonesRejectOnUnknown: Boolean = true,
+    val zonesOnTheWay: Boolean = false,
+    val excludeZonesEnabled: Boolean = false,
+    val excludeZonesJson: String = "[]",
+    val excludeZonesRejectOnUnknown: Boolean = false,
+    val smartDestActive: Boolean = false,
+    val smartDestLat: Double = 0.0,
+    val smartDestLng: Double = 0.0,
+    val smartDestAngle: String = "45",
 ) {
+    val homeSet: Boolean get() = !(smartDestLat == 0.0 && smartDestLng == 0.0)
+
     /** [base] supplies the fields this page does not edit (extra keyword lists, zones, smart destination). */
     fun validate(base: EngineConfig = EngineConfig()): DraftValidation {
         val errors = linkedMapOf<String, String>()
@@ -58,6 +72,11 @@ data class FilterDraft(
         val dMin = whole("smartDelayMin", smartDelayMin, errors)
         val dMax = whole("smartDelayMax", smartDelayMax, errors)
         val rating = decimal("minRating", minRating, errors)
+        val angle = whole("smartDestAngle", smartDestAngle, errors)
+        if (smartDestActive && (angle == null || angle !in 1..180)) errors["smartDestAngle"] = invalid()
+        if (smartDestActive && !homeSet) errors["smartDest"] = needHome()
+        if (zonesEnabled && ZoneGeo.polygons(zonesJson).isEmpty()) errors["zones"] = needZone()
+        if (excludeZonesEnabled && ZoneGeo.polygons(excludeZonesJson).isEmpty()) errors["excludeZones"] = needZone()
         val cx = whole("clickX", clickX, errors)
         val cy = whole("clickY", clickY, errors)
         if (turboEnabled && (cx == null || cy == null)) { errors["clickX"] = needPoint(); errors["clickY"] = needPoint() }
@@ -83,6 +102,12 @@ data class FilterDraft(
             targetApp = targetApp,
             turboModeEnabled = turboEnabled, clickX = cx, clickY = cy,
             smartDelayEnabled = smartDelayEnabled, smartDelayMinMs = dMin ?: 0, smartDelayMaxMs = dMax ?: 0,
+            destZonesEnabled = zonesEnabled, destZonesJson = zonesJson, destZonesRejectOnUnknown = zonesRejectOnUnknown,
+            destZonesOnTheWayEnabled = zonesOnTheWay,
+            destExcludeZonesEnabled = excludeZonesEnabled, destExcludeZonesJson = excludeZonesJson,
+            destExcludeZonesRejectOnUnknown = excludeZonesRejectOnUnknown,
+            smartDestActive = smartDestActive, smartDestLat = smartDestLat, smartDestLng = smartDestLng,
+            smartDestAngle = (angle ?: 45).toDouble(),
         ), errors)
     }
 
@@ -98,6 +123,9 @@ data class FilterDraft(
         paymentMode != PaymentMode.ALL,
         ratingEnabled && minRating.isNotBlank(),
         excludeWaitSave,
+        zonesEnabled,
+        excludeZonesEnabled,
+        smartDestActive,
     ).count { it }
 
     companion object {
@@ -118,10 +146,17 @@ data class FilterDraft(
             minRating = if (c.minRating <= 0.0) "" else c.minRating.toString(),
             ratingRejectOnUnknown = c.ratingRejectOnUnknown, excludeWaitSave = c.waitSaveFilterMode == WaitSaveMode.EXCLUDE,
             smartDelayEnabled = c.smartDelayEnabled, smartDelayMin = whole(c.smartDelayMinMs), smartDelayMax = whole(c.smartDelayMaxMs),
+            zonesEnabled = c.destZonesEnabled, zonesJson = c.destZonesJson, zonesRejectOnUnknown = c.destZonesRejectOnUnknown,
+            zonesOnTheWay = c.destZonesOnTheWayEnabled, excludeZonesEnabled = c.destExcludeZonesEnabled,
+            excludeZonesJson = c.destExcludeZonesJson, excludeZonesRejectOnUnknown = c.destExcludeZonesRejectOnUnknown,
+            smartDestActive = c.smartDestActive, smartDestLat = c.smartDestLat, smartDestLng = c.smartDestLng,
+            smartDestAngle = c.smartDestAngle.toInt().toString(),
         )
 
         private fun number(v: Double): String = if (v <= 0.0) "" else if (v % 1.0 == 0.0) v.toLong().toString() else v.toString()
         private fun whole(v: Int): String = if (v <= 0) "" else v.toString()
+        private fun needHome() = if (LocaleManager.isArabic()) "حدد نقطة الوجهة على الخريطة." else "Set the destination point on the map."
+        private fun needZone() = if (LocaleManager.isArabic()) "ارسم منطقة واحدة على الأقل على الخريطة." else "Draw at least one zone on the map."
         private fun rangeError() = if (LocaleManager.isArabic()) "يجب ألا يتجاوز الحد الأدنى الحد الأقصى." else "The minimum must not exceed the maximum."
         private fun needPoint() = if (LocaleManager.isArabic()) "حدد موضع زر القبول أولًا." else "Set the accept button position first."
         private fun invalid() = if (LocaleManager.isArabic()) "اكتب رقمًا صحيحًا موجبًا أو اتركه فارغًا." else "Enter a positive number or leave it empty."

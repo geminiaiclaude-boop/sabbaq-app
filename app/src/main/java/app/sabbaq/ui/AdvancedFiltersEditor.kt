@@ -99,6 +99,18 @@ internal fun AdvancedFiltersEditor(
         NoDestinationCondition(draft, onDraftChange)
         PaymentCondition(draft, onDraftChange)
         if (draft.targetApp == TargetApp.BOLT || draft.targetApp == TargetApp.BOTH) BoltOnlyConditions(draft, errors, onDraftChange)
+        FilterGroup(
+            title = stringResource(R.string.zone_group_title),
+            subtitle = stringResource(R.string.zone_group_sub),
+            hasError = errors.keys.any { it == "zones" || it == "excludeZones" || it.startsWith("smartDest") },
+            filledCount = listOf(draft.zonesEnabled, draft.excludeZonesEnabled, draft.smartDestActive).count { it },
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                ZoneConditions(draft, errors, onDraftChange)
+                Text(stringResource(R.string.zone_privacy_note), style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
         SmartDelayCondition(draft, errors, onDraftChange)
         TurboCondition(draft, errors, onDraftChange)
     }

@@ -176,7 +176,8 @@ object ZoneStore : ZoneEnvironment {
 
 /**
  * Geocodes the queue one address at a time, at most one request a second (the Nominatim
- * usage policy), biased to 0.6° around the driver and to Saudi Arabia and Jordan.
+ * usage policy), biased to Saudi Arabia, Jordan and the driver's region. Only the offer's
+ * address and a coarse box (position rounded to 0.5°, ±1°) leave the device, never the fix itself.
  */
 object GeocodeWorker {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -199,7 +200,11 @@ object GeocodeWorker {
 
     private fun nominatim(text: String, near: DoubleArray?): List<DoubleArray> {
         val q = URLEncoder.encode(text, "UTF-8")
-        val box = near?.let { "&viewbox=${it[1] - 0.6},${it[0] + 0.6},${it[1] + 0.6},${it[0] - 0.6}" }.orEmpty()
+        val box = near?.let {
+            val lat = Math.round(it[0] * 2.0) / 2.0
+            val lng = Math.round(it[1] * 2.0) / 2.0
+            "&viewbox=${lng - 1.0},${lat + 1.0},${lng + 1.0},${lat - 1.0}"
+        }.orEmpty()
         val url = URL("https://nominatim.openstreetmap.org/search?q=$q&format=jsonv2&limit=5&countrycodes=sa,jo&accept-language=ar,en$box")
         val conn = url.openConnection() as HttpURLConnection
         return try {
@@ -224,7 +229,9 @@ object GeocodeWorker {
         if (!Geocoder.isPresent()) return emptyList()
         val geocoder = Geocoder(context)
         val found = if (near != null) {
-            geocoder.getFromLocationName(text, 5, near[0] - 0.6, near[1] - 0.6, near[0] + 0.6, near[1] + 0.6)
+            val lat = Math.round(near[0] * 2.0) / 2.0
+            val lng = Math.round(near[1] * 2.0) / 2.0
+            geocoder.getFromLocationName(text, 5, lat - 1.0, lng - 1.0, lat + 1.0, lng + 1.0)
         } else geocoder.getFromLocationName(text, 5)
         return found.orEmpty().map { doubleArrayOf(it.latitude, it.longitude) }
     }

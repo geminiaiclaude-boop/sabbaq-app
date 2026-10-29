@@ -49,4 +49,32 @@ class ConditionsDraftTest {
         assertEquals("اقبل", FilterDraft.from(saved).copy(minPrice = "5").validate(saved).config!!.acceptKeywordsExtra)
         assertFalse(FilterDraft.from(saved).isDirtyComparedTo(saved))
     }
+
+    @Test
+    fun zones_and_smart_destination_round_trip() {
+        val zone = """[{"name":"العليا","active":true,"points":[[24.68,46.67],[24.68,46.69],[24.7,46.69]]}]"""
+        val config = EngineConfig(
+            destZonesEnabled = true, destZonesJson = zone, destZonesRejectOnUnknown = false, destZonesOnTheWayEnabled = true,
+            destExcludeZonesEnabled = true, destExcludeZonesJson = zone, destExcludeZonesRejectOnUnknown = true,
+            smartDestActive = true, smartDestLat = 24.96, smartDestLng = 46.7, smartDestAngle = 30.0,
+        )
+        assertEquals(config, FilterDraft.from(config).validate(config).config)
+    }
+
+    @Test
+    fun zones_need_a_drawn_zone_and_home_needs_a_point() {
+        val v = FilterDraft(zonesEnabled = true, excludeZonesEnabled = true, smartDestActive = true).validate()
+        assertFalse(v.isValid)
+        assertTrue("zones" in v.errors && "excludeZones" in v.errors && "smartDest" in v.errors)
+        assertTrue("smartDestAngle" in FilterDraft(smartDestActive = true, smartDestLat = 1.0, smartDestAngle = "200").validate().errors)
+    }
+
+    @Test
+    fun saving_the_page_keeps_fields_it_does_not_edit() {
+        val base = EngineConfig(globalDestExcludeZonesJson = "[1]", destZonesBearingMarginDeg = 40.0, acceptKeywordsExtra = "x")
+        val saved = FilterDraft(minPrice = "10").validate(base).config!!
+        assertEquals("[1]", saved.globalDestExcludeZonesJson)
+        assertEquals(40.0, saved.destZonesBearingMarginDeg, 0.0)
+        assertEquals("x", saved.acceptKeywordsExtra)
+    }
 }
