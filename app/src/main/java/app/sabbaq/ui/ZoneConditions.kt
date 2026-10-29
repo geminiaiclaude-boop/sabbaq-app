@@ -105,13 +105,24 @@ private class LocationAccess(val granted: Boolean, val request: () -> Unit)
 private fun rememberLocationAccess(): LocationAccess {
     val context = LocalContext.current
     var granted by remember { mutableStateOf(DriverLocationTracker.hasPermission(context)) }
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-        granted = DriverLocationTracker.hasPermission(context)
-        if (granted) app.sabbaq.service.SabbaqA11yService.instance?.onConfigSaved()
-    }
+    // Hosts without an activity result registry (screen tests, previews) get the app's settings
+    // page instead of the permission dialog; a missing registry must never crash the page.
+    val launcher = if (androidx.activity.compose.LocalActivityResultRegistryOwner.current != null) {
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+            granted = DriverLocationTracker.hasPermission(context)
+            if (granted) app.sabbaq.service.SabbaqA11yService.instance?.onConfigSaved()
+        }
+    } else null
     return LocationAccess(granted) {
         if (!DriverLocationTracker.hasPermission(context)) {
-            launcher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+            if (launcher != null) {
+                launcher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+            } else {
+                runCatching {
+                    context.startActivity(android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        android.net.Uri.fromParts("package", context.packageName, null)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                }
+            }
         }
     }
 }
