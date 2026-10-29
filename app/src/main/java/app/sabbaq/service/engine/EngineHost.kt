@@ -51,7 +51,9 @@ class EngineHost(
     }
 
     private val main = Handler(Looper.getMainLooper())
-    private val flow = OfferFlow({ System.currentTimeMillis() })
+    private val zones = app.sabbaq.core.engine.zones.ZoneEngine(app.sabbaq.service.zones.ZoneStore)
+    private val flow = OfferFlow({ System.currentTimeMillis() }, zones = zones)
+    private val locationTracker = app.sabbaq.service.zones.DriverLocationTracker(service)
     private val readerPool: ExecutorService = Executors.newFixedThreadPool(2) { runnable ->
         Thread({ Process.setThreadPriority(-4); runnable.run() }, "sabbaq-reader").apply { isDaemon = true }
     }
@@ -66,12 +68,20 @@ class EngineHost(
     private data class Frame(val detectedAtMs: Long, val abandons: Int)
     private class BookedResult(val root: AccessibilityNodeInfo?, val parsed: ParsedRide?, val startUptime: Long, val elapsedMs: Long, val aborted: Boolean)
 
+    /** The driver saved settings: forget zone verdicts made with the old lists, follow the location need. */
+    fun onConfigSaved() {
+        zones.clear()
+        locationTracker.update(config())
+    }
+
     fun onConnected() {
+        locationTracker.update(config())
         runCatching { toneGenerator = ToneGenerator(AudioManager.STREAM_ALARM, 100) }
         warmUpGesture()
     }
 
     fun onDestroy() {
+        locationTracker.stop()
         main.removeCallbacksAndMessages(null)
         synchronized(bookingLock) { inFlight.forEach { it.set(true) }; inFlight.clear(); bookedFrame = null }
         readerPool.shutdownNow()

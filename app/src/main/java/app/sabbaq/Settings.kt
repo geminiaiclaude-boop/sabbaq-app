@@ -120,7 +120,7 @@ object Settings {
             if (saved) cachedConfig = null
             saved
         }.also { saved ->
-            if (saved) withContext(Dispatchers.Main) { app.sabbaq.service.SabbaqA11yService.instance?.applyTargetPackages() }
+            if (saved) withContext(Dispatchers.Main) { app.sabbaq.service.SabbaqA11yService.instance?.onConfigSaved() }
         }
     }
 

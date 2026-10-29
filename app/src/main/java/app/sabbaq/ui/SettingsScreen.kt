@@ -1688,7 +1688,8 @@ private fun SimulatorPage(savedFilters: EngineConfig) {
             price = fareValue?.toDouble(), minutes = minutesValue, destination = dest,
             addressAmbiguous = dest == null, addresses = listOfNotNull(dest),
         )
-        result = PreviewResult(DecisionEngine.decide(ride, savedFilters))
+        result = PreviewResult(DecisionEngine.decide(ride, savedFilters,
+            zones = app.sabbaq.core.engine.zones.ZoneEngine(app.sabbaq.service.zones.ZoneStore)))
     }
 
     fun clearAll() {

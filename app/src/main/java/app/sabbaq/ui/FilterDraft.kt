@@ -47,7 +47,7 @@ data class FilterDraft(
     val smartDelayMin: String = "",
     val smartDelayMax: String = "",
 ) {
-    /** [base] supplies the fields this page does not edit (the extra keyword lists). */
+    /** [base] supplies the fields this page does not edit (extra keyword lists, zones, smart destination). */
     fun validate(base: EngineConfig = EngineConfig()): DraftValidation {
         val errors = linkedMapOf<String, String>()
         val minP = decimal("minPrice", minPrice, errors)
@@ -66,7 +66,7 @@ data class FilterDraft(
         if (minT != null && maxT != null && maxT > 0 && minT > maxT) { errors["minTime"] = rangeError(); errors["maxTime"] = rangeError() }
         if (dMin != null && dMax != null && dMin > dMax) { errors["smartDelayMin"] = rangeError(); errors["smartDelayMax"] = rangeError() }
         if (errors.isNotEmpty()) return DraftValidation(null, errors)
-        return DraftValidation(EngineConfig(
+        return DraftValidation(base.copy(
             minPrice = minP ?: 0.0, maxPrice = maxP ?: 0.0, minTime = minT ?: 0, maxTime = maxT ?: 0,
             priceEnabled = priceEnabled, timeEnabled = timeEnabled,
             logicMode = if (logicOr) LogicMode.OR else LogicMode.AND,
@@ -83,8 +83,6 @@ data class FilterDraft(
             targetApp = targetApp,
             turboModeEnabled = turboEnabled, clickX = cx, clickY = cy,
             smartDelayEnabled = smartDelayEnabled, smartDelayMinMs = dMin ?: 0, smartDelayMaxMs = dMax ?: 0,
-            acceptKeywordsExtra = base.acceptKeywordsExtra, timeKeywordsExtra = base.timeKeywordsExtra,
-            currencyKeywordsExtra = base.currencyKeywordsExtra, noiseKeywordsExtra = base.noiseKeywordsExtra,
         ), errors)
     }
 

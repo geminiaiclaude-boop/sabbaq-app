@@ -101,7 +101,13 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
     }
 
     /** FareSniper's `applyTargetAppRouting`: listen only to the ride apps the driver chose. */
-    fun applyTargetPackages() {
+    /** Called on the main thread after the driver saves settings. */
+    fun onConfigSaved() {
+        applyTargetPackages()
+        if (::host.isInitialized) host.onConfigSaved()
+    }
+
+    private fun applyTargetPackages() {
         val info = serviceInfo ?: return
         val wanted = RideApps.packages(Settings.engineConfig.targetApp)
         if (info.packageNames?.contentEquals(wanted) == true) return

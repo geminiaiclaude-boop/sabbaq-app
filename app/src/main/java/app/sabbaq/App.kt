@@ -16,6 +16,7 @@ class App : Application() {
         CrashLog.install(this)
         LocaleManager.restore(this)
         Settings.init(this)
+        app.sabbaq.service.zones.ZoneStore.init(this)
         runCatching { OfferDecisionLogStore.init(this) }
         runCatching { NotificationCenter.init(this) }
         runCatching { SupportRepository.init(this) }

@@ -53,6 +53,8 @@ sealed class PendingOutcome {
 class OfferFlow(
     private val nowMs: () -> Long,
     private val random: Random = Random.Default,
+    /** FareSniper's geographic stage; null when the host has no position or place cache. */
+    private val zones: app.sabbaq.core.engine.zones.ZoneEngine? = null,
 ) {
     var pending: PendingRide? = null
         private set
@@ -168,7 +170,7 @@ class OfferFlow(
         }
         if (sinceLastClick < GLOBAL_CLICK_COOLDOWN_MS) return FlowAction.Idle("global_click_cooldown")
 
-        val decision = DecisionEngine.decide(parsed, config, isBolt)
+        val decision = DecisionEngine.decide(parsed, config, isBolt, zones)
         if (!decision.accept) {
             val first = hash != lastHandledRideHash
             if (first) {
