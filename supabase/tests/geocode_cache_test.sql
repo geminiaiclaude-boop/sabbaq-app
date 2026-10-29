@@ -53,50 +53,59 @@ end $$;
 -- Off by default: nothing is fetched.
 select pg_temp.expect(public.geocode_resolve('حي العليا', 'حي العليا', 24.71, 46.67) ->> 'reason' = 'disabled', 'off until the admin enables it');
 reset role;
+select pg_temp.expect(private.geocode_fold('  حيّ  العُليا ١٢ ') = 'حي العليا 12', 'server folds like the app');
+select pg_temp.expect(private.geocode_fold('برج المملكة') = 'برج المملكه' and private.geocode_fold('RRRD2929') = 'rrrd2929', 'ta marbuta and national codes');
+set role authenticated;
+set request.jwt.claim.sub = '9e0c0000-0000-0000-0000-000000000002';
+reset role;
 select pg_temp.expect((select count(*) from private.geocode_stub_calls) = 0, 'no call while disabled');
 
 -- The admin sets a key and caps; the key is never returned.
 set role authenticated;
 set request.jwt.claim.sub = '9e0c0000-0000-0000-0000-000000000001';
-select pg_temp.expect((public.admin_geocode_settings(true, ' secret-key ', 100, 2) ->> 'has_key')::boolean, 'key stored');
+select pg_temp.expect((public.admin_geocode_settings(true, ' secret-key ', 100, 4) ->> 'has_key')::boolean, 'key stored');
 select pg_temp.expect(public.admin_geocode_settings() ? 'google_api_key' = false, 'key never returned');
 
 -- First driver resolves once; the second driver gets the cached answer without a new call.
 set request.jwt.claim.sub = '9e0c0000-0000-0000-0000-000000000002';
 select pg_temp.expect(public.geocode_resolve('حي العليا', 'حي العليا', 24.71, 46.67) ->> 'status' = 'resolved', 'first lookup resolved');
 set request.jwt.claim.sub = '9e0c0000-0000-0000-0000-000000000003';
-select pg_temp.expect(public.geocode_resolve('حي العليا', 'حي العليا') ->> 'status' = 'hit', 'second driver hits the cache');
+select pg_temp.expect(public.geocode_resolve('anything', 'حيّ العُليا') ->> 'status' = 'resolved', 'second driver gets the same answer, folded');
+-- A caller-supplied key is never trusted: text decides the cache entry.
+select pg_temp.expect(jsonb_array_length(public.geocode_resolve('حي العليا', 'nowhere') -> 'points') = 0, 'a forged key cannot read or write another address');
 reset role;
-select pg_temp.expect((select count(*) from private.geocode_stub_calls) = 1, 'Google called once for two drivers');
+select pg_temp.expect((select points from public.geocode_cache where key = 'حي العليا') = '[{"lat": 24.7, "lng": 46.6}]'::jsonb, 'entry not overwritten');
+select pg_temp.expect((select count(*) from private.geocode_stub_calls) = 2, 'Google called once per distinct address');
 select pg_temp.expect((select bounds from private.geocode_stub_calls order by n limit 1) = '23.5,45.5|25.5,47.5',
     'only a coarse region (0.5° grid, ±1°) is sent');
 
 -- "Not found" is cached as empty; a failed call is not cached.
+update private.geocode_usage set calls = 0, lookups = 0;
 set role authenticated;
 set request.jwt.claim.sub = '9e0c0000-0000-0000-0000-000000000003';
-select pg_temp.expect(jsonb_array_length(public.geocode_resolve('nowhere', 'nowhere') -> 'points') = 0, 'not found answered empty');
-select pg_temp.expect(public.geocode_resolve('nowhere', 'nowhere') ->> 'status' = 'hit', 'not found is cached');
+select pg_temp.expect(public.geocode_resolve('nowhere', 'nowhere') ->> 'status' = 'resolved', 'not found answered from the cache');
 reset role;
-update private.geocode_usage set calls = 0;
+select pg_temp.expect((select count(*) from private.geocode_stub_calls) = 2, 'not found is cached');
 set role authenticated;
 set request.jwt.claim.sub = '9e0c0000-0000-0000-0000-000000000003';
 select pg_temp.expect(public.geocode_resolve('down', 'down') ->> 'reason' = 'fetch_failed', 'failure reported');
 select pg_temp.expect(public.geocode_resolve('down', 'down') ->> 'reason' = 'fetch_failed', 'failure not cached');
 
--- Per-driver daily cap (2) and monthly cap.
-select pg_temp.expect(public.geocode_resolve('cap-a', 'cap-a') ->> 'reason' = 'driver_cap', 'daily cap stops the driver');
+-- Per-driver daily cap (4 lookups, cached or not) and monthly cap.
+select pg_temp.expect(public.geocode_resolve('cap-a', 'cap-a') ->> 'status' = 'resolved', 'fourth lookup allowed');
+select pg_temp.expect(public.geocode_resolve('nowhere', 'nowhere') ->> 'reason' = 'driver_cap', 'daily cap counts cache answers too');
 reset role;
-update private.geocode_usage set calls = 0;
+update private.geocode_usage set calls = 0, lookups = 0;
 update private.geocode_settings set monthly_cap = 0;
 set role authenticated;
 set request.jwt.claim.sub = '9e0c0000-0000-0000-0000-000000000002';
 select pg_temp.expect(public.geocode_resolve('cap-b', 'cap-b') ->> 'reason' = 'monthly_cap', 'monthly cap stops everyone');
-select pg_temp.expect(public.geocode_resolve('حي العليا', 'حي العليا') ->> 'status' = 'hit', 'cached answers still served at the cap');
+select pg_temp.expect(public.geocode_resolve('حي العليا', 'حي العليا') ->> 'status' = 'resolved', 'cached answers still served at the monthly cap');
 
 -- Input bounds and anonymous callers.
 do $$ begin
-    perform public.geocode_resolve('', 'x');
-    raise exception 'EXPECTATION FAILED: empty key accepted';
+    perform public.geocode_resolve('k', '   ');
+    raise exception 'EXPECTATION FAILED: empty address accepted';
 exception when sqlstate '22023' then null;
 end $$;
 reset role;
@@ -108,3 +117,8 @@ exception when insufficient_privilege then null;
 end $$;
 reset role;
 select pg_temp.expect(public.purge_geocode_cache() = 0, 'fresh not-found answers kept');
+set role authenticated;
+set request.jwt.claim.sub = '9e0c0000-0000-0000-0000-000000000001';
+select pg_temp.expect(public.admin_geocode_forget('حيّ العليا'), 'admin forgets a wrong answer');
+reset role;
+select pg_temp.expect(not exists (select 1 from public.geocode_cache where key = 'حي العليا'), 'entry removed');

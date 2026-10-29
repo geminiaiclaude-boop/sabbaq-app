@@ -24,12 +24,26 @@ create table if not exists private.geocode_settings (
 );
 insert into private.geocode_settings (id) values (true) on conflict (id) do nothing;
 
+-- calls: requests sent to Google (the monthly cap); lookups: every request this driver made,
+-- answered from the cache or not (the daily cap), so the cache cannot be probed without bound.
 create table if not exists private.geocode_usage (
     driver_id uuid not null references public.drivers (id) on delete cascade,
     day date not null default current_date,
     calls integer not null default 0,
+    lookups integer not null default 0,
     primary key (driver_id, day)
 );
+
+-- The app's address folding (DecisionEngine.fold): Latin digits, one alef, ta marbuta as ha,
+-- one ya, Persian kaf as kaf, waw hamza as waw, no diacritics/tatweel/bare hamza, lower case,
+-- single spaces. The cache key is always computed here, never taken from the caller.
+create or replace function private.geocode_fold(p_text text) returns text
+language sql immutable set search_path = pg_catalog as $$
+    select btrim(regexp_replace(lower(
+        regexp_replace(
+            translate(coalesce(p_text, ''), '٠١٢٣٤٥٦٧٨٩أإآٱٲٳةىئیکؤ', '0123456789اااااا' || 'هيييكو'),
+            '[\u064B-\u0655\u0670\u0640\u0621]', '', 'g')), '\s+', ' ', 'g'))
+$$;
 
 -- The Google request, kept apart so it can be replaced in tests. Returns {"points":[{lat,lng}…]}
 -- (empty when Google found nothing) or null when the call could not be made or was refused.
@@ -62,13 +76,15 @@ end;
 $$;
 revoke all on function private.geocode_fetch(text, text, text) from public, anon, authenticated;
 
--- Driver entry point. p_key is the app's folded address text, p_text the address as shown;
--- p_lat/p_lng the driver's position, only rounded to 0.5° to bias the search to the region.
+-- Driver entry point. p_text is the address as shown; the cache key is folded here from it
+-- (p_key is accepted for the app's convenience but never trusted). p_lat/p_lng: the driver's
+-- position, only rounded to 0.5° to bias the search. Cached or fresh, the answer looks the same.
 create or replace function public.geocode_resolve(p_key text, p_text text, p_lat double precision default null,
                                                   p_lng double precision default null) returns jsonb
 language plpgsql security definer set search_path = pg_catalog, public as $$
 declare
     v_uid uuid := auth.uid();
+    v_key text := private.geocode_fold(p_text);
     v_points jsonb;
     v_settings private.geocode_settings;
     v_month integer;
@@ -80,15 +96,21 @@ declare
 begin
     if v_uid is null then raise exception 'not_authenticated' using errcode = '42501'; end if;
     if not exists (select 1 from public.drivers where id = v_uid) then raise exception 'unregistered' using errcode = '42501'; end if;
-    if p_key is null or char_length(p_key) not between 1 and 200
-        or p_text is null or char_length(btrim(p_text)) not between 1 and 300 then
+    if p_text is null or char_length(btrim(p_text)) not between 1 and 300 or char_length(v_key) not between 1 and 200 then
         raise exception 'invalid_address' using errcode = '22023';
     end if;
 
-    update public.geocode_cache set hits = hits + 1 where key = p_key returning points into v_points;
-    if found then return jsonb_build_object('status', 'hit', 'points', v_points); end if;
-
     select * into v_settings from private.geocode_settings where id;
+    insert into private.geocode_usage (driver_id, day, lookups) values (v_uid, current_date, 1)
+    on conflict (driver_id, day) do update set lookups = private.geocode_usage.lookups + 1
+    returning lookups into v_today;
+    if v_today > coalesce(v_settings.driver_daily_cap, 0) then
+        return jsonb_build_object('status', 'unavailable', 'reason', 'driver_cap');
+    end if;
+
+    update public.geocode_cache set hits = hits + 1 where key = v_key returning points into v_points;
+    if found then return jsonb_build_object('status', 'resolved', 'points', v_points); end if;
+
     if v_settings.id is null or not v_settings.enabled or coalesce(v_settings.google_api_key, '') = '' then
         return jsonb_build_object('status', 'unavailable', 'reason', 'disabled');
     end if;
@@ -96,12 +118,7 @@ begin
     if v_month >= v_settings.monthly_cap then
         return jsonb_build_object('status', 'unavailable', 'reason', 'monthly_cap');
     end if;
-    insert into private.geocode_usage (driver_id, day, calls) values (v_uid, current_date, 1)
-    on conflict (driver_id, day) do update set calls = private.geocode_usage.calls + 1
-    returning calls into v_today;
-    if v_today > v_settings.driver_daily_cap then
-        return jsonb_build_object('status', 'unavailable', 'reason', 'driver_cap');
-    end if;
+    update private.geocode_usage set calls = calls + 1 where driver_id = v_uid and day = current_date;
 
     if p_lat is not null and p_lng is not null and p_lat between -90 and 90 and p_lng between -180 and 180 then
         v_lat := round(p_lat * 2) / 2.0;
@@ -111,7 +128,7 @@ begin
     v_result := private.geocode_fetch(btrim(p_text), v_bounds, v_settings.google_api_key);
     if v_result is null then return jsonb_build_object('status', 'unavailable', 'reason', 'fetch_failed'); end if;
 
-    insert into public.geocode_cache (key, points, source) values (p_key, v_result -> 'points', 'google')
+    insert into public.geocode_cache (key, points, source) values (v_key, v_result -> 'points', 'google')
     on conflict (key) do nothing;
     return jsonb_build_object('status', 'resolved', 'points', v_result -> 'points');
 end;
@@ -149,6 +166,18 @@ end;
 $$;
 revoke all on function public.admin_geocode_settings(boolean, text, integer, integer) from public, anon;
 grant execute on function public.admin_geocode_settings(boolean, text, integer, integer) to authenticated;
+
+-- Administration: forget a wrong answer so the next lookup asks Google again.
+create or replace function public.admin_geocode_forget(p_text text) returns boolean
+language plpgsql security definer set search_path = pg_catalog, public as $$
+begin
+    if not public.is_admin() then raise exception 'not_admin' using errcode = '42501'; end if;
+    delete from public.geocode_cache where key = private.geocode_fold(p_text);
+    return found;
+end;
+$$;
+revoke all on function public.admin_geocode_forget(text) from public, anon;
+grant execute on function public.admin_geocode_forget(text) to authenticated;
 
 -- Housekeeping: "not found" answers are retried after 30 days; usage rows kept 90 days.
 create or replace function public.purge_geocode_cache() returns integer
