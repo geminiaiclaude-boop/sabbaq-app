@@ -293,6 +293,35 @@ object AdminRepository {
             .fold({ Result.success(Unit) }, { Result.failure(WhatsappNotSaved(it)) })
     }
 
+    data class ReferralLeader(val name: String, val code: String, val invited: Int, val rewarded: Int)
+    data class ReferralSettings(
+        val enabled: Boolean, val rewardDays: Int, val claimWindowDays: Int,
+        val claims: Int, val rewarded: Int, val rejected: Int, val top: List<ReferralLeader>,
+    )
+
+    suspend fun referralSettings(): Result<ReferralSettings> =
+        SupabaseClient.adminRpc("admin_referral_settings").mapCatching { parseReferral(it) }
+
+    suspend fun saveReferralSettings(enabled: Boolean, rewardDays: Int, claimWindowDays: Int): Result<ReferralSettings> {
+        if (rewardDays !in 1..90 || claimWindowDays !in 1..30) return rejected()
+        return SupabaseClient.adminRpc("admin_referral_settings", buildJsonObject {
+            put("p_enabled", enabled); put("p_reward_days", rewardDays); put("p_claim_window_days", claimWindowDays)
+        }).mapCatching { parseReferral(it) }
+    }
+
+    private fun parseReferral(body: String): ReferralSettings {
+        val row = json.parseToJsonElement(body) as? JsonObject ?: throw FeatureException(FeatureFailure.UNAVAILABLE)
+        return ReferralSettings(
+            enabled = row.bool("enabled") ?: throw FeatureException(FeatureFailure.UNAVAILABLE),
+            rewardDays = row.int("reward_days") ?: 7, claimWindowDays = row.int("claim_window_days") ?: 7,
+            claims = row.int("claims") ?: 0, rewarded = row.int("rewarded") ?: 0, rejected = row.int("rejected") ?: 0,
+            top = (row["top"] as? JsonArray).orEmpty().mapNotNull { t ->
+                val o = t as? JsonObject ?: return@mapNotNull null
+                ReferralLeader(o.str("name").orEmpty(), o.str("code").orEmpty(), o.int("invited") ?: 0, o.int("rewarded") ?: 0)
+            },
+        )
+    }
+
     /** `admin_geocode_settings`: the key itself never comes back, only whether one is set. */
     data class GeocodeSettings(
         val enabled: Boolean,

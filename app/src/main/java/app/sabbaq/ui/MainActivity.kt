@@ -27,6 +27,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.material.icons.outlined.CardGiftcard
 import androidx.compose.material.icons.outlined.Checklist
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.History
@@ -607,6 +608,7 @@ private val sabbaqDrawerSections = listOf(
     ),
     R.string.ma_sec_account to listOf(
         SabbaqDrawerItem(DriverDestination.Account, R.string.nav_account, Icons.Outlined.AccountCircle),
+        SabbaqDrawerItem(DriverDestination.Referrals, R.string.ref_nav, Icons.Outlined.CardGiftcard),
         SabbaqDrawerItem(DriverDestination.Support, R.string.sub_contact_support, Icons.Outlined.SupportAgent),
     ),
 )

@@ -96,6 +96,16 @@ object Settings {
         get() = runCatching { prefs().getInt("last_confirmed_tap_y", -1) }.getOrDefault(-1)
         set(value) { runCatching { prefs().edit().putInt("last_confirmed_tap_y", value).apply() } }
 
+    /** Invite code typed on the sign-in screen, claimed once the account exists. */
+    var pendingReferralCode: String?
+        get() = runCatching { prefs().getString("pending_referral_code", null) }.getOrNull()
+        set(value) { runCatching { prefs().edit().apply { if (value.isNullOrBlank()) remove("pending_referral_code") else putString("pending_referral_code", value) }.apply() } }
+
+    /** Result of claiming that code ("ok" or the server's reason), shown once on the referral page. */
+    var referralClaimOutcome: String?
+        get() = runCatching { prefs().getString("referral_claim_outcome", null) }.getOrNull()
+        set(value) { runCatching { prefs().edit().apply { if (value == null) remove("referral_claim_outcome") else putString("referral_claim_outcome", value) }.apply() } }
+
     /** Newest wall-clock time seen, to refuse a clock set back to extend the subscription. */
     var newestSeenMs: Long
         get() = runCatching { prefs().getLong(KEY_NEWEST_SEEN, 0L) }.getOrDefault(0L)

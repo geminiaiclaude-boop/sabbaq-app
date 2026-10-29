@@ -586,6 +586,7 @@ object SupabaseClient {
             if (profile.isFailure) {
                 return@networkCall Result.failure(profile.exceptionOrNull()!!)
             }
+            claimPendingReferral(token)
             if (!sessions.activate(attempt, token)) return@networkCall staleSessionFailure()
             refreshToken = tokenPairFrom(response.body)?.second
             accessIssuedAt = SystemClock.elapsedRealtime()
@@ -644,6 +645,7 @@ object SupabaseClient {
             if (profile.isFailure) {
                 return@networkCall Result.failure(profile.exceptionOrNull()!!)
             }
+            claimPendingReferral(token)
             if (!sessions.activate(attempt, token)) return@networkCall staleSessionFailure()
             refreshToken = tokenPairFrom(response.body)?.second
             accessIssuedAt = SystemClock.elapsedRealtime()
@@ -965,6 +967,39 @@ object SupabaseClient {
             }
         }
     }
+
+    /**
+     * The invite code typed before signing in is attached right after the profile exists. A
+     * network failure keeps it for the next sign-in or the referral page; any server answer
+     * (accepted or refused) clears it and is remembered for the page to show once.
+     */
+    private fun claimPendingReferral(token: String) {
+        val code = app.sabbaq.Settings.pendingReferralCode ?: return
+        runCatching {
+            val response = execute(authenticatedRequest(endpoint("rest/v1/rpc/claim_referral_code"), token,
+                buildJsonObject { put("p_code", code) }.toString().toRequestBody(jsonMediaType)))
+            if (!response.isSuccessful) return
+            val claim = ReferralParser.claim(json.parseToJsonElement(response.body) as JsonObject)
+            app.sabbaq.Settings.referralClaimOutcome = if (claim.ok) "ok" else (claim.reason ?: "invalid_code")
+            app.sabbaq.Settings.pendingReferralCode = null
+        }
+    }
+
+    /** `my_referrals`: the referral page. */
+    suspend fun myReferrals(): Result<ReferralSummary> =
+        supportCall("rpc/my_referrals", buildJsonObject { }) { response ->
+            if (!response.isSuccessful) return@supportCall Result.failure(FeatureException.fromStatus(response.code))
+            val summary = runCatching { ReferralParser.summary(json.parseToJsonElement(response.body) as JsonObject) }.getOrNull()
+            if (summary == null) Result.failure(FeatureException(FeatureFailure.UNAVAILABLE)) else Result.success(summary)
+        }
+
+    /** `claim_referral_code` from the referral page. */
+    suspend fun claimReferralCode(code: String): Result<ReferralClaim> =
+        supportCall("rpc/claim_referral_code", buildJsonObject { put("p_code", code.trim().uppercase(Locale.ROOT)) }) { response ->
+            if (!response.isSuccessful) return@supportCall Result.failure(FeatureException.fromStatus(response.code))
+            runCatching { ReferralParser.claim(json.parseToJsonElement(response.body) as JsonObject) }
+                .fold({ Result.success(it) }, { Result.failure(FeatureException(FeatureFailure.UNAVAILABLE)) })
+        }
 
     /** RPC واحد مشترك لكل هويات العملاء الجديدة؛ لا يفعّل الجلسة أو الرخصة بذاته. */
     private fun ensureDriverProfile(token: String, displayName: String? = null): Result<Unit> {
