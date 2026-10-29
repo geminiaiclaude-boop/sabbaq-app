@@ -259,6 +259,45 @@ object SupabaseClient {
      * safe. REJECTED means the server refused the content (retrying unchanged cannot help);
      * RETRY covers network and server faults.
      */
+    /** The server's answer for one order address (shared cache, Google behind it). */
+    sealed class GeocodeAnswer {
+        class Found(val points: List<DoubleArray>) : GeocodeAnswer()
+        object NotFound : GeocodeAnswer()
+        /** Google off, capped, failing or no connection: the app uses its own geocoders. */
+        object Unavailable : GeocodeAnswer()
+    }
+
+    /**
+     * `geocode_resolve`: [key] is the folded address, [text] the address as shown; the driver's
+     * position is sent only rounded to 0.5° (region bias), never the fix itself.
+     */
+    suspend fun geocodeResolve(key: String, text: String, near: DoubleArray?): GeocodeAnswer {
+        val payload = buildJsonObject {
+            put("p_key", key.take(200))
+            put("p_text", text.take(300))
+            near?.let {
+                put("p_lat", Math.round(it[0] * 2.0) / 2.0)
+                put("p_lng", Math.round(it[1] * 2.0) / 2.0)
+            }
+        }
+        return supportCall("rpc/geocode_resolve", payload) { response ->
+            if (!response.isSuccessful) return@supportCall Result.success(GeocodeAnswer.Unavailable)
+            val answer = runCatching {
+                val body = json.parseToJsonElement(response.body) as JsonObject
+                val status = (body["status"] as? JsonPrimitive)?.content
+                if (status != "hit" && status != "resolved") return@runCatching GeocodeAnswer.Unavailable
+                val points = (body["points"] as? JsonArray).orEmpty().mapNotNull { p ->
+                    val o = p as? JsonObject ?: return@mapNotNull null
+                    val lat = (o["lat"] as? JsonPrimitive)?.content?.toDoubleOrNull()
+                    val lng = (o["lng"] as? JsonPrimitive)?.content?.toDoubleOrNull()
+                    if (lat == null || lng == null) null else doubleArrayOf(lat, lng)
+                }
+                if (points.isEmpty()) GeocodeAnswer.NotFound else GeocodeAnswer.Found(points)
+            }.getOrDefault(GeocodeAnswer.Unavailable)
+            Result.success(answer)
+        }.getOrDefault(GeocodeAnswer.Unavailable)
+    }
+
     suspend fun sendSupportMessage(clientId: String, body: String, appVersion: String?, correlationId: String?): SupportSendResult {
         val payload = buildJsonObject {
             put("p_client_id", clientId)

@@ -845,7 +845,7 @@ Write your problem or question and our team will reply here during working hours
     <string name="zone_default_name">Zone</string>
     <string name="zone_cancel">Cancel</string>
     <string name="zone_save">Done</string>
-    <string name="zone_privacy_note">To place a destination, Sabbaq looks up the order address on OpenStreetMap (with your city, not your exact position). Map © OpenStreetMap contributors.</string>
+    <string name="zone_privacy_note">To place a destination, Sabbaq looks up the order address on Sabbaq\'s server (Google) or OpenStreetMap, with your city only, never your exact position. Map © OpenStreetMap contributors.</string>
     <string name="zone_location_none">Sabbaq has no position yet; keep the app open a moment so zones can work.</string>
     <string name="zone_location_old">Your last position is %1$d minutes old; open Sabbaq now and then so zones use where you are.</string>
     <string name="diag_card_title">Why no orders are accepted</string>

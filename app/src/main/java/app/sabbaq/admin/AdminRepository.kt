@@ -293,6 +293,44 @@ object AdminRepository {
             .fold({ Result.success(Unit) }, { Result.failure(WhatsappNotSaved(it)) })
     }
 
+    /** `admin_geocode_settings`: the key itself never comes back, only whether one is set. */
+    data class GeocodeSettings(
+        val enabled: Boolean,
+        val hasKey: Boolean,
+        val monthlyCap: Int,
+        val driverDailyCap: Int,
+        val monthCalls: Int,
+        val cachedAddresses: Int,
+    )
+
+    /** A Google API key: letters, digits, '-' and '_' (Google keys are 39 characters). */
+    val GEOCODE_KEY = Regex("[A-Za-z0-9_-]{20,80}")
+
+    suspend fun geocodeSettings(): Result<GeocodeSettings> =
+        SupabaseClient.adminRpc("admin_geocode_settings").mapCatching { parseGeocode(it) }
+
+    suspend fun saveGeocodeSettings(enabled: Boolean, key: String?, monthlyCap: Int, driverDailyCap: Int): Result<GeocodeSettings> {
+        if (monthlyCap < 0 || driverDailyCap < 0 || (key != null && !GEOCODE_KEY.matches(key))) return rejected()
+        return SupabaseClient.adminRpc("admin_geocode_settings", buildJsonObject {
+            put("p_enabled", enabled)
+            key?.let { put("p_google_api_key", it) }
+            put("p_monthly_cap", monthlyCap)
+            put("p_driver_daily_cap", driverDailyCap)
+        }).mapCatching { parseGeocode(it) }
+    }
+
+    private fun parseGeocode(body: String): GeocodeSettings {
+        val row = json.parseToJsonElement(body) as? JsonObject ?: throw FeatureException(FeatureFailure.UNAVAILABLE)
+        return GeocodeSettings(
+            enabled = row.bool("enabled") ?: throw FeatureException(FeatureFailure.UNAVAILABLE),
+            hasKey = row.bool("has_key") ?: false,
+            monthlyCap = row.int("monthly_cap") ?: 0,
+            driverDailyCap = row.int("driver_daily_cap") ?: 0,
+            monthCalls = row.int("month_calls") ?: 0,
+            cachedAddresses = row.int("cached_addresses") ?: 0,
+        )
+    }
+
     /** The policy was saved but the WhatsApp number was not confirmed. */
     class WhatsappNotSaved(val reason: Throwable) : Exception("whatsapp_not_saved")
 

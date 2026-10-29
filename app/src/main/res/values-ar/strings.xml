@@ -852,7 +852,7 @@
     <string name="zone_default_name">منطقة</string>
     <string name="zone_cancel">إلغاء</string>
     <string name="zone_save">تم</string>
-    <string name="zone_privacy_note">لتحديد موقع الوجهة يبحث سبّاق عن عنوان الطلب في OpenStreetMap (مع مدينتك فقط، لا موقعك الدقيق). الخريطة © مساهمو OpenStreetMap.</string>
+    <string name="zone_privacy_note">لتحديد موقع الوجهة يبحث سبّاق عن عنوان الطلب عبر خادم سبّاق (Google) أو OpenStreetMap، مع مدينتك فقط لا موقعك الدقيق. الخريطة © مساهمو OpenStreetMap.</string>
     <string name="zone_location_none">لا يعرف سبّاق موقعك بعد؛ أبقِ التطبيق مفتوحًا لحظة لتعمل المناطق.</string>
     <string name="zone_location_old">آخر موقع محفوظ لك قبل %1$d دقيقة؛ افتح سبّاق بين حين وآخر لتعمل المناطق على موقعك الحالي.</string>
     <string name="diag_card_title">لماذا لا تُقبل الطلبات</string>

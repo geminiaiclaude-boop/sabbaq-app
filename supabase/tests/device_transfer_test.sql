@@ -86,3 +86,6 @@ reset role;
 
 -- Admin view of each driver's Sabbaq build (kept here so the existing CI step runs it).
 \ir driver_versions_test.sql
+
+-- Shared geocode cache for destination zones (kept here so the existing CI step runs it).
+\ir geocode_cache_test.sql

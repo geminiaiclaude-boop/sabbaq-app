@@ -17,6 +17,7 @@ import app.sabbaq.core.engine.DecisionEngine
 import app.sabbaq.core.engine.EngineConfig
 import app.sabbaq.core.engine.zones.PoiIndex
 import app.sabbaq.core.engine.zones.ZoneEnvironment
+import app.sabbaq.network.SupabaseClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -42,7 +43,8 @@ import java.net.URLEncoder
 /**
  * The device half of the reference engine's zones: the driver's last position, the address → point cache
  * (`address_poi_cache`), the geocoding queue (`pending_addresses`, 150 entries) and the worker
- * that fills the cache from OpenStreetMap Nominatim, then Android's geocoder.
+ * that fills the cache from Sabbaq's server (shared answers, Google behind it), then
+ * OpenStreetMap Nominatim, then Android's geocoder.
  */
 object ZoneStore : ZoneEnvironment {
     private const val PREFS = "sabbaq_zones"
@@ -128,6 +130,20 @@ object ZoneStore : ZoneEnvironment {
 
     internal fun takeNext(): String? = prefs?.let { synchronized(lock) { pending(it).firstOrNull() } }
 
+    /** The address exists nowhere (Sabbaq's server asked Google): remembered as empty, never asked again. */
+    internal fun finishNotFound(text: String) {
+        val p = prefs ?: return
+        synchronized(lock) {
+            val list = pending(p)
+            list.remove(text)
+            store(text, emptyList())
+            p.edit().putString(KEY_PENDING, JsonArray(list.map { JsonPrimitive(it) }).toString()).apply()
+        }
+    }
+
+    /** Folded cache key the server shares with every driver. */
+    internal fun sharedKey(text: String): String = cacheKey(text)
+
     /** Removes [text] from the queue; on failure it goes to the back until it failed three times. */
     internal fun finish(text: String, points: List<DoubleArray>) {
         val p = prefs ?: return
@@ -196,6 +212,13 @@ object GeocodeWorker {
             while (isActive) {
                 val text = ZoneStore.takeNext() ?: break
                 val near = ZoneStore.driverLocation()
+                // Sabbaq's server first: one shared answer for every driver, Google behind it.
+                when (val server = runCatching { SupabaseClient.geocodeResolve(ZoneStore.sharedKey(text), text, near) }
+                    .getOrDefault(SupabaseClient.GeocodeAnswer.Unavailable)) {
+                    is SupabaseClient.GeocodeAnswer.Found -> { ZoneStore.finish(text, server.points); continue }
+                    SupabaseClient.GeocodeAnswer.NotFound -> { ZoneStore.finishNotFound(text); continue }
+                    SupabaseClient.GeocodeAnswer.Unavailable -> Unit
+                }
                 val points = runCatching { nominatim(text, near) }.getOrDefault(emptyList())
                     .ifEmpty { runCatching { androidGeocoder(app, text, near) }.getOrDefault(emptyList()) }
                 ZoneStore.finish(text, points)
