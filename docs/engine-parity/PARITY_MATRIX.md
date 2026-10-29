@@ -35,7 +35,7 @@ Each row is one behaviour of FareSniper's cycle (QANNAS_ENGINE_FACTS.md §). Sta
 | 27 | decide | payment filter (cash/card/all) (§14) | ✗ | ✓ |
 | 28 | decide | passenger rating filter (Bolt only, §14) | ✗ | ✓ |
 | 29 | decide | wait & save filter (Bolt only, §14) | ✗ | ✓ |
-| 30 | decide | geographic zones (§14) | ✗ | ✗ |
+| 30 | decide | geographic zones, on-the-way, map-marker direction, smart destination (§17) | ✗ | ✓ (place lookup: OSM Nominatim + Android geocoder instead of FareSniper's server cache) |
 | 31 | flow | active ride with nothing pending → reset (§11.4) | ✗ | ✓ |
 | 32 | flow | ride hash / identity, 100 / 2500 / 4000 ms (§11.8–9) | ✗ | ✓ |
 | 33 | flow | smart delay (§11.11) | ✗ | ✓ + UI |
@@ -54,8 +54,13 @@ Each row is one behaviour of FareSniper's cycle (QANNAS_ENGINE_FACTS.md §). Sta
 | 46 | gate | engine switch + saved subscription end + clock guard, no network (§5) | ✗ (in-memory lease) | ✓ SnipingGate |
 | — | n/a | stealth jitter, root injection — off by default in FareSniper | n/a | n/a |
 
-## Score (46 rows, ✓ = 1, ◐ = 0.5) — 2026-10-29, commit 691a59a
+## Score (46 rows, ✓ = 1, ◐ = 0.5) — 2026-10-29
 - Installed 2.0.2: **≈ 15 %**
-- Branch `fix/next-batch`: 45 ✓ = **45 / 46 = 97.8 %**
-- Open: row 30, geographic zones (polygons drawn on a map, destination geocoding from FareSniper's server POI cache, Plus Codes and Saudi national-address codes, bearing / corridor / on-the-way rules). It is off by default in FareSniper (`dest_zones_enabled = false`) and is a separate subsystem with its own map UI and data source.
-- Verification: core 99/99 (scripts/core_engine_test.sh), Android engine code compiles against android.jar (scripts/android_engine_check.sh), conditions draft 5/5 (scripts/ui_draft_check.sh). Compose UI and the whole app compile only in CI (not run: owner gate).
+- `main` + zones: 46 ✓ = **46 / 46 = 100 % of the engine rows**
+- Where Sabbaq necessarily differs (data, not logic): FareSniper fills its address cache from its own server and
+  Google Places/Geocoding (paid, behind `paid_geocoding_enabled`); Sabbaq fills the same cache format from
+  OpenStreetMap Nominatim, then Android's geocoder. Shared ("global") exclude zones are supported by the engine but
+  Sabbaq has no server list yet, so the field stays empty.
+- Verification: core 113/113 (scripts/core_engine_test.sh), Android engine + zones compile against android.jar and
+  androidx core (scripts/android_engine_check.sh), conditions page + zone map compile with the Compose compiler and
+  osmdroid (scripts/ui_zone_check.sh), conditions draft 8/8 (scripts/ui_draft_check.sh). Full app build: CI only.

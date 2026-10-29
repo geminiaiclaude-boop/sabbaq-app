@@ -340,3 +340,25 @@ true; dest_exclude_zones_reject_on_unknown false; payment_filter_mode "" → all
 payment_reject_on_unknown/rating_filter_enabled/rating_reject_on_unknown follow a plan flag;
 wait_save_filter_mode off; target_app jeeny; offer/accepted/time keyword strings as §3.1.
 With min/max all 0 the enabled price/time checks are unbounded → every offer passes.
+
+## 17. Geographic stage (smali b9 3340–7000, Zh, Zi, Xr0, ja, item, I70, P20) — ported to core/engine/zones
+- Inputs: destination text (none when ambiguous), driver position (`driver_lat/lng`), map markers (text
+  "map marker", 1–400 × 1–600 px, collected only when bearing is on and a zone list is in use).
+- Global exclude zones are kept within `global_zone_proximity_km` of the driver (0 = all) unless opted out.
+  The driver's exclude zones count only with a known driver position.
+- Point for the destination: address cache (exact key, key without number-only words, fuzzy words; candidates in
+  the driver's city circle (14 Saudi/Jordan circles) or within `dest_exclude_proximity_max_km`; nearest wins;
+  precision 120 / 1500 / 500 / 2500 m), overridden by a Plus Code (precision ≥ 15 m, ≤ 250 m) or a national short
+  address (cache hit 40 m, else queued: `natl_code_pending`). Unplaced addresses are queued (150 max).
+- Smart destination: bearing driver→destination within `smart_dest_angle` (45) of driver→point, else `wrong_direction`.
+- No destination: include zones + reject-on-unknown → `dest_zone_unknown_reject`; exclude reject-on-unknown and an
+  exclude zone within 15 km → `dest_exclude_zone_unknown_reject`; else fail open.
+- Include zones: inside passes; else "on the way" (straight line crosses a zone, nearest zone point ≤ overshoot 2 km
+  in the same direction ±20°, or a zone centroid within 1.5 km of the line) passes; else the map-marker direction
+  (largest 15 % cluster → farthest marker, compared with each zone's bearing arc ± 25°) must be INSIDE, else
+  `outside_dest_zone`. Unplaced destination: direction INSIDE passes, OUTSIDE → `outside_dest_zone_bearing`,
+  inconclusive → reject only with reject-on-unknown. There is no route API (`Zi.resolver` returns null).
+- Exclude zones (own, then shared): 1 = inside, 0 = outside, -1 = undecided (no point, fuzzy text, closer to the edge
+  than its precision, or a > 200 m point inside). Inside → `dest_excluded_zone` / `dest_global_excluded_zone`;
+  verdicts cached 10 min per destination. Undecided → reject only with reject-on-unknown and a zone within 15 km.
+- The zone stage runs after the price/time/destination AND/OR result and before its `failed_*` rejection.
