@@ -148,6 +148,7 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
         val p = outcome.pending
         when (outcome) {
             is PendingOutcome.Confirmed -> {
+                if (p.tapX > 0 && p.tapY > 0) { Settings.lastConfirmedTapX = p.tapX; Settings.lastConfirmedTapY = p.tapY }
                 record(DiagnosticStage.CONFIRMATION_CONFIRMED, now, "post_click_confirmed")
                 runCatching { OfferDecisionLogStore.recordOutcome(JEENY_PROVIDER, DecisionLogOutcome.ACCEPTED_CONFIRMED) }
                 runCatching { OfferStatsStore.recordAcceptedConfirmed() }

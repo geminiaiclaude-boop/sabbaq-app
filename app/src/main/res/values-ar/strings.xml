@@ -822,4 +822,7 @@
     <string name="afe_rating_reject_unknown">ارفض الطلب حين لا يظهر التقييم</string>
     <string name="afe_waitsave_title">تجاهل طلبات «انتظر ووفّر» (بولت)</string>
     <string name="afe_waitsave_sub">تُرفض طلبات بولت الاقتصادية التي تتطلب الانتظار</string>
+    <string name="afe_turbo_title">القبول التيربو</string>
+    <string name="afe_turbo_sub">يضغط موضع زر القبول المحفوظ لحظة ظهور الطلب؛ يعمل حين لا يكون أي شرط مفعّلًا</string>
+    <string name="afe_turbo_use_last">استخدم موضع آخر قبول مؤكد</string>
 </resources>

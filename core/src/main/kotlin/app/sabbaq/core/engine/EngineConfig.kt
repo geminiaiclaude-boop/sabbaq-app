@@ -58,12 +58,28 @@ data class EngineConfig(
     val currencyKeywordsExtra: String = "",
     val noiseKeywordsExtra: String = "",
     val targetApp: TargetApp = TargetApp.JEENY,
+    /** FareSniper turbo: tap the saved point the instant an offer word appears. */
+    val turboModeEnabled: Boolean = false,
+    val clickX: Int? = null,
+    val clickY: Int? = null,
 ) {
     /** FareSniper `priceEnabled && priceFilterEnabled` (the second flag is always on in its UI). */
     val priceFilterOn: Boolean get() = priceEnabled
     val timeFilterOn: Boolean get() = timeEnabled
     val excludeOn: Boolean get() = destHomeMode == DestinationMode.EXCLUDE && destExcludeEnabled
     val includeOn: Boolean get() = destHomeMode == DestinationMode.INCLUDE && destCheckEnabled
+
+    /**
+     * FareSniper `areAnyFiltersActive`: price or time checks switched on, a destination rule, or
+     * offers without a destination refused. Turbo's instant tap runs only when none is.
+     */
+    val anyFilterActive: Boolean get() = priceFilterOn || timeFilterOn || destCheckEnabled || !snipingNoDest
+
+    /** Turbo can tap blind: it is on and a point is saved. */
+    val hasBlindCoords: Boolean get() = turboModeEnabled && clickX != null && clickY != null
+
+    /** The instant (before any read) turbo tap of `handleJeenyEvent`. */
+    val instantTurbo: Boolean get() = hasBlindCoords && !anyFilterActive
 
     /** `Pk.execute(config)`: destination rules need the whole tree, never the subtree or view-id shortcut. */
     val needsFullTree: Boolean get() = destCheckEnabled || excludeOn

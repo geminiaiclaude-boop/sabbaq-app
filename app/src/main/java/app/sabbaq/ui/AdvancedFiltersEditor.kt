@@ -100,6 +100,7 @@ internal fun AdvancedFiltersEditor(
         PaymentCondition(draft, onDraftChange)
         if (draft.targetApp == TargetApp.BOLT || draft.targetApp == TargetApp.BOTH) BoltOnlyConditions(draft, errors, onDraftChange)
         SmartDelayCondition(draft, errors, onDraftChange)
+        TurboCondition(draft, errors, onDraftChange)
     }
 }
 
@@ -347,6 +348,42 @@ internal fun BoltOnlyConditions(draft: FilterDraft, errors: Map<String, String>,
     ) {
         Text(stringResource(R.string.afe_waitsave_sub), style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f), maxLines = 2)
+    }
+}
+
+/**
+ * FareSniper turbo: tap the saved point the instant an offer word appears, before reading it.
+ * It fires only while no condition is switched on; with conditions, the point is used when the
+ * accept control cannot be read. The point comes from the last confirmed tap or is typed.
+ */
+@Composable
+internal fun TurboCondition(draft: FilterDraft, errors: Map<String, String>, onDraftChange: (FilterDraft) -> Unit) {
+    ProConditionCard(
+        title = stringResource(R.string.afe_turbo_title),
+        subtitle = stringResource(R.string.afe_turbo_sub),
+        enabled = draft.turboEnabled,
+        testKey = "turbo",
+        onEnabledChange = { onDraftChange(draft.copy(turboEnabled = it)) },
+        footer = {
+            val x = app.sabbaq.Settings.lastConfirmedTapX
+            val y = app.sabbaq.Settings.lastConfirmedTapY
+            TextButton(
+                onClick = { onDraftChange(draft.copy(clickX = x.toString(), clickY = y.toString())) },
+                enabled = x > 0 && y > 0,
+                modifier = Modifier.testTag("turbo-use-last"),
+            ) { Text(stringResource(R.string.afe_turbo_use_last)) }
+        },
+    ) { dimmed ->
+        CompactStepperValue(
+            "X", draft.clickX, "px", "10", KeyboardType.Number,
+            onValueChange = { onDraftChange(draft.copy(clickX = it)) }, testKey = "turbo-x",
+            modifier = Modifier.weight(1f), error = errors["clickX"], dimmed = dimmed,
+        )
+        CompactStepperValue(
+            "Y", draft.clickY, "px", "10", KeyboardType.Number,
+            onValueChange = { onDraftChange(draft.copy(clickY = it)) }, testKey = "turbo-y",
+            modifier = Modifier.weight(1f), error = errors["clickY"], dimmed = dimmed,
+        )
     }
 }
 

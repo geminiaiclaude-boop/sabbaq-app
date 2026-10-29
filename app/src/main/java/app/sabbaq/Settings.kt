@@ -84,6 +84,14 @@ object Settings {
         get() = runCatching { prefs().getLong(KEY_SUBSCRIPTION_ENDS_AT, 0L) }.getOrDefault(0L)
         set(value) { runCatching { prefs().edit().putLong(KEY_SUBSCRIPTION_ENDS_AT, value).apply() } }
 
+    /** Screen point of the last tap the ride app confirmed; turbo can reuse it. -1 = none. */
+    var lastConfirmedTapX: Int
+        get() = runCatching { prefs().getInt("last_confirmed_tap_x", -1) }.getOrDefault(-1)
+        set(value) { runCatching { prefs().edit().putInt("last_confirmed_tap_x", value).apply() } }
+    var lastConfirmedTapY: Int
+        get() = runCatching { prefs().getInt("last_confirmed_tap_y", -1) }.getOrDefault(-1)
+        set(value) { runCatching { prefs().edit().putInt("last_confirmed_tap_y", value).apply() } }
+
     /** Newest wall-clock time seen, to refuse a clock set back to extend the subscription. */
     var newestSeenMs: Long
         get() = runCatching { prefs().getLong(KEY_NEWEST_SEEN, 0L) }.getOrDefault(0L)

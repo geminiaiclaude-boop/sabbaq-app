@@ -15,6 +15,9 @@ class PendingRide(
     val detectedAtMs: Long,
     val clickedAtMs: Long,
     val delayMs: Long,
+    /** Where the tap landed; the saved turbo point when tapped blind. */
+    val tapX: Int = 0,
+    val tapY: Int = 0,
 ) {
     /** Filled by the late capture after the tap when the frame lacked them (FareSniper `late*`). */
     @Volatile var latePrice: Double? = null
@@ -105,7 +108,8 @@ class OfferFlow(
         pending?.let { p ->
             val elapsed = now - p.clickedAtMs
             val stillSameOffer = parsed?.acceptNode != null &&
-                (parsed.screenHash == currentRideHash) && elapsed <= POST_ACCEPT_TIMEOUT_MS
+                (parsed.screenHash == currentRideHash || (config.turboModeEnabled && elapsed < TURBO_SAME_OFFER_MS)) &&
+                elapsed <= POST_ACCEPT_TIMEOUT_MS
             if (!stillSameOffer) {
                 val outcome = when {
                     !isJeeny -> if (parsed?.isActiveRide == true) PostAcceptOutcome.Confirmed(parsed.destination) else PostAcceptOutcome.Inconclusive
@@ -142,7 +146,7 @@ class OfferFlow(
             }
         }
 
-        if (parsed == null || parsed.acceptNode == null) {
+        if (parsed == null || (parsed.acceptNode == null && !config.hasBlindCoords)) {
             if (now - lastClickTime > 1000L) {
                 currentRideHash = 0
                 rideDetectedAtMs = 0L
@@ -179,15 +183,35 @@ class OfferFlow(
         lastHandledWasAccepted = true
         clickedOfferIdentity = parsed.identity
         val delay = smartDelay(config)
+        val blind = config.hasBlindCoords
         val created = PendingRide(
             price = parsed.price, minutes = parsed.minutes, destination = parsed.destination,
             identity = parsed.identity, detectedAtMs = rideDetectedAtMs, clickedAtMs = now + delay, delayMs = delay,
+            tapX = if (blind) config.clickX!! else parsed.clickX, tapY = if (blind) config.clickY!! else parsed.clickY,
         )
         pending?.let { old -> onPendingOutcome(PendingOutcome.Disappeared(old)) }
         pending = created
         suppressIdentity = clickedOfferIdentity
         suppressUntilMs = now + POST_CLICK_SUPPRESS_MS
         return FlowAction.Tap(parsed, decision, created)
+    }
+
+    /**
+     * Turbo's instant tap (`handleJeenyEvent` turbo branch): an offer word was seen, nothing is
+     * pending and 100 ms passed since the last tap. Returns the pending tap to dispatch, or null.
+     */
+    fun onTurboSignal(config: EngineConfig, frameDetectedMs: Long): PendingRide? {
+        if (!config.instantTurbo || pending != null) return null
+        val now = nowMs()
+        if (now - lastClickTime < GLOBAL_CLICK_COOLDOWN_MS) return null
+        lastClickTime = now
+        lastHandledWasAccepted = true
+        val created = PendingRide(
+            price = null, minutes = null, destination = null, identity = 0, detectedAtMs = frameDetectedMs,
+            clickedAtMs = now, delayMs = 0L, tapX = config.clickX!!, tapY = config.clickY!!,
+        )
+        pending = created
+        return created
     }
 
     /** Watchdog fired 6250 ms after the tap: still unresolved means the offer vanished. */
@@ -268,5 +292,9 @@ class OfferFlow(
         const val MIN_TAP_HOLD_MS = 40L
         const val LATE_CAPTURE_DELAY_MS = 60L
         const val LATE_CAPTURE_BUDGET_MS = 80L
+        const val TURBO_SAME_OFFER_MS = 350L
+        /** Turbo's blind tap box (`processOfferFrame`: 200 × 120). */
+        const val BLIND_TAP_WIDTH = 200
+        const val BLIND_TAP_HEIGHT = 120
     }
 }

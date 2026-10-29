@@ -90,8 +90,10 @@ class EngineHost(
         if (contentChange && flow.pending == null && synchronized(bookingLock) { bookedFrame != null }) return
         if (contentChange && flow.pending == null && !flow.lastRootReadWasActiveRide) {
             if (!allowed()) return
-            bookRootRead(Frame(now, 0))
-            return
+            if (!config().instantTurbo) {
+                bookRootRead(Frame(now, 0))
+                return
+            }
         }
         var probe: Probe? = null
         if (type != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && now - lastEventProcessedMs < flow.eventThrottleMs) {
@@ -102,6 +104,17 @@ class EngineHost(
         }
         lastEventProcessedMs = now
         if (!allowed()) return
+        val cfg = config()
+        if (cfg.instantTurbo && flow.pending == null) {
+            val src = event.source
+            if (src != null && quickScan(src, 0)) {
+                val pending = flow.onTurboSignal(cfg, now)
+                if (pending != null) {
+                    turboTap(pending, cfg, event.packageName?.toString())
+                    return
+                }
+            }
+        }
         var subtree: AccessibilityNodeInfo? = null
         if (contentChange && flow.pending == null) {
             val src = event.source
@@ -251,8 +264,19 @@ class EngineHost(
     }
 
     private fun scheduleTap(action: FlowAction.Tap, detectedAtMs: Long, cfg: EngineConfig, height: Int, isJeeny: Boolean) {
-        val target = action.ride.acceptNode ?: return
         val pending = action.pending
+        val target = action.ride.acceptNode.takeUnless { cfg.hasBlindCoords }
+        if (target == null) {
+            if (!cfg.hasBlindCoords) return
+            main.postDelayed({ flow.onWatchdog(pending)?.let(::handleOutcome) }, OfferFlow.WATCHDOG_MS + pending.delayMs)
+            val blind = Runnable {
+                val method = if (allowed() && gestureAt(pending.tapX.toFloat(), pending.tapY.toFloat(), OfferFlow.MIN_TAP_HOLD_MS)) "gesture" else "not_dispatched"
+                listener.onTap(action.ride, action.decision, pending, method, System.currentTimeMillis() - detectedAtMs)
+                if (isJeeny && action.ride.destination == null) lateCapture(pending, cfg, height)
+            }
+            if (pending.delayMs > 0) main.postDelayed(blind, pending.delayMs) else blind.run()
+            return
+        }
         main.postDelayed({ flow.onWatchdog(pending)?.let(::handleOutcome) }, OfferFlow.WATCHDOG_MS + pending.delayMs)
         val tap = Runnable {
             val method = if (allowed() && isRideAppNode(target)) clickLadder(target) else "not_dispatched"
@@ -272,6 +296,49 @@ class EngineHost(
         val gesture = GestureDescription.Builder()
             .addStroke(GestureDescription.StrokeDescription(path, 0L, OfferFlow.MIN_TAP_HOLD_MS)).build()
         return if (runCatching { service.dispatchGesture(gesture, null, null) }.getOrDefault(false)) "gesture" else "not_dispatched"
+    }
+
+    /**
+     * Turbo's instant tap (`performClick`): the saved point with a Gaussian offset (σ 12 px, at most
+     * 30 px) and a 5–15 ms hold, then the late capture fills the offer for the report.
+     */
+    private fun turboTap(pending: PendingRide, cfg: EngineConfig, packageName: String?) {
+        main.postDelayed({ flow.onWatchdog(pending)?.let(::handleOutcome) }, OfferFlow.WATCHDOG_MS)
+        val x = jitter(pending.tapX.toFloat())
+        val y = jitter(pending.tapY.toFloat())
+        val hold = (random.nextGaussian() * 3.0 + 10.0).toLong().coerceIn(5L, 15L)
+        val method = if (gestureAt(x, y, hold)) "turbo" else "not_dispatched"
+        val ride = ParsedRide(clickX = pending.tapX, clickY = pending.tapY)
+        listener.onTap(ride, Decision(true, true, true, true, null), pending, method, System.currentTimeMillis() - pending.detectedAtMs)
+        val app = RideApps.of(packageName, cfg.targetApp)
+        if (app == RideApp.JEENY) lateCapture(pending, cfg, service.resources.displayMetrics.heightPixels)
+    }
+
+    private val random = java.util.Random()
+
+    private fun jitter(center: Float): Float {
+        val u1 = Math.random().coerceAtLeast(1e-9)
+        val u2 = Math.random()
+        val offset = (kotlin.math.cos(u2 * 2.0 * Math.PI) * kotlin.math.sqrt(-2.0 * kotlin.math.ln(u1)) * 12.0).toFloat()
+        return center + offset.coerceIn(-30f, 30f)
+    }
+
+    private fun gestureAt(x: Float, y: Float, holdMs: Long): Boolean {
+        val path = Path().apply { moveTo(x, y) }
+        val gesture = GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0L, holdMs)).build()
+        return runCatching { service.dispatchGesture(gesture, null, null) }.getOrDefault(false)
+    }
+
+    /** `quickScanForOfferSignal`: an offer word within depth 4, 8 children per node, no time budget. */
+    private fun quickScan(node: AccessibilityNodeInfo, depth: Int): Boolean {
+        if (depth > 4) return false
+        val label = (node.text?.toString() ?: node.contentDescription?.toString() ?: "").lowercase()
+        if (label.isNotBlank() && PROBE_WORDS.any { it in label }) return true
+        for (i in 0 until minOf(node.childCount, 8)) {
+            val child = runCatching { node.getChild(i) }.getOrNull() ?: continue
+            if (quickScan(child, depth + 1)) return true
+        }
+        return false
     }
 
     /** Late capture (§10): 60 ms after the tap, a bounded re-read fills the destination for the report. */

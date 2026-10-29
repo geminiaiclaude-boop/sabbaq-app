@@ -34,6 +34,9 @@ data class FilterDraft(
     val bypassTimeEnabled: Boolean = false,
     val bypassTimePrice: String = "",
     val targetApp: TargetApp = TargetApp.JEENY,
+    val turboEnabled: Boolean = false,
+    val clickX: String = "",
+    val clickY: String = "",
     val ratingEnabled: Boolean = false,
     val minRating: String = "",
     val ratingRejectOnUnknown: Boolean = false,
@@ -55,6 +58,9 @@ data class FilterDraft(
         val dMin = whole("smartDelayMin", smartDelayMin, errors)
         val dMax = whole("smartDelayMax", smartDelayMax, errors)
         val rating = decimal("minRating", minRating, errors)
+        val cx = whole("clickX", clickX, errors)
+        val cy = whole("clickY", clickY, errors)
+        if (turboEnabled && (cx == null || cy == null)) { errors["clickX"] = needPoint(); errors["clickY"] = needPoint() }
         if (rating != null && rating > 5.0) errors["minRating"] = invalid()
         if (minP != null && maxP != null && maxP > 0 && minP > maxP) { errors["minPrice"] = rangeError(); errors["maxPrice"] = rangeError() }
         if (minT != null && maxT != null && maxT > 0 && minT > maxT) { errors["minTime"] = rangeError(); errors["maxTime"] = rangeError() }
@@ -75,6 +81,7 @@ data class FilterDraft(
             ratingRejectOnUnknown = ratingRejectOnUnknown,
             waitSaveFilterMode = if (excludeWaitSave) WaitSaveMode.EXCLUDE else WaitSaveMode.OFF,
             targetApp = targetApp,
+            turboModeEnabled = turboEnabled, clickX = cx, clickY = cy,
             smartDelayEnabled = smartDelayEnabled, smartDelayMinMs = dMin ?: 0, smartDelayMaxMs = dMax ?: 0,
             acceptKeywordsExtra = base.acceptKeywordsExtra, timeKeywordsExtra = base.timeKeywordsExtra,
             currencyKeywordsExtra = base.currencyKeywordsExtra, noiseKeywordsExtra = base.noiseKeywordsExtra,
@@ -107,7 +114,9 @@ data class FilterDraft(
             excludeMode = c.destHomeMode == DestinationMode.EXCLUDE, snipingNoDest = c.snipingNoDest,
             bypassTimeEnabled = c.bypassTimeEnabled, bypassTimePrice = number(c.bypassTimePrice),
             paymentMode = c.paymentFilterMode, paymentRejectOnUnknown = c.paymentRejectOnUnknown,
-            targetApp = c.targetApp, ratingEnabled = c.ratingFilterEnabled,
+            targetApp = c.targetApp, turboEnabled = c.turboModeEnabled,
+            clickX = c.clickX?.toString().orEmpty(), clickY = c.clickY?.toString().orEmpty(),
+            ratingEnabled = c.ratingFilterEnabled,
             minRating = if (c.minRating <= 0.0) "" else c.minRating.toString(),
             ratingRejectOnUnknown = c.ratingRejectOnUnknown, excludeWaitSave = c.waitSaveFilterMode == WaitSaveMode.EXCLUDE,
             smartDelayEnabled = c.smartDelayEnabled, smartDelayMin = whole(c.smartDelayMinMs), smartDelayMax = whole(c.smartDelayMaxMs),
@@ -116,6 +125,7 @@ data class FilterDraft(
         private fun number(v: Double): String = if (v <= 0.0) "" else if (v % 1.0 == 0.0) v.toLong().toString() else v.toString()
         private fun whole(v: Int): String = if (v <= 0) "" else v.toString()
         private fun rangeError() = if (LocaleManager.isArabic()) "يجب ألا يتجاوز الحد الأدنى الحد الأقصى." else "The minimum must not exceed the maximum."
+        private fun needPoint() = if (LocaleManager.isArabic()) "حدد موضع زر القبول أولًا." else "Set the accept button position first."
         private fun invalid() = if (LocaleManager.isArabic()) "اكتب رقمًا صحيحًا موجبًا أو اتركه فارغًا." else "Enter a positive number or leave it empty."
 
         private fun latin(raw: String): String = raw.trim().map { if (it in '٠'..'٩') '0' + (it - '٠') else if (it == '٫') '.' else it }.joinToString("")

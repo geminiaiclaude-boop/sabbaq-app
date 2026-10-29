@@ -815,4 +815,7 @@ Write your problem or question and our team will reply here during working hours
     <string name="afe_rating_reject_unknown">Reject the order when the rating is not shown</string>
     <string name="afe_waitsave_title">Skip «wait & save» orders (Bolt)</string>
     <string name="afe_waitsave_sub">Bolt economy orders that make you wait are rejected</string>
+    <string name="afe_turbo_title">Turbo accept</string>
+    <string name="afe_turbo_sub">Taps the saved accept position the instant an order appears; it works while no condition is switched on</string>
+    <string name="afe_turbo_use_last">Use the position of the last confirmed accept</string>
 </resources>
