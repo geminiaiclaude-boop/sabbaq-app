@@ -48,6 +48,8 @@ class EngineHost(
         fun onTap(ride: ParsedRide, decision: Decision, pending: PendingRide, method: String, latencyMs: Long)
         fun onPendingOutcome(outcome: PendingOutcome)
         fun onIdle(reason: String)
+        /** A ride-app window gave no offer: [kind] "miss" (read, no offer) or "failed" (not readable). */
+        fun onReadMiss(kind: String, reason: String, detail: String?)
     }
 
     private val main = Handler(Looper.getMainLooper())
@@ -195,9 +197,14 @@ class EngineHost(
                 val idle = if (frame.abandons < OfferFlow.MAX_BOOKED_READ_ABANDONS) start + OfferFlow.BOOKED_READ_IDLE_BUDGET_MS else 0L
                 parsed = runCatching {
                     RideApps.read(app, LiveNode(root), height, cfg, flow.learnedIds, { SystemClock.uptimeMillis() },
-                        idleDeadline = idle, abort = abort)
+                        idleDeadline = idle, abort = abort,
+                        onMiss = { r, d -> if (!abort.get()) main.post { listener.onReadMiss("miss", r, d) } })
                 }.getOrNull()
-            } else root = null
+            } else {
+                val why = if (root == null) "root_unavailable" else "other_app"
+                main.post { listener.onReadMiss("failed", why, null) }
+                root = null
+            }
         }
         val aborted = abort.get() || parsed?.aborted == true
         synchronized(bookingLock) { inFlight.remove(abort) }
@@ -248,12 +255,14 @@ class EngineHost(
             val active = runCatching { service.rootInActiveWindow }.getOrNull()
             val activeApp = active?.let { appOf(it.packageName?.toString(), cfg) }
             if (active == null || activeApp == null) {
+                listener.onReadMiss("failed", if (active == null) "root_unavailable" else "other_app", null)
                 lastEventProcessedMs = System.currentTimeMillis()
                 return
             }
             root = active
             app = activeApp
-            parsed = RideApps.read(activeApp, LiveNode(active), height, cfg, flow.learnedIds, { SystemClock.uptimeMillis() })
+            parsed = RideApps.read(activeApp, LiveNode(active), height, cfg, flow.learnedIds, { SystemClock.uptimeMillis() },
+                onMiss = { r, d -> listener.onReadMiss("miss", r, d) })
         }
         if (parsed?.fromFastIds == true) source = "fast_ids"
         val parseMs = booked?.elapsedMs ?: (SystemClock.uptimeMillis() - started)
@@ -281,7 +290,11 @@ class EngineHost(
         main.postDelayed({ flow.onWatchdog(pending)?.let(::handleOutcome) }, OfferFlow.WATCHDOG_MS + pending.delayMs)
         val tap = Runnable {
             val point = if (cfg.hasBlindCoords) pending.tapX to pending.tapY else null
-            val method = if (allowed() && (target == null || isRideAppNode(target))) clickLadder(target, point) else "not_dispatched"
+            val method = when {
+                !allowed() -> "not_dispatched:gate"
+                target != null && !isRideAppNode(target) -> "not_dispatched:foreign_node"
+                else -> clickLadder(target, point)
+            }
             listener.onTap(action.ride, action.decision, pending, method, System.currentTimeMillis() - detectedAtMs)
             if (isJeeny && action.ride.destination == null) lateCapture(pending, cfg, height)
         }
@@ -291,20 +304,20 @@ class EngineHost(
     /** `executeFallbackClicks` (§8): click, parent click, then a 40 ms tap at the node's centre. */
     fun clickLadder(node: UiNode?, point: Pair<Int, Int>? = null): String {
         val b = node?.bounds()
-        if (point == null && (b == null || b.isEmpty)) return "not_dispatched"
+        if (point == null && (b == null || b.isEmpty)) return "not_dispatched:empty_bounds"
         if (node != null) {
             if (node.click()) return "semantic"
             if (runCatching { node.parent()?.click() }.getOrNull() == true) return "parent"
         }
         val x = point?.first ?: b!!.centerX
         val y = point?.second ?: b!!.centerY
-        return if (gestureAt(x.toFloat(), y.toFloat())) "gesture" else "not_dispatched"
+        return if (gestureAt(x.toFloat(), y.toFloat())) "gesture" else "not_dispatched:gesture_refused"
     }
 
     /** Turbo's instant tap: the saved point, 40 ms hold, then the late capture fills the report. */
     private fun turboTap(pending: PendingRide, cfg: EngineConfig, packageName: String?) {
         main.postDelayed({ flow.onWatchdog(pending)?.let(::handleOutcome) }, OfferFlow.WATCHDOG_MS)
-        val method = if (gestureAt(pending.tapX.toFloat(), pending.tapY.toFloat())) "turbo" else "not_dispatched"
+        val method = if (gestureAt(pending.tapX.toFloat(), pending.tapY.toFloat())) "turbo" else "not_dispatched:gesture_refused"
         val ride = ParsedRide(clickX = pending.tapX, clickY = pending.tapY, provider = pending.provider)
         listener.onTap(ride, Decision(true, true, true, true, null), pending, method, System.currentTimeMillis() - pending.detectedAtMs)
         val app = RideApps.of(packageName, cfg.targetApp)

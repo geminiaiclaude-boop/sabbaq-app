@@ -1102,6 +1102,19 @@ private fun DashboardPage(
         busyText = if (isRestoringSession) stringResource(R.string.ss_busy_restoring) else stringResource(R.string.ss_busy_verifying),
         modifier = Modifier.sabbaqEntrance(1),
     )
+    if (isActive) {
+        DiagnosisCard(
+            onAction = { action ->
+                when (action) {
+                    DiagnosisAction.ACCESSIBILITY -> onOpenA11y()
+                    DiagnosisAction.ACCOUNT -> onOpenAccount()
+                    DiagnosisAction.CONDITIONS -> onOpenFilters()
+                    DiagnosisAction.NONE -> Unit
+                }
+            },
+            modifier = Modifier.sabbaqEntrance(2),
+        )
+    }
     ActiveConditionsCockpit(
         draft = draft,
         errors = draftErrors,

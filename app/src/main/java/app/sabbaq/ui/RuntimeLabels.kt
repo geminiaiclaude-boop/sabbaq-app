@@ -60,7 +60,7 @@ internal object RuntimeLabels {
     fun reason(code: String?): String {
         if (code == null) return ""
         if (code.startsWith("failed_") || code in FARESNIPER_REASON_KEYS) return reasonLabel(code).removeSuffix(".")
-        return (when (code) {
+        return (when (code.substringBefore(':')) {
             "cls_none" -> "الشاشة الحالية ليست طلبًا" to "The current screen is not an order"
             "cls_incomplete" -> "الطلب لم يكتمل ظهوره" to "The order is not fully shown"
             "cls_confirmed_or_active" -> "رحلة جارية" to "Trip in progress"

@@ -9,6 +9,9 @@ import java.util.regex.Pattern
  * accept control, and a few active-trip ids to recognise a running ride.
  */
 class BoltScreenReader(private val config: EngineConfig) {
+    /** Why the last [read] returned null (see [JeenyScreenReader.lastMiss]). */
+    var lastMiss: String? = null
+        private set
 
     private class Rec(val text: String, val id: String, val top: Int, val node: UiNode)
 
@@ -90,8 +93,11 @@ class BoltScreenReader(private val config: EngineConfig) {
         val waitAndSave = records.any { isWaitAndSave(it.text) }
         val ambiguous = destination == null
 
-        val node = accept ?: return null
-        if (price == null && minutes == null && ambiguous) return null
+        val node = accept ?: run {
+            lastMiss = if (price == null && minutes == null && ambiguous) "not_offer_screen" else "no_accept"
+            return null
+        }
+        if (price == null && minutes == null && ambiguous) { lastMiss = "no_data"; return null }
         return ParsedRide(
             price = price, minutes = minutes, destination = destination, acceptNode = node,
             addressAmbiguous = ambiguous, clickX = clickX, clickY = clickY, addresses = addresses,

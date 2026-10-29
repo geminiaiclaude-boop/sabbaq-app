@@ -52,6 +52,7 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
         runCatching { OfferStatsStore.init(applicationContext) }
         runCatching { OfferDecisionLogStore.init(applicationContext) }
         TelemetryRepository.serviceConnected = true
+        DiagnosisRepository.funnel.serviceConnected(true)
         host = EngineHost(this, { Settings.engineConfig }, ::canProcess, this)
         host.onConnected()
         instance = this
@@ -94,8 +95,11 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
         }
         if (RideApps.of(packageName, Settings.engineConfig.targetApp) == null) return
         record(DiagnosticStage.EVENT_RECEIVED, now)
+        DiagnosisRepository.funnel.event()
         val gate = gate()
         if (!gate.allowed) {
+            DiagnosisRepository.funnel.gateBlocked(gate.reason)
+            DiagnosisRepository.refresh()
             liveness.pause(gate.reason)
             runtimeStatus.lifecycle(false, gate.reason)
             record(DiagnosticStage.GATE_BLOCKED, now, gate.reason)
@@ -129,11 +133,14 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
         liveness.offerDetected(now)
         runtimeStatus.offer(now)
         record(DiagnosticStage.OFFER_DETECTED, now, if (ride.price == null) "fare_missing" else "complete", detail = "src=$source,n=${ride.nodesVisited}")
+        DiagnosisRepository.funnel.offer()
         runCatching { OfferStatsStore.recordVisible(fingerprint(ride)) }
     }
 
     override fun onRejected(ride: ParsedRide, decision: Decision, firstTime: Boolean) {
         if (!firstTime) return
+        DiagnosisRepository.funnel.rejected(decision.reason ?: "rejected")
+        DiagnosisRepository.refresh()
         val now = SystemClock.elapsedRealtime()
         liveness.decision(now)
         runtimeStatus.decision(now, report(ride, decision))
@@ -151,10 +158,13 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
         runtimeStatus.decision(now, report(ride, decision))
         runtimeStatus.click(now)
         provider = ride.provider
+        if (method.startsWith("not_dispatched")) DiagnosisRepository.funnel.notDispatched(method.substringAfter(':', "unknown"))
+        else DiagnosisRepository.funnel.tapped()
+        DiagnosisRepository.refresh()
         TelemetryRepository.trace(TelemetryStage.DECISION_ACCEPTED, "rules_passed", provider = provider)
         record(DiagnosticStage.CLICK_PATH, now, method, latencyMs = latencyMs.coerceAtLeast(0))
         runCatching { OfferDecisionLogStore.recordDecision(fingerprint(ride), provider, "") }
-        if (method != "not_dispatched") runCatching {
+        if (!method.startsWith("not_dispatched")) runCatching {
             OfferDecisionLogStore.recordOutcome(provider,
                 if (method == "gesture" || method == "turbo") DecisionLogOutcome.GESTURE_CLICK_SENT else DecisionLogOutcome.SEMANTIC_CLICK_SENT)
         }
@@ -166,6 +176,7 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
         provider = p.provider
         when (outcome) {
             is PendingOutcome.Confirmed -> {
+                DiagnosisRepository.funnel.confirmed()
                 if (p.tapX > 0 && p.tapY > 0) { Settings.lastConfirmedTapX = p.tapX; Settings.lastConfirmedTapY = p.tapY }
                 record(DiagnosticStage.CONFIRMATION_CONFIRMED, now, "post_click_confirmed")
                 runCatching { OfferDecisionLogStore.recordOutcome(provider, DecisionLogOutcome.ACCEPTED_CONFIRMED) }
@@ -174,12 +185,17 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
                 runCatching { NotificationCenter.postAcceptedRide(fare, null) }
                 OfferEvents.accepted(fare, null)
             }
-            is PendingOutcome.NewOfferAppeared -> record(DiagnosticStage.CONFIRMATION_TIMEOUT, now, "new_offer_appeared")
+            is PendingOutcome.NewOfferAppeared -> {
+                DiagnosisRepository.funnel.unconfirmed("new_offer_appeared")
+                record(DiagnosticStage.CONFIRMATION_TIMEOUT, now, "new_offer_appeared")
+            }
             is PendingOutcome.ConfirmationTimeout -> {
+                DiagnosisRepository.funnel.unconfirmed("confirmation_timeout")
                 record(DiagnosticStage.CONFIRMATION_TIMEOUT, now, "confirmation_timeout")
                 runCatching { OfferDecisionLogStore.recordOutcome(provider, DecisionLogOutcome.CONFIRMATION_TIMEOUT) }
             }
             is PendingOutcome.Disappeared -> {
+                DiagnosisRepository.funnel.unconfirmed("offer_disappeared")
                 record(DiagnosticStage.CONFIRMATION_TIMEOUT, now, "offer_disappeared_after_click")
                 runCatching { OfferDecisionLogStore.recordOutcome(provider, DecisionLogOutcome.CONFIRMATION_TIMEOUT) }
             }
@@ -188,7 +204,21 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
 
     override fun onIdle(reason: String) {
         if (reason == "no_offer") return
+        if (reason in HELD_REASONS) DiagnosisRepository.funnel.held(reason)
         record(DiagnosticStage.STALE, SystemClock.elapsedRealtime(), reason)
+    }
+
+    override fun onReadMiss(kind: String, reason: String, detail: String?) {
+        val now = SystemClock.elapsedRealtime()
+        if (kind == "failed") {
+            DiagnosisRepository.funnel.readFailed(reason)
+            record(DiagnosticStage.ROOT_UNAVAILABLE, now, reason)
+        } else {
+            DiagnosisRepository.funnel.readMiss(reason)
+            // A plain map or menu screen is normal; only half-read offers go to telemetry.
+            if (reason != "not_offer_screen") record(DiagnosticStage.OFFER_NOT_PARSED, now, reason, detail = detail)
+        }
+        DiagnosisRepository.refresh()
     }
 
     /**
@@ -283,6 +313,8 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
     override fun onDestroy() {
         LiveAcceptTest.onArmChanged = null
         TelemetryRepository.serviceConnected = false
+        DiagnosisRepository.funnel.serviceConnected(false)
+        DiagnosisRepository.refresh()
         TelemetryRepository.trace(TelemetryStage.SERVICE_DESTROYED, "destroyed")
         TelemetryRepository.flushNow()
         if (instance === this) instance = null
@@ -297,5 +329,6 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
         @Volatile var instance: SabbaqA11yService? = null
         private const val TAG = "SabbaqA11y"
         private const val NEWEST_SEEN_WRITE_STEP_MS = 60_000L
+        private val HELD_REASONS = setOf("post_click_suppressed", "same_ride_cooldown", "global_click_cooldown")
     }
 }

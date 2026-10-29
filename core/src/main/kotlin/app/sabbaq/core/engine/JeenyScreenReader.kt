@@ -56,6 +56,17 @@ data class ParsedRide(
  * addresses never stop a read.
  */
 class JeenyScreenReader(private val config: EngineConfig, private val uptimeMs: () -> Long) {
+    /**
+     * Why the last [read] returned null, for the acceptance funnel: "not_offer_screen" (no offer
+     * signal at all), "online_screen", or the missing piece of an offer that was half seen:
+     * "no_accept", "no_minutes", "no_price". [lastMissDetail] says what was seen (p, m, a = 0/1,
+     * n = nodes read, cap = node limit hit).
+     */
+    var lastMiss: String? = null
+        private set
+    var lastMissDetail: String? = null
+        private set
+
     private val lex = config.lexicon()
 
     /** Learned-id shortcut (`Pk.dispatch`): three lookups instead of a tree walk. */
@@ -291,7 +302,7 @@ class JeenyScreenReader(private val config: EngineConfig, private val uptimeMs: 
         }
 
         if (aborted) return ParsedRide(aborted = true, nodesVisited = visited)
-        if (online) return null
+        if (online) { lastMiss = "online_screen"; lastMissDetail = "n=$visited"; return null }
 
         val hasAnyPrice = price != null || fallbackPrice != null
         if (accept == null && reject != null && hasAnyPrice && minutes != null && addresses.isNotEmpty()) {
@@ -325,6 +336,15 @@ class JeenyScreenReader(private val config: EngineConfig, private val uptimeMs: 
                 markers = markers.map { intArrayOf((it shr 32).toInt(), it.toInt()) },
             )
         }
+        val sawPrice = finalPrice != null || currencySeen
+        lastMiss = when {
+            !sawPrice && minutes == null && node == null -> "not_offer_screen"
+            node == null -> "no_accept"
+            minutes == null -> "no_minutes"
+            else -> "no_price"
+        }
+        lastMissDetail = "p=${if (sawPrice) 1 else 0},m=${if (minutes != null) 1 else 0},a=${if (node != null) 1 else 0},n=$visited" +
+            if (visited >= maxNodes) ",cap=1" else ""
         return null
     }
 

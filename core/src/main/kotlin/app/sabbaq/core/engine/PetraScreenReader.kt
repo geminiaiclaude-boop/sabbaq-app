@@ -8,6 +8,9 @@ import java.util.regex.Pattern
  * `accept_button` / `reject_button`; trip and cancel screens are recognised by their ids.
  */
 class PetraScreenReader {
+    /** Why the last [read] returned null (see [JeenyScreenReader.lastMiss]). */
+    var lastMiss: String? = null
+        private set
 
     private class Rec(val text: String, val id: String, val top: Int)
 
@@ -42,7 +45,7 @@ class PetraScreenReader {
             }
         }
 
-        if (records.any { it.id in CANCEL_IDS }) return null
+        if (records.any { it.id in CANCEL_IDS }) { lastMiss = "cancel_screen"; return null }
         if (records.any { it.id in TRIP_IDS } || records.any { r -> TRIP_WORDS.any { it in r.text } }) {
             return ParsedRide(isActiveRide = true, nodesVisited = visited)
         }
@@ -81,9 +84,12 @@ class PetraScreenReader {
             if (m.find()) m.group(1)?.replace(',', '.')?.toDoubleOrNull()?.let { (it + 0.5).toInt().coerceAtLeast(1) } else null
         }
 
-        val node = accept ?: return null
-        if (!hasAcceptId && !hasRejectId) return null
-        if (price == null && minutes == null) return null
+        val node = accept ?: run {
+            lastMiss = if (price == null && minutes == null) "not_offer_screen" else "no_accept"
+            return null
+        }
+        if (!hasAcceptId && !hasRejectId) { lastMiss = "no_offer_ids"; return null }
+        if (price == null && minutes == null) { lastMiss = "no_data"; return null }
         return ParsedRide(
             price = price, minutes = minutes, destination = dropoff, acceptNode = node, addressAmbiguous = ambiguous,
             clickX = clickX, clickY = clickY, addresses = addresses.distinct(), pickup = pickup, nodesVisited = visited,

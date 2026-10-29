@@ -50,13 +50,24 @@ object RideApps {
         idleDeadline: Long = 0L,
         abort: AtomicBoolean? = null,
         collectAddresses: Boolean = false,
+        /** Receives why the screen gave no offer (reason, detail) when the result is null. */
+        onMiss: ((String, String?) -> Unit)? = null,
     ): ParsedRide? = when (app) {
-        RideApp.BOLT -> BoltScreenReader(config).read(root, screenHeight)?.copy(provider = "bolt")
-        RideApp.PETRA -> PetraScreenReader().read(root, screenHeight)?.copy(provider = "petra")
+        RideApp.BOLT -> {
+            val reader = BoltScreenReader(config)
+            reader.read(root, screenHeight)?.copy(provider = "bolt")
+                ?: run { onMiss?.invoke(reader.lastMiss ?: "unknown", null); null }
+        }
+        RideApp.PETRA -> {
+            val reader = PetraScreenReader()
+            reader.read(root, screenHeight)?.copy(provider = "petra")
+                ?: run { onMiss?.invoke(reader.lastMiss ?: "unknown", null); null }
+        }
         RideApp.JEENY -> {
             val reader = JeenyScreenReader(config, uptimeMs)
             learnedIds?.let { reader.readByLearnedIds(root, it) }
                 ?: reader.read(root, screenHeight, collectAddresses, hardDeadline, idleDeadline, abort)
+                ?: run { onMiss?.invoke(reader.lastMiss ?: "unknown", reader.lastMissDetail); null }
         }
     }
 }

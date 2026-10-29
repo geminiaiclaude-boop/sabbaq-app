@@ -85,6 +85,7 @@ fun OfferDecisionLogScreen(onBack: () -> Unit) {
         )
 
         val runtime by RuntimeStatusRepository.snapshot.collectAsState()
+        DiagnosisCard(onAction = { }, detailed = true)
         RuntimeStatusCard(runtime, Modifier.sabbaqEntrance(0))
 
         OfferStatsCard(Modifier.sabbaqEntrance(1))
