@@ -10,10 +10,10 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** The conditions page edits FareSniper's settings; empty means "no limit", never "reject". */
+/** The conditions page edits the reference engine's settings; empty means "no limit", never "reject". */
 class ConditionsDraftTest {
     @Test
-    fun a_fresh_install_saves_faresniper_defaults() {
+    fun a_fresh_install_saves_reference_defaults() {
         assertEquals(EngineConfig(), FilterDraft.from(EngineConfig()).validate().config)
     }
 

@@ -8,7 +8,7 @@ import kotlin.math.sqrt
 data class GeoPoint(val lat: Double, val lng: Double, val precisionM: Double)
 
 /**
- * FareSniper's text-to-point codes (`ja`): Open Location Codes ("Plus Codes", full or short,
+ * The reference engine's text-to-point codes (`ja`): Open Location Codes ("Plus Codes", full or short,
  * the short ones recovered around the driver) and the Saudi national short address
  * (four letters + four digits, e.g. RRRD2929).
  */
@@ -94,7 +94,7 @@ object PlusCodes {
         return Area(lat + latSize / 2.0, lng + lngSize / 2.0, latSize / 2.0, lngSize / 2.0)
     }
 
-    /** Recovers a short code to the full code nearest the reference point, as FareSniper does. */
+    /** Recovers a short code to the full code nearest the reference point, as the reference engine does. */
     private fun recover(short: String, refLat: Double, refLng: Double): Area? {
         val padding = 8 - short.indexOf('+')
         val resolution = 20.0.pow(2.0 - padding / 2.0)

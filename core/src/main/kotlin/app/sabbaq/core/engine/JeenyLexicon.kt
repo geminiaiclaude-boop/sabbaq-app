@@ -3,10 +3,10 @@ package app.sabbaq.core.engine
 import java.util.regex.Pattern
 
 /**
- * The Jeeny screen vocabulary, word for word as FareSniper 1.0.16 ships it
- * (docs/engine-parity/QANNAS_ENGINE_FACTS.md §12), including its own spellings («قتصل»,
+ * The Jeeny screen vocabulary, word for word as the reference engine 1.0.16 ships it
+ * (reference engine notes), including its own spellings («قتصل»,
  * «مستلام», «مواعد»). Keyword lists are matched as quoted substrings, case-insensitive with
- * Unicode case folding, exactly like FareSniper; the driver's extra keywords extend them.
+ * Unicode case folding, exactly like the reference engine; the driver's extra keywords extend them.
  */
 class JeenyLexicon(
     acceptExtra: String = "",
@@ -68,7 +68,7 @@ class JeenyLexicon(
         val CASH_PATTERN: Pattern = anyOf(CASH)
 
         private const val CURRENCY_MARKS = "\\$|JOD|SAR|د\\.أ|د\\.ا|د\\.|﷼|ر\\.س|⃁"
-        /** Amount next to a currency mark; case-sensitive like FareSniper. */
+        /** Amount next to a currency mark; case-sensitive like the reference engine. */
         val PRICE: Pattern = Pattern.compile(
             "(?:$CURRENCY_MARKS)\\s*(\\d+(?:[\\.٫]\\d+)?)|(\\d+(?:[\\.٫]\\d+)?)\\s*(?:$CURRENCY_MARKS)",
         )
@@ -83,7 +83,7 @@ class JeenyLexicon(
 
         fun split(csv: String): List<String> = csv.split(',').map { it.trim() }.filter { it.isNotEmpty() }
 
-        /** Arabic-Indic digits to Latin, the only digit folding FareSniper applies. */
+        /** Arabic-Indic digits to Latin, the only digit folding the reference engine applies. */
         fun latinDigits(s: String): String {
             if (s.isEmpty()) return s
             val sb = StringBuilder(s.length)

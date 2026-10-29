@@ -1,6 +1,6 @@
 package app.sabbaq.core
 
-/** Explainability for the dashboard only; never an acceptance gate. [reasons] are FareSniper reason keys. */
+/** Explainability for the dashboard only; never an acceptance gate. [reasons] are the reference engine reason keys. */
 data class DecisionReport(
     val score: Int,
     val availableSignals: List<String>,

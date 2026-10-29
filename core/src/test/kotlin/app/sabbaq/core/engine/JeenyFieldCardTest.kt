@@ -10,7 +10,7 @@ import org.junit.Test
  * The Jeeny offer card as it appears on a driver's phone in Saudi Arabia (October 2026): pickup
  * time and distance, net earnings under «ستربح» with the riyal sign (as a character or an icon),
  * two addresses, and «قبول العرض» inside a clickable frame. The old engine read it and never
- * tapped; FareSniper's reader must produce a tappable offer the default settings accept.
+ * tapped; the reference engine's reader must produce a tappable offer the default settings accept.
  */
 class JeenyFieldCardTest {
     private var top = 900
@@ -59,13 +59,13 @@ class JeenyFieldCardTest {
 
     @Test
     fun map_time_labels_above_the_card() {
-        // FareSniper takes the first time it meets in reading order, as it does on the road.
+        // The reference engine takes the first time it meets in reading order, as it does on the road.
         val (root, frame) = card(line("5.84 ⃁"), mapMarkers = true)
         assertTapped(root, frame)
     }
 
     @Test
-    fun a_driver_price_limit_above_the_fare_rejects_with_the_faresniper_reason() {
+    fun a_driver_price_limit_above_the_fare_rejects_with_the_reference_reason() {
         val (root, _) = card(line("5.84 ⃁"))
         val ride = JeenyScreenReader(EngineConfig(minPrice = 10.0)) { 0L }.read(root, 2400)!!
         assertEquals("failed_price", DecisionEngine.decide(ride, EngineConfig(minPrice = 10.0)).reason)

@@ -39,7 +39,7 @@ object Settings {
         isActive = false
     }
 
-    /** The driver's acceptance settings, FareSniper's field set and defaults (docs/engine-parity). */
+    /** The driver's acceptance settings, the reference engine's field set and defaults (engine notes). */
     var engineConfig: EngineConfig
         get() = synchronized(this) {
             cachedConfig ?: run {
@@ -82,7 +82,7 @@ object Settings {
 
     /**
      * Subscription end (wall-clock epoch ms) saved from the last licence answer; 0 = not known
-     * yet. With [newestSeenMs] it is all the tap gate needs (FareSniper's isSnipingAllowedNow).
+     * yet. With [newestSeenMs] it is all the tap gate needs (the reference engine's isSnipingAllowedNow).
      */
     var subscriptionEndsAtMs: Long
         get() = runCatching { prefs().getLong(KEY_SUBSCRIPTION_ENDS_AT, 0L) }.getOrDefault(0L)

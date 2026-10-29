@@ -1,7 +1,7 @@
 package app.sabbaq.core.engine
 
 /**
- * FareSniper's `isSnipingAllowedNow` (QANNAS_ENGINE_FACTS.md §4, A11y 900–961): the driver's
+ * The reference engine's `isSnipingAllowedNow` (reference engine notesA11y 900–961): the driver's
  * own switches and the subscription end date saved on the device, checked against the wall
  * clock — never a network call or a live session. Setting the clock back more than two hours
  * below the newest time ever seen stops it; a smaller jump only re-anchors that time.

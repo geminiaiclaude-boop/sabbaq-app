@@ -7,7 +7,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** FareSniper turbo (QANNAS_ENGINE_FACTS.md §4, §11): instant blind tap only without filters. */
+/** The reference engine turbo (reference engine notes): instant blind tap only without filters. */
 class TurboTest {
     private var now = 50_000L
     private val flow = OfferFlow({ now })

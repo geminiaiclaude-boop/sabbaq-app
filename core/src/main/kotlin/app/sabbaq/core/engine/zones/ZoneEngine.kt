@@ -29,7 +29,7 @@ data class ZoneEvidence(
 data class ZoneOutcome(val rejectReason: String?, val diagnostic: String?, val evidence: ZoneEvidence? = null)
 
 /**
- * FareSniper's geographic stage of `C0798b9.process` (smali b9 lines 3340–7000): smart
+ * The reference engine's geographic stage of `C0798b9.process` (smali b9 lines 3340–7000): smart
  * destination ("heading home"), include zones with the on-the-way and map-direction rescues,
  * the driver's exclude zones and the shared exclude zones, each unknown handled by its own
  * reject-on-unknown switch. Exclude verdicts are remembered per destination for 10 minutes.

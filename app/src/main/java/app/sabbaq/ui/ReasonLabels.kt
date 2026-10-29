@@ -3,7 +3,7 @@ package app.sabbaq.ui
 import app.sabbaq.LocaleManager
 
 /**
- * Driver-facing text for FareSniper's decision reason keys (DecisionEngine). Unknown keys fall
+ * Driver-facing text for the reference engine's decision reason keys (DecisionEngine). Unknown keys fall
  * back to a neutral sentence so an older stored reason never shows a raw code.
  */
 internal fun reasonLabel(key: String): String {

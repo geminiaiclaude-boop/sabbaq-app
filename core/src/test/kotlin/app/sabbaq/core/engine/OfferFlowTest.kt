@@ -6,7 +6,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** FareSniper's per-frame timing rules (QANNAS_ENGINE_FACTS.md §11). */
+/** The reference engine's per-frame timing rules (reference engine notes). */
 class OfferFlowTest {
     private var now = 10_000L
     private val flow = OfferFlow({ now })

@@ -40,7 +40,7 @@ import java.net.URL
 import java.net.URLEncoder
 
 /**
- * The device half of FareSniper's zones: the driver's last position, the address → point cache
+ * The device half of the reference engine's zones: the driver's last position, the address → point cache
  * (`address_poi_cache`), the geocoding queue (`pending_addresses`, 150 entries) and the worker
  * that fills the cache from OpenStreetMap Nominatim, then Android's geocoder.
  */
@@ -80,7 +80,7 @@ object ZoneStore : ZoneEnvironment {
         }
     }
 
-    /** The last saved position, however old, as FareSniper uses `driver_lat/lng` (see [fixAgeMs]). */
+    /** The last saved position, however old, as the reference engine uses `driver_lat/lng` (see [fixAgeMs]). */
     override fun driverLocation(): DoubleArray? {
         val p = prefs ?: return null
         if (p.getLong(KEY_FIX_AT, 0L) == 0L) return null
@@ -244,7 +244,7 @@ object GeocodeWorker {
 }
 
 /**
- * Keeps the driver's position fresh while a geographic rule is on (FareSniper's `driver_lat/lng`):
+ * Keeps the driver's position fresh while a geographic rule is on (the reference engine's `driver_lat/lng`):
  * network and GPS updates every 15 s or 50 m. Needs the location permission; without it the
  * zone stage sees no position and treats the driver as unknown.
  */

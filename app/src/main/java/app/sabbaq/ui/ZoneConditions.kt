@@ -65,7 +65,7 @@ import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polygon
 import org.osmdroid.views.overlay.Polyline
 
-/** One zone being edited: FareSniper's `{"name","active","points":[[lat,lng],…]}`. */
+/** One zone being edited: the reference engine's `{"name","active","points":[[lat,lng],…]}`. */
 internal data class EditableZone(val name: String, val active: Boolean, val points: List<GeoPoint>)
 
 internal enum class ZoneMapMode { INCLUDE, EXCLUDE, HOME }
@@ -117,7 +117,7 @@ private fun rememberLocationAccess(): LocationAccess {
 }
 
 /**
- * FareSniper's geographic conditions: destination zones (with "on the way"), exclude zones and
+ * The reference engine's geographic conditions: destination zones (with "on the way"), exclude zones and
  * the smart destination. Each needs the driver's position; the map edits the zone polygons.
  */
 @Composable

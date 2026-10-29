@@ -59,7 +59,7 @@ internal object RuntimeLabels {
     /** Telemetry/diagnostic reason codes shown on the device. */
     fun reason(code: String?): String {
         if (code == null) return ""
-        if (code.startsWith("failed_") || code in FARESNIPER_REASON_KEYS) return reasonLabel(code).removeSuffix(".")
+        if (code.startsWith("failed_") || code in ENGINE_REASON_KEYS) return reasonLabel(code).removeSuffix(".")
         return (when (code.substringBefore(':')) {
             "cls_none" -> "الشاشة الحالية ليست طلبًا" to "The current screen is not an order"
             "cls_incomplete" -> "الطلب لم يكتمل ظهوره" to "The order is not fully shown"
@@ -99,8 +99,8 @@ internal object RuntimeLabels {
     }
 }
 
-/** Decision reasons that come from the FareSniper engine (DecisionEngine). */
-private val FARESNIPER_REASON_KEYS = setOf(
+/** Decision reasons that come from the reference engine engine (DecisionEngine). */
+private val ENGINE_REASON_KEYS = setOf(
     "dest_excluded", "exclude_no_dest_safe_reject", "no_dest_sniping_disabled", "no_ride_data_detected", "conservative_ocr_reject",
     "payment_not_cash", "payment_not_card", "payment_unknown_reject", "rating_below_min", "rating_unknown_reject", "wait_save_filtered",
 )

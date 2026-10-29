@@ -5,7 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** FareSniper's decision truth table (QANNAS_ENGINE_FACTS.md §14). */
+/** The reference engine's decision truth table (reference engine notes). */
 class DecisionEngineTest {
     private val node = FakeNode(text = "قبول")
     private fun ride(price: Double? = 20.0, minutes: Int? = 5, destination: String? = null, ambiguous: Boolean = destination == null,

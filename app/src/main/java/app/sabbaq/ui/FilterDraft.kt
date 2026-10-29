@@ -11,9 +11,9 @@ import app.sabbaq.core.engine.WaitSaveMode
 import kotlinx.serialization.Serializable
 
 /**
- * What the driver is typing on the conditions page: FareSniper's settings as text fields
- * (docs/engine-parity/QANNAS_ENGINE_FACTS.md §16). An empty limit means "no limit" (0), exactly
- * like FareSniper, so a fresh install accepts every offer until the driver sets one.
+ * What the driver is typing on the conditions page: the reference engine's settings as text fields
+ * (reference engine notes). An empty limit means "no limit" (0), exactly
+ * like the reference engine, so a fresh install accepts every offer until the driver sets one.
  */
 @Serializable
 data class FilterDraft(

@@ -10,7 +10,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** FareSniper's geographic stage (b9 smali 3340–7000) and its helpers. */
+/** The reference engine's geographic stage (b9 smali 3340–7000) and its helpers. */
 class ZoneEngineTest {
     /** A ~2 km square around Riyadh's Olaya district. */
     private val olaya = """[{"name":"العليا","active":true,"points":[[24.68,46.67],[24.68,46.69],[24.70,46.69],[24.70,46.67]]}]"""

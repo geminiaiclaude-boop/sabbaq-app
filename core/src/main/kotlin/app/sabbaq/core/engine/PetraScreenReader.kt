@@ -3,7 +3,7 @@ package app.sabbaq.core.engine
 import java.util.regex.Pattern
 
 /**
- * FareSniper's PetraRide reader (`Et.execute`, read from smali). Petra exposes resource ids:
+ * The reference engine's PetraRide reader (`Et.execute`, read from smali). Petra exposes resource ids:
  * `estimated_trip_price`, `estimated_time_to_pick_up`, `drop_off_location_title_label`,
  * `accept_button` / `reject_button`; trip and cancel screens are recognised by their ids.
  */
@@ -119,7 +119,7 @@ class PetraScreenReader {
     }
 
     companion object {
-        /** Patterns FareSniper builds with `Xw(pattern, flags)` compile CASE_INSENSITIVE | UNICODE_CASE (0x42). */
+        /** Patterns the reference engine builds with `Xw(pattern, flags)` compile CASE_INSENSITIVE | UNICODE_CASE (0x42). */
         val PRICE: Pattern = Pattern.compile("(\\d+(?:[.,]\\d+)?)\\s*(?:د\\.?\\s?أ|دينار|jod)|(?:د\\.?\\s?أ|دينار|jod)\\s*(\\d+(?:[.,]\\d+)?)", Pattern.CASE_INSENSITIVE or Pattern.UNICODE_CASE)
         val CURRENCY: Pattern = Pattern.compile("د\\.?\\s?أ|دينار|jod", Pattern.CASE_INSENSITIVE or Pattern.UNICODE_CASE)
         val MINUTES: Pattern = Pattern.compile("(\\d+(?:[.,]\\d+)?)\\s*(?:دقيقة|دقائق|دقيقه|دقائ)", Pattern.CASE_INSENSITIVE or Pattern.UNICODE_CASE)

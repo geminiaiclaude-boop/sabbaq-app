@@ -6,7 +6,7 @@ import kotlin.math.max
 import kotlin.math.sqrt
 import kotlin.random.Random
 
-/** A tap the engine decided on and is now waiting to see confirmed (FareSniper `PendingRideCapture`). */
+/** A tap the engine decided on and is now waiting to see confirmed (the reference engine `PendingRideCapture`). */
 class PendingRide(
     val price: Double?,
     val minutes: Int?,
@@ -21,7 +21,7 @@ class PendingRide(
     /** Ride app of the tapped offer ("jeeny", "bolt", "petra"). */
     val provider: String = "jeeny",
 ) {
-    /** Filled by the late capture after the tap when the frame lacked them (FareSniper `late*`). */
+    /** Filled by the late capture after the tap when the frame lacked them (the reference engine `late*`). */
     @Volatile var latePrice: Double? = null
     @Volatile var lateMinutes: Int? = null
     @Volatile var lateDestination: String? = null
@@ -48,14 +48,14 @@ sealed class PendingOutcome {
 }
 
 /**
- * The per-frame state machine of FareSniper's `processOfferFrame` (QANNAS_ENGINE_FACTS.md §11):
+ * The per-frame state machine of the reference engine's `processOfferFrame` (reference engine notes):
  * duplicate and cool-down rules, the pending-tap verification and the learned view ids. Pure:
  * the service reads the screen, calls [onFrame], then taps or reports what it returns.
  */
 class OfferFlow(
     private val nowMs: () -> Long,
     private val random: Random = Random.Default,
-    /** FareSniper's geographic stage; null when the host has no position or place cache. */
+    /** The reference engine's geographic stage; null when the host has no position or place cache. */
     private val zones: app.sabbaq.core.engine.zones.ZoneEngine? = null,
 ) {
     var pending: PendingRide? = null
@@ -267,7 +267,7 @@ class OfferFlow(
         eventThrottleMs = (mean * 1.5).toLong().coerceIn(25L, 60L)
     }
 
-    /** Gaussian delay inside [min, max] (FareSniper smart delay), 0 when off. */
+    /** Gaussian delay inside [min, max] (the reference engine smart delay), 0 when off. */
     private fun smartDelay(config: EngineConfig): Long {
         val min = max(0, config.smartDelayMinMs).toLong()
         val maxDelay = max(min, config.smartDelayMaxMs.toLong())

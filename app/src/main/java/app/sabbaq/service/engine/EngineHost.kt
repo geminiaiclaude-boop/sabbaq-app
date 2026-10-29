@@ -30,7 +30,7 @@ import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * FareSniper's accessibility pipeline for Jeeny (docs/engine-parity/QANNAS_ENGINE_FACTS.md §4–§11):
+ * The reference engine's accessibility pipeline for Jeeny (reference engine notes):
  * content events are coalesced into one root read on a background reader, a cheap keyword probe
  * gates the throttled ones, a subtree is read within 15 ms when that is enough, and the decided
  * tap goes to the very node that was read — accessibility click, then its parent, then a 40 ms
@@ -362,7 +362,7 @@ class EngineHost(
         listener.onPendingOutcome(outcome)
     }
 
-    /** FareSniper's accept tone: alarm stream raised to max for the tone, then restored. */
+    /** The reference engine's accept tone: alarm stream raised to max for the tone, then restored. */
     private fun playAcceptTone() {
         runCatching {
             val audio = service.getSystemService(AudioManager::class.java)
@@ -393,7 +393,7 @@ class EngineHost(
         main.post { runCatching { service.dispatchGesture(gesture, null, null) } }
     }
 
-    /** Only the watched ride apps' own windows are read or tapped (FareSniper's routing, §5). */
+    /** Only the watched ride apps' own windows are read or tapped (the reference engine's routing, §5). */
     private fun appOf(packageName: String?, cfg: EngineConfig): RideApp? = RideApps.of(packageName, cfg.targetApp)
 
     private fun isRideAppNode(node: UiNode): Boolean =

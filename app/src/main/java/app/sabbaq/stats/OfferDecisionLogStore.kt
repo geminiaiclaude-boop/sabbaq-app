@@ -12,7 +12,7 @@ data class OfferDecisionLogEntry(
     val timestampEpochMs: Long,
     val profileId: String,
     val outcome: DecisionLogOutcome,
-    /** FareSniper decision reason keys (`failed_price`, `dest_excluded`, …). */
+    /** The reference engine decision reason keys (`failed_price`, `dest_excluded`, …). */
     val reasons: List<String> = emptyList(),
 )
 

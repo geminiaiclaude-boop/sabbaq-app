@@ -11,8 +11,8 @@ import org.junit.Test
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Field shapes that the old engine rejected or never tapped (docs/engine-parity/
- * FIELD_TELEMETRY_2026-10-28.md), read the way FareSniper reads them.
+ * Field shapes that the old engine rejected or never tapped (engine notes/
+ * FIELD_TELEMETRY_2026-10-28.md), read the way the reference engine reads them.
  */
 class JeenyScreenReaderTest {
     private val height = 2400
@@ -135,7 +135,7 @@ class JeenyScreenReaderTest {
         ))
         val ride = reader(EngineConfig(destCheckEnabled = true)).read(root, height)!!
         assertEquals("مطار الملك خالد الدولي", ride.destination)
-        // FareSniper's noise list has no «طلب», so the card header is the first address it collects.
+        // The reference engine's noise list has no «طلب», so the card header is the first address it collects.
         assertEquals(listOf("طلب جديد", "حي النرجس", "مطار الملك خالد الدولي"), ride.addresses)
         assertEquals("طلب جديد", ride.pickup)
         assertFalse(ride.addressAmbiguous)
@@ -152,7 +152,7 @@ class JeenyScreenReaderTest {
     fun learned_ids_read_the_offer_without_walking_the_tree() {
         val (root, frame) = jeenyCard()
         val ids = LearnedOfferIds("me.com.easytaxista:id/btnAccept", "me.com.easytaxista:id/tvPrice", "me.com.easytaxista:id/tvTime")
-        // The learned accept id is the frame, whose own text is empty: FareSniper needs accept text on it.
+        // The learned accept id is the frame, whose own text is empty: the reference engine needs accept text on it.
         assertNull(reader().readByLearnedIds(root, ids))
         val byLabel = ids.copy(acceptId = "me.com.easytaxista:id/tvAccept")
         val ride = reader().readByLearnedIds(root, byLabel)!!

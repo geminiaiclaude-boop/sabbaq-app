@@ -53,8 +53,8 @@ import app.sabbaq.ui.theme.LocalReducedMotion
 import app.sabbaq.ui.theme.SabbaqMotion
 
 /**
- * «طلبات تناسبك»: FareSniper's conditions (docs/engine-parity) in Sabbaq's own condition cards.
- * An empty limit is "no limit", so with nothing set every offer is accepted, as in FareSniper.
+ * «طلبات تناسبك»: the reference engine's conditions (engine notes) in Sabbaq's own condition cards.
+ * An empty limit is "no limit", so with nothing set every offer is accepted, as in the reference engine.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -221,7 +221,7 @@ internal fun HighFareOverrideHelp(onDismiss: () -> Unit) {
     )
 }
 
-/** Destination words: only orders going there (include) or never there (exclude), as in FareSniper. */
+/** Destination words: only orders going there (include) or never there (exclude), as in the reference engine. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun DestinationCondition(draft: FilterDraft, onDraftChange: (FilterDraft) -> Unit) {
@@ -301,7 +301,7 @@ internal fun NoDestinationCondition(
     }
 }
 
-/** FareSniper `targetApp`: which ride app Sabbaq watches (Jeeny by default). */
+/** The reference engine `targetApp`: which ride app Sabbaq watches (Jeeny by default). */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun TargetAppCondition(draft: FilterDraft, onDraftChange: (FilterDraft) -> Unit) {
@@ -326,7 +326,7 @@ internal fun TargetAppCondition(draft: FilterDraft, onDraftChange: (FilterDraft)
     }
 }
 
-/** Rating and wait-&-save: FareSniper reads them on Bolt only. */
+/** Rating and wait-&-save: the reference engine reads them on Bolt only. */
 @Composable
 internal fun BoltOnlyConditions(draft: FilterDraft, errors: Map<String, String>, onDraftChange: (FilterDraft) -> Unit) {
     ProConditionCard(
@@ -364,7 +364,7 @@ internal fun BoltOnlyConditions(draft: FilterDraft, errors: Map<String, String>,
 }
 
 /**
- * FareSniper turbo: tap the saved point the instant an offer word appears, before reading it.
+ * The reference engine turbo: tap the saved point the instant an offer word appears, before reading it.
  * It fires only while no condition is switched on; with conditions, the point is used when the
  * accept control cannot be read. The point comes from the last confirmed tap or is typed.
  */
@@ -399,7 +399,7 @@ internal fun TurboCondition(draft: FilterDraft, errors: Map<String, String>, onD
     }
 }
 
-/** FareSniper's payment filter: all, cash only or card only, with its own reject-on-unknown. */
+/** The reference engine's payment filter: all, cash only or card only, with its own reject-on-unknown. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun PaymentCondition(draft: FilterDraft, onDraftChange: (FilterDraft) -> Unit) {
@@ -439,7 +439,7 @@ internal fun PaymentCondition(draft: FilterDraft, onDraftChange: (FilterDraft) -
     }
 }
 
-/** FareSniper's smart delay: wait a random time inside the range before tapping. */
+/** The reference engine's smart delay: wait a random time inside the range before tapping. */
 @Composable
 internal fun SmartDelayCondition(draft: FilterDraft, errors: Map<String, String>, onDraftChange: (FilterDraft) -> Unit) {
     ProConditionCard(

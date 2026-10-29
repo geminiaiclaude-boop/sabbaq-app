@@ -8,7 +8,7 @@ sealed class PostAcceptOutcome {
     object Inconclusive : PostAcceptOutcome()
 }
 
-/** FareSniper's post-tap check for Jeeny (`AbstractC2279pu`, QANNAS_ENGINE_FACTS.md §15). */
+/** The reference engine's post-tap check for Jeeny (`AbstractC2279pu`, reference engine notes). */
 object PostAcceptVerifier {
     private val STILL_OFFER = listOf("accept offer", "accept the offer", "قبول الطلب", "قبول العرض")
     private val ACTIVE_RIDE = listOf(

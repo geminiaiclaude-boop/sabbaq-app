@@ -6,7 +6,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** FareSniper's payment, rating and wait-&-save filters (QANNAS_ENGINE_FACTS.md §14). */
+/** The reference engine's payment, rating and wait-&-save filters (reference engine notes). */
 class PaymentRatingWaitSaveTest {
     private fun ride(payment: Payment = Payment.UNKNOWN, rating: Double? = null, waitAndSave: Boolean = false) =
         ParsedRide(price = 20.0, minutes = 4, acceptNode = FakeNode(text = "قبول"), addressAmbiguous = true,

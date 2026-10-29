@@ -7,7 +7,7 @@ import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** FareSniper's Bolt (`Y2`) and PetraRide (`Et`) readers and its package routing. */
+/** The reference engine's Bolt (`Y2`) and PetraRide (`Et`) readers and its package routing. */
 class BoltPetraReaderTest {
     private fun bolt(extra: List<FakeNode> = emptyList()): Pair<FakeNode, FakeNode> {
         val accept = FakeNode(text = "قبول", viewId = "ee.mtakso.driver:id/acceptButton", isClickable = true, rect = Bounds(60, 2150, 1020, 2300))
@@ -77,7 +77,7 @@ class BoltPetraReaderTest {
     }
 
     @Test
-    fun latin_units_match_in_any_case_as_faresniper_compiles_them() {
+    fun latin_units_match_in_any_case_as_reference_compiles_them() {
         val accept = FakeNode(text = "قبول", viewId = "ee.mtakso.driver:id/acceptButton", isClickable = true, rect = Bounds(60, 2150, 1020, 2300))
         val root = FakeNode(rect = Bounds(0, 0, 1080, 2400), children = listOf(
             FakeNode(text = "SAR 21.84", rect = row(1300)),

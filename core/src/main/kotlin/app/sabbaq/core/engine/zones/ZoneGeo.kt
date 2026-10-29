@@ -16,7 +16,7 @@ import kotlin.math.min
 import kotlin.math.sin
 import kotlin.math.sqrt
 
-/** One polygon of a zones JSON: `[{"name","active","points":[[lat,lng],…]}]` (FareSniper format). */
+/** One polygon of a zones JSON: `[{"name","active","points":[[lat,lng],…]}]` (the reference engine format). */
 class ZonePolygon(val name: String, val lats: DoubleArray, val lngs: DoubleArray)
 
 /** Distance from a point to the nearest zone edge, and whether the point lies inside (`Zh.encoder`). */
@@ -25,11 +25,11 @@ data class EdgeDistance(val km: Double, val inside: Boolean)
 /** Nearest point on any zone (`Zh.provider`). */
 data class NearestZonePoint(val km: Double, val lat: Double, val lng: Double, val inside: Boolean)
 
-/** FareSniper's travel direction relative to the zones (`To`). */
+/** The reference engine's travel direction relative to the zones (`To`). */
 enum class DirectionVerdict { INSIDE_DIRECTION, OUTSIDE_DIRECTION, INCONCLUSIVE }
 
 /**
- * FareSniper's zone geometry (`Zh`, `Xr0`, `Zi.connect`, `item.handler`), ported from smali.
+ * The reference engine's zone geometry (`Zh`, `Xr0`, `Zi.connect`, `item.handler`), ported from smali.
  * Distances use the same flat projection: 110 540 m per degree of latitude and
  * 111 320 × cos(lat) m per degree of longitude.
  */

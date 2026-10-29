@@ -8,17 +8,17 @@ enum class LogicMode { AND, OR }
 @Serializable
 enum class DestinationMode { INCLUDE, EXCLUDE }
 
-/** FareSniper `paymentFilterMode`: all, cash only, card only. */
+/** The reference engine `paymentFilterMode`: all, cash only, card only. */
 @Serializable
 enum class PaymentMode { ALL, CASH, CARD }
 
-/** FareSniper `waitSaveFilterMode`: off, or exclude "wait & save" (economy) offers (Bolt). */
+/** The reference engine `waitSaveFilterMode`: off, or exclude "wait & save" (economy) offers (Bolt). */
 @Serializable
 enum class WaitSaveMode { OFF, EXCLUDE }
 
 /**
- * The driver's settings, field for field the subset of FareSniper's EngineConfig that its
- * decision and reader use (QANNAS_ENGINE_FACTS.md §3, §14, §16). Defaults are FareSniper's:
+ * The driver's settings, field for field the subset of the reference engine's EngineConfig that its
+ * decision and reader use (reference engine notes). Defaults are the reference engine's:
  * price and time checks are on but unbounded (0 = no limit), so every offer is accepted until
  * the driver sets a limit. Missing screen data never rejects unless a reject-on-unknown switch
  * is on.
@@ -32,7 +32,7 @@ data class EngineConfig(
     val priceEnabled: Boolean = true,
     val timeEnabled: Boolean = true,
     val logicMode: LogicMode = LogicMode.AND,
-    /** FareSniper `dest_check_enabled` with `dest_home_mode` include. */
+    /** The reference engine `dest_check_enabled` with `dest_home_mode` include. */
     val destCheckEnabled: Boolean = false,
     val destKeywords: String = "",
     val destHomeMode: DestinationMode = DestinationMode.INCLUDE,
@@ -58,11 +58,11 @@ data class EngineConfig(
     val currencyKeywordsExtra: String = "",
     val noiseKeywordsExtra: String = "",
     val targetApp: TargetApp = TargetApp.JEENY,
-    /** FareSniper turbo: tap the saved point the instant an offer word appears. */
+    /** The reference engine turbo: tap the saved point the instant an offer word appears. */
     val turboModeEnabled: Boolean = false,
     val clickX: Int? = null,
     val clickY: Int? = null,
-    /** Geographic zones (FareSniper `dest_zones_*`): accept only destinations inside these polygons. */
+    /** Geographic zones (the reference engine `dest_zones_*`): accept only destinations inside these polygons. */
     val destZonesEnabled: Boolean = false,
     val destZonesJson: String = "[]",
     val destZonesRejectOnUnknown: Boolean = true,
@@ -89,14 +89,14 @@ data class EngineConfig(
     val smartDestLng: Double = 0.0,
     val smartDestAngle: Double = 45.0,
 ) {
-    /** FareSniper `priceEnabled && priceFilterEnabled` (the second flag is always on in its UI). */
+    /** The reference engine `priceEnabled && priceFilterEnabled` (the second flag is always on in its UI). */
     val priceFilterOn: Boolean get() = priceEnabled
     val timeFilterOn: Boolean get() = timeEnabled
     val excludeOn: Boolean get() = destHomeMode == DestinationMode.EXCLUDE && destExcludeEnabled
     val includeOn: Boolean get() = destHomeMode == DestinationMode.INCLUDE && destCheckEnabled
 
     /**
-     * FareSniper `areAnyFiltersActive`: price or time checks switched on, a destination rule, or
+     * The reference engine `areAnyFiltersActive`: price or time checks switched on, a destination rule, or
      * offers without a destination refused. Turbo's instant tap runs only when none is.
      */
     val anyFilterActive: Boolean get() = priceFilterOn || timeFilterOn || destCheckEnabled || !snipingNoDest

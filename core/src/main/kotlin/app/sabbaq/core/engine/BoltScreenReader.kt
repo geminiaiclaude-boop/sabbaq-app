@@ -3,7 +3,7 @@ package app.sabbaq.core.engine
 import java.util.regex.Pattern
 
 /**
- * FareSniper's Bolt reader (`Y2.execute`, read from smali). Bolt exposes resource ids, so the
+ * The reference engine's Bolt reader (`Y2.execute`, read from smali). Bolt exposes resource ids, so the
  * reader keys on them: `categoryPriceInfo` for the price, `newOrderAddressText` for addresses,
  * `riderInfoText` / `clientRating` for the rating, `acceptButton` / `button` or «قبول» for the
  * accept control, and a few active-trip ids to recognise a running ride.
@@ -129,7 +129,7 @@ class BoltScreenReader(private val config: EngineConfig) {
     }
 
     companion object {
-        /** Patterns FareSniper builds with `Xw(pattern, flags)` compile CASE_INSENSITIVE | UNICODE_CASE (0x42). */
+        /** Patterns the reference engine builds with `Xw(pattern, flags)` compile CASE_INSENSITIVE | UNICODE_CASE (0x42). */
         private val BIDI: Pattern = Pattern.compile("[\\u200E\\u200F\\u061C\\u202A-\\u202E\\u2066-\\u2069]")
         val MINUTES: Pattern = Pattern.compile("(?<!\\d)(\\d+)\\s*(?:دقيقة|دقائق|دقيقه|دقائ|mins|min)", Pattern.CASE_INSENSITIVE or Pattern.UNICODE_CASE)
         val PRICE: Pattern = Pattern.compile("(\\d+(?:[.,]\\d+)?)\\s*(?:ر\\.?\\s?س|﷼|sar)|(?:ر\\.?\\s?س|﷼|sar)\\s*(\\d+(?:[.,]\\d+)?)", Pattern.CASE_INSENSITIVE or Pattern.UNICODE_CASE)

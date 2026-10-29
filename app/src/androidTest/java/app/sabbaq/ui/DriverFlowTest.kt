@@ -147,7 +147,7 @@ class DriverFlowTest {
     }
 
     @Test
-    fun price_limit_auto_saves_on_faresniper_settings() {
+    fun price_limit_auto_saves_on_reference_settings() {
         showFilters()
         compose.onNodeWithTag("filter-stepper-min-fare-increment").performScrollTo().performClick()
         compose.waitUntil(timeoutMillis = 10_000) { Settings.engineConfig.minPrice == 1.0 }
@@ -189,7 +189,7 @@ class DriverFlowTest {
     }
 
     @Test
-    fun simulator_accepts_any_offer_with_faresniper_defaults_and_explains_a_rejection() {
+    fun simulator_accepts_any_offer_with_reference_defaults_and_explains_a_rejection() {
         showFilters(DriverDestination.Simulator)
         compose.onNodeWithText("اعرف هل يناسبك").performScrollTo().assertIsNotEnabled()
         compose.onNodeWithText("سعر الطلب").performScrollTo().performTextInput("30")

@@ -17,7 +17,7 @@ data class ResolvedCoords(
 )
 
 /**
- * FareSniper's address → point cache (`I70` + `item`). Keys are folded address texts; each value
+ * The reference engine's address → point cache (`I70` + `item`). Keys are folded address texts; each value
  * is `{"lat","lng"}` or `{"points":[{"lat","lng"},…]}`. Lookup tries the exact key, the key with
  * its number-only words dropped, then fuzzy word matches, keeps candidates in the driver's
  * region or within the given distance, and anchors on the one nearest the driver.
@@ -94,7 +94,7 @@ class PoiIndex(private val root: JsonObject) {
             "شارع", "طريق", "دوار", "حي", "ميدان", "مبنى", "برج", "عماره")
         private val CITIES = setOf("amman", "عمان", "riyadh", "الرياض", "jeddah", "جده")
 
-        /** FareSniper's 14 city circles (`P20.process`: lat, lng, radius km): Saudi cities, then Jordan. */
+        /** The reference engine's 14 city circles (`P20.process`: lat, lng, radius km): Saudi cities, then Jordan. */
         private val REGIONS = arrayOf(
             doubleArrayOf(24.71, 46.68, 60.0), doubleArrayOf(21.54, 39.19, 55.0), doubleArrayOf(21.42, 39.83, 30.0),
             doubleArrayOf(24.47, 39.61, 40.0), doubleArrayOf(26.42, 50.09, 60.0), doubleArrayOf(21.27, 40.42, 35.0),
@@ -142,7 +142,7 @@ class PoiIndex(private val root: JsonObject) {
 
         /**
          * `item.dispatch`: every word of the shorter list (≥ 2 words) is in the other, or a typo
-         * of one (same first letter, 1 edit up to 6 letters, 2 above 4 letters… as FareSniper), at
+         * of one (same first letter, 1 edit up to 6 letters, 2 above 4 letters… as the reference engine), at
          * least one shared word is a specific 4+ letter word, and at most half the words are typos.
          */
         fun tokensMatch(a: List<String>, b: List<String>): Boolean {

@@ -3,13 +3,13 @@ package app.sabbaq.core.engine
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.serialization.Serializable
 
-/** FareSniper `targetApp`: which ride apps are watched; BOTH means all of them. */
+/** The reference engine `targetApp`: which ride apps are watched; BOTH means all of them. */
 @Serializable
 enum class TargetApp { JEENY, BOLT, PETRA, BOTH }
 
 enum class RideApp { JEENY, BOLT, PETRA }
 
-/** FareSniper's package routing (`processAccessibilityEvent`, QANNAS_ENGINE_FACTS.md §5). */
+/** The reference engine's package routing (`processAccessibilityEvent`, reference engine notes). */
 object RideApps {
     const val JEENY_PACKAGE = "me.com.easytaxista"
     const val BOLT_PACKAGE = "ee.mtakso.driver"
@@ -38,7 +38,7 @@ object RideApps {
         TargetApp.BOTH -> arrayOf(JEENY_PACKAGE, BOLT_PACKAGE, PETRA_PACKAGE, "com.PetraRide_Captain")
     }
 
-    /** Reads one screen with the reader FareSniper uses for [app] (Jeeny: learned ids first). */
+    /** Reads one screen with the reader the reference engine uses for [app] (Jeeny: learned ids first). */
     fun read(
         app: RideApp,
         root: UiNode,

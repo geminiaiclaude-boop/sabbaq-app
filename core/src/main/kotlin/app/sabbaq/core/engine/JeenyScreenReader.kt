@@ -7,7 +7,7 @@ data class LearnedOfferIds(val acceptId: String, val priceId: String, val timeId
 
 enum class Payment { UNKNOWN, CASH, CARD }
 
-/** What one read of a ride-app screen produced (FareSniper `Ok`). */
+/** What one read of a ride-app screen produced (the reference engine `Ok`). */
 data class ParsedRide(
     val price: Double? = null,
     val minutes: Int? = null,
@@ -22,9 +22,9 @@ data class ParsedRide(
     val addresses: List<String> = emptyList(),
     val pickup: String? = null,
     val payment: Payment = Payment.UNKNOWN,
-    /** Passenger rating; FareSniper reads it on Bolt only. */
+    /** Passenger rating; the reference engine reads it on Bolt only. */
     val rating: Double? = null,
-    /** "Wait & save" / economy offer; FareSniper reads it on Bolt only. */
+    /** "Wait & save" / economy offer; the reference engine reads it on Bolt only. */
     val waitAndSave: Boolean = false,
     val acceptViewId: String? = null,
     val priceViewId: String? = null,
@@ -37,10 +37,10 @@ data class ParsedRide(
     /** Which ride app the screen came from: "jeeny", "bolt" or "petra" (telemetry and the decision log). */
     val provider: String = "jeeny",
 ) {
-    /** FareSniper's screen-offer hash: same values at the same tap point = same frame. */
+    /** The reference engine's screen-offer hash: same values at the same tap point = same frame. */
     val screenHash: Int get() = identityHash(price, minutes, destination) * 31 * 31 + clickX * 31 + clickY
 
-    /** FareSniper's offer identity (price, minutes, destination). */
+    /** The reference engine's offer identity (price, minutes, destination). */
     val identity: Int get() = identityHash(price, minutes, destination)
 
     companion object {
@@ -50,8 +50,8 @@ data class ParsedRide(
 }
 
 /**
- * Reads a Jeeny screen exactly as FareSniper's `Pk.provider` / `Pk.dispatch` do
- * (QANNAS_ENGINE_FACTS.md §12–§13). A screen is an offer when it shows an accept control and the
+ * Reads a Jeeny screen exactly as the reference engine's `Pk.provider` / `Pk.dispatch` do
+ * (reference engine notes). A screen is an offer when it shows an accept control and the
  * time to the customer; the price is required only while the price filter is on, and missing
  * addresses never stop a read.
  */

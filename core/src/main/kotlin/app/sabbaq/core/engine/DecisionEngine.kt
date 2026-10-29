@@ -1,6 +1,6 @@
 package app.sabbaq.core.engine
 
-/** FareSniper `DecisionResult`. [reason] is null when the offer is accepted. */
+/** The reference engine `DecisionResult`. [reason] is null when the offer is accepted. */
 data class Decision(
     val accept: Boolean,
     val matchedPrice: Boolean,
@@ -12,7 +12,7 @@ data class Decision(
 )
 
 /**
- * FareSniper's decision (`C0798b9.process`, QANNAS_ENGINE_FACTS.md §14) for the filters Sabbaq
+ * The reference engine's decision (`C0798b9.process`, reference engine notes) for the filters Sabbaq
  * offers: price range, time-to-customer range, destination include/exclude keywords and
  * "ignore the time when the price is high", combined with AND/OR. A bound of 0 means no limit,
  * no enabled check means accept, and an unreadable value rejects only through the driver's
@@ -20,7 +20,7 @@ data class Decision(
  */
 object DecisionEngine {
 
-    /** [isBolt] enables the rating and wait-&-save filters, which FareSniper applies to Bolt only. */
+    /** [isBolt] enables the rating and wait-&-save filters, which the reference engine applies to Bolt only. */
     fun decide(ride: ParsedRide, config: EngineConfig, isBolt: Boolean = false, zones: app.sabbaq.core.engine.zones.ZoneEngine? = null): Decision {
         val price = ride.price
         val minutes = ride.minutes
@@ -95,7 +95,7 @@ object DecisionEngine {
         return combined.copy(diagnostic = zone.diagnostic)
     }
 
-    /** FareSniper's payment filter: the other method rejects; unknown rejects only when asked to. */
+    /** The reference engine's payment filter: the other method rejects; unknown rejects only when asked to. */
     private fun paymentReason(payment: Payment, config: EngineConfig): String? = when (config.paymentFilterMode) {
         PaymentMode.ALL -> null
         PaymentMode.CASH -> when (payment) {
@@ -141,14 +141,14 @@ object DecisionEngine {
         return inRange(minutes, config.minTime, config.maxTime)
     }
 
-    /** FareSniper `b9.dispatch`: 0 = unbounded; a missing value fails only a bounded range. */
+    /** The reference engine `b9.dispatch`: 0 = unbounded; a missing value fails only a bounded range. */
     fun inRange(value: Double?, min: Double, max: Double): Boolean {
         if (min <= 0.0 && max <= 0.0) return true
         value ?: return false
         return (min <= 0.0 || value >= min) && (max <= 0.0 || value <= max)
     }
 
-    /** FareSniper `b9.handler`, the integer variant used for minutes. */
+    /** The reference engine `b9.handler`, the integer variant used for minutes. */
     fun inRange(value: Int?, min: Int, max: Int): Boolean {
         if (min <= 0 && max <= 0) return true
         value ?: return false
@@ -158,7 +158,7 @@ object DecisionEngine {
     fun keywords(csv: String): List<String> = csv.split(',').map(::fold).filter { it.isNotBlank() }
 
     /**
-     * FareSniper's destination text folding (`AbstractC2709uC.connect`): Latin digits, one alef,
+     * The reference engine's destination text folding (`AbstractC2709uC.connect`): Latin digits, one alef,
      * ta marbuta as ha, one ya, Persian kaf as kaf, waw hamza as waw, diacritics, tatweel and
      * bare hamza removed, lower case, single spaces.
      */

@@ -33,8 +33,8 @@ import java.math.BigDecimal
 
 /**
  * Gates every event (consent, monitoring switch, licence) and hands Jeeny's events to
- * [EngineHost], which reads, decides and taps exactly like FareSniper
- * (docs/engine-parity/SABBAQ_ENGINE_DESIGN.md). This class only reports what the engine did.
+ * [EngineHost], which reads, decides and taps exactly like the reference engine
+ * (engine design notes). This class only reports what the engine did.
  */
 class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
 
@@ -57,11 +57,11 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
         host.onConnected()
         instance = this
         applyTargetPackages()
-        TelemetryRepository.trace(TelemetryStage.SERVICE_CONNECTED, reasonCode = "ready", detail = "engine=faresniper")
+        TelemetryRepository.trace(TelemetryStage.SERVICE_CONNECTED, reasonCode = "ready", detail = "engine=v3")
     }
 
     /**
-     * FareSniper's gate: the driver's own switch, consent and the saved subscription end date.
+     * The reference engine's gate: the driver's own switch, consent and the saved subscription end date.
      * A network failure, a lost session or a process restart never stops a tap.
      */
     private fun gate(): SnipingGate.Result {
@@ -118,7 +118,7 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
         if (::host.isInitialized) host.onConfigSaved()
     }
 
-    /** FareSniper's `applyTargetAppRouting`: listen only to the ride apps the driver chose (and Sabbaq's own test card). */
+    /** The reference engine's `applyTargetAppRouting`: listen only to the ride apps the driver chose (and Sabbaq's own test card). */
     private fun applyTargetPackages() {
         val info = serviceInfo ?: return
         val wanted = RideApps.packages(Settings.engineConfig.targetApp, applicationContext.packageName)
