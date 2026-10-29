@@ -798,4 +798,9 @@ Write your problem or question and our team will reply here during working hours
     <string name="afe_delay_max">Longest wait</string>
     <string name="afe_unit_ms">ms</string>
     <string name="ss_sim_destination">Destination (optional)</string>
+    <string name="afe_payment_title">Payment method</string>
+    <string name="afe_payment_sub">Take only cash orders or only card orders</string>
+    <string name="afe_payment_cash">Cash only</string>
+    <string name="afe_payment_card">Card only</string>
+    <string name="afe_payment_reject_unknown">Reject the order when its payment method is not shown</string>
 </resources>

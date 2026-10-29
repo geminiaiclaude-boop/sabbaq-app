@@ -4,6 +4,7 @@ import app.sabbaq.LocaleManager
 import app.sabbaq.core.engine.DestinationMode
 import app.sabbaq.core.engine.EngineConfig
 import app.sabbaq.core.engine.LogicMode
+import app.sabbaq.core.engine.PaymentMode
 import kotlinx.serialization.Serializable
 
 /**
@@ -30,6 +31,8 @@ data class FilterDraft(
     val snipingNoDest: Boolean = true,
     val bypassTimeEnabled: Boolean = false,
     val bypassTimePrice: String = "",
+    val paymentMode: PaymentMode = PaymentMode.ALL,
+    val paymentRejectOnUnknown: Boolean = false,
     val smartDelayEnabled: Boolean = false,
     val smartDelayMin: String = "",
     val smartDelayMax: String = "",
@@ -58,6 +61,9 @@ data class FilterDraft(
             destIncludeRejectOnUnknown = destIncludeRejectOnUnknown, destExcludeRejectOnUnknown = destExcludeRejectOnUnknown,
             snipingNoDest = snipingNoDest,
             bypassTimeEnabled = bypassTimeEnabled, bypassTimePrice = bypass ?: 0.0,
+            paymentFilterMode = paymentMode, paymentRejectOnUnknown = paymentRejectOnUnknown,
+            ratingFilterEnabled = base.ratingFilterEnabled, minRating = base.minRating,
+            ratingRejectOnUnknown = base.ratingRejectOnUnknown, waitSaveFilterMode = base.waitSaveFilterMode,
             smartDelayEnabled = smartDelayEnabled, smartDelayMinMs = dMin ?: 0, smartDelayMaxMs = dMax ?: 0,
             acceptKeywordsExtra = base.acceptKeywordsExtra, timeKeywordsExtra = base.timeKeywordsExtra,
             currencyKeywordsExtra = base.currencyKeywordsExtra, noiseKeywordsExtra = base.noiseKeywordsExtra,
@@ -73,6 +79,7 @@ data class FilterDraft(
         destCheckEnabled && !excludeMode,
         destExcludeEnabled && excludeMode,
         bypassTimeEnabled,
+        paymentMode != PaymentMode.ALL,
     ).count { it }
 
     companion object {
@@ -86,6 +93,7 @@ data class FilterDraft(
             destExcludeRejectOnUnknown = c.destExcludeRejectOnUnknown,
             excludeMode = c.destHomeMode == DestinationMode.EXCLUDE, snipingNoDest = c.snipingNoDest,
             bypassTimeEnabled = c.bypassTimeEnabled, bypassTimePrice = number(c.bypassTimePrice),
+            paymentMode = c.paymentFilterMode, paymentRejectOnUnknown = c.paymentRejectOnUnknown,
             smartDelayEnabled = c.smartDelayEnabled, smartDelayMin = whole(c.smartDelayMinMs), smartDelayMax = whole(c.smartDelayMaxMs),
         )
 

@@ -19,13 +19,16 @@ data class Decision(
  */
 object DecisionEngine {
 
-    fun decide(ride: ParsedRide, config: EngineConfig): Decision {
+    /** [isBolt] enables the rating and wait-&-save filters, which FareSniper applies to Bolt only. */
+    fun decide(ride: ParsedRide, config: EngineConfig, isBolt: Boolean = false): Decision {
         val price = ride.price
         val minutes = ride.minutes
         if (price == null && minutes == null) return reject("no_ride_data_detected")
         val ambiguous = ride.addressAmbiguous
 
-        if (!config.includeOn && !config.excludeOn) {
+        val ratingOn = isBolt && config.ratingFilterEnabled && config.minRating > 0.0
+        val waitSaveOn = isBolt && config.waitSaveFilterMode == WaitSaveMode.EXCLUDE
+        if (!config.includeOn && !config.excludeOn && config.paymentFilterMode == PaymentMode.ALL && !ratingOn && !waitSaveOn) {
             if (ambiguous && !config.snipingNoDest && price == null) return reject("no_dest_sniping_disabled")
             val priceOk = priceMatches(price, ambiguous, config)
             val timeOk = timeMatches(price, minutes, config)
@@ -38,6 +41,14 @@ object DecisionEngine {
 
         val strictInclude = config.includeOn && config.destIncludeRejectOnUnknown
         if (ambiguous && !config.snipingNoDest && (price == null || strictInclude)) return reject("no_dest_sniping_disabled")
+
+        paymentReason(ride.payment, config)?.let { return reject(it) }
+        if (ratingOn) {
+            val rating = ride.rating
+            if (rating == null) { if (config.ratingRejectOnUnknown) return reject("rating_unknown_reject") }
+            else if (rating < config.minRating) return reject("rating_below_min")
+        }
+        if (waitSaveOn && ride.waitAndSave) return reject("wait_save_filtered")
 
         var diagnostic: String? = null
         if (config.excludeOn) {
@@ -77,6 +88,21 @@ object DecisionEngine {
             if (config.destCheckEnabled) add("destination" to destinationOk)
         }
         return combine(checks, config.logicMode, priceOk, timeOk, destinationOk, diagnostic)
+    }
+
+    /** FareSniper's payment filter: the other method rejects; unknown rejects only when asked to. */
+    private fun paymentReason(payment: Payment, config: EngineConfig): String? = when (config.paymentFilterMode) {
+        PaymentMode.ALL -> null
+        PaymentMode.CASH -> when (payment) {
+            Payment.CASH -> null
+            Payment.CARD -> "payment_not_cash"
+            Payment.UNKNOWN -> if (config.paymentRejectOnUnknown) "payment_unknown_reject" else null
+        }
+        PaymentMode.CARD -> when (payment) {
+            Payment.CARD -> null
+            Payment.CASH -> "payment_not_card"
+            Payment.UNKNOWN -> if (config.paymentRejectOnUnknown) "payment_unknown_reject" else null
+        }
     }
 
     private fun combine(

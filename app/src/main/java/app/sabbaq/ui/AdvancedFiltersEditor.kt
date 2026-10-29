@@ -47,6 +47,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import app.sabbaq.R
+import app.sabbaq.core.engine.PaymentMode
 import app.sabbaq.ui.theme.LocalReducedMotion
 import app.sabbaq.ui.theme.SabbaqMotion
 
@@ -94,6 +95,7 @@ internal fun AdvancedFiltersEditor(
         HighFareOverrideCondition(draft, errors, onDraftChange)
         DestinationCondition(draft, onDraftChange)
         NoDestinationCondition(draft, onDraftChange)
+        PaymentCondition(draft, onDraftChange)
         SmartDelayCondition(draft, errors, onDraftChange)
     }
 }
@@ -280,6 +282,46 @@ internal fun NoDestinationCondition(
             modifier = Modifier.weight(1f),
             maxLines = 2,
         )
+    }
+}
+
+/** FareSniper's payment filter: all, cash only or card only, with its own reject-on-unknown. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun PaymentCondition(draft: FilterDraft, onDraftChange: (FilterDraft) -> Unit) {
+    ProConditionCard(
+        title = stringResource(R.string.afe_payment_title),
+        subtitle = stringResource(R.string.afe_payment_sub),
+        enabled = draft.paymentMode != PaymentMode.ALL,
+        testKey = "payment",
+        onEnabledChange = { onDraftChange(draft.copy(paymentMode = if (it) PaymentMode.CASH else PaymentMode.ALL)) },
+        footer = {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.afe_payment_reject_unknown), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                Switch(
+                    checked = draft.paymentRejectOnUnknown,
+                    onCheckedChange = { onDraftChange(draft.copy(paymentRejectOnUnknown = it)) },
+                    modifier = Modifier.testTag("payment-reject-unknown"),
+                )
+            }
+        },
+    ) { dimmed ->
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.weight(1f)) {
+            FilterChip(
+                selected = draft.paymentMode == PaymentMode.CASH,
+                enabled = !dimmed,
+                onClick = { onDraftChange(draft.copy(paymentMode = PaymentMode.CASH)) },
+                label = { Text(stringResource(R.string.afe_payment_cash), style = MaterialTheme.typography.labelSmall) },
+                modifier = Modifier.height(32.dp).testTag("payment-cash"),
+            )
+            FilterChip(
+                selected = draft.paymentMode == PaymentMode.CARD,
+                enabled = !dimmed,
+                onClick = { onDraftChange(draft.copy(paymentMode = PaymentMode.CARD)) },
+                label = { Text(stringResource(R.string.afe_payment_card), style = MaterialTheme.typography.labelSmall) },
+                modifier = Modifier.height(32.dp).testTag("payment-card"),
+            )
+        }
     }
 }
 

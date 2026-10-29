@@ -8,6 +8,14 @@ enum class LogicMode { AND, OR }
 @Serializable
 enum class DestinationMode { INCLUDE, EXCLUDE }
 
+/** FareSniper `paymentFilterMode`: all, cash only, card only. */
+@Serializable
+enum class PaymentMode { ALL, CASH, CARD }
+
+/** FareSniper `waitSaveFilterMode`: off, or exclude "wait & save" (economy) offers (Bolt). */
+@Serializable
+enum class WaitSaveMode { OFF, EXCLUDE }
+
 /**
  * The driver's settings, field for field the subset of FareSniper's EngineConfig that its
  * decision and reader use (QANNAS_ENGINE_FACTS.md §3, §14, §16). Defaults are FareSniper's:
@@ -36,6 +44,12 @@ data class EngineConfig(
     val snipingNoDest: Boolean = true,
     val bypassTimeEnabled: Boolean = false,
     val bypassTimePrice: Double = 0.0,
+    val paymentFilterMode: PaymentMode = PaymentMode.ALL,
+    val paymentRejectOnUnknown: Boolean = false,
+    val ratingFilterEnabled: Boolean = false,
+    val minRating: Double = 0.0,
+    val ratingRejectOnUnknown: Boolean = false,
+    val waitSaveFilterMode: WaitSaveMode = WaitSaveMode.OFF,
     val smartDelayEnabled: Boolean = false,
     val smartDelayMinMs: Int = 0,
     val smartDelayMaxMs: Int = 0,

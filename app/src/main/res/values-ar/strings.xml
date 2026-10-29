@@ -805,4 +805,9 @@
     <string name="afe_delay_max">أطول انتظار</string>
     <string name="afe_unit_ms">م.ث</string>
     <string name="ss_sim_destination">الوجهة (اختياري)</string>
+    <string name="afe_payment_title">طريقة الدفع</string>
+    <string name="afe_payment_sub">اقبل طلبات الدفع النقدي فقط أو طلبات البطاقة فقط</string>
+    <string name="afe_payment_cash">نقدًا فقط</string>
+    <string name="afe_payment_card">بطاقة فقط</string>
+    <string name="afe_payment_reject_unknown">ارفض الطلب حين لا تظهر طريقة الدفع</string>
 </resources>

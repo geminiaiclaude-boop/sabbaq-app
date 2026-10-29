@@ -271,7 +271,12 @@ class EngineHost(
         main.postDelayed({
             val root = runCatching { service.rootInActiveWindow }.getOrNull()?.takeIf(::isRideAppRoot) ?: return@postDelayed
             val deadline = SystemClock.uptimeMillis() + OfferFlow.LATE_CAPTURE_BUDGET_MS
-            runCatching { JeenyScreenReader(cfg) { SystemClock.uptimeMillis() }.read(LiveNode(root), height, collectAddresses = true, hardDeadline = deadline) }
+            val late = runCatching {
+                JeenyScreenReader(cfg) { SystemClock.uptimeMillis() }.read(LiveNode(root), height, collectAddresses = true, hardDeadline = deadline)
+            }.getOrNull() ?: return@postDelayed
+            if (pending.latePrice == null) pending.latePrice = late.price
+            if (pending.lateMinutes == null) pending.lateMinutes = late.minutes
+            if (pending.lateDestination == null) pending.lateDestination = late.destination
         }, OfferFlow.LATE_CAPTURE_DELAY_MS)
     }
 

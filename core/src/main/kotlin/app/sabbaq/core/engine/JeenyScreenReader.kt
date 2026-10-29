@@ -5,7 +5,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 /** The three resource ids learned from a successful read; later reads jump straight to them. */
 data class LearnedOfferIds(val acceptId: String, val priceId: String, val timeId: String)
 
-/** What one read of a Jeeny screen produced (FareSniper `Ok`). */
+enum class Payment { UNKNOWN, CASH, CARD }
+
+/** What one read of a ride-app screen produced (FareSniper `Ok`). */
 data class ParsedRide(
     val price: Double? = null,
     val minutes: Int? = null,
@@ -19,6 +21,11 @@ data class ParsedRide(
     val isActiveRide: Boolean = false,
     val addresses: List<String> = emptyList(),
     val pickup: String? = null,
+    val payment: Payment = Payment.UNKNOWN,
+    /** Passenger rating; FareSniper reads it on Bolt only. */
+    val rating: Double? = null,
+    /** "Wait & save" / economy offer; FareSniper reads it on Bolt only. */
+    val waitAndSave: Boolean = false,
     val acceptViewId: String? = null,
     val priceViewId: String? = null,
     val timeViewId: String? = null,
@@ -99,6 +106,9 @@ class JeenyScreenReader(private val config: EngineConfig, private val uptimeMs: 
         val priceFloor = (screenHeight * 0.3).toInt()
         val collect = collectAddresses || config.needsFullTree
         val addressWhenNoPrice = config.snipingNoDest && config.priceFilterOn
+        val readPayment = config.paymentFilterMode != PaymentMode.ALL
+        var cardSeen = false
+        var cashSeen = false
 
         val queue = ArrayDeque<UiNode>()
         queue.addLast(root)
@@ -152,6 +162,10 @@ class JeenyScreenReader(private val config: EngineConfig, private val uptimeMs: 
                     }
                 }
                 val lower = norm.lowercase()
+                if (readPayment && !cardSeen) {
+                    if (JeenyLexicon.CARD_PATTERN.found(lower)) cardSeen = true
+                    else if (!cashSeen && JeenyLexicon.CASH_PATTERN.found(lower)) cashSeen = true
+                }
                 val className = node.className.orEmpty()
                 if ("TextureView" in className || "google map" in lower || "map marker" in lower) {
                     enqueueChildren(node, queue, maxNodes)
@@ -293,7 +307,8 @@ class JeenyScreenReader(private val config: EngineConfig, private val uptimeMs: 
             return ParsedRide(
                 price = finalPrice, minutes = minutes, destination = destination, acceptNode = node,
                 addressAmbiguous = ambiguous, clickX = clickX, clickY = clickY, addresses = addresses.toList(),
-                pickup = pickup, acceptViewId = acceptViewId, priceViewId = priceViewId, timeViewId = timeViewId,
+                pickup = pickup, acceptViewId = acceptViewId,
+                payment = when { cardSeen -> Payment.CARD; cashSeen -> Payment.CASH; else -> Payment.UNKNOWN }, priceViewId = priceViewId, timeViewId = timeViewId,
                 nodesVisited = visited,
             )
         }

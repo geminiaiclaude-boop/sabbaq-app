@@ -145,7 +145,7 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
                 record(DiagnosticStage.CONFIRMATION_CONFIRMED, now, "post_click_confirmed")
                 runCatching { OfferDecisionLogStore.recordOutcome(JEENY_PROVIDER, DecisionLogOutcome.ACCEPTED_CONFIRMED) }
                 runCatching { OfferStatsStore.recordAcceptedConfirmed() }
-                val fare = p.price?.let { BigDecimal.valueOf(it) }
+                val fare = p.reportPrice?.let { BigDecimal.valueOf(it) }
                 runCatching { NotificationCenter.postAcceptedRide(fare, null) }
                 OfferEvents.accepted(fare, null)
             }

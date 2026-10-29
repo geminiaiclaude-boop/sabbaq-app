@@ -22,6 +22,12 @@ internal fun reasonLabel(key: String): String {
         "dest_excluded" -> if (ar) "الوجهة من الوجهات التي تتجنبها." else "The destination is one you avoid."
         "exclude_no_dest_safe_reject" -> if (ar) "الوجهة غير ظاهرة وطلبت رفض هذه الحالة." else "The destination is not shown and you chose to reject that case."
         "no_dest_sniping_disabled" -> if (ar) "الوجهة غير ظاهرة وقبول الطلبات بلا وجهة متوقف." else "The destination is not shown and orders without one are off."
+        "payment_not_cash" -> if (ar) "الدفع ليس نقدًا." else "The payment is not cash."
+        "payment_not_card" -> if (ar) "الدفع ليس بالبطاقة." else "The payment is not by card."
+        "payment_unknown_reject" -> if (ar) "طريقة الدفع غير ظاهرة وطلبت رفض هذه الحالة." else "The payment method is not shown and you chose to reject that case."
+        "rating_below_min" -> if (ar) "تقييم الراكب أقل من الحد الذي حددته." else "The rider's rating is below your limit."
+        "rating_unknown_reject" -> if (ar) "تقييم الراكب غير ظاهر وطلبت رفض هذه الحالة." else "The rider's rating is not shown and you chose to reject that case."
+        "wait_save_filtered" -> if (ar) "طلب «انتظر ووفّر» وطلبت استبعاده." else "A wait & save order, which you chose to exclude."
         "no_ride_data_detected" -> if (ar) "لم يظهر سعر ولا وقت وصول." else "Neither a price nor a pickup time was shown."
         else -> if (ar) "الطلب لا يطابق شروطك." else "The order does not match your conditions."
     }

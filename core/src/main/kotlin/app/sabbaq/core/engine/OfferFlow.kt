@@ -7,7 +7,7 @@ import kotlin.math.sqrt
 import kotlin.random.Random
 
 /** A tap the engine decided on and is now waiting to see confirmed (FareSniper `PendingRideCapture`). */
-data class PendingRide(
+class PendingRide(
     val price: Double?,
     val minutes: Int?,
     val destination: String?,
@@ -15,7 +15,15 @@ data class PendingRide(
     val detectedAtMs: Long,
     val clickedAtMs: Long,
     val delayMs: Long,
-)
+) {
+    /** Filled by the late capture after the tap when the frame lacked them (FareSniper `late*`). */
+    @Volatile var latePrice: Double? = null
+    @Volatile var lateMinutes: Int? = null
+    @Volatile var lateDestination: String? = null
+    val reportPrice: Double? get() = price ?: latePrice
+    val reportMinutes: Int? get() = minutes ?: lateMinutes
+    val reportDestination: String? get() = destination ?: lateDestination
+}
 
 /** What the service must do after one frame. */
 sealed class FlowAction {
@@ -79,6 +87,7 @@ class OfferFlow(
         parseMs: Long,
         frameDetectedMs: Long,
         verify: () -> PostAcceptOutcome,
+        isBolt: Boolean = false,
         onPendingOutcome: (PendingOutcome) -> Unit,
     ): FlowAction {
         if (isJeeny) learnOfferIds(parsed)
@@ -155,7 +164,7 @@ class OfferFlow(
         }
         if (sinceLastClick < GLOBAL_CLICK_COOLDOWN_MS) return FlowAction.Idle("global_click_cooldown")
 
-        val decision = DecisionEngine.decide(parsed, config)
+        val decision = DecisionEngine.decide(parsed, config, isBolt)
         if (!decision.accept) {
             val first = hash != lastHandledRideHash
             if (first) {
@@ -174,7 +183,7 @@ class OfferFlow(
             price = parsed.price, minutes = parsed.minutes, destination = parsed.destination,
             identity = parsed.identity, detectedAtMs = rideDetectedAtMs, clickedAtMs = now + delay, delayMs = delay,
         )
-        pending?.let { old -> if (old != created) onPendingOutcome(PendingOutcome.Disappeared(old)) }
+        pending?.let { old -> onPendingOutcome(PendingOutcome.Disappeared(old)) }
         pending = created
         suppressIdentity = clickedOfferIdentity
         suppressUntilMs = now + POST_CLICK_SUPPRESS_MS

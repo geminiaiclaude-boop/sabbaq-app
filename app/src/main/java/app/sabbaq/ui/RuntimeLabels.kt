@@ -102,4 +102,5 @@ internal object RuntimeLabels {
 /** Decision reasons that come from the FareSniper engine (DecisionEngine). */
 private val FARESNIPER_REASON_KEYS = setOf(
     "dest_excluded", "exclude_no_dest_safe_reject", "no_dest_sniping_disabled", "no_ride_data_detected", "conservative_ocr_reject",
+    "payment_not_cash", "payment_not_card", "payment_unknown_reject", "rating_below_min", "rating_unknown_reject", "wait_save_filtered",
 )
