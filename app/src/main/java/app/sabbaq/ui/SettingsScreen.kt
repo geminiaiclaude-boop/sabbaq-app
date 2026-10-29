@@ -74,6 +74,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccessibilityNew
 import androidx.compose.material.icons.outlined.Autorenew
+import androidx.compose.material.icons.outlined.BatteryAlert
 import androidx.compose.material.icons.outlined.BatteryChargingFull
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.RestartAlt
@@ -771,6 +772,12 @@ fun SettingsScreen(
                     power = buildList {
                         add(ReadinessItem(Icons.Outlined.BatteryChargingFull, stringResource(R.string.ss_perm_batt_title), batteryUnrestricted,
                             stringResource(R.string.ss_setup_batt_done), stringResource(R.string.ss_ready_batt_why), stringResource(R.string.ss_allow), openBattery))
+                        if (android.os.Build.VERSION.SDK_INT >= 30) add(ReadinessItem(Icons.Outlined.BatteryAlert, stringResource(R.string.keep_hib_t),
+                            !app.sabbaq.fleet.KeepAlive.hibernationOn(context), stringResource(R.string.keep_hib_done), stringResource(R.string.keep_hib_b),
+                            stringResource(R.string.ss_setup_open_setting)) {
+                            runCatching { context.startActivity(app.sabbaq.fleet.KeepAlive.hibernationIntent(context)) }
+                                .recoverCatching { context.startActivity(PowerSetup.appDetailsIntent(context)) }
+                        })
                         if (PowerSetup.needsAutostart()) add(ReadinessItem(Icons.Outlined.RestartAlt, stringResource(R.string.ss_ready_autostart_title), autostartDone,
                             stringResource(R.string.ss_setup_autostart_done), stringResource(R.string.ss_ready_autostart_why), stringResource(R.string.ss_setup_open_setting)) {
                             runCatching { context.startActivity(PowerSetup.autostartIntent(context)) }
@@ -1094,6 +1101,8 @@ private fun DashboardPage(
         onOpenAccount = onOpenAccount,
         modifier = Modifier.sabbaqEntrance(0),
     )
+    UpdateBanner()
+    KeepAliveBanner()
     OperationHero(
         isActive = isActive,
         isChecking = isCheckingActivation || isRestoringSession,

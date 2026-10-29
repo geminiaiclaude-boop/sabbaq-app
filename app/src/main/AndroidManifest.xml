@@ -89,6 +89,11 @@
                 android:value="User-enabled monitoring of configured ride-offer screens with a persistent notification. Location is used only when the driver turns on destination zones." />
         </service>
 
+        <!-- Keep-alive watchdog (KeepAlive): restarts monitoring the system or a cleaner killed. -->
+        <receiver
+            android:name=".receiver.WatchdogReceiver"
+            android:exported="false" />
+
         <receiver
             android:name=".receiver.BootReceiver"
             android:exported="false">

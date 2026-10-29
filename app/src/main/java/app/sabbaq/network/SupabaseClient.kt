@@ -993,6 +993,30 @@ object SupabaseClient {
             if (summary == null) Result.failure(FeatureException(FeatureFailure.UNAVAILABLE)) else Result.success(summary)
         }
 
+    /** `app_update_info`: the newest published release and the minimum version. */
+    suspend fun appUpdateInfo(): Result<app.sabbaq.core.AppRelease> =
+        supportCall("rpc/app_update_info", buildJsonObject { }) { response ->
+            if (!response.isSuccessful) return@supportCall Result.failure(FeatureException.fromStatus(response.code))
+            runCatching { FleetParser.release(json.parseToJsonElement(response.body) as JsonObject) }.getOrNull()
+                ?.let { Result.success(it) } ?: Result.failure(FeatureException(FeatureFailure.UNAVAILABLE))
+        }
+
+    /** `shared_lexicon`: words the administration taught every app. */
+    suspend fun sharedLexicon(): Result<app.sabbaq.core.SharedLexicon> =
+        supportCall("rpc/shared_lexicon", buildJsonObject { }) { response ->
+            if (!response.isSuccessful) return@supportCall Result.failure(FeatureException.fromStatus(response.code))
+            runCatching { FleetParser.lexicon(json.parseToJsonElement(response.body) as JsonObject) }.getOrNull()
+                ?.let { Result.success(it) } ?: Result.failure(FeatureException(FeatureFailure.UNAVAILABLE))
+        }
+
+    /** `ingest_screen_sample`: one redacted unread-offer screen; true when the server stored it. */
+    suspend fun ingestScreenSample(sample: JsonObject): Result<Boolean> =
+        supportCall("rpc/ingest_screen_sample", buildJsonObject { put("p_sample", sample) }) { response ->
+            if (!response.isSuccessful) return@supportCall Result.failure(FeatureException.fromStatus(response.code))
+            val stored = runCatching { (json.parseToJsonElement(response.body) as JsonObject)["stored"]?.jsonPrimitive?.booleanOrNull }.getOrNull()
+            Result.success(stored == true)
+        }
+
     /** `claim_referral_code` from the referral page. */
     suspend fun claimReferralCode(code: String): Result<ReferralClaim> =
         supportCall("rpc/claim_referral_code", buildJsonObject { put("p_code", code.trim().uppercase(Locale.ROOT)) }) { response ->

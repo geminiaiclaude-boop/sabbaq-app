@@ -947,4 +947,18 @@ Write your problem or question and our team will reply here during working hours
     <string name="ref_claim_invalid">The invite code is not valid.</string>
     <string name="diag_on_trip_t">On a trip</string>
     <string name="diag_on_trip_b">Sabbaq accepted an order and you are on its trip. It watches for the next order when the trip ends.</string>
+    <string name="upd_available_t">Update available</string>
+    <string name="upd_available_b">Version %1$s is ready with improvements and fixes.</string>
+    <string name="upd_required_t">Sabbaq update required</string>
+    <string name="upd_required_b">This version no longer accepts orders. Update to version %1$s to keep Sabbaq working.</string>
+    <string name="upd_now">Update now</string>
+    <string name="upd_downloading">Downloading… %1$d%%</string>
+    <string name="upd_failed">The update could not be completed (%1$s). Try again.</string>
+    <string name="upd_install_hint">Android will ask you to allow Sabbaq to install the update, then tap Install. Monitoring resumes on its own afterwards.</string>
+    <string name="keep_hib_t">Turn off “Pause app activity if unused”</string>
+    <string name="keep_hib_b">Android may stop Sabbaq when it thinks the app is unused. Turn this option off so monitoring keeps running.</string>
+    <string name="keep_hib_done">Sabbaq will not be paused for being unused</string>
+    <string name="keep_standby_t">Android is restricting Sabbaq</string>
+    <string name="keep_standby_b">Android rated Sabbaq as rarely used and delays it. Set its battery use to Unrestricted and open Sabbaq daily.</string>
+    <string name="keep_open">Open the setting</string>
 </resources>

@@ -1,5 +1,8 @@
 package app.sabbaq.telemetry
 
+import app.sabbaq.core.StandbyBucket
+import app.sabbaq.fleet.FleetRepository
+import app.sabbaq.fleet.KeepAlive
 import android.app.ActivityManager
 import android.app.NotificationManager
 import android.content.ComponentName
@@ -50,6 +53,9 @@ internal object DeviceHealthProbe {
                 (app.getSystemService(Context.POWER_SERVICE) as PowerManager).isPowerSaveMode
             }.getOrDefault(false),
             networkAvailable = runCatching { networkAvailable(app) }.getOrDefault(false),
+            hibernationOn = KeepAlive.hibernationOn(app),
+            standbyRestricted = StandbyBucket.atRisk(KeepAlive.standbyBucket(app)),
+            updateRequired = FleetRepository.updateRequired(),
         )
     }
 

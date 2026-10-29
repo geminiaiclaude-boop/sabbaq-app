@@ -1,5 +1,8 @@
 ﻿package app.sabbaq.service
 
+import app.sabbaq.fleet.FleetRepository
+import app.sabbaq.fleet.ScreenSamples
+import app.sabbaq.core.engine.UiNode
 import android.accessibilityservice.AccessibilityService
 import android.os.SystemClock
 import android.util.Log
@@ -53,11 +56,14 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
         runCatching { OfferDecisionLogStore.init(applicationContext) }
         TelemetryRepository.serviceConnected = true
         DiagnosisRepository.funnel.serviceConnected(true)
-        host = EngineHost(this, { Settings.engineConfig }, ::canProcess, this)
+        host = EngineHost(this, { FleetRepository.effectiveConfig(Settings.engineConfig) }, ::canProcess, this)
         host.onConnected()
         instance = this
         applyTargetPackages()
         TelemetryRepository.trace(TelemetryStage.SERVICE_CONNECTED, reasonCode = "ready", detail = "engine=v3")
+        // Android rebinds the accessibility service after killing the process: bring the
+        // foreground service back with it when the driver left monitoring on.
+        if (Settings.monitoringWanted && !KeeperService.isRunning) KeeperService.resumeIfWanted(this)
     }
 
     /**
@@ -71,6 +77,7 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
             subscriptionEndsAtMs = Settings.subscriptionEndsAtMs,
             newestSeenMs = maxOf(Settings.newestSeenMs, persistedNewestSeenMs),
             nowMs = System.currentTimeMillis(),
+            updateRequired = FleetRepository.updateRequired(),
         )
         if (result.newestSeenMs - persistedNewestSeenMs >= NEWEST_SEEN_WRITE_STEP_MS || result.newestSeenMs < persistedNewestSeenMs) {
             Settings.newestSeenMs = result.newestSeenMs
@@ -158,8 +165,13 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
         runtimeStatus.decision(now, report(ride, decision))
         runtimeStatus.click(now)
         provider = ride.provider
-        if (method.startsWith("not_dispatched")) DiagnosisRepository.funnel.notDispatched(method.substringAfter(':', "unknown"))
-        else DiagnosisRepository.funnel.tapped()
+        if (method.startsWith("not_dispatched")) {
+            DiagnosisRepository.funnel.notDispatched(method.substringAfter(':', "unknown"))
+            sampleActiveWindow("not_sent_" + method.substringAfter(':', "unknown"))
+        } else {
+            DiagnosisRepository.funnel.tapped()
+        }
+        lastTapSignature = acceptSignature(ride)
         DiagnosisRepository.refresh()
         TelemetryRepository.trace(TelemetryStage.DECISION_ACCEPTED, "rules_passed", provider = provider)
         record(DiagnosticStage.CLICK_PATH, now, method, latencyMs = latencyMs.coerceAtLeast(0))
@@ -177,6 +189,8 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
         when (outcome) {
             is PendingOutcome.Confirmed -> {
                 DiagnosisRepository.funnel.confirmed()
+                lastTapSignature?.let { TelemetryRepository.trace(TelemetryStage.ACCEPT_LEARNED, "confirmed", detail = it, provider = provider) }
+                lastTapSignature = null
                 if (p.tapX > 0 && p.tapY > 0) { Settings.lastConfirmedTapX = p.tapX; Settings.lastConfirmedTapY = p.tapY }
                 record(DiagnosticStage.CONFIRMATION_CONFIRMED, now, "post_click_confirmed")
                 runCatching { OfferDecisionLogStore.recordOutcome(provider, DecisionLogOutcome.ACCEPTED_CONFIRMED) }
@@ -191,11 +205,13 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
             }
             is PendingOutcome.ConfirmationTimeout -> {
                 DiagnosisRepository.funnel.unconfirmed("confirmation_timeout")
+                sampleActiveWindow("confirmation_timeout")
                 record(DiagnosticStage.CONFIRMATION_TIMEOUT, now, "confirmation_timeout")
                 runCatching { OfferDecisionLogStore.recordOutcome(provider, DecisionLogOutcome.CONFIRMATION_TIMEOUT) }
             }
             is PendingOutcome.Disappeared -> {
                 DiagnosisRepository.funnel.unconfirmed("offer_disappeared")
+                sampleActiveWindow("offer_disappeared")
                 record(DiagnosticStage.CONFIRMATION_TIMEOUT, now, "offer_disappeared_after_click")
                 runCatching { OfferDecisionLogStore.recordOutcome(provider, DecisionLogOutcome.CONFIRMATION_TIMEOUT) }
             }
@@ -209,7 +225,23 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
         record(DiagnosticStage.STALE, SystemClock.elapsedRealtime(), reason)
     }
 
-    override fun onReadMiss(kind: String, reason: String, detail: String?) {
+    /** How the last tapped offer was found; reported once Android confirms the accept. */
+    private var lastTapSignature: String? = null
+
+    private fun acceptSignature(ride: ParsedRide): String {
+        val id = ride.acceptViewId.orEmpty().substringAfter(":id/").lowercase()
+            .filter { it in 'a'..'z' || it in '0'..'9' || it == '_' }
+            .replace(FORBIDDEN_DETAIL, "x").take(32).ifEmpty { "none" }
+        return "aw=${ride.acceptWord},vid=$id,n=${ride.nodesVisited.coerceIn(0, 9999)}"
+    }
+
+    /** Redacted structure of the ride-app window now on screen (ScreenSamples decides whether it is due). */
+    private fun sampleActiveWindow(reason: String) {
+        val root = runCatching { rootInActiveWindow }.getOrNull() ?: return
+        ScreenSamples.capture(provider, root.packageName?.toString(), reason, LiveNode(root))
+    }
+
+    override fun onReadMiss(kind: String, reason: String, detail: String?, screen: UiNode?, packageName: String?) {
         val now = SystemClock.elapsedRealtime()
         if (kind == "failed") {
             DiagnosisRepository.funnel.readFailed(reason)
@@ -221,6 +253,7 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
                 onTrip -> record(DiagnosticStage.STALE, now, "trip_screen", detail = detail)
                 reason != "not_offer_screen" -> record(DiagnosticStage.OFFER_NOT_PARSED, now, reason, detail = detail)
             }
+            if (!onTrip && ScreenSamples.eligibleMiss(reason)) ScreenSamples.capture(provider, packageName, "miss_$reason", screen)
         }
         DiagnosisRepository.refresh()
     }
@@ -329,6 +362,7 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
     }
 
     companion object {
+        private val FORBIDDEN_DETAIL = Regex("address|fare|phone|email|token|http")
         /** The connected service, so a changed target app is applied without waiting for an event. */
         @Volatile var instance: SabbaqA11yService? = null
         private const val TAG = "SabbaqA11y"

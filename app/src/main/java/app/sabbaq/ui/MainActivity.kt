@@ -543,7 +543,8 @@ internal fun SabbaqShell(
                 NotificationAction.OPEN_FILTERS -> onOpenDriverDestination(DriverDestination.Filters)
                 NotificationAction.OPEN_SUPPORT -> onOpenDriverDestination(DriverDestination.Support)
                 NotificationAction.UPDATE_APP ->
-                    PublicLinks.open(context, "https://play.google.com/store/apps/details?id=${BuildConfig.APPLICATION_ID}")
+                    if (BuildConfig.DIRECT_DISTRIBUTION) onOpenDriverDestination(DriverDestination.Dashboard)
+                    else PublicLinks.open(context, "https://play.google.com/store/apps/details?id=${BuildConfig.APPLICATION_ID}")
             }
         },
     )

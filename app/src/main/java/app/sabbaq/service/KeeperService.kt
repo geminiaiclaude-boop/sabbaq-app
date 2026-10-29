@@ -1,5 +1,7 @@
 package app.sabbaq.service
 
+import app.sabbaq.fleet.FleetRepository
+import app.sabbaq.fleet.KeepAlive
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -88,6 +90,7 @@ class KeeperService : Service() {
             // The driver stopped it: do not resume after a restart either.
             Settings.monitoringWanted = false
             Settings.isActive = false
+            KeepAlive.schedule(this)
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             return START_NOT_STICKY
@@ -113,6 +116,8 @@ class KeeperService : Service() {
             if (licenseMonitor?.isActive != true) {
                 licenseMonitor = serviceScope.launch { monitor() }
             }
+            isRunning = true
+            KeepAlive.schedule(this)
             // Android recreates a sticky service after killing it; monitor() restores the session.
             START_STICKY
         } catch (e: SecurityException) {
@@ -144,11 +149,13 @@ class KeeperService : Service() {
         checkAccessibility()
         warnIfSubscriptionEnding()
         refreshProfiles(force = true)
+        runCatching { FleetRepository.refreshIfStale(force = true) }
         syncInbox()
         while (currentCoroutineContext().isActive) {
             delay(60_000)
             if (!checkStillAllowed()) break
             refreshProfiles(force = false)
+            runCatching { FleetRepository.refreshIfStale() }
             syncInbox()
         }
     }
@@ -483,7 +490,14 @@ class KeeperService : Service() {
         Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
+    /** Swiping Sabbaq out of recents kills the service on many phones: come back shortly after. */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        KeepAlive.restartSoon(this)
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onDestroy() {
+        isRunning = false
         screenReceiver?.let { runCatching { unregisterReceiver(it) } }
         screenReceiver = null
         networkCallback?.let { callback ->
@@ -515,6 +529,10 @@ class KeeperService : Service() {
         private const val RESTORE_MAX_RETRY_MILLIS = 60_000L
         private const val RESTORE_RETRY_WINDOW_MILLIS = 20 * 60_000L
         private const val ACTION_STOP = "app.sabbaq.STOP_MONITORING"
+
+        /** True between a successful foreground start and onDestroy (the watchdog reads it). */
+        @Volatile var isRunning: Boolean = false
+            private set
 
         /** Starts monitoring if the driver left it on; safe to call from any context. */
         fun resumeIfWanted(context: Context) {

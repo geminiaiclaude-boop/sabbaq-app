@@ -79,6 +79,7 @@ object AdminDiagnostics {
         "CONFIRMATION_CONFIRMED" to "قبول مؤكد", "CONFIRMATION_TIMEOUT" to "قبول غير مؤكد", "SERVICE_CONNECTED" to "الخدمة متصلة",
         "SERVICE_INTERRUPTED" to "الخدمة مقاطَعة", "SERVICE_DESTROYED" to "الخدمة أُوقفت", "HEARTBEAT" to "نبضة",
         "UPLOAD_REJECTED" to "رفض الإرسال", "QUEUE_DROPPED" to "أحداث محذوفة", "PAUSED" to "إيقاف مؤقت", "APP_CRASH" to "انهيار التطبيق",
+        "PROCESS_EXIT" to "إنهاء من أندرويد", "DEVICE_INFO" to "معلومات الجهاز", "ACCEPT_LEARNED" to "بصمة قبول", "UPDATE_STATE" to "التحديث",
     )
 
     private val HEALTH_EN = mapOf(
@@ -124,7 +125,8 @@ object AdminDiagnostics {
     )
 
     private val STAGES_EN = mapOf(
-        "EVENT_RECEIVED" to "Incoming event", "PACKAGE_SEEN" to "Supported app", "GATE_BLOCKED" to "Blocked", "ROOT_UNAVAILABLE" to "Unreadable window", "TREE_REJECTED" to "Rejected screen", "STALE" to "Repeated frame", "SIGNAL_MISS" to "No order", "SIGNAL_FOUND" to "Order signal", "FRAME_INCOMPLETE" to "Incomplete frame", "OFFER_NOT_PARSED" to "Extraction failed", "OFFER_DETECTED" to "Order detected", "REJECTED" to "Rejected by conditions", "DECISION_ACCEPTED" to "Matches conditions", "ACCEPT_NODE" to "Accept button", "CLICK_RESULT" to "Tap", "CONFIRMATION_CONFIRMED" to "Accept confirmed", "CONFIRMATION_TIMEOUT" to "Accept unconfirmed", "SERVICE_CONNECTED" to "Service connected", "SERVICE_INTERRUPTED" to "Service interrupted", "SERVICE_DESTROYED" to "Service stopped", "HEARTBEAT" to "Heartbeat", "UPLOAD_REJECTED" to "Upload rejected", "QUEUE_DROPPED" to "Dropped events", "PAUSED" to "Paused", "APP_CRASH" to "App crash"
+        "EVENT_RECEIVED" to "Incoming event", "PACKAGE_SEEN" to "Supported app", "GATE_BLOCKED" to "Blocked", "ROOT_UNAVAILABLE" to "Unreadable window", "TREE_REJECTED" to "Rejected screen", "STALE" to "Repeated frame", "SIGNAL_MISS" to "No order", "SIGNAL_FOUND" to "Order signal", "FRAME_INCOMPLETE" to "Incomplete frame", "OFFER_NOT_PARSED" to "Extraction failed", "OFFER_DETECTED" to "Order detected", "REJECTED" to "Rejected by conditions", "DECISION_ACCEPTED" to "Matches conditions", "ACCEPT_NODE" to "Accept button", "CLICK_RESULT" to "Tap", "CONFIRMATION_CONFIRMED" to "Accept confirmed", "CONFIRMATION_TIMEOUT" to "Accept unconfirmed", "SERVICE_CONNECTED" to "Service connected", "SERVICE_INTERRUPTED" to "Service interrupted", "SERVICE_DESTROYED" to "Service stopped", "HEARTBEAT" to "Heartbeat", "UPLOAD_REJECTED" to "Upload rejected", "QUEUE_DROPPED" to "Dropped events", "PAUSED" to "Paused", "APP_CRASH" to "App crash",
+        "PROCESS_EXIT" to "Ended by Android", "DEVICE_INFO" to "Device info", "ACCEPT_LEARNED" to "Accept signature", "UPDATE_STATE" to "Update"
     )
 
     private val ar: Boolean get() = LocaleManager.isArabic()

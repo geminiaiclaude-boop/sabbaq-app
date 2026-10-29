@@ -954,4 +954,18 @@
     <string name="ref_claim_invalid">رمز الدعوة غير صحيح.</string>
     <string name="diag_on_trip_t">في رحلة</string>
     <string name="diag_on_trip_b">قبل سبّاق طلبًا وأنت في رحلته الآن. سيراقب الطلب التالي عند انتهاء الرحلة.</string>
+    <string name="upd_available_t">تحديث جديد متاح</string>
+    <string name="upd_available_b">النسخة %1$s جاهزة بتحسينات وإصلاحات.</string>
+    <string name="upd_required_t">تحديث سبّاق مطلوب</string>
+    <string name="upd_required_b">لم تعد هذه النسخة تقبل الطلبات. حدّث إلى النسخة %1$s ليستمر سبّاق في العمل.</string>
+    <string name="upd_now">تحديث الآن</string>
+    <string name="upd_downloading">جارٍ التنزيل… %1$d٪</string>
+    <string name="upd_failed">تعذر إكمال التحديث (%1$s). حاول مجددًا.</string>
+    <string name="upd_install_hint">سيطلب أندرويد السماح لسبّاق بتثبيت التحديث، ثم اضغط «تثبيت». تعود المتابعة تلقائيًا بعد التحديث.</string>
+    <string name="keep_hib_t">أوقف «إيقاف نشاط التطبيق مؤقتًا إذا لم يُستخدم»</string>
+    <string name="keep_hib_b">قد يوقف أندرويد سبّاق إذا اعتبره غير مستخدم. أوقف هذا الخيار ليستمر الرصد.</string>
+    <string name="keep_hib_done">لن يوقف أندرويد سبّاق بسبب عدم الاستخدام</string>
+    <string name="keep_standby_t">أندرويد يقيّد سبّاق</string>
+    <string name="keep_standby_b">صنّف أندرويد سبّاق كتطبيق نادر الاستخدام فيؤخر عمله. اجعل استهلاك البطارية «غير مقيد» وافتح سبّاق يوميًا.</string>
+    <string name="keep_open">فتح الإعداد</string>
 </resources>

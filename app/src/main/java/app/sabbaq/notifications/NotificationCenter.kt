@@ -87,7 +87,9 @@ object NotificationCenter {
             validUntil = snapshot?.validUntil,
             trialUntil = snapshot?.trialUntil,
             proUntil = snapshot?.proUntil,
-            updateRequired = SupabaseClient.appUpdateRequired,
+            updateRequired = SupabaseClient.appUpdateRequired || app.sabbaq.fleet.FleetRepository.updateRequired(),
+            updateAvailableCode = app.sabbaq.fleet.FleetRepository.release.value
+                .takeIf { it.state(app.sabbaq.BuildConfig.VERSION_CODE.toLong()) == app.sabbaq.core.UpdateState.AVAILABLE }?.latestCode ?: 0L,
         )
         val today = LocalDate.now()
         val yesterday = runCatching { OfferStatsStore.totalsFor(today.minusDays(1)) }.getOrNull()

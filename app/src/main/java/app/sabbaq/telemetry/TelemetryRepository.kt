@@ -1,5 +1,6 @@
 package app.sabbaq.telemetry
 
+import app.sabbaq.fleet.KeepAlive
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
@@ -35,6 +36,7 @@ object TelemetryRepository {
     private const val PREFS = "sabbaq_telemetry_identity"
     private const val INSTALLATION = "installation_id"
     private const val HEARTBEAT_INTERVAL_MS = 5 * 60_000L
+    private const val DEVICE_INFO_INTERVAL_MS = 6 * 60 * 60_000L
     private const val MAX_BATCHES_PER_FLUSH = 10
     private const val TARGET_VERSION_TTL_MS = 10 * 60_000L
     private const val STARTUP_DELAY_MS = 20_000L
@@ -158,12 +160,17 @@ object TelemetryRepository {
             // first heartbeat reads license state.
             delay(STARTUP_DELAY_MS)
             var lastHeartbeat = 0L
+            var lastDeviceInfo = 0L
             while (isActive) {
                 runCatching {
                     val now = SystemClock.elapsedRealtime()
                     if (lastHeartbeat == 0L || now - lastHeartbeat >= HEARTBEAT_INTERVAL_MS) {
                         lastHeartbeat = now
                         heartbeat()
+                    }
+                    if (lastDeviceInfo == 0L || now - lastDeviceInfo >= DEVICE_INFO_INTERVAL_MS) {
+                        lastDeviceInfo = now
+                        appContext?.let { trace(TelemetryStage.DEVICE_INFO, "periodic", detail = KeepAlive.deviceInfo(it)) }
                     }
                     drainCounters()
                     flush()

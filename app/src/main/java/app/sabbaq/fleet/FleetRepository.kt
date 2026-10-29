@@ -1,0 +1,105 @@
+package app.sabbaq.fleet
+
+import android.content.Context
+import android.os.SystemClock
+import app.sabbaq.BuildConfig
+import app.sabbaq.core.AppRelease
+import app.sabbaq.core.SharedLexicon
+import app.sabbaq.core.UpdateState
+import app.sabbaq.core.engine.EngineConfig
+import app.sabbaq.network.FleetParser
+import app.sabbaq.network.SupabaseClient
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
+import kotlinx.serialization.json.add
+
+/**
+ * What the administration publishes to every app: the newest release (with the minimum version)
+ * and the shared lexicon learned from the fleet. Both are cached on the device, so the minimum
+ * keeps applying offline and a restart reads with the learned words at once.
+ */
+object FleetRepository {
+    private const val PREFS = "sabbaq_fleet"
+    private const val KEY_RELEASE = "release_v1"
+    private const val KEY_LEXICON = "lexicon_v1"
+    private const val REFRESH_INTERVAL_MS = 6 * 60 * 60_000L
+
+    @Volatile private var appContext: Context? = null
+    @Volatile private var lastRefreshAt = 0L
+    private val releaseState = MutableStateFlow(AppRelease())
+    @Volatile private var lexicon = SharedLexicon()
+    @Volatile private var merged: Triple<EngineConfig, Int, EngineConfig>? = null
+
+    val release: StateFlow<AppRelease> = releaseState.asStateFlow()
+
+    fun init(context: Context) {
+        val app = context.applicationContext
+        appContext = app
+        val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        prefs.getString(KEY_RELEASE, null)?.let { decode(it)?.let(FleetParser::release) }?.let { releaseState.value = it }
+        prefs.getString(KEY_LEXICON, null)?.let { decode(it)?.let(FleetParser::lexicon) }?.let { lexicon = it }
+    }
+
+    fun updateState(): UpdateState = releaseState.value.state(BuildConfig.VERSION_CODE.toLong())
+
+    /** Below the published minimum: the gate refuses taps until the driver updates. */
+    fun updateRequired(): Boolean = updateState() == UpdateState.REQUIRED
+
+    fun lexicon(): SharedLexicon = lexicon
+
+    /** The driver's settings with the shared words merged in; recomputed only when either changes. */
+    fun effectiveConfig(own: EngineConfig): EngineConfig {
+        val lex = lexicon
+        merged?.let { (base, version, result) -> if (base === own && version == lex.version) return result }
+        val result = lex.applyTo(own)
+        merged = Triple(own, lex.version, result)
+        return result
+    }
+
+    /** Fetches both when the cached copy is older than six hours (or [force]). */
+    suspend fun refreshIfStale(force: Boolean = false) {
+        val now = SystemClock.elapsedRealtime()
+        if (!force && lastRefreshAt != 0L && now - lastRefreshAt < REFRESH_INTERVAL_MS) return
+        if (!SupabaseClient.hasSavedSession()) return
+        val prefs = appContext?.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        var any = false
+        SupabaseClient.appUpdateInfo().getOrNull()?.let { r ->
+            val before = updateState()
+            releaseState.value = r
+            prefs?.edit()?.putString(KEY_RELEASE, encode(r))?.apply()
+            if (updateState() != UpdateState.NONE && updateState() != before) UpdateTelemetry.offered(r)
+            any = true
+        }
+        SupabaseClient.sharedLexicon().getOrNull()?.let { l ->
+            if (l.version != lexicon.version) {
+                lexicon = l
+                merged = null
+                prefs?.edit()?.putString(KEY_LEXICON, encode(l))?.apply()
+            }
+            any = true
+        }
+        if (any) lastRefreshAt = now
+    }
+
+    private fun decode(text: String): JsonObject? = runCatching { Json.parseToJsonElement(text) as JsonObject }.getOrNull()
+
+    private fun encode(r: AppRelease): String = buildJsonObject {
+        put("latest_code", r.latestCode); put("latest_name", r.latestName); put("apk_url", r.apkUrl)
+        put("apk_sha256", r.apkSha256); put("apk_size", r.apkSize); put("notes_ar", r.notesAr)
+        put("notes_en", r.notesEn); put("min_code", r.minCode)
+    }.toString()
+
+    private fun encode(l: SharedLexicon): String = buildJsonObject {
+        put("version", l.version)
+        putJsonArray("accept") { l.accept.forEach { add(it) } }
+        putJsonArray("time") { l.time.forEach { add(it) } }
+        putJsonArray("currency") { l.currency.forEach { add(it) } }
+        putJsonArray("noise") { l.noise.forEach { add(it) } }
+    }.toString()
+}

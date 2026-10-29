@@ -92,3 +92,6 @@ reset role;
 
 -- Referrals and rewards (kept here so the existing CI step runs it).
 \ir referrals_test.sql
+
+-- Fleet health, update channel and shared learning (kept here so the existing CI step runs it).
+\ir fleet_learning_test.sql

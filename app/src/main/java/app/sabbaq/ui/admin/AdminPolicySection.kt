@@ -194,5 +194,8 @@ internal fun AdminPolicySection(session: AdminSession) {
         }
         AdminGeocodeCard(session)
         AdminReferralCard(session)
+        AdminReleaseCard(session)
+        AdminVersionReportCard(session)
+        AdminLearningCard(session)
     }
 }
