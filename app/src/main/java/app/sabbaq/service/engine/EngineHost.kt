@@ -265,21 +265,12 @@ class EngineHost(
 
     private fun scheduleTap(action: FlowAction.Tap, detectedAtMs: Long, cfg: EngineConfig, height: Int, isJeeny: Boolean) {
         val pending = action.pending
-        val target = action.ride.acceptNode.takeUnless { cfg.hasBlindCoords }
-        if (target == null) {
-            if (!cfg.hasBlindCoords) return
-            main.postDelayed({ flow.onWatchdog(pending)?.let(::handleOutcome) }, OfferFlow.WATCHDOG_MS + pending.delayMs)
-            val blind = Runnable {
-                val method = if (allowed() && gestureAt(pending.tapX.toFloat(), pending.tapY.toFloat(), OfferFlow.MIN_TAP_HOLD_MS)) "gesture" else "not_dispatched"
-                listener.onTap(action.ride, action.decision, pending, method, System.currentTimeMillis() - detectedAtMs)
-                if (isJeeny && action.ride.destination == null) lateCapture(pending, cfg, height)
-            }
-            if (pending.delayMs > 0) main.postDelayed(blind, pending.delayMs) else blind.run()
-            return
-        }
+        val target = action.ride.acceptNode
+        if (target == null && !cfg.hasBlindCoords) return
         main.postDelayed({ flow.onWatchdog(pending)?.let(::handleOutcome) }, OfferFlow.WATCHDOG_MS + pending.delayMs)
         val tap = Runnable {
-            val method = if (allowed() && isRideAppNode(target)) clickLadder(target) else "not_dispatched"
+            val point = if (cfg.hasBlindCoords) pending.tapX to pending.tapY else null
+            val method = if (allowed() && (target == null || isRideAppNode(target))) clickLadder(target, point) else "not_dispatched"
             listener.onTap(action.ride, action.decision, pending, method, System.currentTimeMillis() - detectedAtMs)
             if (isJeeny && action.ride.destination == null) lateCapture(pending, cfg, height)
         }
@@ -287,43 +278,29 @@ class EngineHost(
     }
 
     /** `executeFallbackClicks` (§8): click, parent click, then a 40 ms tap at the node's centre. */
-    fun clickLadder(node: UiNode): String {
-        val b = node.bounds()
-        if (b.isEmpty) return "not_dispatched"
-        if (node.click()) return "semantic"
-        if (runCatching { node.parent()?.click() }.getOrNull() == true) return "parent"
-        val path = Path().apply { moveTo(b.centerX.toFloat(), b.centerY.toFloat()) }
-        val gesture = GestureDescription.Builder()
-            .addStroke(GestureDescription.StrokeDescription(path, 0L, OfferFlow.MIN_TAP_HOLD_MS)).build()
-        return if (runCatching { service.dispatchGesture(gesture, null, null) }.getOrDefault(false)) "gesture" else "not_dispatched"
+    fun clickLadder(node: UiNode?, point: Pair<Int, Int>? = null): String {
+        val b = node?.bounds()
+        if (point == null && (b == null || b.isEmpty)) return "not_dispatched"
+        if (node != null) {
+            if (node.click()) return "semantic"
+            if (runCatching { node.parent()?.click() }.getOrNull() == true) return "parent"
+        }
+        val x = point?.first ?: b!!.centerX
+        val y = point?.second ?: b!!.centerY
+        return if (gestureAt(x.toFloat(), y.toFloat())) "gesture" else "not_dispatched"
     }
 
-    /**
-     * Turbo's instant tap (`performClick`): the saved point with a Gaussian offset (σ 12 px, at most
-     * 30 px) and a 5–15 ms hold, then the late capture fills the offer for the report.
-     */
+    /** Turbo's instant tap: the saved point, 40 ms hold, then the late capture fills the report. */
     private fun turboTap(pending: PendingRide, cfg: EngineConfig, packageName: String?) {
         main.postDelayed({ flow.onWatchdog(pending)?.let(::handleOutcome) }, OfferFlow.WATCHDOG_MS)
-        val x = jitter(pending.tapX.toFloat())
-        val y = jitter(pending.tapY.toFloat())
-        val hold = (random.nextGaussian() * 3.0 + 10.0).toLong().coerceIn(5L, 15L)
-        val method = if (gestureAt(x, y, hold)) "turbo" else "not_dispatched"
+        val method = if (gestureAt(pending.tapX.toFloat(), pending.tapY.toFloat())) "turbo" else "not_dispatched"
         val ride = ParsedRide(clickX = pending.tapX, clickY = pending.tapY)
         listener.onTap(ride, Decision(true, true, true, true, null), pending, method, System.currentTimeMillis() - pending.detectedAtMs)
         val app = RideApps.of(packageName, cfg.targetApp)
         if (app == RideApp.JEENY) lateCapture(pending, cfg, service.resources.displayMetrics.heightPixels)
     }
 
-    private val random = java.util.Random()
-
-    private fun jitter(center: Float): Float {
-        val u1 = Math.random().coerceAtLeast(1e-9)
-        val u2 = Math.random()
-        val offset = (kotlin.math.cos(u2 * 2.0 * Math.PI) * kotlin.math.sqrt(-2.0 * kotlin.math.ln(u1)) * 12.0).toFloat()
-        return center + offset.coerceIn(-30f, 30f)
-    }
-
-    private fun gestureAt(x: Float, y: Float, holdMs: Long): Boolean {
+    private fun gestureAt(x: Float, y: Float, holdMs: Long = OfferFlow.MIN_TAP_HOLD_MS): Boolean {
         val path = Path().apply { moveTo(x, y) }
         val gesture = GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0L, holdMs)).build()
         return runCatching { service.dispatchGesture(gesture, null, null) }.getOrDefault(false)

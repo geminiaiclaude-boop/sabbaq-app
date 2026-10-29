@@ -293,8 +293,5 @@ class OfferFlow(
         const val LATE_CAPTURE_DELAY_MS = 60L
         const val LATE_CAPTURE_BUDGET_MS = 80L
         const val TURBO_SAME_OFFER_MS = 350L
-        /** Turbo's blind tap box (`processOfferFrame`: 200 × 120). */
-        const val BLIND_TAP_WIDTH = 200
-        const val BLIND_TAP_HEIGHT = 120
     }
 }
