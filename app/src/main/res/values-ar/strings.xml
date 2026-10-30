@@ -971,4 +971,6 @@
     <string name="keep_bubble_t">زر سبّاق العائم</string>
     <string name="keep_bubble_b">زر تحكم عائم فوق التطبيقات: شغّل سبّاق أو أوقفه وافتحه دون مغادرة تطبيق الرحلات. ومع هذا الإذن يعامل أندرويد سبّاق كتطبيق ظاهر فلا يوقفه.</string>
     <string name="keep_bubble_done">الزر العائم مسموح</string>
+    <string name="float_button">الزر العائم</string>
+    <string name="float_needs_permission">يرجى منح إذن «الظهور فوق التطبيقات»، ثم حاول مجدداً.</string>
 </resources>

@@ -1,6 +1,5 @@
 package app.sabbaq.fleet
 
-import android.accessibilityservice.AccessibilityService
 import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.Context
@@ -9,7 +8,6 @@ import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings as AndroidSettings
@@ -38,16 +36,16 @@ import kotlin.math.abs
  *   side edge (300 ms) and keeps 100 dp from the top and 150 dp from the bottom;
  * - tapped: a 220 dp glass card with the title, a drag handle, a collapse button, «المستخدم»
  *   (opens Sabbaq), «الأدمن» (administrators only), the engine button («🚀 بدء» / «⏹️ إيقاف»)
- *   and «إغلاق», which hides the control until monitoring is next started.
+ *   and «إغلاق», which hides the control.
  *
- * It is hosted by the accessibility service, so it stays available while monitoring is off and
- * can start it again. With "display over other apps" allowed it is an application overlay (the
- * reference's window type, which also lets the start button bring up the foreground service);
- * otherwise an accessibility overlay.
+ * As in the reference it is independent of the engine: the driver shows it with «الزر العائم» on
+ * the dashboard (which needs "display over other apps", the reference's only window type), it
+ * stays while monitoring is stopped so the engine button can start it again, and only «إغلاق»
+ * hides it until the dashboard button is pressed again.
  */
 object FloatingBubble {
     private val main = Handler(Looper.getMainLooper())
-    private var host: AccessibilityService? = null
+    private var host: Context? = null
     private var root: FrameLayout? = null
     private var params: WindowManager.LayoutParams? = null
     private var collapsed: View? = null
@@ -59,7 +57,6 @@ object FloatingBubble {
     private var engineButton: View? = null
     private var adminButton: View? = null
     private var breathing: ValueAnimator? = null
-    @Volatile private var dismissed = false
 
     fun permitted(context: Context): Boolean = AndroidSettings.canDrawOverlays(context)
 
@@ -67,25 +64,28 @@ object FloatingBubble {
         Intent(AndroidSettings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
-    /** Called by the accessibility service once connected. */
-    fun attach(service: AccessibilityService) {
-        host = service
+    /** Gives the control a context to draw from; the app and the accessibility service both call it. */
+    fun attach(context: Context) {
+        host = context.applicationContext
         main.post { refresh() }
     }
 
-    fun detach() {
-        main.post { remove() }
-        host = null
+    /**
+     * The dashboard's «الزر العائم» (the reference's toggleOverlay): shows the control, or returns
+     * false when "display over other apps" is not allowed yet.
+     */
+    fun show(context: Context): Boolean {
+        if (!permitted(context)) return false
+        Settings.floatingBubble = true
+        attach(context)
+        return true
     }
-
-    /** Monitoring was started from the app: a dismissed control comes back. */
-    fun monitoringStarted() { dismissed = false; main.post { refresh() } }
 
     /** Shows, hides or updates the control for the current state; safe from any thread. */
     fun refresh() {
         if (Looper.myLooper() != Looper.getMainLooper()) { main.post { refresh() }; return }
         val service = host ?: return
-        val wanted = Settings.floatingBubble && !dismissed && SupabaseClient.hasSavedSession()
+        val wanted = Settings.floatingBubble && permitted(service) && SupabaseClient.hasSavedSession()
         if (!wanted) { remove(); return }
         if (root == null) build(service)
         applyState()
@@ -106,8 +106,7 @@ object FloatingBubble {
     }
 
     @SuppressLint("ClickableViewAccessibility")
-    private fun build(service: AccessibilityService) {
-        val ctx: Context = service
+    private fun build(ctx: Context) {
         val ar = LocaleManager.isArabic()
         val wm = ctx.getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return
         val frame = FrameLayout(ctx)
@@ -177,10 +176,9 @@ object FloatingBubble {
         frame.addView(collapsedView, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT))
         frame.addView(cardView, FrameLayout.LayoutParams(dp(ctx, 220f), FrameLayout.LayoutParams.WRAP_CONTENT))
 
-        val type = if (permitted(ctx) && Build.VERSION.SDK_INT >= 26) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            else WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
         val lp = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT, type,
+            WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT,
         ).apply { gravity = Gravity.TOP or Gravity.START; x = Settings.floatingBubbleX; y = Settings.floatingBubbleY }
@@ -215,7 +213,7 @@ object FloatingBubble {
         user.setOnClickListener { haptic(it); openApp(ctx, admin = false); expand(false) }
         admin.setOnClickListener { haptic(it); openApp(ctx, admin = true); expand(false) }
         engine.setOnClickListener { haptic(it); toggleEngine(ctx) }
-        close.setOnClickListener { haptic(it); dismissed = true; remove() }
+        close.setOnClickListener { haptic(it); Settings.floatingBubble = false; remove() }
 
         if (runCatching { wm.addView(frame, lp) }.isFailure) return
         root = frame; params = lp; collapsed = collapsedView; card = cardView; glow = glowView; dot = statusDot

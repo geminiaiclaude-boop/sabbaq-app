@@ -964,4 +964,6 @@ Write your problem or question and our team will reply here during working hours
     <string name="keep_bubble_t">Floating Sabbaq button</string>
     <string name="keep_bubble_b">A floating control over other apps: start or stop Sabbaq and open it without leaving the ride app. With this permission Android also treats Sabbaq as visible and does not stop it.</string>
     <string name="keep_bubble_done">The floating button is allowed</string>
+    <string name="float_button">Floating button</string>
+    <string name="float_needs_permission">Please allow “Display over other apps”, then try again.</string>
 </resources>

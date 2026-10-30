@@ -357,7 +357,6 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
     }
 
     override fun onDestroy() {
-        FloatingBubble.detach()
         LiveAcceptTest.onArmChanged = null
         TelemetryRepository.serviceConnected = false
         DiagnosisRepository.funnel.serviceConnected(false)

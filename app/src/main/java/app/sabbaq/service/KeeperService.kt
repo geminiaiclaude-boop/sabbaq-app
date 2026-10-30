@@ -124,7 +124,7 @@ class KeeperService : Service() {
             KeepAlive.startedOk(this)
             KeepAlive.schedule(this)
             acquireWakeLock()
-            FloatingBubble.monitoringStarted()
+            FloatingBubble.refresh()
             // Android recreates a sticky service after killing it; monitor() restores the session.
             START_STICKY
         } catch (e: SecurityException) {

@@ -29,6 +29,7 @@ class App : Application() {
         runCatching { app.sabbaq.fleet.KeepAlive.reportProcessExits(this) }
         SupabaseClient.init(this)
         VoiceAnnouncer.init(this)
+        runCatching { app.sabbaq.fleet.FloatingBubble.attach(this) }
         // A new process starts with no session in memory and the runtime gate closed. The
         // saved session (encrypted) lets monitoring resume once the license is confirmed again.
         SupabaseClient.clearSession(forget = false)

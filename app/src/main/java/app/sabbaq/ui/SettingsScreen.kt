@@ -775,7 +775,6 @@ fun SettingsScreen(
                         add(ReadinessItem(Icons.Outlined.BatteryAlert, stringResource(R.string.keep_bubble_t),
                             app.sabbaq.fleet.FloatingBubble.permitted(context), stringResource(R.string.keep_bubble_done), stringResource(R.string.keep_bubble_b),
                             stringResource(R.string.ss_allow)) {
-                            Settings.floatingBubble = true
                             runCatching { context.startActivity(app.sabbaq.fleet.FloatingBubble.permissionIntent(context)) }
                                 .recoverCatching { context.startActivity(PowerSetup.appDetailsIntent(context)) }
                         })
@@ -1120,6 +1119,7 @@ private fun DashboardPage(
         busyText = if (isRestoringSession) stringResource(R.string.ss_busy_restoring) else stringResource(R.string.ss_busy_verifying),
         modifier = Modifier.sabbaqEntrance(1),
     )
+    FloatingControlButton()
     if (isActive) {
         DiagnosisCard(
             onAction = { action ->

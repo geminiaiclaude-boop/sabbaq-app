@@ -1,10 +1,12 @@
 package app.sabbaq.ui
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BatteryAlert
+import androidx.compose.material.icons.outlined.PictureInPicture
 import androidx.compose.material.icons.outlined.SystemUpdate
 import androidx.compose.material3.Button
 import androidx.compose.material3.LinearProgressIndicator
@@ -32,6 +34,7 @@ import app.sabbaq.core.StandbyBucket
 import app.sabbaq.core.UpdateState
 import app.sabbaq.fleet.ApkUpdater
 import app.sabbaq.fleet.FleetRepository
+import app.sabbaq.fleet.FloatingBubble
 import app.sabbaq.fleet.KeepAlive
 import kotlinx.coroutines.launch
 
@@ -77,6 +80,28 @@ internal fun UpdateBanner(modifier: Modifier = Modifier) {
             ) { Text(stringResource(R.string.upd_now)) }
         }
     }
+}
+
+/**
+ * The reference dashboard's «الزر العائم»: shows the floating control; without "display over other
+ * apps" it asks for the permission and opens the setting.
+ */
+@Composable
+internal fun FloatingControlButton(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    SabbaqButton(
+        text = stringResource(R.string.float_button),
+        onClick = {
+            if (!FloatingBubble.show(context)) {
+                Toast.makeText(context, context.getString(R.string.float_needs_permission), Toast.LENGTH_LONG).show()
+                runCatching { context.startActivity(FloatingBubble.permissionIntent(context)) }
+                    .recoverCatching { context.startActivity(PowerSetup.appDetailsIntent(context)) }
+            }
+        },
+        style = SabbaqButtonStyle.Secondary,
+        icon = Icons.Outlined.PictureInPicture,
+        modifier = modifier.testTag("floating-control-show"),
+    )
 }
 
 /** Android settings that end monitoring on their own: app hibernation and the restricted standby buckets. */

@@ -111,11 +111,13 @@ object Settings {
         get() = runCatching { prefs().getLong(KEY_NEWEST_SEEN, 0L) }.getOrDefault(0L)
         set(value) { runCatching { prefs().edit().putLong(KEY_NEWEST_SEEN, value).apply() } }
 
-    /** The driver confirmed the phone maker's auto-start setting (it cannot be read back). */
-    /** The floating «سبّاق ●» button while monitoring runs (FloatingBubble); on by default like the reference. */
+    /**
+     * The floating control is shown (FloatingBubble). Like the reference it is off until the driver
+     * presses «الزر العائم» on the dashboard, and «إغلاق» on the control turns it off again.
+     */
     var floatingBubble: Boolean
-        get() = runCatching { prefs().getBoolean("floating_bubble", true) }.getOrDefault(true)
-        set(value) { runCatching { prefs().edit().putBoolean("floating_bubble", value).apply() } }
+        get() = runCatching { prefs().getBoolean("floating_control_shown", false) }.getOrDefault(false)
+        set(value) { runCatching { prefs().edit().putBoolean("floating_control_shown", value).apply() } }
 
     var floatingBubbleX: Int
         get() = runCatching { prefs().getInt("floating_bubble_x", 0) }.getOrDefault(0)
@@ -130,6 +132,7 @@ object Settings {
         get() = runCatching { prefs().getInt("floating_bubble_y", 200) }.getOrDefault(200)
         set(value) { runCatching { prefs().edit().putInt("floating_bubble_y", value).apply() } }
 
+    /** The driver confirmed the phone maker's auto-start setting (it cannot be read back). */
     var autostartConfirmed: Boolean
         get() = runCatching { prefs().getBoolean(KEY_AUTOSTART_CONFIRMED, false) }.getOrDefault(false)
         set(value) { runCatching { prefs().edit().putBoolean(KEY_AUTOSTART_CONFIRMED, value).apply() } }
