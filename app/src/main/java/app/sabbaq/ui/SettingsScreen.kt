@@ -64,7 +64,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowLeft
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.size
@@ -1012,10 +1011,11 @@ private fun ActiveSubscriptionStatusCard(
                                 endingSoon -> colors.error
                                 else -> content.copy(alpha = 0.85f)
                             },
-                            maxLines = 1,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    Icon(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, contentDescription = null, tint = content.copy(alpha = 0.8f))
+                    Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null, tint = content.copy(alpha = 0.8f))
                 }
                 trialProgress?.let { progress ->
                     LinearProgressIndicator(

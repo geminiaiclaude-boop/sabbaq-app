@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.DoNotDisturbOn
@@ -38,6 +37,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import app.sabbaq.LocaleManager
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowLeft
 import app.sabbaq.R
 import androidx.compose.ui.res.stringResource
 import app.sabbaq.service.RuntimeStatusRepository
@@ -73,8 +73,8 @@ fun OfferDecisionLogScreen(onBack: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            // RTL: «back» points to the right.
-            Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null)
+            // Auto-mirrored: points left in English, right in Arabic (the way back in each).
+            Icon(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, contentDescription = null)
             Text(stringResource(R.string.odl_back), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
         }
         Text(stringResource(R.string.nav_history), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })

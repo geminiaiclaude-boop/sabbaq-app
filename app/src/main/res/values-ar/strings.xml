@@ -973,4 +973,5 @@
     <string name="keep_bubble_done">الزر العائم مسموح</string>
     <string name="float_button">الزر العائم</string>
     <string name="float_needs_permission">يرجى منح إذن «الظهور فوق التطبيقات»، ثم حاول مجدداً.</string>
+    <string name="language_title">اللغة</string>
 </resources>

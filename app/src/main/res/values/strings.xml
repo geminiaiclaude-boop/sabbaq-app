@@ -966,4 +966,5 @@ Write your problem or question and our team will reply here during working hours
     <string name="keep_bubble_done">The floating button is allowed</string>
     <string name="float_button">Floating button</string>
     <string name="float_needs_permission">Please allow “Display over other apps”, then try again.</string>
+    <string name="language_title">Language</string>
 </resources>

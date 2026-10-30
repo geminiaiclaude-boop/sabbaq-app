@@ -65,6 +65,7 @@ import app.sabbaq.BuildConfig
 import app.sabbaq.Settings
 import app.sabbaq.R
 import app.sabbaq.LocaleManager
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import app.sabbaq.ThemeMode
 import app.sabbaq.network.LicenseState
@@ -701,6 +702,8 @@ private fun SabbaqDrawerSheet(
             if (!isAuthenticated) {
                 DrawerEntry(stringResource(R.string.ma_sign_in), Icons.Outlined.AccountCircle, selected = false, onClick = onOpenLogin)
             }
+            DrawerSectionTitle(stringResource(R.string.language_title))
+            LanguageSwitch(Modifier.fillMaxWidth().padding(horizontal = 10.dp).testTag("drawer-language"), fill = true)
             DrawerSectionTitle(stringResource(R.string.ma_sec_appearance))
             DrawerThemeChooser(themeMode, onThemeChange)
             DrawerSectionTitle(stringResource(R.string.ma_sec_privacy))
