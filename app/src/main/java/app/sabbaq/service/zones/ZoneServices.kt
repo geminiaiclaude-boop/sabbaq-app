@@ -447,6 +447,7 @@ class DriverLocationTracker(private val context: Context) : LocationListener {
         ZoneStore.saveDriverLocation(location.latitude, location.longitude)
         // The driver's city is downloaded ahead of the zone editor and of the offers naming it.
         CityIndexStore.ensure(context)
+        app.sabbaq.service.maps.MapPackStore.ensure(context)
     }
 
     @Deprecated("Deprecated in Java")

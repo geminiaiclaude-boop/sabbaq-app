@@ -1005,6 +1005,8 @@ Write your problem or question and our team will reply here during working hours
     <string name="zp_kind_district">District</string>
     <string name="zp_kind_landmark">Place</string>
     <string name="zp_kind_road">Road</string>
+    <string name="map_pack_downloading">Downloading the %1$s map for offline use (%2$d of %3$d MB)</string>
+    <string name="map_pack_ready">%1$s map works offline</string>
     <string name="zp_save_zone">Save the zone</string>
     <string name="zp_name_needed">Please enter the zone name.</string>
     <string name="zp_points_needed">A zone needs at least 3 points.</string>

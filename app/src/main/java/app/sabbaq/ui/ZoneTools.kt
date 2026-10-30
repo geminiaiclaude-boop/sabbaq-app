@@ -1,6 +1,11 @@
 package app.sabbaq.ui
 
-import android.graphics.Color as AndroidColor
+import app.sabbaq.service.maps.MapPackStore
+import app.sabbaq.ui.map.GeoPoint
+import app.sabbaq.ui.map.MapArea
+import app.sabbaq.ui.map.MapPackLine
+import app.sabbaq.ui.map.SabbaqMap
+import app.sabbaq.ui.map.rememberSabbaqMap
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +33,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -44,7 +51,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.sabbaq.R
@@ -56,13 +62,6 @@ import app.sabbaq.service.zones.GeocodeWorker
 import app.sabbaq.service.zones.ZoneStore
 import app.sabbaq.service.zones.ZoneWarmer
 import kotlinx.coroutines.launch
-import org.osmdroid.config.Configuration
-import org.osmdroid.tileprovider.tilesource.TileSourceFactory
-import org.osmdroid.util.BoundingBox
-import org.osmdroid.util.GeoPoint
-import org.osmdroid.views.MapView
-import org.osmdroid.views.overlay.Marker
-import org.osmdroid.views.overlay.Polygon
 
 /** A zone's corners as `[lat, lng]` pairs, the form the core helpers take. */
 internal fun EditableZone.corners(): List<DoubleArray> = points.map { doubleArrayOf(it.latitude, it.longitude) }
@@ -93,47 +92,26 @@ private fun ZoneToolDialog(title: String, onDismiss: () -> Unit, content: @Compo
 @Composable
 internal fun ZoneMapDialog(title: String, zones: List<MapZone>, focus: EditableZone?, onDismiss: () -> Unit) {
     val context = LocalContext.current
-    val mapView = remember {
-        Configuration.getInstance().apply {
-            load(context, context.getSharedPreferences("osmdroid", android.content.Context.MODE_PRIVATE))
-            userAgentValue = context.packageName
-        }
-        MapView(context).apply {
-            setTileSource(TileSourceFactory.MAPNIK)
-            setMultiTouchControls(true)
-            for (z in zones) {
-                overlays += Polygon(this).apply {
-                    points = z.zone.points + z.zone.points.first()
-                    val on = z.zone.active && !z.zone.pending
-                    fillPaint.color = when {
-                        !on -> AndroidColor.argb(40, 120, 120, 120)
-                        z.exclude -> AndroidColor.argb(70, 220, 40, 40)
-                        else -> AndroidColor.argb(70, 30, 160, 90)
-                    }
-                    outlinePaint.color = if (z.exclude) AndroidColor.rgb(200, 30, 30) else AndroidColor.rgb(20, 130, 70)
-                    outlinePaint.strokeWidth = 5f
-                    this.title = z.zone.name
-                }
-            }
-            ZoneStore.driverLocation()?.let { me ->
-                overlays += Marker(this).apply { position = GeoPoint(me[0], me[1]); setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM) }
-            }
-            val frame = (focus?.points ?: zones.flatMap { it.zone.points })
-            if (frame.isNotEmpty()) {
-                val box = BoundingBox.fromGeoPoints(frame)
-                controller.setZoom(14.0)
-                controller.setCenter(box.centerWithDateLine)
-                addOnFirstLayoutListener { _, _, _, _, _ -> zoomToBoundingBox(box.increaseByScale(1.3f), false) }
-            } else {
-                controller.setZoom(12.0)
-                controller.setCenter(ZoneStore.driverLocation()?.let { GeoPoint(it[0], it[1]) } ?: GeoPoint(24.7136, 46.6753))
-            }
-        }
+    val map = rememberSabbaqMap()
+    val packStatus by MapPackStore.status.collectAsState()
+    remember {
+        map.setAreas(zones.map { z ->
+            val on = z.zone.active && !z.zone.pending
+            MapArea(z.zone.points, when { !on -> "#787878"; z.exclude -> "#dc2828"; else -> "#1e9650" },
+                if (z.exclude) "#c81e1e" else "#148246", if (on) 0.28 else 0.16)
+        })
+        val me = ZoneStore.driverLocation()?.let { GeoPoint(it[0], it[1]) }
+        me?.let { map.setPins(listOf(it to "#1a73e8")) }
+        val frame = focus?.points ?: zones.flatMap { it.zone.points }
+        if (frame.isNotEmpty()) map.fit(frame, animate = false) else map.moveTo(me ?: GeoPoint(24.7136, 46.6753), 12.0, animate = false)
+        true
     }
-    DisposableEffect(Unit) { onDispose { mapView.onDetach() } }
+    LaunchedEffect(Unit) { MapPackStore.ensure(context) }
+    LaunchedEffect(packStatus) { if (packStatus is MapPackStore.Status.Ready) map.loadStyle(context) }
     ZoneToolDialog(title, onDismiss) {
+        Box(Modifier.padding(horizontal = 16.dp)) { MapPackLine(packStatus) }
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize().testTag("zone-view-map"))
+            SabbaqMap(map, Modifier.fillMaxSize().testTag("zone-view-map"))
         }
     }
 }

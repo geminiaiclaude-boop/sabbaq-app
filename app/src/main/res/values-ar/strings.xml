@@ -1012,6 +1012,8 @@
     <string name="zp_kind_district">حي</string>
     <string name="zp_kind_landmark">معلم</string>
     <string name="zp_kind_road">طريق</string>
+    <string name="map_pack_downloading">جارٍ تحميل خريطة %1$s للعمل دون إنترنت (%2$d من %3$d م.ب)</string>
+    <string name="map_pack_ready">خريطة %1$s تعمل دون إنترنت</string>
     <string name="zp_save_zone">حفظ المنطقة</string>
     <string name="zp_name_needed">الرجاء إدخال اسم المنطقة.</string>
     <string name="zp_points_needed">المنطقة تحتاج 3 نقاط على الأقل.</string>

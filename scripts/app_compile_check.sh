@@ -15,7 +15,7 @@ SER="$(jar org.jetbrains.kotlin/kotlin-serialization-compiler-plugin-embeddable/
 COMPOSE="$(jar org.jetbrains.kotlin/kotlin-compose-compiler-plugin-embeddable/2.1.21 '*.jar')"
 T=$(mktemp -d)
 LIBS=("$(cygpath -u "$SDK")/platforms/android-36/android.jar")
-for dir in $(ls -d $C/androidx.* $C/org.osmdroid $C/org.jetbrains.kotlinx $C/org.jetbrains.kotlin $C/com.squareup.okhttp3 $C/com.squareup.okio $C/com.google.android.libraries.identity.googleid 2>/dev/null); do
+for dir in $(ls -d $C/androidx.* $C/org.maplibre.gl $C/org.jetbrains.kotlinx $C/org.jetbrains.kotlin $C/com.squareup.okhttp3 $C/com.squareup.okio $C/com.jakewharton.timber $C/com.google.android.libraries.identity.googleid 2>/dev/null); do
   for art in $(ls $dir 2>/dev/null); do
     [ -d "$dir/$art" ] || continue
     case "$art" in *compiler*|*gradle*|*daemon*|*scripting*|*build-tools*|*-test*|*junit*) continue ;; esac

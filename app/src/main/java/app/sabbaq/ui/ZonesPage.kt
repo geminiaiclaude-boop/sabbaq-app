@@ -1,6 +1,5 @@
 package app.sabbaq.ui
 
-import android.graphics.Color as AndroidColor
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -62,7 +61,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.sabbaq.R
@@ -71,21 +69,18 @@ import app.sabbaq.fleet.ZonePolicyRepository
 import app.sabbaq.core.engine.DecisionEngine
 import app.sabbaq.core.engine.zones.CityIndex
 import app.sabbaq.core.engine.zones.CityPlace
+import app.sabbaq.service.maps.MapPackStore
 import app.sabbaq.service.zones.CityIndexStore
+import app.sabbaq.ui.map.GeoPoint
+import app.sabbaq.ui.map.MapPackLine
+import app.sabbaq.ui.map.SabbaqMap
+import app.sabbaq.ui.map.cityBox
+import app.sabbaq.ui.map.rememberSabbaqMap
 import app.sabbaq.service.zones.GeocodeWorker
 import app.sabbaq.service.zones.ZoneStore
 import app.sabbaq.service.zones.ZoneWarmer
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import org.osmdroid.config.Configuration
-import org.osmdroid.util.BoundingBox
-import org.osmdroid.events.MapEventsReceiver
-import org.osmdroid.tileprovider.tilesource.TileSourceFactory
-import org.osmdroid.util.GeoPoint
-import org.osmdroid.views.MapView
-import org.osmdroid.views.overlay.MapEventsOverlay
-import org.osmdroid.views.overlay.Marker
-import org.osmdroid.views.overlay.Polygon
 
 /** Destination zones are green and avoided zones red, on the map, the cards and the dashboard. */
 private val IncludeColor = Color(0xFF1E9E5A)
@@ -546,7 +541,7 @@ internal fun ZoneEditorDialog(
     // A zone outside the stored city opens on the whole map; otherwise the map stays on the city.
     var wholeMap by remember {
         mutableStateOf(initial?.points?.let { p ->
-            val c = CityIndexStore.city.value?.box
+            val c = MapPackStore.cityBox(context) ?: CityIndexStore.city.value?.box
             c != null && !c.contains(p.sumOf { it.latitude } / p.size, p.sumOf { it.longitude } / p.size)
         } ?: false)
     }
@@ -556,82 +551,40 @@ internal fun ZoneEditorDialog(
     val noOutline = stringResource(R.string.zp_no_outline)
     val noFix = stringResource(R.string.zp_no_fix)
 
-    val mapView = remember {
-        Configuration.getInstance().apply {
-            load(context, context.getSharedPreferences("osmdroid", android.content.Context.MODE_PRIVATE))
-            userAgentValue = context.packageName
-        }
-        MapView(context).apply {
-            setTileSource(TileSourceFactory.MAPNIK)
-            setMultiTouchControls(true)
-            val loc = ZoneStore.driverLocation()
-            val center = initial?.points?.let { p -> GeoPoint(p.sumOf { it.latitude } / p.size, p.sumOf { it.longitude } / p.size) }
-                ?: loc?.let { GeoPoint(it[0], it[1]) } ?: GeoPoint(24.7136, 46.6753)
-            controller.setZoom(if (initial != null) 14.0 else 13.0)
-            controller.setCenter(center)
-        }
-    }
-    DisposableEffect(Unit) { onDispose { mapView.onDetach() } }
+    val map = rememberSabbaqMap()
+    val packStatus by MapPackStore.status.collectAsState()
 
     fun redraw() {
-        mapView.overlays.removeAll { it !is MapEventsOverlay }
-        val stroke = if (exclude) AndroidColor.rgb(200, 30, 30) else AndroidColor.rgb(20, 130, 70)
-        if (points.size >= 2) {
-            mapView.overlays += Polygon(mapView).apply {
-                this.points = points.toList() + points.first()
-                fillPaint.color = if (exclude) AndroidColor.argb(70, 220, 40, 40) else AndroidColor.argb(70, 30, 160, 90)
-                outlinePaint.color = stroke
-                outlinePaint.strokeWidth = 5f
-            }
-        }
-        listOfNotNull(here, picked?.points?.firstOrNull()?.let { GeoPoint(it[0], it[1]) }).forEach { p ->
-            mapView.overlays += Marker(mapView).apply {
-                position = p
-                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-                alpha = 0.6f
-                setOnMarkerClickListener { _, _ -> false }
-            }
-        }
-        points.forEachIndexed { i, p ->
-            mapView.overlays += Marker(mapView).apply {
-                position = p
-                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-                isDraggable = true
-                setOnMarkerDragListener(object : Marker.OnMarkerDragListener {
-                    override fun onMarkerDrag(marker: Marker) = Unit
-                    override fun onMarkerDragStart(marker: Marker) = Unit
-                    override fun onMarkerDragEnd(marker: Marker) { if (i < points.size) points[i] = marker.position; redraw() }
-                })
-                setOnMarkerClickListener { _, _ -> if (i < points.size) points.removeAt(i); redraw(); true }
-            }
-        }
-        mapView.invalidate()
+        map.setDraft(points.toList(), if (exclude) "#dc2828" else "#1e9650", if (exclude) "#c81e1e" else "#148246")
+        map.setPins(listOfNotNull(here?.let { it to "#1a73e8" }, picked?.points?.firstOrNull()?.let { GeoPoint(it[0], it[1]) to "#f29900" }))
     }
 
     remember {
-        mapView.overlays.add(0, MapEventsOverlay(object : MapEventsReceiver {
-            override fun singleTapConfirmedHelper(p: GeoPoint): Boolean { points += p; error = null; redraw(); return true }
-            override fun longPressHelper(p: GeoPoint): Boolean = false
-        }))
+        map.editable = true
+        map.onTap = { p -> points += p; error = null; redraw() }
+        map.onCornerMoved = { i, p -> if (i < points.size) points[i] = p; redraw() }
+        map.onCornerRemoved = { i -> if (i < points.size) points.removeAt(i); redraw() }
+        val start = initial?.points?.takeIf { it.isNotEmpty() }
+        if (start != null) map.fit(start, animate = false)
+        else map.moveTo(ZoneStore.driverLocation()?.let { GeoPoint(it[0], it[1]) } ?: GeoPoint(24.7136, 46.6753), 13.0, animate = false)
         redraw()
         true
     }
 
-    LaunchedEffect(Unit) { CityIndexStore.ensure(context) }
-    // The map stays on the driver's city (its box, zoomed no further out than the city) unless
+    LaunchedEffect(Unit) { CityIndexStore.ensure(context); MapPackStore.ensure(context) }
+    // A finished download switches the map to the offline city.
+    LaunchedEffect(packStatus) { if (packStatus is MapPackStore.Status.Ready) map.loadStyle(context) }
+    // The map stays on the driver's city (the offline map's box, else the names index's) unless
     // «كل الخريطة» is on.
-    LaunchedEffect(city, wholeMap) {
-        val c = city
-        if (c != null && !wholeMap) {
-            mapView.setScrollableAreaLimitDouble(BoundingBox(c.box.north, c.box.east, c.box.south, c.box.west))
-            mapView.minZoomLevel = 10.0
-            val center = mapView.mapCenter
-            if (!c.box.contains(center.latitude, center.longitude)) {
-                mapView.controller.setCenter(GeoPoint((c.box.north + c.box.south) / 2, (c.box.east + c.box.west) / 2))
+    LaunchedEffect(city, wholeMap, packStatus) {
+        val box = MapPackStore.cityBox(context) ?: city?.box
+        if (box != null && !wholeMap) {
+            map.restrictTo(box)
+            map.center()?.let { c ->
+                if (!box.contains(c.latitude, c.longitude)) map.moveTo(GeoPoint((box.north + box.south) / 2, (box.east + box.west) / 2), 11.0, animate = false)
             }
         } else {
-            mapView.setScrollableAreaLimitDouble(null)
-            mapView.minZoomLevel = 3.0
+            map.restrictTo(null)
         }
     }
     // Type-ahead: the downloaded city answers at once; Photon is asked after a short pause.
@@ -655,8 +608,7 @@ internal fun ZoneEditorDialog(
         query = p.name
         error = null
         val at = p.points.first()
-        mapView.controller.setZoom(if (p.kind == CityIndex.DISTRICT) 14.0 else 16.0)
-        mapView.controller.animateTo(GeoPoint(at[0], at[1]))
+        map.moveTo(GeoPoint(at[0], at[1]), if (p.kind == CityIndex.DISTRICT) 14.0 else 16.0)
         redraw()
     }
 
@@ -666,7 +618,7 @@ internal fun ZoneEditorDialog(
         if (name.isBlank()) name = zoneName.substringBefore('،').trim().take(60)
         error = null
         redraw()
-        if (points.size >= 3) mapView.zoomToBoundingBox(BoundingBox.fromGeoPoints(points.toList()).increaseByScale(1.3f), true)
+        if (points.size >= 3) map.fit(points.toList())
     }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
@@ -739,6 +691,7 @@ internal fun ZoneEditorDialog(
                             }
                         }) { Text(stringResource(R.string.zp_use_outline, p.name.substringBefore('،'))) }
                     }
+                    MapPackLine(packStatus)
                     city?.let { c ->
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             FilterChip(selected = !wholeMap, onClick = { wholeMap = false }, label = { Text(stringResource(R.string.zp_city_map, c.name)) },
@@ -764,7 +717,7 @@ internal fun ZoneEditorDialog(
                             when {
                                 f == null -> error = noFix
                                 district == null || district.second.size < 3 -> {
-                                    here = GeoPoint(f[0], f[1]); mapView.controller.setZoom(15.0); mapView.controller.animateTo(here); redraw()
+                                    here = GeoPoint(f[0], f[1]); map.moveTo(GeoPoint(f[0], f[1]), 15.0); redraw()
                                     error = noOutline
                                 }
                                 else -> { here = GeoPoint(f[0], f[1]); fill(district.first, district.second) }
@@ -777,12 +730,12 @@ internal fun ZoneEditorDialog(
                             val f = CityIndexStore.freshLocation(context)
                             busy = false
                             if (f == null) error = noFix
-                            else { here = GeoPoint(f[0], f[1]); mapView.controller.setZoom(15.0); mapView.controller.animateTo(here); redraw() }
+                            else { here = GeoPoint(f[0], f[1]); map.moveTo(GeoPoint(f[0], f[1]), 15.0); redraw() }
                         }
                     }) { Icon(Icons.Outlined.MyLocation, contentDescription = stringResource(R.string.zp_my_location)) }
                 }
                 Box(Modifier.weight(1f).fillMaxWidth()) {
-                    AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize().testTag("zone-map"))
+                    SabbaqMap(map, Modifier.fillMaxSize().testTag("zone-map"))
                 }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }
                 Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
