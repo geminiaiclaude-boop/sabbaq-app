@@ -25,6 +25,7 @@ import android.widget.Toast
 import app.sabbaq.LocaleManager
 import app.sabbaq.Settings
 import app.sabbaq.network.SupabaseClient
+import app.sabbaq.service.FloatingControlService
 import app.sabbaq.service.KeeperService
 import app.sabbaq.ui.MainActivity
 import kotlin.math.abs
@@ -41,7 +42,8 @@ import kotlin.math.abs
  * As in the reference it is independent of the engine: the driver shows it with «الزر العائم» on
  * the dashboard (which needs "display over other apps", the reference's only window type), it
  * stays while monitoring is stopped so the engine button can start it again, and only «إغلاق»
- * hides it until the dashboard button is pressed again.
+ * hides it until the dashboard button is pressed again. While it is shown and monitoring is off,
+ * FloatingControlService keeps the process in the foreground, as the reference's service does.
  */
 object FloatingBubble {
     private val main = Handler(Looper.getMainLooper())
@@ -86,9 +88,11 @@ object FloatingBubble {
         if (Looper.myLooper() != Looper.getMainLooper()) { main.post { refresh() }; return }
         val service = host ?: return
         val wanted = Settings.floatingBubble && permitted(service) && SupabaseClient.hasSavedSession()
-        if (!wanted) { remove(); return }
+        if (!wanted) { remove(); FloatingControlService.sync(service, false); return }
         if (root == null) build(service)
         applyState()
+        // Monitoring holds the process while it runs; otherwise the control's own service does.
+        FloatingControlService.sync(service, root != null && !KeeperService.isRunning)
     }
 
     private fun dp(context: Context, v: Float): Int = (v * context.resources.displayMetrics.density).toInt()

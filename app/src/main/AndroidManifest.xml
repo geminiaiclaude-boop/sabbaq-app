@@ -100,6 +100,15 @@
                 android:value="User-enabled monitoring of configured ride-offer screens with a persistent notification. Location is used only when the driver turns on destination zones." />
         </service>
 
+        <service
+            android:name=".service.FloatingControlService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps the user-enabled floating control over other apps available while monitoring is off, with a persistent notification." />
+        </service>
+
         <!-- Keep-alive watchdog (KeepAlive): restarts monitoring the system or a cleaner killed. -->
         <receiver
             android:name=".receiver.WatchdogReceiver"
