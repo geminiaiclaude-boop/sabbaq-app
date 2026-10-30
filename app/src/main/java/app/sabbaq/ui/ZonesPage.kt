@@ -158,9 +158,17 @@ internal fun ZonesPage(
             onDraftChange(draft.copy(excludeZonesEnabled = it))
         }
         if (draft.excludeZonesEnabled) {
-            SwitchLine(stringResource(R.string.zone_exclude_reject_unknown), draft.excludeZonesRejectOnUnknown, "zones-exclude-reject-unknown") {
-                onDraftChange(draft.copy(excludeZonesRejectOnUnknown = it))
+            Text(stringResource(R.string.zp_unknown_title), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                FilterChip(selected = draft.excludeZonesRejectOnUnknown, onClick = { onDraftChange(draft.copy(excludeZonesRejectOnUnknown = true)) },
+                    label = { Text(stringResource(R.string.zp_unknown_reject)) }, modifier = Modifier.weight(1f).testTag("zones-exclude-unknown-reject"))
+                FilterChip(selected = !draft.excludeZonesRejectOnUnknown, onClick = { onDraftChange(draft.copy(excludeZonesRejectOnUnknown = false)) },
+                    label = { Text(stringResource(R.string.zp_unknown_accept_alert)) }, modifier = Modifier.weight(1f).testTag("zones-exclude-unknown-accept"))
             }
+            Text(
+                stringResource(if (draft.excludeZonesRejectOnUnknown) R.string.zone_exclude_reject_unknown else R.string.zp_unknown_accept_alert_b),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
         if (draft.zonesEnabled || draft.excludeZonesEnabled) ZoneAdvancedSettings(draft, errors, onDraftChange)
     }

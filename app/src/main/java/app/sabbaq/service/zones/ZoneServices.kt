@@ -164,6 +164,13 @@ object ZoneStore : ZoneEnvironment {
             p.edit().putString(KEY_PENDING, JsonArray(list.map { JsonPrimitive(it) }).toString())
                 .putString(KEY_FAILS, JsonObject(fails).toString()).apply()
         }
+        points.firstOrNull()?.let { ExcludeZoneAlerts.onPlaced(text, it[0], it[1]) }
+    }
+
+    /** Stores an address placed outside the queue (the post-accept check's own lookup). */
+    internal fun remember(text: String, points: List<DoubleArray>) {
+        if (points.isEmpty()) return
+        synchronized(lock) { store(text, points) }
     }
 
     private fun store(text: String, points: List<DoubleArray>) {
@@ -287,6 +294,24 @@ object GeocodeWorker {
         } finally {
             conn.disconnect()
         }
+    }
+
+    /**
+     * One immediate lookup for the post-accept exclude check (the reference's online step):
+     * Sabbaq's server, then OpenStreetMap, then the phone's geocoder; the answer is cached.
+     */
+    suspend fun resolveNow(context: Context, text: String): DoubleArray? = withContext(Dispatchers.IO) {
+        val near = ZoneStore.driverLocation()
+        val server = runCatching { SupabaseClient.geocodeResolve(ZoneStore.sharedKey(text), text, near) }
+            .getOrDefault(SupabaseClient.GeocodeAnswer.Unavailable)
+        val points = when (server) {
+            is SupabaseClient.GeocodeAnswer.Found -> server.points
+            SupabaseClient.GeocodeAnswer.NotFound -> emptyList()
+            SupabaseClient.GeocodeAnswer.Unavailable -> runCatching { nominatim(text, near) }.getOrDefault(emptyList())
+                .ifEmpty { runCatching { androidGeocoder(context.applicationContext, text, near) }.getOrDefault(emptyList()) }
+        }
+        ZoneStore.remember(text, points)
+        points.firstOrNull()
     }
 
     private fun nominatim(text: String, near: DoubleArray?): List<DoubleArray> =

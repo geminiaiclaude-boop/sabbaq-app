@@ -1,8 +1,9 @@
 ﻿package app.sabbaq.service
 
 import app.sabbaq.fleet.FleetRepository
-import app.sabbaq.fleet.FloatingBubble
+import app.sabbaq.fleet.FloatingBubble
 import app.sabbaq.fleet.ScreenSamples
+import app.sabbaq.service.zones.ExcludeZoneAlerts
 import app.sabbaq.fleet.ShadowTester
 import app.sabbaq.core.engine.UiNode
 import android.accessibilityservice.AccessibilityService
@@ -204,6 +205,7 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
                 val fare = p.reportPrice?.let { BigDecimal.valueOf(it) }
                 runCatching { NotificationCenter.postAcceptedRide(fare, null) }
                 OfferEvents.accepted(fare, null)
+                ExcludeZoneAlerts.onAccepted(this, p.reportDestination)
             }
             is PendingOutcome.NewOfferAppeared -> {
                 DiagnosisRepository.funnel.unconfirmed("new_offer_appeared")
@@ -220,6 +222,8 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
                 sampleActiveWindow("offer_disappeared")
                 record(DiagnosticStage.CONFIRMATION_TIMEOUT, now, "offer_disappeared_after_click")
                 runCatching { OfferDecisionLogStore.recordOutcome(provider, DecisionLogOutcome.CONFIRMATION_TIMEOUT) }
+                // The reference treats a vanished offer like an accept for this check: it was most likely taken.
+                ExcludeZoneAlerts.onAccepted(this, p.reportDestination)
             }
         }
     }
@@ -356,7 +360,77 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
         TelemetryRepository.trace(telemetryStage, reasonCode = reason, detail = detail, provider = provider, latencyMs = latencyMs)
     }
 
+    private var excludeWarning: android.view.View? = null
+    private var toneGenerator: android.media.ToneGenerator? = null
+
+    /**
+     * The reference's exclude-zone card over the ride app: title, the ride's destination, «إغلاق»;
+     * centred, at most 340 dp wide, gone after 15 s, with a 1.2 s alarm tone at full alarm volume
+     * (the alarm volume is restored after 1.4 s).
+     */
+    fun showExcludeZoneWarning(title: String, text: String) {
+        val main = android.os.Handler(android.os.Looper.getMainLooper())
+        main.post {
+            runCatching {
+                removeExcludeWarning()
+                val ar = app.sabbaq.LocaleManager.isArabic()
+                val density = resources.displayMetrics.density
+                fun dp(v: Int) = (v * density).toInt()
+                val card = android.widget.LinearLayout(this).apply {
+                    orientation = android.widget.LinearLayout.VERTICAL
+                    layoutDirection = if (ar) android.view.View.LAYOUT_DIRECTION_RTL else android.view.View.LAYOUT_DIRECTION_LTR
+                    setPadding(dp(20), dp(16), dp(20), dp(12))
+                    background = android.graphics.drawable.GradientDrawable().apply { cornerRadius = dp(16).toFloat(); setColor(0xF5B3261E.toInt()) }
+                    elevation = dp(8).toFloat()
+                    addView(android.widget.TextView(context).apply {
+                        this.text = title; setTextColor(android.graphics.Color.WHITE); textSize = 18f; typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    })
+                    addView(android.widget.TextView(context).apply {
+                        this.text = text; setTextColor(android.graphics.Color.WHITE); textSize = 15f; setPadding(0, dp(8), 0, dp(8))
+                    })
+                    addView(android.widget.Button(context).apply {
+                        this.text = if (ar) "إغلاق" else "Dismiss"
+                        setOnClickListener { removeExcludeWarning() }
+                    })
+                }
+                val width = minOf(resources.displayMetrics.widthPixels - dp(48), dp(340))
+                val lp = android.view.WindowManager.LayoutParams(width, android.view.WindowManager.LayoutParams.WRAP_CONTENT,
+                    android.view.WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                    android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE, android.graphics.PixelFormat.TRANSLUCENT,
+                ).apply { gravity = android.view.Gravity.CENTER }
+                (getSystemService(WINDOW_SERVICE) as android.view.WindowManager).addView(card, lp)
+                excludeWarning = card
+                main.postDelayed({ if (excludeWarning === card) removeExcludeWarning() }, 15_000L)
+                playExcludeWarningTone(main)
+            }
+        }
+    }
+
+    private fun removeExcludeWarning() {
+        val view = excludeWarning ?: return
+        excludeWarning = null
+        runCatching { (getSystemService(WINDOW_SERVICE) as android.view.WindowManager).removeView(view) }
+    }
+
+    private fun playExcludeWarningTone(main: android.os.Handler) {
+        val audio = getSystemService(AUDIO_SERVICE) as? android.media.AudioManager
+        val stream = android.media.AudioManager.STREAM_ALARM
+        val saved = runCatching {
+            val max = audio!!.getStreamMaxVolume(stream)
+            val current = audio.getStreamVolume(stream)
+            if (current < max) { audio.setStreamVolume(stream, max, 0); current } else null
+        }.getOrNull()
+        runCatching {
+            val tone = toneGenerator ?: android.media.ToneGenerator(stream, 100).also { toneGenerator = it }
+            tone.startTone(EXCLUDE_TONE, 1_200)
+        }
+        if (saved != null) main.postDelayed({ runCatching { audio?.setStreamVolume(stream, saved, 0) } }, 1_400L)
+    }
+
     override fun onDestroy() {
+        removeExcludeWarning()
+        runCatching { toneGenerator?.release() }
+        toneGenerator = null
         LiveAcceptTest.onArmChanged = null
         TelemetryRepository.serviceConnected = false
         DiagnosisRepository.funnel.serviceConnected(false)
@@ -376,6 +450,8 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
         @Volatile var instance: SabbaqA11yService? = null
         private const val TAG = "SabbaqA11y"
         private const val NEWEST_SEEN_WRITE_STEP_MS = 60_000L
+        /** The reference's tone id for the exclude-zone warning (ToneGenerator value 92). */
+        private const val EXCLUDE_TONE = 92
         private val HELD_REASONS = setOf("post_click_suppressed", "same_ride_cooldown", "global_click_cooldown")
     }
 }

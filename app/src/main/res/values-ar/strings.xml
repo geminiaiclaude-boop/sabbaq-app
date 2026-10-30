@@ -1005,4 +1005,6 @@
     <string name="zp_save_zone">حفظ المنطقة</string>
     <string name="zp_name_needed">الرجاء إدخال اسم المنطقة.</string>
     <string name="zp_points_needed">المنطقة تحتاج 3 نقاط على الأقل.</string>
+    <string name="zp_unknown_accept_alert">قبول ثم تنبيه</string>
+    <string name="zp_unknown_accept_alert_b">يُقبل الطلب فورًا، ثم يصلك تنبيه إذا تبيّن أن الوجهة داخل منطقة مستثناة.</string>
 </resources>
