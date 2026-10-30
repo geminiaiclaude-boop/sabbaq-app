@@ -108,6 +108,7 @@
 3. التطبيق (`MapPackStore`) يقرأ القائمة مرة يوميًا، ويختار مدينة السائق على الهاتف، ويحمّل ملفها على أي شبكة مع الاستئناف، ويرفضه إن خالف الحجم أو البصمة، ويستبدله ببناء أحدث بعد 30 يومًا، ويحتفظ بآخر مدينتين.
 4. الخطوط (Noto Sans، رخصة OFL) والأيقونات وطبقات Protomaps (`@protomaps/basemaps` 5.7.2، عربي وإنجليزي) مضمّنة في `app/src/main/assets/map`. أسماء الخطوط بلا مسافات لأن MapLibre يطلبها من الأصول بالمسار.
 5. قبل تحميل ملف المدينة تُعرض بلاطات OpenStreetMap مباشرة عبر الإنترنت. نسخة الإصدار تحمل مكتبة الخريطة لمعالجات ARM فقط.
+6. **حجم الـAPK (قرار المالك 2026-10-30، دائم):** المكتبات الأصلية مضغوطة داخل الملف (`jniLibs.useLegacyPackaging = true`)، فالتحميل نحو 16 م.ب بدل 33.6 مع نفس المساحة على الهاتف. لا تُلغَ؛ `ReleaseSizeTest` يفشل إن أُزيلت أو أُزيل حصر الإصدار بمعالجات ARM.
 
 **عقد الكلمات المحجوزة:** `private.reserved_words()` في الترحيل يجب أن تساوي `ScreenSampler.vocabulary()`، ويفرض ذلك `LearningServerContractTest`. إذا أضفت كلمة إلى `JeenyLexicon` فأضفها أيضًا إلى `reserved_words` في **ترحيل جديد**.
 
@@ -145,7 +146,8 @@
 | الأمر | ماذا يفحص |
 |---|---|
 | `bash scripts/core_engine_test.sh` | يترجم `core` ويشغّل كل اختبارات JUnit فيه، وتنتهي بـ`OK (N tests)` |
-| `bash scripts/app_compile_check.sh` | يترجم التطبيق كله. الأخطاء المتوقعة الوحيدة في `LocaleManager.kt`، لأن الذاكرة المؤقتة تحمل appcompat قديمًا. أي خطأ غيرها حقيقي |
+| `bash scripts/app_compile_check.sh` | يترجم core ثم التطبيق كوحدتين منفصلتين كما يفعل Gradle. المطلوب صفر أخطاء (يحتاج appcompat 1.7.0 في الذاكرة المؤقتة) |
+| `bash scripts/app_unit_test.sh` | يشغّل اختبارات التطبيق (`app/src/test`) كما في CI، في نحو 3 دقائق. **شغّله قبل كل دفع**، فجولة CI تأخذ نحو 20 دقيقة |
 | `python scripts/resource_check.py` | مراجع الموارد، وتطابق مفاتيح العربية والإنجليزية ومتغيراتها، وترجمة aapt2. المطلوب `0 problem(s)` |
 | `bash scripts/ui_draft_check.sh` | مسودة الشروط وأسباب الرفض، ويشغّل `ConditionsDraftTest`. شاشات المناطق يغطيها `app_compile_check` |
 | اختبارات قاعدة البيانات | Postgres 16 معزول على منفذ خاص، **لا تستخدم Postgres أي نظام آخر**. شغّل `bootstrap.sql`، ثم كل الترحيلات بالترتيب، ثم ملفات `supabase/tests/*.sql`، وكلها بـ`-v ON_ERROR_STOP=1`. على Linux: `scripts/test_database_local.sh` |

@@ -164,6 +164,10 @@ android {
 
     packaging {
         resources.excludes += setOf("META-INF/AL2.0", "META-INF/LGPL2.1", "META-INF/*.kotlin_module")
+        // Native libraries (the map's, 26.7 MB for two CPU types) are stored compressed: the direct
+        // APK drops from about 33.6 MB to about 16 MB per download, and Android extracts only the
+        // phone's own CPU type at install, so space on the phone stays about the same.
+        jniLibs.useLegacyPackaging = true
     }
 }
 
