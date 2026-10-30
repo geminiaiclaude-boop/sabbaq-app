@@ -46,7 +46,8 @@ import kotlin.math.abs
  * FloatingControlService keeps the process in the foreground, as the reference's service does.
  */
 object FloatingBubble {
-    private val main = Handler(Looper.getMainLooper())
+    // Created on first use: loading this object must not touch the main looper (unit tests, early starts).
+    private val main by lazy { Handler(Looper.getMainLooper()) }
     private var host: Context? = null
     private var root: FrameLayout? = null
     private var params: WindowManager.LayoutParams? = null
@@ -85,6 +86,8 @@ object FloatingBubble {
 
     /** Shows, hides or updates the control for the current state; safe from any thread. */
     fun refresh() {
+        // Nothing to show or hide until the service hosting the control is connected.
+        if (host == null) return
         if (Looper.myLooper() != Looper.getMainLooper()) { main.post { refresh() }; return }
         val service = host ?: return
         val wanted = Settings.floatingBubble && permitted(service) && SupabaseClient.hasSavedSession()
