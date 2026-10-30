@@ -14,6 +14,8 @@ import androidx.compose.ui.unit.dp
 @Composable
 internal fun QuickConditionsPanel(draft: FilterDraft, errors: Map<String, String>, onDraftChange: (FilterDraft) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        TargetAppCondition(draft, onDraftChange, keyPrefix = QUICK_PREFIX, framed = false)
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         FareRangeCondition(draft, errors, onDraftChange, keyPrefix = QUICK_PREFIX, framed = false)
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         PickupTimeCondition(draft, errors, onDraftChange, keyPrefix = QUICK_PREFIX, framed = false)

@@ -128,7 +128,7 @@
 | `bash scripts/app_compile_check.sh` | يترجم التطبيق كله. الأخطاء المتوقعة الوحيدة في `LocaleManager.kt`، لأن الذاكرة المؤقتة تحمل appcompat قديمًا. أي خطأ غيرها حقيقي |
 | `python scripts/resource_check.py` | مراجع الموارد، وتطابق مفاتيح العربية والإنجليزية ومتغيراتها، وترجمة aapt2. المطلوب `0 problem(s)` |
 | `bash scripts/android_engine_check.sh` | فحص أنواع `service/engine` و`service/zones` |
-| `bash scripts/ui_draft_check.sh` / `ui_zone_check.sh` | شاشات الشروط والمناطق |
+| `bash scripts/ui_draft_check.sh` | مسودة الشروط وأسباب الرفض، ويشغّل `ConditionsDraftTest`. شاشات المناطق يغطيها `app_compile_check` |
 | اختبارات قاعدة البيانات | Postgres 16 معزول على منفذ خاص، **لا تستخدم Postgres أي نظام آخر**. شغّل `bootstrap.sql`، ثم كل الترحيلات بالترتيب، ثم ملفات `supabase/tests/*.sql`، وكلها بـ`-v ON_ERROR_STOP=1`. على Linux: `scripts/test_database_local.sh` |
 | `node --test admin/tests/admin-static.test.mjs` | لوحة الويب |
 

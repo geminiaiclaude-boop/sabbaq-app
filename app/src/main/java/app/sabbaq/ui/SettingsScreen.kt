@@ -1274,7 +1274,7 @@ private fun SessionRestoreNotice(isRestoring: Boolean, onRetry: () -> Unit) {
 }
 
 /**
- * «شروط القيادة»: the four conditions drivers change most, editable in place with their own
+ * «شروط القيادة»: the ride app, then the four conditions drivers change most, editable in place with their own
  * switches (the same components as «طلبات تناسبك», so both edit one draft). Everything else
  * stays on the full page behind the button.
  */

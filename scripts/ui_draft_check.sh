@@ -11,6 +11,6 @@ OUT=$(mktemp -d); STUB=$(mktemp -d)
 printf 'package app.sabbaq\nobject LocaleManager { fun isArabic(): Boolean = true }\n' > $STUB/LocaleManager.kt
 cd "$(dirname "$0")/.."
 "$J" -Xmx800m -cp "$(cygpath -wp "$CP_C")" org.jetbrains.kotlin.cli.jvm.K2JVMCompiler -no-stdlib -no-reflect -jvm-target 17 -Xplugin="$(cygpath -w "$PLUGIN")" \
-  -cp "$(cygpath -wp "$LIBS")" -d "$(cygpath -w $OUT)" core/src/main/kotlin/app/sabbaq/core/Model.kt core/src/main/kotlin/app/sabbaq/core/engine/*.kt core/src/main/kotlin/app/sabbaq/core/engine/zones/*.kt \
+  -cp "$(cygpath -wp "$LIBS")" -d "$(cygpath -w $OUT)" core/src/main/kotlin/app/sabbaq/core/*.kt core/src/main/kotlin/app/sabbaq/core/engine/*.kt core/src/main/kotlin/app/sabbaq/core/engine/zones/*.kt \
   app/src/main/java/app/sabbaq/ui/FilterDraft.kt app/src/main/java/app/sabbaq/ui/ReasonLabels.kt app/src/test/java/app/sabbaq/ui/ConditionsDraftTest.kt $STUB/LocaleManager.kt 2>&1 | grep -v "^warning" || true
 "$J" -cp "$(cygpath -wp "$OUT:$LIBS")" org.junit.runner.JUnitCore app.sabbaq.ui.ConditionsDraftTest

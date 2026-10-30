@@ -301,15 +301,19 @@ internal fun NoDestinationCondition(
     }
 }
 
-/** The reference engine `targetApp`: which ride app Sabbaq watches (Jeeny by default). */
+/**
+ * The reference engine `targetApp`: which ride app Sabbaq watches (Jeeny by default). Framed on
+ * «طلبات تناسبك»; unframed at the top of «شروط القيادة» on the dashboard, editing the same draft.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun TargetAppCondition(draft: FilterDraft, onDraftChange: (FilterDraft) -> Unit) {
-    FilterGroup(
-        title = stringResource(R.string.afe_target_title),
-        subtitle = stringResource(R.string.afe_target_sub),
-        filledCount = 1,
-    ) {
+internal fun TargetAppCondition(
+    draft: FilterDraft,
+    onDraftChange: (FilterDraft) -> Unit,
+    keyPrefix: String = "",
+    framed: Boolean = true,
+) {
+    val chips: @Composable () -> Unit = {
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             listOf(
                 TargetApp.JEENY to R.string.afe_target_jeeny, TargetApp.BOLT to R.string.afe_target_bolt,
@@ -319,9 +323,21 @@ internal fun TargetAppCondition(draft: FilterDraft, onDraftChange: (FilterDraft)
                     selected = draft.targetApp == app,
                     onClick = { onDraftChange(draft.copy(targetApp = app)) },
                     label = { Text(stringResource(label), style = MaterialTheme.typography.labelSmall) },
-                    modifier = Modifier.height(32.dp).testTag("target-" + app.name.lowercase()),
+                    modifier = Modifier.height(32.dp).testTag(keyPrefix + "target-" + app.name.lowercase()),
                 )
             }
+        }
+    }
+    if (framed) {
+        FilterGroup(
+            title = stringResource(R.string.afe_target_title),
+            subtitle = stringResource(R.string.afe_target_sub),
+            filledCount = 1,
+        ) { chips() }
+    } else {
+        Column(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(stringResource(R.string.afe_target_title), style = MaterialTheme.typography.titleSmall)
+            chips()
         }
     }
 }
