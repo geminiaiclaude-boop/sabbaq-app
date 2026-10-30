@@ -36,7 +36,10 @@ internal object DeviceHealthProbe {
             monitoringActive = Settings.isActive,
             disclosureAccepted = Settings.a11yDisclosureAccepted,
             signedIn = runCatching { SupabaseClient.hasSavedSession() }.getOrDefault(false),
-            licenseValid = runCatching { SupabaseClient.hasValidLicense() }.getOrDefault(false),
+            // What the accept gate itself checks: the saved subscription end date (the server's
+            // answer lives in memory only and is empty after every process restart).
+            licenseValid = Settings.subscriptionEndsAtMs > System.currentTimeMillis() ||
+                runCatching { SupabaseClient.hasValidLicense() }.getOrDefault(false),
             targetInstalled = targetInstalled,
             targetInOtherProfile = targetInOtherProfile,
             targetUnknownPackage = targetUnknownPackage,
