@@ -47,9 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import app.sabbaq.LocaleManager
 import app.sabbaq.R
@@ -83,15 +81,13 @@ class LiveAcceptTestActivity : AppCompatActivity() {
                 ThemeMode.SYSTEM -> isSystemInDarkTheme()
             }
             SabbaqTheme(darkTheme = dark) {
-                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-                    Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
-                        LiveAcceptTestScreen(
-                            onOpenAccessibility = {
-                                runCatching { startActivity(Intent(AndroidSettings.ACTION_ACCESSIBILITY_SETTINGS)) }
-                            },
-                            onClose = ::finish,
-                        )
-                    }
+                Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
+                    LiveAcceptTestScreen(
+                        onOpenAccessibility = {
+                            runCatching { startActivity(Intent(AndroidSettings.ACTION_ACCESSIBILITY_SETTINGS)) }
+                        },
+                        onClose = ::finish,
+                    )
                 }
             }
         }

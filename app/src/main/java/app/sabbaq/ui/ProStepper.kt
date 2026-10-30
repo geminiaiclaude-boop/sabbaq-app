@@ -215,7 +215,8 @@ internal fun CompactStepperValue(
                     },
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text(label, style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant, maxLines = 1)
+                Text(label, style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant, maxLines = 2,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center, overflow = TextOverflow.Ellipsis)
                 Text(
                     (value.ifBlank { "—" }) + if (unit.isNotBlank() && value.isNotBlank()) " $unit" else "",
                     style = MaterialTheme.typography.labelLarge,

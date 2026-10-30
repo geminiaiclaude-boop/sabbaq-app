@@ -179,7 +179,7 @@ private fun DecisionRow(entry: OfferDecisionLogEntry) {
         DecisionLogOutcome.CONFIRMATION_TIMEOUT -> Triple(stringResource(R.string.odl_out_timeout), Icons.Outlined.HourglassTop, colors.error)
     }
     DecisionRowContent(outcome, icon, tint, "${platformName(entry.profileId)} · $time",
-        entry.reasons.takeIf { it.isNotEmpty() }?.joinToString("، ") { reasonLabel(it).removeSuffix(".") })
+        entry.reasons.takeIf { it.isNotEmpty() }?.joinToString(if (LocaleManager.isArabic()) "، " else ", ") { reasonLabel(it).removeSuffix(".") })
 }
 
 @Composable

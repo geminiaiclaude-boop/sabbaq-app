@@ -138,6 +138,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -1002,7 +1003,7 @@ private fun ActiveSubscriptionStatusCard(
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     MembershipBadge(isPro = isPro, isTrial = isTrial)
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                        Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         Text(
                             detail,
                             style = MaterialTheme.typography.bodySmall,
@@ -1777,7 +1778,7 @@ private fun PreviewField(
     OutlinedTextField(
         value = value,
         onValueChange = { onValueChange(it.take(2048)) },
-        label = { Text(label, maxLines = 1) },
+        label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         suffix = unit?.let { { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) } },
         singleLine = singleLine,
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = if (singleLine) ImeAction.Next else ImeAction.Default),
