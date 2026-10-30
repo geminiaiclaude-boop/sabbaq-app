@@ -41,6 +41,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -67,11 +68,17 @@ import androidx.compose.ui.window.DialogProperties
 import app.sabbaq.R
 import app.sabbaq.core.engine.zones.ZoneLimit
 import app.sabbaq.fleet.ZonePolicyRepository
+import app.sabbaq.core.engine.DecisionEngine
+import app.sabbaq.core.engine.zones.CityIndex
+import app.sabbaq.core.engine.zones.CityPlace
+import app.sabbaq.service.zones.CityIndexStore
 import app.sabbaq.service.zones.GeocodeWorker
 import app.sabbaq.service.zones.ZoneStore
 import app.sabbaq.service.zones.ZoneWarmer
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.osmdroid.config.Configuration
+import org.osmdroid.util.BoundingBox
 import org.osmdroid.events.MapEventsReceiver
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
@@ -530,11 +537,24 @@ internal fun ZoneEditorDialog(
     val points = remember { mutableStateListOf<GeoPoint>().apply { initial?.points?.let(::addAll) } }
     var error by remember { mutableStateOf<String?>(null) }
     var query by remember { mutableStateOf("") }
-    var results by remember { mutableStateOf<List<Pair<String, DoubleArray>>>(emptyList()) }
+    var suggestions by remember { mutableStateOf<List<CityPlace>>(emptyList()) }
     var searching by remember { mutableStateOf(false) }
+    var picked by remember { mutableStateOf<CityPlace?>(null) }
+    var here by remember { mutableStateOf<GeoPoint?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    val city by CityIndexStore.city.collectAsState()
+    // A zone outside the stored city opens on the whole map; otherwise the map stays on the city.
+    var wholeMap by remember {
+        mutableStateOf(initial?.points?.let { p ->
+            val c = CityIndexStore.city.value?.box
+            c != null && !c.contains(p.sumOf { it.latitude } / p.size, p.sumOf { it.longitude } / p.size)
+        } ?: false)
+    }
     val nameNeeded = stringResource(R.string.zp_name_needed)
     val pointsNeeded = stringResource(R.string.zp_points_needed)
     val notFound = stringResource(R.string.zp_search_none)
+    val noOutline = stringResource(R.string.zp_no_outline)
+    val noFix = stringResource(R.string.zp_no_fix)
 
     val mapView = remember {
         Configuration.getInstance().apply {
@@ -564,6 +584,14 @@ internal fun ZoneEditorDialog(
                 outlinePaint.strokeWidth = 5f
             }
         }
+        listOfNotNull(here, picked?.points?.firstOrNull()?.let { GeoPoint(it[0], it[1]) }).forEach { p ->
+            mapView.overlays += Marker(mapView).apply {
+                position = p
+                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                alpha = 0.6f
+                setOnMarkerClickListener { _, _ -> false }
+            }
+        }
         points.forEachIndexed { i, p ->
             mapView.overlays += Marker(mapView).apply {
                 position = p
@@ -587,6 +615,58 @@ internal fun ZoneEditorDialog(
         }))
         redraw()
         true
+    }
+
+    LaunchedEffect(Unit) { CityIndexStore.ensure(context) }
+    // The map stays on the driver's city (its box, zoomed no further out than the city) unless
+    // «كل الخريطة» is on.
+    LaunchedEffect(city, wholeMap) {
+        val c = city
+        if (c != null && !wholeMap) {
+            mapView.setScrollableAreaLimitDouble(BoundingBox(c.box.north, c.box.east, c.box.south, c.box.west))
+            mapView.minZoomLevel = 10.0
+            val center = mapView.mapCenter
+            if (!c.box.contains(center.latitude, center.longitude)) {
+                mapView.controller.setCenter(GeoPoint((c.box.north + c.box.south) / 2, (c.box.east + c.box.west) / 2))
+            }
+        } else {
+            mapView.setScrollableAreaLimitDouble(null)
+            mapView.minZoomLevel = 3.0
+        }
+    }
+    // Type-ahead: the downloaded city answers at once; Photon is asked after a short pause.
+    LaunchedEffect(query) {
+        val q = query.trim()
+        if (q.length < 2 || q == picked?.name) { suggestions = emptyList(); return@LaunchedEffect }
+        val local = CityIndexStore.suggestLocal(q)
+        suggestions = local
+        if (q.length >= 3 && local.size < 5) {
+            delay(450L)
+            searching = true
+            val remote = CityIndexStore.suggestRemote(q)
+            searching = false
+            suggestions = (local + remote).distinctBy { DecisionEngine.fold(it.names.last()) }.take(8)
+        }
+    }
+
+    fun pick(p: CityPlace) {
+        picked = p
+        suggestions = emptyList()
+        query = p.name
+        error = null
+        val at = p.points.first()
+        mapView.controller.setZoom(if (p.kind == CityIndex.DISTRICT) 14.0 else 16.0)
+        mapView.controller.animateTo(GeoPoint(at[0], at[1]))
+        redraw()
+    }
+
+    fun fill(zoneName: String, corners: List<DoubleArray>) {
+        points.clear()
+        corners.forEach { points += GeoPoint(it[0], it[1]) }
+        if (name.isBlank()) name = zoneName.substringBefore('،').trim().take(60)
+        error = null
+        redraw()
+        if (points.size >= 3) mapView.zoomToBoundingBox(BoundingBox.fromGeoPoints(points.toList()).increaseByScale(1.3f), true)
     }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
@@ -616,26 +696,56 @@ internal fun ZoneEditorDialog(
                             modifier = Modifier.weight(1f).testTag("zone-kind-exclude"))
                     }
                     OutlinedTextField(
-                        value = query, onValueChange = { query = it.take(80) },
+                        value = query, onValueChange = { query = it.take(80); picked = null; error = null },
                         placeholder = { Text(stringResource(R.string.zp_search)) }, singleLine = true,
                         leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+                        trailingIcon = {
+                            if (query.isNotEmpty()) IconButton(onClick = { query = ""; picked = null; suggestions = emptyList(); redraw() }) {
+                                Icon(Icons.Outlined.Close, contentDescription = stringResource(R.string.zp_clear))
+                            }
+                        },
+                        supportingText = if (searching) {{ Text(stringResource(R.string.zp_searching)) }} else null,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                         keyboardActions = KeyboardActions(onSearch = {
+                            suggestions.firstOrNull()?.let { pick(it); return@KeyboardActions }
                             if (query.isBlank() || searching) return@KeyboardActions
                             searching = true
                             scope.launch {
-                                results = GeocodeWorker.searchPlaces(context, query.trim())
+                                val found = GeocodeWorker.searchPlaces(context, query.trim())
                                 searching = false
-                                if (results.isEmpty()) error = notFound
+                                found.firstOrNull()?.let { (label, p) -> pick(CityPlace(listOf(label), CityIndex.LANDMARK, listOf(p))) }
+                                    ?: run { error = notFound }
                             }
                         }),
                         modifier = Modifier.fillMaxWidth().testTag("zone-search"),
                     )
-                    results.take(5).forEach { (label, p) ->
-                        Text(label, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.fillMaxWidth().clickable {
-                                mapView.controller.setZoom(15.0); mapView.controller.animateTo(GeoPoint(p[0], p[1])); results = emptyList()
-                            }.padding(vertical = 6.dp))
+                    suggestions.forEach { p ->
+                        Row(Modifier.fillMaxWidth().clickable { pick(p) }.padding(vertical = 6.dp).testTag("zone-suggestion"),
+                            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Icon(if (p.kind == CityIndex.LANDMARK) Icons.Outlined.Place else Icons.Outlined.Search, contentDescription = null,
+                                modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(p.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                            Text(stringResource(when (p.kind) { CityIndex.DISTRICT -> R.string.zp_kind_district; CityIndex.ROAD -> R.string.zp_kind_road; else -> R.string.zp_kind_landmark }),
+                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    picked?.takeIf { it.osm != null }?.let { p ->
+                        OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth().testTag("zone-use-outline"), onClick = {
+                            busy = true
+                            scope.launch {
+                                val corners = CityIndexStore.outline(p.osm!!)
+                                busy = false
+                                if (corners.size >= 3) fill(p.name, corners) else error = noOutline
+                            }
+                        }) { Text(stringResource(R.string.zp_use_outline, p.name.substringBefore('،'))) }
+                    }
+                    city?.let { c ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            FilterChip(selected = !wholeMap, onClick = { wholeMap = false }, label = { Text(stringResource(R.string.zp_city_map, c.name)) },
+                                modifier = Modifier.testTag("zone-city-map"))
+                            FilterChip(selected = wholeMap, onClick = { wholeMap = true }, label = { Text(stringResource(R.string.zp_whole_map)) },
+                                modifier = Modifier.testTag("zone-whole-map"))
+                        }
                     }
                 }
                 Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -645,8 +755,30 @@ internal fun ZoneEditorDialog(
                         modifier = Modifier.testTag("zone-undo")) { Text(stringResource(R.string.zone_undo)) }
                     TextButton(onClick = { points.clear(); redraw() }, enabled = points.isNotEmpty(),
                         modifier = Modifier.testTag("zone-clear")) { Text(stringResource(R.string.zp_clear)) }
-                    IconButton(onClick = {
-                        ZoneStore.driverLocation()?.let { mapView.controller.animateTo(GeoPoint(it[0], it[1])) }
+                    TextButton(enabled = !busy, modifier = Modifier.testTag("zone-my-district"), onClick = {
+                        busy = true
+                        scope.launch {
+                            val f = CityIndexStore.freshLocation(context)
+                            val district = f?.let { CityIndexStore.districtAt(it[0], it[1]) }
+                            busy = false
+                            when {
+                                f == null -> error = noFix
+                                district == null || district.second.size < 3 -> {
+                                    here = GeoPoint(f[0], f[1]); mapView.controller.setZoom(15.0); mapView.controller.animateTo(here); redraw()
+                                    error = noOutline
+                                }
+                                else -> { here = GeoPoint(f[0], f[1]); fill(district.first, district.second) }
+                            }
+                        }
+                    }) { Text(stringResource(R.string.zp_my_district)) }
+                    IconButton(enabled = !busy, modifier = Modifier.testTag("zone-my-location"), onClick = {
+                        busy = true
+                        scope.launch {
+                            val f = CityIndexStore.freshLocation(context)
+                            busy = false
+                            if (f == null) error = noFix
+                            else { here = GeoPoint(f[0], f[1]); mapView.controller.setZoom(15.0); mapView.controller.animateTo(here); redraw() }
+                        }
                     }) { Icon(Icons.Outlined.MyLocation, contentDescription = stringResource(R.string.zp_my_location)) }
                 }
                 Box(Modifier.weight(1f).fillMaxWidth()) {

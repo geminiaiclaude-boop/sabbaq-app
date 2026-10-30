@@ -1002,6 +1002,16 @@
     <string name="zp_tap_hint">اضغط الخريطة لإضافة نقطة (%1$d حتى الآن)</string>
     <string name="zp_clear">مسح</string>
     <string name="zp_my_location">موقعي</string>
+    <string name="zp_my_district">حيّي الحالي</string>
+    <string name="zp_use_outline">استخدم حدود %1$s</string>
+    <string name="zp_no_outline">لا توجد حدود مرسومة لهذا المكان؛ ارسمها بالضغط على الخريطة.</string>
+    <string name="zp_no_fix">تعذر تحديد موقعك. اسمح بالوصول إلى الموقع وشغّل GPS.</string>
+    <string name="zp_city_map">خريطة %1$s</string>
+    <string name="zp_whole_map">كل الخريطة</string>
+    <string name="zp_searching">جارٍ البحث…</string>
+    <string name="zp_kind_district">حي</string>
+    <string name="zp_kind_landmark">معلم</string>
+    <string name="zp_kind_road">طريق</string>
     <string name="zp_save_zone">حفظ المنطقة</string>
     <string name="zp_name_needed">الرجاء إدخال اسم المنطقة.</string>
     <string name="zp_points_needed">المنطقة تحتاج 3 نقاط على الأقل.</string>

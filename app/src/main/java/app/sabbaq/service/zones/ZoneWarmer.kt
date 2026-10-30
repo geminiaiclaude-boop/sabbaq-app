@@ -144,12 +144,16 @@ object ZoneWarmer {
     private const val CORRIDOR_EVERY_MS = 90_000L
 
     /** `fragment.execute`: each Overpass server by POST then GET, the whole list twice with 2 s between. */
-    private suspend fun overpass(polygon: List<DoubleArray>): List<ZoneName>? {
-        val body = "data=" + URLEncoder.encode(ZoneCacheWarm.overpassQuery(polygon), "UTF-8")
+    private suspend fun overpass(polygon: List<DoubleArray>): List<ZoneName>? =
+        overpassBody(ZoneCacheWarm.overpassQuery(polygon))?.let { ZoneCacheWarm.parseOverpass(it, polygon) }
+
+    /** The raw answer to an Overpass [query], or null when no server answered. */
+    internal suspend fun overpassBody(query: String, readTimeoutMs: Int = 30_000): String? {
+        val body = "data=" + URLEncoder.encode(query, "UTF-8")
         repeat(2) { round ->
             for (url in ZoneCacheWarm.OVERPASS_URLS) {
-                val text = runCatching { post(url, body) }.getOrNull() ?: runCatching { get("$url?$body", 30_000) }.getOrNull()
-                if (text != null && text.trimStart().startsWith("{")) return ZoneCacheWarm.parseOverpass(text, polygon)
+                val text = runCatching { post(url, body, readTimeoutMs) }.getOrNull() ?: runCatching { get("$url?$body", readTimeoutMs) }.getOrNull()
+                if (text != null && text.trimStart().startsWith("{")) return text
             }
             if (round == 0) delay(2_000L)
         }
@@ -163,13 +167,13 @@ object ZoneWarmer {
         return listOfNotNull(address["road"]?.jsonPrimitive?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() })
     }
 
-    private fun post(url: String, body: String): String? {
+    private fun post(url: String, body: String, readTimeoutMs: Int): String? {
         val conn = URL(url).openConnection() as HttpURLConnection
         return try {
             conn.requestMethod = "POST"
             conn.doOutput = true
             conn.connectTimeout = 5_000
-            conn.readTimeout = 30_000
+            conn.readTimeout = readTimeoutMs
             conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
             conn.setRequestProperty("User-Agent", USER_AGENT)
             conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
@@ -179,7 +183,7 @@ object ZoneWarmer {
         }
     }
 
-    private fun get(url: String, readTimeoutMs: Int): String? {
+    internal fun get(url: String, readTimeoutMs: Int): String? {
         val conn = URL(url).openConnection() as HttpURLConnection
         return try {
             conn.connectTimeout = 5_000

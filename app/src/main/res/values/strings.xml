@@ -995,6 +995,16 @@ Write your problem or question and our team will reply here during working hours
     <string name="zp_tap_hint">Tap the map to add a corner (%1$d so far)</string>
     <string name="zp_clear">Clear</string>
     <string name="zp_my_location">My location</string>
+    <string name="zp_my_district">My district</string>
+    <string name="zp_use_outline">Use the boundary of %1$s</string>
+    <string name="zp_no_outline">This place has no mapped boundary; draw it by tapping the map.</string>
+    <string name="zp_no_fix">Your location is not available. Allow location access and turn on GPS.</string>
+    <string name="zp_city_map">%1$s map</string>
+    <string name="zp_whole_map">Whole map</string>
+    <string name="zp_searching">Searching…</string>
+    <string name="zp_kind_district">District</string>
+    <string name="zp_kind_landmark">Place</string>
+    <string name="zp_kind_road">Road</string>
     <string name="zp_save_zone">Save the zone</string>
     <string name="zp_name_needed">Please enter the zone name.</string>
     <string name="zp_points_needed">A zone needs at least 3 points.</string>

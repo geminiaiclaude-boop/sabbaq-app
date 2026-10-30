@@ -266,9 +266,7 @@ object GeocodeWorker {
                     SupabaseClient.GeocodeAnswer.NotFound -> { ZoneStore.finishNotFound(text); continue }
                     SupabaseClient.GeocodeAnswer.Unavailable -> Unit
                 }
-                val points = runCatching { nominatim(text, near) }.getOrDefault(emptyList())
-                    .ifEmpty { runCatching { androidGeocoder(app, text, near) }.getOrDefault(emptyList()) }
-                ZoneStore.finish(text, points)
+                ZoneStore.finish(text, freeLookup(app, text, near))
                 delay(1_100L)
             }
         }
@@ -280,8 +278,25 @@ object GeocodeWorker {
      */
     suspend fun searchPlaces(context: Context, text: String): List<Pair<String, DoubleArray>> = withContext(Dispatchers.IO) {
         val near = ZoneStore.driverLocation()
-        runCatching { androidPlaces(context.applicationContext, text, near) }.getOrDefault(emptyList())
-            .ifEmpty { runCatching { nominatimPlaces(text, near) }.getOrDefault(emptyList()) }
+        val local = CityIndexStore.suggestLocal(text, 5).map { it.name to it.points[0] }
+        (local + runCatching { androidPlaces(context.applicationContext, text, near) }.getOrDefault(emptyList())
+            .ifEmpty { CityIndexStore.suggestRemote(text, 5).map { it.name to it.points[0] } }
+            .ifEmpty { runCatching { nominatimPlaces(text, near) }.getOrDefault(emptyList()) })
+            .distinctBy { it.first }.take(8)
+    }
+
+    /**
+     * Free placement when Sabbaq's server cannot answer, closing as much of the gap to paid Google
+     * as free services allow: the phone's own geocoder first (Google's on most phones, free), then
+     * Photon (OpenStreetMap with typo-tolerant matching), then Nominatim; answers outside the
+     * driver's region (±1°) are dropped so a same-named street in another city never wins.
+     */
+    private suspend fun freeLookup(context: Context, text: String, near: DoubleArray?): List<DoubleArray> {
+        fun local(points: List<DoubleArray>) = if (near == null) points
+            else points.filter { kotlin.math.abs(it[0] - near[0]) <= 1.0 && kotlin.math.abs(it[1] - near[1]) <= 1.0 }
+        return local(runCatching { androidGeocoder(context, text, near) }.getOrDefault(emptyList()))
+            .ifEmpty { local(CityIndexStore.suggestRemote(text, 3).flatMap { it.points.take(1) }) }
+            .ifEmpty { local(runCatching { nominatim(text, near) }.getOrDefault(emptyList())) }
     }
 
     /** A name for a drawn zone from its centre («اقترح الاسم من الخريطة»): district, else locality. */
@@ -346,8 +361,7 @@ object GeocodeWorker {
         val points = when (server) {
             is SupabaseClient.GeocodeAnswer.Found -> server.points
             SupabaseClient.GeocodeAnswer.NotFound -> emptyList()
-            SupabaseClient.GeocodeAnswer.Unavailable -> runCatching { nominatim(text, near) }.getOrDefault(emptyList())
-                .ifEmpty { runCatching { androidGeocoder(context.applicationContext, text, near) }.getOrDefault(emptyList()) }
+            SupabaseClient.GeocodeAnswer.Unavailable -> freeLookup(context.applicationContext, text, near)
         }
         ZoneStore.remember(text, points)
         points.firstOrNull()
@@ -431,6 +445,8 @@ class DriverLocationTracker(private val context: Context) : LocationListener {
         val ageMs = (SystemClock.elapsedRealtimeNanos() - location.elapsedRealtimeNanos) / 1_000_000L
         if (ageMs > 30 * 60_000L) return
         ZoneStore.saveDriverLocation(location.latitude, location.longitude)
+        // The driver's city is downloaded ahead of the zone editor and of the offers naming it.
+        CityIndexStore.ensure(context)
     }
 
     @Deprecated("Deprecated in Java")
