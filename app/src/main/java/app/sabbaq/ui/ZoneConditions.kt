@@ -65,8 +65,11 @@ import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polygon
 import org.osmdroid.views.overlay.Polyline
 
-/** One zone being edited: the reference engine's `{"name","active","points":[[lat,lng],…]}`. */
-internal data class EditableZone(val name: String, val active: Boolean, val points: List<GeoPoint>)
+/**
+ * One zone being edited: the reference engine's `{"name","active","points":[[lat,lng],…]}`, plus
+ * `"pending"` while it waits for its streets and places to be cached before it is switched on.
+ */
+internal data class EditableZone(val name: String, val active: Boolean, val points: List<GeoPoint>, val pending: Boolean = false)
 
 internal enum class ZoneMapMode { INCLUDE, EXCLUDE, HOME }
 
@@ -83,16 +86,18 @@ internal object ZoneJson {
                 if (lat == null || lng == null) null else GeoPoint(lat, lng)
             }.orEmpty()
             if (pts.size < 3) null
-            else EditableZone((o["name"] as? JsonPrimitive)?.contentOrNull.orEmpty(), (o["active"] as? JsonPrimitive)?.booleanOrNull ?: true, pts)
+            else EditableZone((o["name"] as? JsonPrimitive)?.contentOrNull.orEmpty(), (o["active"] as? JsonPrimitive)?.booleanOrNull ?: true, pts,
+                (o["pending"] as? JsonPrimitive)?.booleanOrNull ?: false)
         }
     }.getOrDefault(emptyList())
 
     fun write(zones: List<EditableZone>): String = JsonArray(zones.map { z ->
-        JsonObject(mapOf(
-            "name" to JsonPrimitive(z.name),
-            "active" to JsonPrimitive(z.active),
-            "points" to JsonArray(z.points.map { JsonArray(listOf(JsonPrimitive(it.latitude), JsonPrimitive(it.longitude))) }),
-        ))
+        JsonObject(buildMap {
+            put("name", JsonPrimitive(z.name))
+            put("active", JsonPrimitive(z.active))
+            put("points", JsonArray(z.points.map { JsonArray(listOf(JsonPrimitive(it.latitude), JsonPrimitive(it.longitude))) }))
+            if (z.pending) put("pending", JsonPrimitive(true))
+        })
     }).toString()
 
     fun activeCount(text: String): Int = parse(text).count { it.active }

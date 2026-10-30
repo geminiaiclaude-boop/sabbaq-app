@@ -116,6 +116,11 @@ object NotificationTemplates {
             else (if (ar) "رأى سبّاق ${offers(visible)} ولم يطابق أيٌّ منها شروطك. راجع شروطك إن كانت ضيقة." else "Sabbaq saw ${offers(visible)} and none matched your conditions. Review your conditions if they are too tight."),
         NotificationKind.INFO, if (accepted > 0) null else NotificationAction.OPEN_FILTERS, now)
 
+    fun newSharedZones(version: Int, now: Long) = local("shared-zones-$version",
+        if (ar) "مناطق استثناء جديدة" else "New exclude zones",
+        if (ar) "تمت إضافة مناطق استثناء جديدة، يرجى الاطلاع وتحديث إعداداتك." else "New exclude zones were added. Please review them and update your settings.",
+        NotificationKind.INFO, NotificationAction.OPEN_FILTERS, now)
+
     internal const val DAY_MS = 24L * 60 * 60 * 1000
 }
 

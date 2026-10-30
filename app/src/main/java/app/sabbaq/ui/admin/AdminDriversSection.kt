@@ -71,6 +71,7 @@ internal fun AdminDriversSection(session: AdminSession, open: (AdminRequest) -> 
     var reload by remember { mutableIntStateOf(0) }
     var confirmReset by remember { mutableStateOf<AdminDriver?>(null) }
     var resetting by remember { mutableStateOf<String?>(null) }
+    var zoneLimitFor by remember { mutableStateOf<AdminDriver?>(null) }
 
     LaunchedEffect(offset, reload) {
         loading = true
@@ -128,6 +129,7 @@ internal fun AdminDriversSection(session: AdminSession, open: (AdminRequest) -> 
                 onNotify = { open(AdminRequest.NotifyDriver(driver.id, driver.name)) },
                 onMessage = { open(AdminRequest.MessageDriver(driver.id)) },
                 onReset = { confirmReset = driver },
+                onZoneLimit = { zoneLimitFor = driver },
             )
         }
         if (shown.size > 5) item(key = "foot") {
@@ -137,6 +139,7 @@ internal fun AdminDriversSection(session: AdminSession, open: (AdminRequest) -> 
         }
     }
 
+    zoneLimitFor?.let { driver -> AdminDriverZoneLimitDialog(session, driver.id, driver.name) { zoneLimitFor = null } }
     confirmReset?.let { driver ->
         AdminConfirm(
             title = (if (LocaleManager.isArabic()) "فك ربط الجهاز" else "Unlink the device"),
@@ -167,6 +170,7 @@ private fun DriverCard(
     onNotify: () -> Unit,
     onMessage: () -> Unit,
     onReset: () -> Unit,
+    onZoneLimit: () -> Unit,
 ) {
     SabbaqCard {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -187,6 +191,7 @@ private fun DriverCard(
             OutlinedButton(onClick = onDiagnose) { Text((if (LocaleManager.isArabic()) "تشخيص الشكوى" else "Diagnose complaint")) }
             OutlinedButton(onClick = onNotify) { Text((if (LocaleManager.isArabic()) "إرسال إشعار" else "Send notification")) }
             OutlinedButton(onClick = onMessage) { Text((if (LocaleManager.isArabic()) "مراسلة" else "Message")) }
+            OutlinedButton(onClick = onZoneLimit) { Text((if (LocaleManager.isArabic()) "حدّ المناطق" else "Zone limit")) }
             SabbaqButton((if (LocaleManager.isArabic()) "فك ربط الجهاز" else "Unlink the device"), onClick = onReset, style = SabbaqButtonStyle.Destructive, fillWidth = false,
                 busy = resetting, busyText = (if (LocaleManager.isArabic()) "جارٍ فك الربط…" else "Unlinking…"))
         }

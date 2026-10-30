@@ -33,7 +33,8 @@ object FleetRepository {
     private val releaseState = MutableStateFlow(AppRelease())
     @Volatile private var lexicon = SharedLexicon()
     @Volatile private var shadow = SharedLexicon()
-    @Volatile private var merged: Triple<EngineConfig, Int, EngineConfig>? = null
+    private class Merged(val own: EngineConfig, val lexicon: Int, val zones: ZonePolicyRepository.Policy, val result: EngineConfig)
+    @Volatile private var merged: Merged? = null
 
     val release: StateFlow<AppRelease> = releaseState.asStateFlow()
 
@@ -58,16 +59,20 @@ object FleetRepository {
     /** Words the server asks every phone to test read-only (ShadowCheck). */
     fun shadow(): SharedLexicon = shadow
 
-    /** The driver's settings with the shared words merged in; recomputed only when either changes. */
+    /**
+     * The driver's settings with the shared words and the administration's shared exclude zones
+     * merged in; recomputed only when one of them changes.
+     */
     fun effectiveConfig(own: EngineConfig): EngineConfig {
         val lex = lexicon
-        merged?.let { (base, version, result) -> if (base === own && version == lex.version) return result }
-        val result = lex.applyTo(own)
-        merged = Triple(own, lex.version, result)
+        val zones = ZonePolicyRepository.policy.value
+        merged?.let { m -> if (m.own === own && m.lexicon == lex.version && m.zones === zones) return m.result }
+        val result = ZonePolicyRepository.applyTo(lex.applyTo(own))
+        merged = Merged(own, lex.version, zones, result)
         return result
     }
 
-    /** Fetches both when the cached copy is older than six hours (or [force]). */
+    /** Fetches the release, the lexicon and the zone policy when the cached copy is older than six hours (or [force]). */
     suspend fun refreshIfStale(force: Boolean = false) {
         val now = SystemClock.elapsedRealtime()
         if (!force && lastRefreshAt != 0L && now - lastRefreshAt < REFRESH_INTERVAL_MS) return
@@ -88,6 +93,7 @@ object FleetRepository {
             prefs?.edit()?.putString(KEY_LEXICON, o.toString())?.apply()
             any = true
         }
+        runCatching { ZonePolicyRepository.refresh() }
         if (any) lastRefreshAt = now
     }
 

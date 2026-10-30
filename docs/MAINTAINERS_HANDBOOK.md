@@ -89,6 +89,12 @@
 3. كلمات الوقت والعملة تُعتمد تلقائيًا بعد 5 قراءات ناجحة من 3 سائقين.
 4. كلمات زر القبول تنتظر موافقة المدير في بطاقة «التعلم» بلوحة الإدارة.
 
+**المناطق الجغرافية (ترحيل 0017):**
+1. المنطقة الجديدة أو المعاد رسمها تُحفظ متوقفة (`"pending": true`) حتى تُخزَّن أسماء شوارعها ومعالمها في ذاكرة العناوين: `ZoneWarmer` يسأل OpenStreetMap (Overpass)، وإن لم يجد اسمًا يحدد 24 نقطة داخلها ويسأل عن اسم الطريق عند كل منها. المنطق الخالص في `core/.../zones/ZoneCacheWarm.kt`.
+2. الإدارة تنشر مناطق استثناء افتراضية لكل دولة (السعودية والأردن، تُعرف الدولة من رقم الجوال) من بطاقة «استثناءات الوجهة الافتراضية». التطبيق يجلبها عبر `zone_policy()` مع تحديث الأسطول ويدمجها في `FleetRepository.effectiveConfig`، ويستطيع السائق إيقافها لنفسه.
+3. حدّ المناطق المفعّلة: افتراضي من نفس البطاقة، ولكل سائق من زر «حدّ المناطق» في قائمة السائقين. 0 = بلا حد. يُفرض في التطبيق عند تشغيل أي منطقة.
+4. «تشخيص المناطق» في صفحة المناطق يشغّل `ZoneEngine` الحقيقي على وجهة يكتبها السائق (`ZoneDiagnosis`).
+
 **عقد الكلمات المحجوزة:** `private.reserved_words()` في الترحيل يجب أن تساوي `ScreenSampler.vocabulary()`، ويفرض ذلك `LearningServerContractTest`. إذا أضفت كلمة إلى `JeenyLexicon` فأضفها أيضًا إلى `reserved_words` في **ترحيل جديد**.
 
 ---
@@ -127,7 +133,6 @@
 | `bash scripts/core_engine_test.sh` | يترجم `core` ويشغّل كل اختبارات JUnit فيه، وتنتهي بـ`OK (N tests)` |
 | `bash scripts/app_compile_check.sh` | يترجم التطبيق كله. الأخطاء المتوقعة الوحيدة في `LocaleManager.kt`، لأن الذاكرة المؤقتة تحمل appcompat قديمًا. أي خطأ غيرها حقيقي |
 | `python scripts/resource_check.py` | مراجع الموارد، وتطابق مفاتيح العربية والإنجليزية ومتغيراتها، وترجمة aapt2. المطلوب `0 problem(s)` |
-| `bash scripts/android_engine_check.sh` | فحص أنواع `service/engine` و`service/zones` |
 | `bash scripts/ui_draft_check.sh` | مسودة الشروط وأسباب الرفض، ويشغّل `ConditionsDraftTest`. شاشات المناطق يغطيها `app_compile_check` |
 | اختبارات قاعدة البيانات | Postgres 16 معزول على منفذ خاص، **لا تستخدم Postgres أي نظام آخر**. شغّل `bootstrap.sql`، ثم كل الترحيلات بالترتيب، ثم ملفات `supabase/tests/*.sql`، وكلها بـ`-v ON_ERROR_STOP=1`. على Linux: `scripts/test_database_local.sh` |
 | `node --test admin/tests/admin-static.test.mjs` | لوحة الويب |

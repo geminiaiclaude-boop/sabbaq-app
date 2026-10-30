@@ -24,6 +24,7 @@ class App : Application() {
         runCatching { ProfileRepository.init(this) }
         runCatching { TelemetryRepository.init(this) }
         runCatching { app.sabbaq.fleet.FleetRepository.init(this) }
+        runCatching { app.sabbaq.fleet.ZonePolicyRepository.init(this) }
         runCatching { app.sabbaq.fleet.ScreenSamples.init(this) }
         runCatching { app.sabbaq.fleet.UpdateTelemetry.recordRun(this) }
         runCatching { app.sabbaq.fleet.KeepAlive.reportProcessExits(this) }

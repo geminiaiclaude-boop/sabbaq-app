@@ -95,3 +95,6 @@ reset role;
 
 -- Fleet health, update channel and shared learning (kept here so the existing CI step runs it).
 \ir fleet_learning_test.sql
+
+-- Destination zone policy (kept here so the existing CI step runs it).
+\ir zone_policy_test.sql

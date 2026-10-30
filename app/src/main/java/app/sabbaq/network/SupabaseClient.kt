@@ -1010,6 +1010,14 @@ object SupabaseClient {
                 ?.let { Result.success(it) } ?: Result.failure(FeatureException(FeatureFailure.UNAVAILABLE))
         }
 
+    /** `zone_policy`: this driver's shared exclude zones, zone limit and shared-zone radius. */
+    suspend fun zonePolicy(): Result<JsonObject> =
+        supportCall("rpc/zone_policy", buildJsonObject { }) { response ->
+            if (!response.isSuccessful) return@supportCall Result.failure(FeatureException.fromStatus(response.code))
+            (runCatching { json.parseToJsonElement(response.body) as JsonObject }.getOrNull())
+                ?.let { Result.success(it) } ?: Result.failure(FeatureException(FeatureFailure.UNAVAILABLE))
+        }
+
     /** `ingest_screen_sample`: one redacted unread-offer screen; true when the server stored it. */
     suspend fun ingestScreenSample(sample: JsonObject): Result<Boolean> =
         supportCall("rpc/ingest_screen_sample", buildJsonObject { put("p_sample", sample) }) { response ->

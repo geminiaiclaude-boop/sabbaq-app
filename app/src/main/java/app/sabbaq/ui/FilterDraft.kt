@@ -54,6 +54,8 @@ data class FilterDraft(
     val excludeZonesEnabled: Boolean = false,
     val excludeZonesJson: String = "[]",
     val excludeZonesRejectOnUnknown: Boolean = false,
+    /** The driver switched the administration’s shared exclude zones off for themselves. */
+    val globalZonesOptOut: Boolean = false,
     val smartDestActive: Boolean = false,
     val smartDestLat: Double = 0.0,
     val smartDestLng: Double = 0.0,
@@ -87,8 +89,8 @@ data class FilterDraft(
         val corridor = ranged("corridorHalfWidthKm", corridorHalfWidthKm, 1.5, 0.2, 10.0, errors)
         val proximity = ranged("excludeProximityKm", excludeProximityKm, 60.0, 5.0, 300.0, errors)
         if (smartDestActive && !homeSet) errors["smartDest"] = needHome()
-        if (zonesEnabled && ZoneGeo.polygons(zonesJson).isEmpty()) errors["zones"] = needZone()
-        if (excludeZonesEnabled && ZoneGeo.polygons(excludeZonesJson).isEmpty()) errors["excludeZones"] = needZone()
+        if (zonesEnabled && !ZoneGeo.hasDrawn(zonesJson)) errors["zones"] = needZone()
+        if (excludeZonesEnabled && !ZoneGeo.hasDrawn(excludeZonesJson)) errors["excludeZones"] = needZone()
         val cx = whole("clickX", clickX, errors)
         val cy = whole("clickY", clickY, errors)
         if (turboEnabled && (cx == null || cy == null)) { errors["clickX"] = needPoint(); errors["clickY"] = needPoint() }
@@ -117,7 +119,7 @@ data class FilterDraft(
             destZonesEnabled = zonesEnabled, destZonesJson = zonesJson, destZonesRejectOnUnknown = zonesRejectOnUnknown,
             destZonesOnTheWayEnabled = zonesOnTheWay,
             destExcludeZonesEnabled = excludeZonesEnabled, destExcludeZonesJson = excludeZonesJson,
-            destExcludeZonesRejectOnUnknown = excludeZonesRejectOnUnknown,
+            destExcludeZonesRejectOnUnknown = excludeZonesRejectOnUnknown, globalDestExcludeOptOut = globalZonesOptOut,
             smartDestActive = smartDestActive, smartDestLat = smartDestLat, smartDestLng = smartDestLng,
             smartDestAngle = (angle ?: 45).toDouble(),
             destZonesBearingEnabled = zonesBearingEnabled, destZonesBearingMarginDeg = bearingMargin,
@@ -164,6 +166,7 @@ data class FilterDraft(
             zonesEnabled = c.destZonesEnabled, zonesJson = c.destZonesJson, zonesRejectOnUnknown = c.destZonesRejectOnUnknown,
             zonesOnTheWay = c.destZonesOnTheWayEnabled, excludeZonesEnabled = c.destExcludeZonesEnabled,
             excludeZonesJson = c.destExcludeZonesJson, excludeZonesRejectOnUnknown = c.destExcludeZonesRejectOnUnknown,
+            globalZonesOptOut = c.globalDestExcludeOptOut,
             smartDestActive = c.smartDestActive, smartDestLat = c.smartDestLat, smartDestLng = c.smartDestLng,
             smartDestAngle = c.smartDestAngle.toInt().toString(),
             zonesBearingEnabled = c.destZonesBearingEnabled, zonesBearingMargin = plain(c.destZonesBearingMarginDeg),

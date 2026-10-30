@@ -193,6 +193,7 @@ internal fun AdminPolicySection(session: AdminSession) {
                 busy = loading, busyText = (if (LocaleManager.isArabic()) "جارٍ التحميل…" else "Loading…"))
         }
         AdminGeocodeCard(session)
+        AdminZonesCard(session)
         AdminReferralCard(session)
         AdminReleaseCard(session)
         AdminVersionReportCard(session)

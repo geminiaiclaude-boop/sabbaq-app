@@ -4,6 +4,8 @@ import android.graphics.Color as AndroidColor
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -39,11 +41,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,8 +65,11 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.sabbaq.R
+import app.sabbaq.core.engine.zones.ZoneLimit
+import app.sabbaq.fleet.ZonePolicyRepository
 import app.sabbaq.service.zones.GeocodeWorker
 import app.sabbaq.service.zones.ZoneStore
+import app.sabbaq.service.zones.ZoneWarmer
 import kotlinx.coroutines.launch
 import org.osmdroid.config.Configuration
 import org.osmdroid.events.MapEventsReceiver
@@ -111,9 +118,64 @@ internal fun ZonesPage(
 ) {
     var editing by remember { mutableStateOf<ZoneRef?>(null) }
     var deleting by remember { mutableStateOf<ZoneRef?>(null) }
+    var viewing by remember { mutableStateOf<EditableZone?>(null) }
+    var naming by remember { mutableStateOf<ZoneRef?>(null) }
+    var diagnosing by remember { mutableStateOf(false) }
+    var warming by remember { mutableStateOf<List<GeoPoint>?>(null) }
+    var notice by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
     val include = draft.zones(exclude = false)
     val exclude = draft.zones(exclude = true)
     val farLimit = draft.excludeProximityKm.toDoubleOrNull() ?: 60.0
+    val policy by ZonePolicyRepository.policy.collectAsState()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    // The warming takes up to a minute; it must apply to the draft as it is then, not as it was.
+    val latestDraft by rememberUpdatedState(draft)
+    val latestChange by rememberUpdatedState(onDraftChange)
+
+    fun limitText(): String = context.getString(R.string.zp_limit, policy.maxActiveZones)
+
+    /** Switches a zone on or off; on only within the administration's limit. */
+    fun setActive(isExclude: Boolean, index: Int, on: Boolean) {
+        val d = latestDraft
+        val list = d.zones(isExclude).toMutableList()
+        val zone = list.getOrNull(index) ?: return
+        if (on && !ZoneLimit.canActivate(ZoneLimit.activeCount(d.zonesJson, d.excludeZonesJson), policy.maxActiveZones)) {
+            notice = limitText() to true
+            return
+        }
+        list[index] = zone.copy(active = on)
+        latestChange(d.withZones(isExclude, list))
+    }
+
+    /**
+     * The reference's activation: the zone waits switched off while its streets and places are
+     * cached, then switches on (within the limit) and says how many names it holds.
+     */
+    fun warmThenActivate(isExclude: Boolean, zone: EditableZone) {
+        if (warming != null) return
+        warming = zone.points
+        notice = context.getString(R.string.zp_warming, zone.name) to false
+        scope.launch {
+            val result = ZoneWarmer.warmAsync(zone.corners()).await()
+            warming = null
+            val d = latestDraft
+            val list = d.zones(isExclude).toMutableList()
+            val i = list.indexOfFirst { it.points == zone.points }
+            if (i < 0) { notice = null; return@launch }
+            if (!result.ok) { notice = context.getString(R.string.zp_warm_failed, zone.name) to true; return@launch }
+            val rest = ZoneJson.write(list.filterIndexed { k, _ -> k != i })
+            val others = if (isExclude) ZoneLimit.activeCount(d.zonesJson, rest) else ZoneLimit.activeCount(rest, d.excludeZonesJson)
+            val allowed = ZoneLimit.canActivate(others, policy.maxActiveZones)
+            list[i] = list[i].copy(pending = false, active = allowed)
+            latestChange(d.withZones(isExclude, list))
+            notice = when {
+                !allowed -> limitText() to true
+                result.names > 0 -> context.getString(R.string.zp_warm_done, zone.name, result.names) to false
+                else -> context.getString(R.string.zp_warm_empty, zone.name) to true
+            }
+        }
+    }
 
     Row(
         modifier = Modifier
@@ -173,6 +235,16 @@ internal fun ZonesPage(
         if (draft.zonesEnabled || draft.excludeZonesEnabled) ZoneAdvancedSettings(draft, errors, onDraftChange)
     }
 
+    SharedZonesCard(policy.zonesJson, draft, onDraftChange) { viewing = it }
+    notice?.let { (text, warn) ->
+        Text(text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("zones-notice"),
+            color = if (warn) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+    }
+    if (policy.maxActiveZones > 0) {
+        Text(stringResource(R.string.zp_limit_note, policy.maxActiveZones), style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+
     Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
         LegendDot(IncludeColor, stringResource(R.string.zp_legend_include))
         LegendDot(ExcludeColor, stringResource(R.string.zp_legend_exclude))
@@ -180,15 +252,21 @@ internal fun ZonesPage(
 
     ZoneSection(
         title = stringResource(R.string.zone_include_title),
-        zones = include, exclude = false, sectionOn = draft.zonesEnabled, farLimitKm = farLimit, error = errors["zones"],
-        onToggle = { i, on -> onDraftChange(draft.withZones(false, include.toMutableList().also { it[i] = it[i].copy(active = on) })) },
+        zones = include, exclude = false, sectionOn = draft.zonesEnabled, farLimitKm = farLimit, error = errors["zones"], warming = warming,
+        onToggle = { i, on -> if (on && include[i].pending) warmThenActivate(false, include[i]) else setActive(false, i, on) },
+        onWarm = { warmThenActivate(false, include[it]) },
+        onShowMap = { viewing = include[it] },
+        onNames = { naming = ZoneRef(false, it) },
         onEdit = { editing = ZoneRef(false, it) },
         onDelete = { deleting = ZoneRef(false, it) },
     )
     ZoneSection(
         title = stringResource(R.string.zone_exclude_title),
-        zones = exclude, exclude = true, sectionOn = draft.excludeZonesEnabled, farLimitKm = farLimit, error = errors["excludeZones"],
-        onToggle = { i, on -> onDraftChange(draft.withZones(true, exclude.toMutableList().also { it[i] = it[i].copy(active = on) })) },
+        zones = exclude, exclude = true, sectionOn = draft.excludeZonesEnabled, farLimitKm = farLimit, error = errors["excludeZones"], warming = warming,
+        onToggle = { i, on -> if (on && exclude[i].pending) warmThenActivate(true, exclude[i]) else setActive(true, i, on) },
+        onWarm = { warmThenActivate(true, exclude[it]) },
+        onShowMap = { viewing = exclude[it] },
+        onNames = { naming = ZoneRef(true, it) },
         onEdit = { editing = ZoneRef(true, it) },
         onDelete = { deleting = ZoneRef(true, it) },
     )
@@ -201,6 +279,12 @@ internal fun ZonesPage(
         icon = Icons.Outlined.Add,
         modifier = Modifier.testTag("zones-new"),
     )
+    SabbaqButton(
+        stringResource(R.string.zp_diag_open),
+        onClick = { diagnosing = true },
+        style = SabbaqButtonStyle.Secondary,
+        modifier = Modifier.testTag("zones-diagnose"),
+    )
     Text(stringResource(R.string.zone_privacy_note), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
     editing?.let { ref ->
@@ -209,8 +293,12 @@ internal fun ZonesPage(
             initial = ref.index?.let { list.getOrNull(it) },
             initialExclude = ref.exclude,
             onDismiss = { editing = null },
-            onSave = { zone, toExclude ->
+            onSave = { drawn, toExclude ->
                 editing = null
+                val before = ref.index?.let { list.getOrNull(it) }
+                // A new or redrawn zone waits switched off until its streets and places are cached.
+                val redrawn = before == null || before.points != drawn.points || before.pending
+                val zone = if (redrawn) drawn.copy(active = false, pending = true) else drawn
                 var next = draft
                 val from = list.toMutableList()
                 if (ref.index != null && toExclude == ref.exclude) {
@@ -224,6 +312,7 @@ internal fun ZonesPage(
                 if (toExclude && !next.excludeZonesEnabled && next.zones(true).size == 1) next = next.copy(excludeZonesEnabled = true)
                 if (!toExclude && !next.zonesEnabled && next.zones(false).size == 1) next = next.copy(zonesEnabled = true)
                 onDraftChange(next)
+                if (redrawn) warmThenActivate(toExclude, zone)
             },
         )
     }
@@ -248,6 +337,17 @@ internal fun ZonesPage(
             dismissButton = { TextButton(onClick = { deleting = null }) { Text(stringResource(R.string.zone_cancel)) } },
         )
     }
+    viewing?.let { zone ->
+        val shared = ZoneJson.parse(policy.zonesJson).map { MapZone(it, true) }
+        ZoneMapDialog(zone.name.ifBlank { stringResource(R.string.zp_unnamed) },
+            include.map { MapZone(it, false) } + exclude.map { MapZone(it, true) } + shared, zone) { viewing = null }
+    }
+    naming?.let { ref ->
+        val zone = (if (ref.exclude) exclude else include).getOrNull(ref.index ?: -1)
+        if (zone == null) { naming = null; return@let }
+        ZoneNamesDialog(zone, ref.exclude, draft, onDraftChange) { naming = null }
+    }
+    if (diagnosing) ZoneDiagnosisDialog(draft) { diagnosing = false }
 }
 
 @Composable
@@ -266,7 +366,11 @@ private fun ZoneSection(
     sectionOn: Boolean,
     farLimitKm: Double,
     error: String?,
+    warming: List<GeoPoint>?,
     onToggle: (Int, Boolean) -> Unit,
+    onWarm: (Int) -> Unit,
+    onShowMap: (Int) -> Unit,
+    onNames: (Int) -> Unit,
     onEdit: (Int) -> Unit,
     onDelete: (Int) -> Unit,
 ) {
@@ -284,18 +388,24 @@ private fun ZoneSection(
             Text(stringResource(R.string.zone_none), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         zones.forEachIndexed { i, zone ->
-            ZoneCard(zone, exclude, distanceKm(zone)?.takeIf { it > farLimitKm }, { onToggle(i, it) }, { onEdit(i) }, { onDelete(i) },
+            ZoneCard(zone, exclude, distanceKm(zone)?.takeIf { it > farLimitKm }, warming == zone.points,
+                { onToggle(i, it) }, { onWarm(i) }, { onShowMap(i) }, { onNames(i) }, { onEdit(i) }, { onDelete(i) },
                 tag = (if (exclude) "zone-exclude-" else "zone-include-") + i)
         }
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ZoneCard(
     zone: EditableZone,
     exclude: Boolean,
     farKm: Double?,
+    warmingNow: Boolean,
     onToggle: (Boolean) -> Unit,
+    onWarm: () -> Unit,
+    onShowMap: () -> Unit,
+    onNames: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     tag: String,
@@ -319,10 +429,22 @@ private fun ZoneCard(
                     )
                     if (farKm != null) Text(stringResource(R.string.zp_far, farKm.toInt()), style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error)
+                    if (warmingNow) Text(stringResource(R.string.zp_warming, zone.name), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary)
+                    else if (zone.pending) Text(stringResource(R.string.zp_pending), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("$tag-pending"))
                 }
-                Switch(checked = zone.active, onCheckedChange = onToggle, modifier = Modifier.testTag("$tag-switch"))
+                Switch(checked = zone.active, onCheckedChange = onToggle, enabled = !warmingNow, modifier = Modifier.testTag("$tag-switch"))
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End), modifier = Modifier.fillMaxWidth()) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End), modifier = Modifier.fillMaxWidth()) {
+                if (zone.pending && !warmingNow) TextButton(onClick = onWarm, modifier = Modifier.testTag("$tag-warm")) {
+                    Text(stringResource(R.string.zp_warm_now))
+                }
+                TextButton(onClick = onShowMap, modifier = Modifier.testTag("$tag-map")) {
+                    Icon(Icons.Outlined.Place, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Text(" " + stringResource(R.string.zp_show_map))
+                }
+                TextButton(onClick = onNames, modifier = Modifier.testTag("$tag-names")) { Text(stringResource(R.string.zp_suggest_words)) }
                 TextButton(onClick = onEdit, modifier = Modifier.testTag("$tag-edit")) {
                     Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
                     Text(" " + stringResource(R.string.zp_edit))
@@ -345,6 +467,8 @@ private fun ZoneCard(
 internal fun DashboardZonesBlock(draft: FilterDraft, onDraftChange: (FilterDraft) -> Unit, onOpenZones: () -> Unit) {
     val include = draft.zones(exclude = false)
     val exclude = draft.zones(exclude = true)
+    val maxActive = ZonePolicyRepository.policy.collectAsState().value.maxActiveZones
+    var limitHit by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth().padding(vertical = 4.dp).testTag("quick-zones"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(stringResource(R.string.zone_group_title), style = MaterialTheme.typography.titleSmall)
         SwitchLine(stringResource(R.string.zone_include_title), draft.zonesEnabled, "quick-zones-include") { on ->
@@ -366,11 +490,20 @@ internal fun DashboardZonesBlock(draft: FilterDraft, onDraftChange: (FilterDraft
                 Text(zone.name.ifBlank { stringResource(R.string.zp_unnamed) }, style = MaterialTheme.typography.bodyMedium,
                     maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                 Switch(checked = zone.active, onCheckedChange = { active ->
-                    val list = (if (isExclude) exclude else include).toMutableList().also { it[i] = it[i].copy(active = active) }
-                    onDraftChange(draft.withZones(isExclude, list))
+                    when {
+                        active && zone.pending -> onOpenZones()
+                        active && !ZoneLimit.canActivate(ZoneLimit.activeCount(draft.zonesJson, draft.excludeZonesJson), maxActive) -> limitHit = true
+                        else -> {
+                            limitHit = false
+                            val list = (if (isExclude) exclude else include).toMutableList().also { it[i] = it[i].copy(active = active) }
+                            onDraftChange(draft.withZones(isExclude, list))
+                        }
+                    }
                 }, modifier = Modifier.testTag((if (isExclude) "quick-zone-exclude-" else "quick-zone-include-") + i))
             }
         }
+        if (limitHit) Text(stringResource(R.string.zp_limit, maxActive), style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error)
         TextButton(onClick = onOpenZones, modifier = Modifier.testTag("quick-zones-open")) {
             Icon(Icons.Outlined.Place, contentDescription = null, modifier = Modifier.size(18.dp))
             Text(" " + stringResource(R.string.zp_my_zones))
@@ -384,7 +517,7 @@ internal fun DashboardZonesBlock(draft: FilterDraft, onDraftChange: (FilterDraft
  * removes it; undo, clear and «موقعي» sit above the map. Saved with at least three corners.
  */
 @Composable
-private fun ZoneEditorDialog(
+internal fun ZoneEditorDialog(
     initial: EditableZone?,
     initialExclude: Boolean,
     onDismiss: () -> Unit,

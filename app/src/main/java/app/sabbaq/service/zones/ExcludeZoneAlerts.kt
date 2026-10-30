@@ -42,13 +42,13 @@ object ExcludeZoneAlerts {
         val app = context.applicationContext
         appContext = app
         watch.recordAccepted(dest)
-        if (!watch.applies(Settings.engineConfig)) return
+        if (!watch.applies(config())) return
         scope.launch {
             var attempt = 0
             while (true) {
                 val point = cached(dest)
                     ?: if (attempt < ExcludeZoneWatch.NETWORK_ATTEMPTS) runCatching { GeocodeWorker.resolveNow(app, dest) }.getOrNull() else null
-                when (val step = watch.attempt(Settings.engineConfig, dest, attempt, point)) {
+                when (val step = watch.attempt(config(), dest, attempt, point)) {
                     ExcludeZoneWatch.Step.Warn -> { warn(app, dest); return@launch }
                     ExcludeZoneWatch.Step.Done -> return@launch
                     is ExcludeZoneWatch.Step.Retry -> { delay(step.delayMs); attempt++ }
@@ -60,8 +60,11 @@ object ExcludeZoneAlerts {
     /** The background geocoder placed [address]: warn if it was accepted lately and lies in an exclude zone. */
     fun onPlaced(address: String, lat: Double, lng: Double) {
         val app = appContext ?: return
-        if (watch.onPlaced(Settings.engineConfig, address, lat, lng)) warn(app, address)
+        if (watch.onPlaced(config(), address, lat, lng)) warn(app, address)
     }
+
+    /** The settings the engine runs with: the driver's own plus the administration's shared zones. */
+    private fun config() = app.sabbaq.fleet.FleetRepository.effectiveConfig(Settings.engineConfig)
 
     private fun cached(dest: String): DoubleArray? {
         val me = ZoneStore.driverLocation() ?: return null

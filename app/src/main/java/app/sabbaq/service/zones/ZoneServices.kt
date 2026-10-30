@@ -17,6 +17,7 @@ import app.sabbaq.core.engine.DecisionEngine
 import app.sabbaq.core.engine.EngineConfig
 import app.sabbaq.core.engine.zones.PoiIndex
 import app.sabbaq.core.engine.zones.ZoneEnvironment
+import app.sabbaq.core.engine.zones.ZoneName
 import app.sabbaq.network.SupabaseClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -58,6 +59,7 @@ object ZoneStore : ZoneEnvironment {
     private const val MAX_PENDING = 150
     private const val MAX_CACHE_KEYS = 4000
     private const val MAX_FAILS = 3
+    private const val MAX_WARM_POINTS = 40
 
     private val json = Json { ignoreUnknownKeys = true }
     private val lock = Any()
@@ -173,6 +175,32 @@ object ZoneStore : ZoneEnvironment {
         synchronized(lock) { store(text, points) }
     }
 
+    /** The cache as stored (folded key → points, and the display name for warmed entries). */
+    fun cache(): JsonObject = cacheRoot
+
+    /**
+     * Stores the names a zone warming found (`ZH.callback`): new keys only, written once, each
+     * with its display name, points (up to [MAX_WARM_POINTS]) and source.
+     */
+    internal fun addWarmed(entries: Map<String, ZoneName>, source: String) {
+        if (entries.isEmpty()) return
+        synchronized(lock) {
+            val map = LinkedHashMap(cacheRoot)
+            for ((key, n) in entries) {
+                if (key in map) continue
+                map[key] = buildJsonObject {
+                    put("name", n.name)
+                    put("source", source)
+                    put("points", buildJsonArray {
+                        n.points.take(MAX_WARM_POINTS).forEach { add(buildJsonObject { put("lat", it[0]); put("lng", it[1]) }) }
+                    })
+                }
+            }
+            while (map.size > MAX_CACHE_KEYS) map.remove(map.keys.first())
+            write(JsonObject(map))
+        }
+    }
+
     private fun store(text: String, points: List<DoubleArray>) {
         val value = buildJsonObject {
             put("points", buildJsonArray {
@@ -182,7 +210,10 @@ object ZoneStore : ZoneEnvironment {
         val map = LinkedHashMap(cacheRoot)
         map[cacheKey(text)] = value
         while (map.size > MAX_CACHE_KEYS) map.remove(map.keys.first())
-        val root = JsonObject(map)
+        write(JsonObject(map))
+    }
+
+    private fun write(root: JsonObject) {
         runCatching {
             val file = cacheFile ?: return
             val tmp = File(file.parentFile, "$CACHE_FILE.tmp")
