@@ -1,0 +1,4 @@
+# Map assets are binary: never convert line endings.
+*.pbf binary
+*.pmtiles binary
+*.png binary
