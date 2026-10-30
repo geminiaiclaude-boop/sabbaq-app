@@ -96,10 +96,15 @@ object Settings {
         get() = runCatching { prefs().getInt("last_confirmed_tap_y", -1) }.getOrDefault(-1)
         set(value) { runCatching { prefs().edit().putInt("last_confirmed_tap_y", value).apply() } }
 
-    /** Invite code typed on the sign-in screen, claimed once the account exists. */
+    /** An invite code waiting to be claimed once the account exists (none is typed at sign-in any more). */
     var pendingReferralCode: String?
         get() = runCatching { prefs().getString("pending_referral_code", null) }.getOrNull()
         set(value) { runCatching { prefs().edit().apply { if (value.isNullOrBlank()) remove("pending_referral_code") else putString("pending_referral_code", value) }.apply() } }
+
+    /** The post-sign-in invite page («هل دعاك زميل؟») was answered or is not due for this account. */
+    var referralPromptDone: Boolean
+        get() = runCatching { prefs().getBoolean(KEY_REFERRAL_PROMPT_DONE, false) }.getOrDefault(false)
+        set(value) { runCatching { prefs().edit().putBoolean(KEY_REFERRAL_PROMPT_DONE, value).apply() } }
 
     /** Result of claiming that code ("ok" or the server's reason), shown once on the referral page. */
     var referralClaimOutcome: String?
@@ -176,6 +181,7 @@ object Settings {
                     .remove(KEY_A11Y_DISCLOSURE_VERSION)
                     .remove(KEY_KNOWN_SUBSCRIBER)
                     .remove(KEY_MONITORING_WANTED)
+                    .remove(KEY_REFERRAL_PROMPT_DONE)
                     .commit()
             }.getOrDefault(false)
             if (cleared) cachedConfig = null
@@ -232,6 +238,7 @@ object Settings {
     private const val KEY_IS_ACTIVE = "is_active"
     private const val KEY_A11Y_DISCLOSURE_VERSION = "a11y_disclosure_version"
     private const val KEY_KNOWN_SUBSCRIBER = "known_subscriber"
+    private const val KEY_REFERRAL_PROMPT_DONE = "referral_prompt_done"
     private const val KEY_MONITORING_WANTED = "monitoring_wanted"
     private const val KEY_AUTOSTART_CONFIRMED = "autostart_confirmed"
     private const val KEY_SUBSCRIPTION_ENDS_AT = "subscription_ends_at"

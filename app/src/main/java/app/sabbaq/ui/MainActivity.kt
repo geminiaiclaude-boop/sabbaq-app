@@ -271,7 +271,9 @@ class MainActivity : AppCompatActivity() {
                             if (BuildConfig.DIRECT_DISTRIBUTION) app.sabbaq.ui.admin.AdminPanel()
                             else Text(stringResource(R.string.ma_admin_unavailable))
                         }
-                        AppState.DRIVER_PANEL -> SettingsScreen(
+                        AppState.DRIVER_PANEL -> {
+                        InviteCodePrompt()
+                        SettingsScreen(
                             notificationPermissionGranted = notificationsGranted,
                             autoSetupGuide = navigation.sessionRestoreStatus == SessionRestoreStatus.NONE,
                             isRestoringSession = navigation.sessionRestoreStatus == SessionRestoreStatus.RESTORING,
@@ -323,6 +325,7 @@ class MainActivity : AppCompatActivity() {
                                     else (if (LocaleManager.isArabic()) "حُذف حسابك من الخادم، لكن تعذّر مسح بعض الإعدادات المحلية. احذف بيانات التطبيق من إعدادات الجهاز لإكمال المسح." else "Your account was deleted from the server, but some local settings could not be cleared. Delete the app data from the device settings to complete the wipe.")
                             },
                         )
+                        }
                     }
                     }
                 }

@@ -714,7 +714,6 @@ private fun AuthenticationCard(
         subtitle = stringResource(R.string.login_card_subtitle),
         icon = Icons.Outlined.Login
     ) {
-        ReferralCodeField(enabled = !isBusy)
         SabbaqButton(
             text = stringResource(R.string.login_continue_google),
             onClick = onGoogle,

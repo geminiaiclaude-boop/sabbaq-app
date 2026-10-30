@@ -904,7 +904,6 @@ Write your problem or question and our team will reply here during working hours
     <string name="zone_adv_corridor">Road width</string>
     <string name="zone_adv_reset">Restore the default values</string>
     <string name="ref_nav">Referrals and rewards</string>
-    <string name="ref_code_optional">Invite code (optional)</string>
     <string name="ref_title">Referrals and rewards</string>
     <string name="ref_subtitle">Invite colleagues and earn free subscription days</string>
     <string name="ref_loading">Loading…</string>
@@ -924,6 +923,14 @@ Write your problem or question and our team will reply here during working hours
     <string name="ref_code">Invite code</string>
     <string name="ref_enter_action">Link the code</string>
     <string name="ref_enter_privacy">The code\'s owner will see your name and phone number so they can follow up with you.</string>
+    <string name="ref_prompt_title">Did a colleague invite you to Sabbaq?</string>
+    <string name="ref_prompt_intro">If a colleague introduced you to Sabbaq, enter their invite code so it counts for them.</string>
+    <string name="ref_prompt_point_price">Nothing changes in your subscription or its price.</string>
+    <string name="ref_prompt_point_reward">When you pay for your first subscription, your colleague gets %1$d free days.</string>
+    <string name="ref_prompt_point_window">The code can be entered within %1$d days of signing up, before your first paid subscription.</string>
+    <string name="ref_prompt_later">You can also enter it later within the same period from the menu → \"Referrals and rewards\".</string>
+    <string name="ref_prompt_skip">I don\'t have a code</string>
+    <string name="ref_prompt_continue">Continue</string>
     <string name="ref_already_linked">Your account is linked to an invite code.</string>
     <string name="ref_list_title">Signed up with your code</string>
     <string name="ref_list_sub">See who paid and remind those who have not</string>
@@ -934,7 +941,7 @@ Write your problem or question and our team will reply here during working hours
     <string name="ref_state_rejected">Not counted (same phone or device)</string>
     <string name="ref_encourage">Encourage on WhatsApp</string>
     <string name="ref_remind">Remind to renew</string>
-    <string name="ref_encourage_text">Hi %1$s, subscribe to Sabbaq so it accepts orders for you — we both gain free days!</string>
+    <string name="ref_encourage_text">Hi %1$s, subscribe to Sabbaq so it accepts the right orders for you. Your subscription earns me free days, thank you!</string>
     <string name="ref_remind_text">Hi %1$s, your Sabbaq subscription has ended; renew it so it keeps accepting orders for you.</string>
     <string name="ref_claim_ok">Invite code linked. The reward counts after your first paid subscription.</string>
     <string name="ref_claim_paused">The administration has paused new referrals for now.</string>
