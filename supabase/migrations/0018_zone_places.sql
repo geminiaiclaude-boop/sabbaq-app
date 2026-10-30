@@ -10,6 +10,8 @@ create table if not exists private.places_cells (
     places jsonb not null default '[]'::jsonb check (jsonb_typeof(places) = 'array'),
     created_at timestamptz not null default now()
 );
+alter table private.places_cells enable row level security;
+revoke all on private.places_cells from public, anon, authenticated;
 
 -- The Google request (`places:searchNearby`, Arabic then English, 20 each, nearest first), kept
 -- apart so it can be replaced in tests. Returns {"places":[{name,lat,lng}…]} or null when no
