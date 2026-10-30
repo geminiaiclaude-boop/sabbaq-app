@@ -209,21 +209,15 @@ private fun OnboardingTopBar(page: OnboardingPage, onSkip: () -> Unit, modifier:
         shadowElevation = 8.dp,
         modifier = modifier.fillMaxWidth(),
     ) {
+        // Two rows, so the brand never shares its width with the language chips: on a 360 dp
+        // phone one row squeezed «سبّاق» into a column of single letters.
         Column(Modifier.background(Brush.horizontalGradient(listOf(brand.heroEnd, brand.heroStart)))) {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
+                modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 8.dp, top = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(Modifier.weight(1f)) { SabbaqBrand(compact = true, onHero = true) }
-                LanguageSwitch()
-                val stepOf = stringResource(R.string.onboarding_step_of, page.ordinal + 1, ONBOARDING_PAGES)
-                Text(
-                    "${page.ordinal + 1}/$ONBOARDING_PAGES",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = brand.onHeroMuted,
-                    modifier = Modifier.semantics { contentDescription = stepOf },
-                )
                 OutlinedButton(
                     onClick = onSkip,
                     border = BorderStroke(1.5.dp, brand.signature),
@@ -231,8 +225,22 @@ private fun OnboardingTopBar(page: OnboardingPage, onSkip: () -> Unit, modifier:
                     contentPadding = PaddingValues(horizontal = 14.dp),
                     modifier = Modifier.heightIn(min = 40.dp),
                 ) {
-                    Text(stringResource(R.string.onboarding_skip), style = MaterialTheme.typography.labelLarge)
+                    Text(stringResource(R.string.onboarding_skip), style = MaterialTheme.typography.labelLarge, maxLines = 1)
                 }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                LanguageSwitch(Modifier.weight(1f))
+                val stepOf = stringResource(R.string.onboarding_step_of, page.ordinal + 1, ONBOARDING_PAGES)
+                Text(
+                    "${page.ordinal + 1}/$ONBOARDING_PAGES",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = brand.onHeroMuted,
+                    modifier = Modifier.semantics { contentDescription = stepOf },
+                )
             }
             Box(Modifier.fillMaxWidth().height(3.dp).background(brand.signature))
         }
