@@ -25,6 +25,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -227,7 +228,75 @@ object GeocodeWorker {
         }
     }
 
-    private fun nominatim(text: String, near: DoubleArray?): List<DoubleArray> {
+    /**
+     * The zone editor's place search: up to five named results near the driver, from the phone's
+     * geocoder and then OpenStreetMap. Only the typed text and a coarse box leave the phone.
+     */
+    suspend fun searchPlaces(context: Context, text: String): List<Pair<String, DoubleArray>> = withContext(Dispatchers.IO) {
+        val near = ZoneStore.driverLocation()
+        runCatching { androidPlaces(context.applicationContext, text, near) }.getOrDefault(emptyList())
+            .ifEmpty { runCatching { nominatimPlaces(text, near) }.getOrDefault(emptyList()) }
+    }
+
+    /** A name for a drawn zone from its centre («اقترح الاسم من الخريطة»): district, else locality. */
+    @Suppress("DEPRECATION")
+    suspend fun placeName(context: Context, lat: Double, lng: Double): String? = withContext(Dispatchers.IO) {
+        runCatching {
+            if (!Geocoder.isPresent()) return@runCatching null
+            Geocoder(context.applicationContext).getFromLocation(lat, lng, 1)?.firstOrNull()?.let { a ->
+                listOf(a.subLocality, a.locality, a.subAdminArea, a.thoroughfare).firstOrNull { !it.isNullOrBlank() }
+            }
+        }.getOrNull() ?: runCatching { nominatimReverse(lat, lng) }.getOrNull()
+    }
+
+    @Suppress("DEPRECATION")
+    private fun androidPlaces(context: Context, text: String, near: DoubleArray?): List<Pair<String, DoubleArray>> {
+        if (!Geocoder.isPresent()) return emptyList()
+        val geocoder = Geocoder(context)
+        val found = if (near != null) {
+            val lat = Math.round(near[0] * 2.0) / 2.0
+            val lng = Math.round(near[1] * 2.0) / 2.0
+            geocoder.getFromLocationName(text, 5, lat - 1.0, lng - 1.0, lat + 1.0, lng + 1.0)
+        } else geocoder.getFromLocationName(text, 5)
+        return found.orEmpty().map { a ->
+            (a.getAddressLine(0) ?: listOfNotNull(a.featureName, a.locality).joinToString("، ")) to doubleArrayOf(a.latitude, a.longitude)
+        }
+    }
+
+    private fun nominatimPlaces(text: String, near: DoubleArray?): List<Pair<String, DoubleArray>> =
+        nominatimJson(text, near).mapNotNull { o ->
+            val lat = o["lat"]?.jsonPrimitive?.content?.toDoubleOrNull()
+            val lng = o["lon"]?.jsonPrimitive?.content?.toDoubleOrNull()
+            val name = o["display_name"]?.jsonPrimitive?.content.orEmpty()
+            if (lat == null || lng == null) null else name to doubleArrayOf(lat, lng)
+        }
+
+    private fun nominatimReverse(lat: Double, lng: Double): String? {
+        val conn = URL("https://nominatim.openstreetmap.org/reverse?lat=$lat&lon=$lng&format=jsonv2&zoom=14&accept-language=ar,en")
+            .openConnection() as HttpURLConnection
+        return try {
+            conn.connectTimeout = 8_000
+            conn.readTimeout = 8_000
+            conn.setRequestProperty("User-Agent", "SabbaqDriver/${BuildConfig.VERSION_NAME} (Android)")
+            if (conn.responseCode != 200) return null
+            val o = Json.parseToJsonElement(conn.inputStream.bufferedReader().use { it.readText() }) as? JsonObject ?: return null
+            val address = o["address"] as? JsonObject
+            listOf("suburb", "neighbourhood", "quarter", "city_district", "town", "city")
+                .firstNotNullOfOrNull { k -> address?.get(k)?.jsonPrimitive?.content?.takeIf { it.isNotBlank() } }
+                ?: o["name"]?.jsonPrimitive?.content?.takeIf { it.isNotBlank() }
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    private fun nominatim(text: String, near: DoubleArray?): List<DoubleArray> =
+        nominatimJson(text, near).mapNotNull { o ->
+            val lat = o["lat"]?.jsonPrimitive?.content?.toDoubleOrNull()
+            val lng = o["lon"]?.jsonPrimitive?.content?.toDoubleOrNull()
+            if (lat == null || lng == null) null else doubleArrayOf(lat, lng)
+        }
+
+    private fun nominatimJson(text: String, near: DoubleArray?): List<JsonObject> {
         val q = URLEncoder.encode(text, "UTF-8")
         val box = near?.let {
             val lat = Math.round(it[0] * 2.0) / 2.0
@@ -242,12 +311,7 @@ object GeocodeWorker {
             conn.setRequestProperty("User-Agent", "SabbaqDriver/${BuildConfig.VERSION_NAME} (Android)")
             if (conn.responseCode != 200) return emptyList()
             val body = conn.inputStream.bufferedReader().use { it.readText() }
-            Json.parseToJsonElement(body).jsonArray.mapNotNull { item ->
-                val o = item as? JsonObject ?: return@mapNotNull null
-                val lat = o["lat"]?.jsonPrimitive?.content?.toDoubleOrNull()
-                val lng = o["lon"]?.jsonPrimitive?.content?.toDoubleOrNull()
-                if (lat == null || lng == null) null else doubleArrayOf(lat, lng)
-            }
+            Json.parseToJsonElement(body).jsonArray.mapNotNull { it as? JsonObject }
         } finally {
             conn.disconnect()
         }

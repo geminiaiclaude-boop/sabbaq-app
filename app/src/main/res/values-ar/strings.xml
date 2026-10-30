@@ -841,7 +841,6 @@
     <string name="zone_home_angle">زاوية مسموحة</string>
     <string name="zone_open_map">افتح الخريطة</string>
     <string name="zone_none">لا توجد مناطق بعد</string>
-    <string name="zone_count">%1$d منطقة مفعّلة</string>
     <string name="zone_location_needed">يحتاج سبّاق إلى موقعك لاستخدام المناطق.</string>
     <string name="zone_location_allow">السماح</string>
     <string name="zone_map_hint">اضغط على الخريطة لإضافة الزوايا، ثم اضغط «إنهاء المنطقة». قرّب بإصبعين.</string>
@@ -974,4 +973,36 @@
     <string name="float_button">الزر العائم</string>
     <string name="float_needs_permission">يرجى منح إذن «الظهور فوق التطبيقات»، ثم حاول مجدداً.</string>
     <string name="language_title">اللغة</string>
+    <string name="zp_back">رجوع</string>
+    <string name="zp_intro">ارسم مناطق على الخريطة للتحكّم بقبول الطلبات أو رفضها حسب وجهتها.</string>
+    <string name="zp_settings">إعدادات المناطق</string>
+    <string name="zp_unknown_title">الوجهة غير المعروفة</string>
+    <string name="zp_unknown_reject">رفض فوري</string>
+    <string name="zp_unknown_accept">قبول</string>
+    <string name="zp_unknown_reject_b">موصى به: يقتصر القبول على الطلبات التي تنتهي داخل مناطقك.</string>
+    <string name="zp_unknown_accept_b">يحافظ على أسرع قبول، لكن قد تُقبل طلبات وجهتها خارج المناطق التي حددتها.</string>
+    <string name="zp_legend_include">أخضر = مناطق الوجهة</string>
+    <string name="zp_legend_exclude">أحمر = مناطق أتجنبها</string>
+    <string name="zp_on">مفعّلة</string>
+    <string name="zp_off">متوقفة</string>
+    <string name="zp_empty_hint">اضغط «منطقة جديدة» لرسم أول منطقة.</string>
+    <string name="zp_new_zone">منطقة جديدة</string>
+    <string name="zp_edit_zone">تعديل المنطقة</string>
+    <string name="zp_edit">تعديل</string>
+    <string name="zp_unnamed">منطقة بدون اسم</string>
+    <string name="zp_delete_q">حذف «%1$s»؟ لن تُفحص الطلبات عليها بعد ذلك.</string>
+    <string name="zp_kind_include">منطقة وجهة</string>
+    <string name="zp_kind_exclude">منطقة أتجنبها</string>
+    <string name="zp_far">تبعد عنك حوالي %1$d كم: أبعد من نطاق البحث، فيتجاهلها المحرك.</string>
+    <string name="zp_my_zones">مناطقي المحددة</string>
+    <string name="zp_name">اسم المنطقة</string>
+    <string name="zp_suggest_name">اقترح</string>
+    <string name="zp_search">ابحث عن منطقة أو معلم</string>
+    <string name="zp_search_none">لم يُعثر على مكان بهذا البحث.</string>
+    <string name="zp_tap_hint">اضغط الخريطة لإضافة نقطة (%1$d حتى الآن)</string>
+    <string name="zp_clear">مسح</string>
+    <string name="zp_my_location">موقعي</string>
+    <string name="zp_save_zone">حفظ المنطقة</string>
+    <string name="zp_name_needed">الرجاء إدخال اسم المنطقة.</string>
+    <string name="zp_points_needed">المنطقة تحتاج 3 نقاط على الأقل.</string>
 </resources>

@@ -127,15 +127,11 @@ private fun rememberLocationAccess(): LocationAccess {
     }
 }
 
-/**
- * The reference engine's geographic conditions: destination zones (with "on the way"), exclude zones and
- * the smart destination. Each needs the driver's position; the map edits the zone polygons.
- */
+/** Location permission and freshness for the zone rules; shown wherever zones are edited. */
 @Composable
-internal fun ZoneConditions(draft: FilterDraft, errors: Map<String, String>, onDraftChange: (FilterDraft) -> Unit) {
+internal fun ZoneLocationNotice(draft: FilterDraft) {
     val location = rememberLocationAccess()
     val requestLocation = location.request
-    var mapMode by rememberSaveable { mutableStateOf<ZoneMapMode?>(null) }
     val needsLocation = draft.zonesEnabled || draft.excludeZonesEnabled || draft.smartDestActive
     if (needsLocation && !location.granted) {
         Surface(color = MaterialTheme.colorScheme.errorContainer, shape = MaterialTheme.shapes.small) {
@@ -155,41 +151,29 @@ internal fun ZoneConditions(draft: FilterDraft, errors: Map<String, String>, onD
             modifier = Modifier.testTag("zone-location-age"),
         )
     }
+}
 
-    ProConditionCard(
-        title = stringResource(R.string.zone_include_title),
-        subtitle = stringResource(R.string.zone_include_sub),
-        enabled = draft.zonesEnabled,
-        testKey = "zones-include",
-        onEnabledChange = { onDraftChange(draft.copy(zonesEnabled = it)); if (it) requestLocation() },
-        footer = {
-            Column {
-                SwitchLine(stringResource(R.string.zone_reject_unknown), draft.zonesRejectOnUnknown, "zones-reject-unknown") {
-                    onDraftChange(draft.copy(zonesRejectOnUnknown = it))
-                }
-                SwitchLine(stringResource(R.string.zone_on_the_way), draft.zonesOnTheWay, "zones-on-the-way") {
-                    onDraftChange(draft.copy(zonesOnTheWay = it))
-                }
-            }
-        },
-    ) { _ ->
-        ZoneSummary(ZoneJson.activeCount(draft.zonesJson), errors["zones"], "zones-include-map") { mapMode = ZoneMapMode.INCLUDE }
+/**
+ * «الأماكن والمناطق» on «طلبات تناسبك»: where the zone lists stand, every zone by name, and the
+ * button to the zones page (the reference's zones list screen), then the smart destination.
+ */
+@Composable
+internal fun ZoneConditions(
+    draft: FilterDraft,
+    errors: Map<String, String>,
+    onDraftChange: (FilterDraft) -> Unit,
+    onOpenZones: () -> Unit,
+) {
+    val requestLocation = rememberLocationAccess().request
+    var mapMode by rememberSaveable { mutableStateOf<ZoneMapMode?>(null) }
+    ZoneLocationNotice(draft)
+    if (errors["zones"] != null || errors["excludeZones"] != null) {
+        Text(errors["zones"] ?: errors["excludeZones"].orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
     }
-
-    ProConditionCard(
-        title = stringResource(R.string.zone_exclude_title),
-        subtitle = stringResource(R.string.zone_exclude_sub),
-        enabled = draft.excludeZonesEnabled,
-        testKey = "zones-exclude",
-        onEnabledChange = { onDraftChange(draft.copy(excludeZonesEnabled = it)); if (it) requestLocation() },
-        footer = {
-            SwitchLine(stringResource(R.string.zone_exclude_reject_unknown), draft.excludeZonesRejectOnUnknown, "zones-exclude-reject-unknown") {
-                onDraftChange(draft.copy(excludeZonesRejectOnUnknown = it))
-            }
-        },
-    ) { _ ->
-        ZoneSummary(ZoneJson.activeCount(draft.excludeZonesJson), errors["excludeZones"], "zones-exclude-map") { mapMode = ZoneMapMode.EXCLUDE }
-    }
+    DashboardZonesBlock(draft, { next ->
+        onDraftChange(next)
+        if (next.zonesEnabled && !draft.zonesEnabled || next.excludeZonesEnabled && !draft.excludeZonesEnabled) requestLocation()
+    }, onOpenZones)
 
     ProConditionCard(
         title = stringResource(R.string.zone_home_title),
@@ -218,8 +202,6 @@ internal fun ZoneConditions(draft: FilterDraft, errors: Map<String, String>, onD
         )
     }
 
-    if (draft.zonesEnabled || draft.excludeZonesEnabled) ZoneAdvancedSettings(draft, errors, onDraftChange)
-
     mapMode?.let { mode ->
         ZoneMapDialog(
             mode = mode,
@@ -243,7 +225,7 @@ internal fun ZoneConditions(draft: FilterDraft, errors: Map<String, String>, onD
  * map's direction, what counts as "on the way", and how far an address may be matched.
  */
 @Composable
-private fun ZoneAdvancedSettings(draft: FilterDraft, errors: Map<String, String>, onDraftChange: (FilterDraft) -> Unit) {
+internal fun ZoneAdvancedSettings(draft: FilterDraft, errors: Map<String, String>, onDraftChange: (FilterDraft) -> Unit) {
     var open by rememberSaveable { mutableStateOf(errors.keys.any { it in ADVANCED_KEYS }) }
     TextButton(onClick = { open = !open }, modifier = Modifier.testTag("zone-advanced-toggle")) {
         Text(stringResource(if (open) R.string.zone_adv_hide else R.string.zone_adv_show))
@@ -285,23 +267,11 @@ private fun ZoneAdvancedSettings(draft: FilterDraft, errors: Map<String, String>
 private val ADVANCED_KEYS = setOf("zonesBearingMargin", "travelAngleTol", "travelOvershootKm", "corridorHalfWidthKm", "excludeProximityKm")
 
 @Composable
-private fun SwitchLine(label: String, checked: Boolean, tag: String, onChange: (Boolean) -> Unit) {
+internal fun SwitchLine(label: String, checked: Boolean, tag: String, onChange: (Boolean) -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(label, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
         Switch(checked = checked, onCheckedChange = onChange, modifier = Modifier.testTag(tag))
     }
-}
-
-@Composable
-private fun androidx.compose.foundation.layout.RowScope.ZoneSummary(count: Int, error: String?, tag: String, onOpen: () -> Unit) {
-    Column(Modifier.weight(1f)) {
-        Text(
-            if (count == 0) stringResource(R.string.zone_none) else stringResource(R.string.zone_count, count),
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        if (error != null) Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-    }
-    OutlinedButton(onClick = onOpen, modifier = Modifier.testTag(tag)) { Text(stringResource(R.string.zone_open_map)) }
 }
 
 /** Full-screen map: tap to add corners, finish a zone with 3+ corners; in home mode a tap sets the point. */

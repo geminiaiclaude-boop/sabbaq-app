@@ -63,6 +63,7 @@ internal fun AdvancedFiltersEditor(
     errors: Map<String, String>,
     onDraftChange: (FilterDraft) -> Unit,
     modifier: Modifier = Modifier,
+    onOpenZones: () -> Unit = {},
 ) {
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         SabbaqSectionTitle(
@@ -106,7 +107,7 @@ internal fun AdvancedFiltersEditor(
             filledCount = listOf(draft.zonesEnabled, draft.excludeZonesEnabled, draft.smartDestActive).count { it },
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                ZoneConditions(draft, errors, onDraftChange)
+                ZoneConditions(draft, errors, onDraftChange, onOpenZones)
                 Text(stringResource(R.string.zone_privacy_note), style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }

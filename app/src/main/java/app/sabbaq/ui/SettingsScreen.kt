@@ -172,7 +172,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.saveable.listSaver
 
 /** وجهات لوحة السائق؛ يمكن استدعاء الشاشة مباشرة إلى أي منها في معاينات/اختبارات الواجهة. */
-enum class DriverDestination { Dashboard, Filters, Simulator, Account, History, Setup, Settings, Support, Referrals }
+enum class DriverDestination { Dashboard, Filters, Simulator, Account, History, Setup, Settings, Support, Referrals, Zones }
 
 private data class DriverStatus(val message: String, val isError: Boolean = false, val success: Boolean = false) {
     val tone: SabbaqTone get() = when {
@@ -513,12 +513,13 @@ fun SettingsScreen(
     }
 
     // Every page except home goes back one step (the page it was opened from), never out of the app.
-    BackHandler(enabled = destination != DriverDestination.Dashboard) {
+    fun goBack() {
         returnToSetupAfterAction = false
         val previous = backStack.removeLastOrNull()
         destination = previous ?: DriverDestination.Dashboard
         if (destination == DriverDestination.Dashboard) backStack.clear()
     }
+    BackHandler(enabled = destination != DriverDestination.Dashboard) { goBack() }
 
     if (showAccessibilityRequired) {
         AlertDialog(
@@ -647,6 +648,7 @@ fun SettingsScreen(
                 },
                 onRequestNotifications = onRequestNotificationPermission,
                 onOpenFilters = { navigateTo(DriverDestination.Filters) },
+                onOpenZones = { navigateTo(DriverDestination.Zones) },
                 onOpenAccount = { navigateTo(DriverDestination.Account) },
                 onOpenSetupGuide = { navigateTo(DriverDestination.Setup) },
                 batteryUnrestricted = batteryUnrestricted,
@@ -742,12 +744,18 @@ fun SettingsScreen(
                 isSaving = isSavingFilters,
                 message = filtersMessage,
                 onDraftChange = ::updateDraft,
+                onOpenZones = { navigateTo(DriverDestination.Zones) },
                 onSave = ::retrySaveDraft,
                 onRevert = { updateDraft(FilterDraft.from(savedFilters)); filtersMessage = null },
                 onReset = { showResetFilters = true },
             )
 
             DriverDestination.Simulator -> SimulatorPage(savedFilters = savedFilters)
+
+            DriverDestination.Zones -> DriverPage {
+                SabbaqAnimatedMessage(filtersMessage?.message, filtersMessage?.tone ?: SabbaqTone.Info)
+                ZonesPage(draft, draftValidation.errors, ::updateDraft, onBack = ::goBack)
+            }
 
             DriverDestination.Settings -> DriverPage {
                 val openBattery = {
@@ -1074,6 +1082,7 @@ private fun DashboardPage(
     onOpenA11y: () -> Unit,
     onRequestNotifications: () -> Unit,
     onOpenFilters: () -> Unit,
+    onOpenZones: () -> Unit,
     onOpenAccount: () -> Unit,
     onOpenSetupGuide: () -> Unit,
     batteryUnrestricted: Boolean = true,
@@ -1142,6 +1151,7 @@ private fun DashboardPage(
         saveMessage = filtersMessage,
         onDraftChange = onQuickDraftChange,
         onOpenFilters = onOpenFilters,
+        onOpenZones = onOpenZones,
         modifier = Modifier.sabbaqEntrance(2),
     )
     // «حالة التشغيل الفعلية» lives in «سجل القرارات» next to the statistics.
@@ -1287,6 +1297,7 @@ private fun ActiveConditionsCockpit(
     saveMessage: DriverStatus?,
     onDraftChange: (FilterDraft) -> Unit,
     onOpenFilters: () -> Unit,
+    onOpenZones: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     SabbaqCard(
@@ -1299,7 +1310,7 @@ private fun ActiveConditionsCockpit(
         icon = Icons.Outlined.Tune,
         modifier = modifier,
     ) {
-        QuickConditionsPanel(draft, errors, onDraftChange)
+        QuickConditionsPanel(draft, errors, onDraftChange, onOpenZones)
         SabbaqAnimatedMessage(saveMessage?.message, saveMessage?.tone ?: SabbaqTone.Info)
         SabbaqButton(
             stringResource(R.string.ss_conditions_more),
@@ -1653,6 +1664,7 @@ private fun FiltersPage(
     isSaving: Boolean,
     message: DriverStatus?,
     onDraftChange: (FilterDraft) -> Unit,
+    onOpenZones: () -> Unit,
     onSave: () -> Unit,
     onRevert: () -> Unit,
     onReset: () -> Unit,
@@ -1670,6 +1682,7 @@ private fun FiltersPage(
         draft = draft,
         errors = validationErrors,
         onDraftChange = onDraftChange,
+        onOpenZones = onOpenZones,
     )
     SabbaqCard(title = stringResource(R.string.ss_instant_save_title), subtitle = stringResource(R.string.ss_instant_save_sub), icon = Icons.Outlined.Autorenew) {
         if (isSaving) {

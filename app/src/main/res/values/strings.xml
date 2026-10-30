@@ -834,7 +834,6 @@ Write your problem or question and our team will reply here during working hours
     <string name="zone_home_angle">Allowed angle</string>
     <string name="zone_open_map">Open map</string>
     <string name="zone_none">No zones yet</string>
-    <string name="zone_count">%1$d active zones</string>
     <string name="zone_location_needed">Sabbaq needs your location to use zones.</string>
     <string name="zone_location_allow">Allow</string>
     <string name="zone_map_hint">Tap the map to add corners, then press Finish zone. Pinch to zoom.</string>
@@ -967,4 +966,36 @@ Write your problem or question and our team will reply here during working hours
     <string name="float_button">Floating button</string>
     <string name="float_needs_permission">Please allow “Display over other apps”, then try again.</string>
     <string name="language_title">Language</string>
+    <string name="zp_back">Back</string>
+    <string name="zp_intro">Draw zones on the map to accept or reject orders by where they end.</string>
+    <string name="zp_settings">Zone settings</string>
+    <string name="zp_unknown_title">When the destination cannot be located</string>
+    <string name="zp_unknown_reject">Reject at once</string>
+    <string name="zp_unknown_accept">Accept</string>
+    <string name="zp_unknown_reject_b">Recommended: only orders ending inside your zones are accepted.</string>
+    <string name="zp_unknown_accept_b">Keeps the fastest accept, but may accept orders ending outside your zones.</string>
+    <string name="zp_legend_include">Green = destination zones</string>
+    <string name="zp_legend_exclude">Red = zones you avoid</string>
+    <string name="zp_on">On</string>
+    <string name="zp_off">Off</string>
+    <string name="zp_empty_hint">Press “New zone” to draw your first zone.</string>
+    <string name="zp_new_zone">New zone</string>
+    <string name="zp_edit_zone">Edit the zone</string>
+    <string name="zp_edit">Edit</string>
+    <string name="zp_unnamed">Unnamed zone</string>
+    <string name="zp_delete_q">Delete “%1$s”? Orders will no longer be checked against it.</string>
+    <string name="zp_kind_include">Destination zone</string>
+    <string name="zp_kind_exclude">Zone to avoid</string>
+    <string name="zp_far">About %1$d km from you: farther than the search range, so the engine ignores it.</string>
+    <string name="zp_my_zones">My zones</string>
+    <string name="zp_name">Zone name</string>
+    <string name="zp_suggest_name">Suggest</string>
+    <string name="zp_search">Search for an area or landmark</string>
+    <string name="zp_search_none">No place found for this search.</string>
+    <string name="zp_tap_hint">Tap the map to add a corner (%1$d so far)</string>
+    <string name="zp_clear">Clear</string>
+    <string name="zp_my_location">My location</string>
+    <string name="zp_save_zone">Save the zone</string>
+    <string name="zp_name_needed">Please enter the zone name.</string>
+    <string name="zp_points_needed">A zone needs at least 3 points.</string>
 </resources>
