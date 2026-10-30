@@ -68,6 +68,6 @@ class JeenyFieldCardTest {
     fun a_driver_price_limit_above_the_fare_rejects_with_the_reference_reason() {
         val (root, _) = card(line("5.84 ⃁"))
         val ride = JeenyScreenReader(EngineConfig(minPrice = 10.0)) { 0L }.read(root, 2400)!!
-        assertEquals("failed_price", DecisionEngine.decide(ride, EngineConfig(minPrice = 10.0)).reason)
+        assertEquals("failed_price", DecisionEngine.decide(ride, EngineConfig(priceEnabled = true, minPrice = 10.0)).reason)
     }
 }

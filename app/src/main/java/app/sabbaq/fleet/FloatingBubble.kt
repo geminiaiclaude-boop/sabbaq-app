@@ -1,6 +1,7 @@
 package app.sabbaq.fleet
 
 import android.animation.ValueAnimator
+import app.sabbaq.R
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
@@ -126,10 +127,11 @@ object FloatingBubble {
             }
         }
         collapsedView.addView(glowView, FrameLayout.LayoutParams(dp(ctx, 72f), dp(ctx, 72f)))
-        val ring = FrameLayout(ctx).apply { background = shape(true, 0xFF1A1A2E.toInt(), strokeDp = 2.5f, stroke = 0xFFFFCC44.toInt(), context = ctx) }
+        // The brand's purple disc and the bare mark: the launcher icon is a square and showed as one inside the ring.
+        val ring = FrameLayout(ctx).apply { background = shape(true, 0xFF341862.toInt(), strokeDp = 2.5f, stroke = 0xFFFFD21F.toInt(), context = ctx) }
         val icon = ImageView(ctx).apply {
-            setImageDrawable(runCatching { ctx.packageManager.getApplicationIcon(ctx.packageName) }.getOrNull())
-            val pad = dp(ctx, 6f); setPadding(pad, pad, pad, pad)
+            setImageResource(R.drawable.ic_bubble_mark)
+            scaleType = ImageView.ScaleType.FIT_CENTER
         }
         ring.addView(icon, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         collapsedView.addView(ring, FrameLayout.LayoutParams(dp(ctx, 56f), dp(ctx, 56f), Gravity.CENTER))
@@ -220,7 +222,8 @@ object FloatingBubble {
         user.setOnClickListener { haptic(it); openApp(ctx, admin = false); expand(false) }
         admin.setOnClickListener { haptic(it); openApp(ctx, admin = true); expand(false) }
         engine.setOnClickListener { haptic(it); toggleEngine(ctx) }
-        close.setOnClickListener { haptic(it); Settings.floatingBubble = false; remove() }
+        // refresh, not remove: it also stops the control's service and its «ظاهر» notification.
+        close.setOnClickListener { haptic(it); Settings.floatingBubble = false; refresh() }
 
         if (runCatching { wm.addView(frame, lp) }.isFailure) return
         root = frame; params = lp; collapsed = collapsedView; card = cardView; glow = glowView; dot = statusDot

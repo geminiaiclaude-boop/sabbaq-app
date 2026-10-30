@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The floating control's mark: ic_launcher without its square background, so it sits
+     cleanly inside the round control (the launcher icon drew a square inside the circle).
+     Sabbaq mark: a speed-gauge ring left open where a folded dart breaks out ahead,
+     trailing speed streaks through the gap. Same geometry as sabbaqMark() in SabbaqScenes. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#00000000" android:strokeColor="#FFD21F" android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:pathData="M56.6,83.9 A30,30 0,1 1,83,61.8" />
+    <path android:fillColor="#00000000" android:strokeColor="#FFD21F" android:strokeWidth="3.2"
+        android:strokeLineCap="round" android:strokeAlpha="0.55"
+        android:pathData="M52.4,67.5 L61.4,78.2" />
+    <path android:fillColor="#00000000" android:strokeColor="#FFD21F" android:strokeWidth="3.6"
+        android:strokeLineCap="round"
+        android:pathData="M56.7,58.6 L70.9,75.5" />
+    <path android:fillColor="#00000000" android:strokeColor="#FFD21F" android:strokeWidth="3.2"
+        android:strokeLineCap="round" android:strokeAlpha="0.55"
+        android:pathData="M66.2,55.9 L75.2,66.6" />
+    <path android:fillColor="#F5FAFF" android:pathData="M31,28 L71.5,51.4 L49,49.4 L47,72 Z" />
+    <path android:fillColor="#FFD21F" android:pathData="M31,28 L49,49.4 L47,72 Z" />
+</vector>

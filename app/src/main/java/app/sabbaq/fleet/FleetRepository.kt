@@ -95,6 +95,7 @@ object FleetRepository {
         }
         runCatching { ZonePolicyRepository.refresh() }
         if (any) lastRefreshAt = now
+        appContext?.let { runCatching { UpdateNotifier.maybeNotify(it, releaseState.value) } }
     }
 
     private fun decode(text: String): JsonObject? = runCatching { Json.parseToJsonElement(text) as JsonObject }.getOrNull()

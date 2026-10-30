@@ -109,6 +109,12 @@
                 android:value="Keeps the user-enabled floating control over other apps available while monitoring is off, with a persistent notification." />
         </service>
 
+        <!-- New-version check every six hours, monitoring on or off (UpdateNotifier). -->
+        <service
+            android:name=".fleet.UpdateCheckJob"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
         <!-- Keep-alive watchdog (KeepAlive): restarts monitoring the system or a cleaner killed. -->
         <receiver
             android:name=".receiver.WatchdogReceiver"

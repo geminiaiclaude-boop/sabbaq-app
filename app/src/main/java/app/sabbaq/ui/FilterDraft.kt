@@ -17,16 +17,16 @@ import kotlinx.serialization.Serializable
  */
 @Serializable
 data class FilterDraft(
-    val priceEnabled: Boolean = true,
+    val priceEnabled: Boolean = false,
     val minPrice: String = "",
     val maxPrice: String = "",
-    val timeEnabled: Boolean = true,
+    val timeEnabled: Boolean = false,
     val minTime: String = "",
     val maxTime: String = "",
     val logicOr: Boolean = false,
     val destCheckEnabled: Boolean = false,
     val destKeywords: String = "",
-    val destIncludeRejectOnUnknown: Boolean = true,
+    val destIncludeRejectOnUnknown: Boolean = false,
     val destExcludeEnabled: Boolean = false,
     val destExcludeKeywords: String = "",
     val destExcludeRejectOnUnknown: Boolean = false,
@@ -49,7 +49,7 @@ data class FilterDraft(
     val smartDelayMax: String = "",
     val zonesEnabled: Boolean = false,
     val zonesJson: String = "[]",
-    val zonesRejectOnUnknown: Boolean = true,
+    val zonesRejectOnUnknown: Boolean = false,
     val zonesOnTheWay: Boolean = false,
     val excludeZonesEnabled: Boolean = false,
     val excludeZonesJson: String = "[]",
@@ -68,6 +68,13 @@ data class FilterDraft(
     val corridorHalfWidthKm: String = "1.5",
     val excludeProximityKm: String = "60",
 ) {
+    /** Entering a limit is the driver switching its condition on; nothing is on by itself (owner, 2026-10-30). */
+    fun withPriceLimits(min: String = minPrice, max: String = maxPrice): FilterDraft =
+        copy(minPrice = min, maxPrice = max, priceEnabled = priceEnabled || min.isNotBlank() || max.isNotBlank())
+
+    fun withTimeLimits(min: String = minTime, max: String = maxTime): FilterDraft =
+        copy(minTime = min, maxTime = max, timeEnabled = timeEnabled || min.isNotBlank() || max.isNotBlank())
+
     val homeSet: Boolean get() = !(smartDestLat == 0.0 && smartDestLng == 0.0)
 
     /** [base] supplies the fields this page does not edit (extra keyword lists, zones, smart destination). */
@@ -134,8 +141,8 @@ data class FilterDraft(
     fun activeCount(): Int = listOf(
         priceEnabled && (minPrice.isNotBlank() || maxPrice.isNotBlank()),
         timeEnabled && (minTime.isNotBlank() || maxTime.isNotBlank()),
-        destCheckEnabled && !excludeMode,
-        destExcludeEnabled && excludeMode,
+        destCheckEnabled && !excludeMode && destKeywords.isNotBlank(),
+        destExcludeEnabled && excludeMode && destExcludeKeywords.isNotBlank(),
         bypassTimeEnabled,
         paymentMode != PaymentMode.ALL,
         ratingEnabled && minRating.isNotBlank(),
@@ -146,6 +153,13 @@ data class FilterDraft(
     ).count { it }
 
     companion object {
+        /**
+         * «ابدأ» needs at least one condition the driver set (owner: the setup guide's
+         * conditions step became a requirement of starting). Nothing is on at first install, so
+         * a new driver is taken to the conditions before monitoring can accept anything.
+         */
+        fun canStartWith(c: EngineConfig): Boolean = from(c).activeCount() > 0
+
         fun from(c: EngineConfig) = FilterDraft(
             priceEnabled = c.priceEnabled, minPrice = number(c.minPrice), maxPrice = number(c.maxPrice),
             timeEnabled = c.timeEnabled, minTime = whole(c.minTime), maxTime = whole(c.maxTime),

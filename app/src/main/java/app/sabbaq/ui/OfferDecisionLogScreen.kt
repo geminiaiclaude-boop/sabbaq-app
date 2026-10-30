@@ -50,12 +50,12 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 /**
- * «سجل القرارات»: the statistics first (today, week, month and top rejection reasons), then
+ * «النشاط والتشخيص»: the monitoring check, then the statistics (today, week, month and top rejection reasons), then
  * the latest decisions as one list. Same page structure as «الإعدادات»: a back row, a heading
  * and cards, so every secondary page reads alike.
  */
 @Composable
-fun OfferDecisionLogScreen(onBack: () -> Unit) {
+internal fun OfferDecisionLogScreen(onBack: () -> Unit, onDiagnosisAction: (DiagnosisAction) -> Unit = {}) {
     val context = LocalContext.current
     val liveRows by OfferDecisionLogStore.rows.collectAsState()
     var rows by remember { mutableStateOf(OfferDecisionLogStore.snapshot()) }
@@ -85,7 +85,7 @@ fun OfferDecisionLogScreen(onBack: () -> Unit) {
         )
 
         val runtime by RuntimeStatusRepository.snapshot.collectAsState()
-        DiagnosisCard(onAction = { }, detailed = true)
+        DiagnosisCard(onAction = onDiagnosisAction, detailed = true)
         RuntimeStatusCard(runtime, Modifier.sabbaqEntrance(0))
 
         OfferStatsCard(Modifier.sabbaqEntrance(1))

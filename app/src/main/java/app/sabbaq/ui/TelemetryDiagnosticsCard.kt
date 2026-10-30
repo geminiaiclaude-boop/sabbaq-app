@@ -131,7 +131,7 @@ private fun verdictAdvice(verdict: TelemetryDiagnosis.Verdict): String = (when (
     TelemetryDiagnosis.Verdict.OFFER_NOT_PARSED,
     TelemetryDiagnosis.Verdict.ACCEPT_NOT_DISPATCHED,
     TelemetryDiagnosis.Verdict.ACCEPT_NOT_CONFIRMED -> "اضغط «إرسال التشخيص الآن» وأرسل معرّف الدعم من صفحة الاشتراك؛ يحتاج هذا إصلاحًا من فريق سبّاق." to "Press \"Send the diagnosis now\" and send the support ID from the subscription page; this needs a fix from the Sabbaq team."
-    TelemetryDiagnosis.Verdict.OFFERS_REJECTED_BY_RULES -> "راجع الشروط في «سجل القرارات» وخففها إن كانت أشد من اللازم." to "Review the conditions in \"Decision log\" and ease them if they are stricter than needed."
+    TelemetryDiagnosis.Verdict.OFFERS_REJECTED_BY_RULES -> "راجع الشروط في «طلبات تناسبك» وخففها إن كانت أشد من اللازم." to "Review the conditions in \"Offers for you\" and ease them if they are stricter than needed."
     TelemetryDiagnosis.Verdict.WAITING_FOR_OFFER,
     TelemetryDiagnosis.Verdict.WORKING -> "لا يلزم أي إجراء." to "No action is needed."
 }).pick()

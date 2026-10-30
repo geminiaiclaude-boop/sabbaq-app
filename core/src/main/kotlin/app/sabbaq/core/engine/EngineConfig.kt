@@ -18,10 +18,10 @@ enum class WaitSaveMode { OFF, EXCLUDE }
 
 /**
  * The driver's settings, field for field the subset of the reference engine's EngineConfig that its
- * decision and reader use (reference engine notes). Defaults are the reference engine's:
- * price and time checks are on but unbounded (0 = no limit), so every offer is accepted until
- * the driver sets a limit. Missing screen data never rejects unless a reject-on-unknown switch
- * is on.
+ * decision and reader use (reference engine notes). No condition is on at first install (owner,
+ * 2026-10-30): every offer is accepted until the driver switches a condition on, and missing
+ * screen data never rejects unless the driver switches a reject-on-unknown option on. Settings
+ * saved by older versions keep their values (EngineConfigStore).
  */
 @Serializable
 data class EngineConfig(
@@ -29,8 +29,8 @@ data class EngineConfig(
     val maxPrice: Double = 0.0,
     val minTime: Int = 0,
     val maxTime: Int = 0,
-    val priceEnabled: Boolean = true,
-    val timeEnabled: Boolean = true,
+    val priceEnabled: Boolean = false,
+    val timeEnabled: Boolean = false,
     val logicMode: LogicMode = LogicMode.AND,
     /** The reference engine `dest_check_enabled` with `dest_home_mode` include. */
     val destCheckEnabled: Boolean = false,
@@ -38,7 +38,7 @@ data class EngineConfig(
     val destHomeMode: DestinationMode = DestinationMode.INCLUDE,
     val destExcludeEnabled: Boolean = false,
     val destExcludeKeywords: String = "",
-    val destIncludeRejectOnUnknown: Boolean = true,
+    val destIncludeRejectOnUnknown: Boolean = false,
     val destExcludeRejectOnUnknown: Boolean = false,
     /** Accept offers whose destination cannot be read. */
     val snipingNoDest: Boolean = true,
@@ -65,7 +65,7 @@ data class EngineConfig(
     /** Geographic zones (the reference engine `dest_zones_*`): accept only destinations inside these polygons. */
     val destZonesEnabled: Boolean = false,
     val destZonesJson: String = "[]",
-    val destZonesRejectOnUnknown: Boolean = true,
+    val destZonesRejectOnUnknown: Boolean = false,
     val destZonesBearingEnabled: Boolean = true,
     val destZonesBearingMarginDeg: Double = 25.0,
     val destZonesOnTheWayEnabled: Boolean = false,

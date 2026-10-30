@@ -165,9 +165,25 @@ class SessionNavigationViewModel : ViewModel() {
 }
 
 class MainActivity : AppCompatActivity() {
+    /** The update notification's «تحديث الآن»: download, check and install the announced version. */
+    private fun startUpdateIfAsked(intent: Intent?) {
+        if (intent?.getStringExtra(app.sabbaq.fleet.FloatingBubble.EXTRA_ROUTE) != app.sabbaq.fleet.UpdateNotifier.ROUTE_UPDATE) return
+        intent.removeExtra(app.sabbaq.fleet.FloatingBubble.EXTRA_ROUTE)
+        val release = app.sabbaq.fleet.FleetRepository.release.value
+        if (release.state(app.sabbaq.BuildConfig.VERSION_CODE.toLong()) == app.sabbaq.core.UpdateState.NONE) return
+        kotlinx.coroutines.MainScope().launch { app.sabbaq.fleet.ApkUpdater.update(this@MainActivity, release) }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        startUpdateIfAsked(intent)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        if (savedInstanceState == null) startUpdateIfAsked(intent)
         val navigation = ViewModelProvider(this)[SessionNavigationViewModel::class.java]
         navigation.initialize(
             showWelcome = !OnboardingPreferences.isComplete(this),

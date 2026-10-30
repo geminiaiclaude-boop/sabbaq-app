@@ -44,18 +44,15 @@ object Settings {
         get() = synchronized(this) {
             cachedConfig ?: run {
                 val stored = prefs().getString(KEY_ENGINE_CONFIG, null)
-                val value = try {
-                    stored?.let { storedJson.decodeFromString<EngineConfig>(it) } ?: EngineConfig()
-                } catch (_: Exception) {
-                    EngineConfig()
-                }
+                // EngineConfigStore reads settings saved by older versions with their defaults.
+                val value = stored?.let { app.sabbaq.core.engine.EngineConfigStore.decode(it) } ?: EngineConfig()
                 cachedConfig = value
                 value
             }
         }
         set(value) {
             synchronized(this) {
-                prefs().edit().putString(KEY_ENGINE_CONFIG, Json.encodeToString(value)).apply()
+                prefs().edit().putString(KEY_ENGINE_CONFIG, app.sabbaq.core.engine.EngineConfigStore.encode(value)).apply()
                 cachedConfig = null
             }
         }
@@ -155,7 +152,7 @@ object Settings {
     suspend fun saveEngineConfig(value: EngineConfig): Boolean = withContext(Dispatchers.IO) {
         synchronized(this@Settings) {
             val saved = runCatching {
-                prefs().edit().putString(KEY_ENGINE_CONFIG, Json.encodeToString(value)).commit()
+                prefs().edit().putString(KEY_ENGINE_CONFIG, app.sabbaq.core.engine.EngineConfigStore.encode(value)).commit()
             }.getOrDefault(false)
             if (saved) cachedConfig = null
             saved

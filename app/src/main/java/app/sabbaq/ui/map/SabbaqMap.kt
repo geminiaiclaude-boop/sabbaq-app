@@ -30,6 +30,7 @@ import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.maps.MapLibreMap
+import org.maplibre.android.maps.MapLibreMapOptions
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.style.sources.GeoJsonSource
 import java.io.File
@@ -155,7 +156,9 @@ object MapStyles {
 class SabbaqMapState(context: Context) {
     init { MapLibre.getInstance(context.applicationContext) }
 
-    val view: MapView = MapView(context)
+    // A TextureView map: the zone editor and the zone viewer are full-screen dialogs, and a
+    // SurfaceView there is composited behind the dialog's own window, so the map never appeared.
+    val view: MapView = MapView(context, MapLibreMapOptions.createFromAttributes(context).textureMode(true))
     private var map: MapLibreMap? = null
     private var styleReady = false
     private val pending = ArrayList<(MapLibreMap) -> Unit>()

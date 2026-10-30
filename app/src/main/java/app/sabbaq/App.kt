@@ -37,5 +37,6 @@ class App : Application() {
         Settings.clearProcessAuthorizationState()
         KeeperService.resumeIfWanted(this)
         runCatching { app.sabbaq.fleet.KeepAlive.schedule(this) }
+        runCatching { app.sabbaq.fleet.UpdateCheckJob.schedule(this) }
     }
 }

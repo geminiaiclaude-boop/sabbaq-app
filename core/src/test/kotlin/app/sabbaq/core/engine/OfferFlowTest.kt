@@ -55,7 +55,7 @@ class OfferFlowTest {
 
     @Test
     fun a_rejected_offer_is_reported_once() {
-        val cfg = EngineConfig(minPrice = 50.0)
+        val cfg = EngineConfig(priceEnabled = true, minPrice = 50.0)
         val first = frame(offer(), cfg = cfg) as FlowAction.Rejected
         now += 300
         val again = frame(offer(), cfg = cfg) as FlowAction.Rejected

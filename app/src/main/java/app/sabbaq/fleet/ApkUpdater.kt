@@ -134,6 +134,7 @@ object ApkUpdater {
         }
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.updates", file)
         UpdateTelemetry.state("install_started", 0)
+        UpdateNotifier.dismiss(context)
         return runCatching {
             context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive")
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK))
