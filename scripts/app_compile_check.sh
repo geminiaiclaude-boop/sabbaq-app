@@ -70,3 +70,8 @@ ARGS="$T/args.txt"
 } > "$ARGS"
 "$J" -Xmx1200m -cp "$(cygpath -wp "$CP_C")" org.jetbrains.kotlin.cli.jvm.K2JVMCompiler "@$(cygpath -m "$ARGS")" 2>&1 | grep -v "^warning" || true
 find $OUT -name "*.class" | wc -l
+# For scripts/app_unit_test.sh: where the classes went and the library classpath.
+[ -n "${EMIT_PATHS:-}" ] && printf "%s
+%s
+%s
+" "$(cygpath -m "$CORE_OUT")" "$(cygpath -m "$OUT")" "${CPW:1}" > "$EMIT_PATHS"
