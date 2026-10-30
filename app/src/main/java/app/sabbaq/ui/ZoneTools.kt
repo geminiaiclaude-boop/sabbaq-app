@@ -263,8 +263,9 @@ private fun DiagnosisLines(r: ZoneDiagnosis.Report, liveAsked: Boolean, busy: Bo
             }
         }
         if (r.where != ZoneDiagnosis.Where.NO_ZONES) {
+            val rejected = r.engineReject
             add(when {
-                r.engineReject != null -> stringResource(R.string.zp_diag_engine_rejects, reasonLabel(r.engineReject))
+                rejected != null -> stringResource(R.string.zp_diag_engine_rejects, reasonLabel(rejected))
                 r.engineUnplaced -> stringResource(R.string.zp_diag_engine_unplaced)
                 else -> stringResource(R.string.zp_diag_engine_accepts)
             } to (r.engineReject != null))

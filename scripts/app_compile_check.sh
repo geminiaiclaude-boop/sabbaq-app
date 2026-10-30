@@ -47,13 +47,25 @@ mkdir -p "$T/stub"
 OUT=$(mktemp -d)
 echo "libs: ${#LIBS[@]}" >&2; CPW=""
 for l in "${LIBS[@]}"; do CPW="$CPW;$(cygpath -m "$l")"; done
+# core and app are separate Gradle modules: compile core first, then app against its classes,
+# so cross-module rules (no smart cast on another module's public property) fail here as in CI.
+CORE_OUT=$(mktemp -d)
+ARGS="$T/core-args.txt"
+{
+  echo "-no-stdlib"; echo "-no-reflect"; echo "-jvm-target"; echo "17"; echo "-module-name"; echo "core"
+  echo "-Xplugin=$(cygpath -m "$SER")"
+  echo "-cp"; echo "${CPW:1}"
+  echo "-d"; echo "$(cygpath -m "$CORE_OUT")"
+  find core/src/main/kotlin -name '*.kt' | while read -r f; do cygpath -m "$f"; done
+} > "$ARGS"
+"$J" -Xmx1200m -cp "$(cygpath -wp "$CP_C")" org.jetbrains.kotlin.cli.jvm.K2JVMCompiler "@$(cygpath -m "$ARGS")" 2>&1 | grep -v "^warning" || true
 ARGS="$T/args.txt"
 {
-  echo "-no-stdlib"; echo "-no-reflect"; echo "-jvm-target"; echo "17"
+  echo "-no-stdlib"; echo "-no-reflect"; echo "-jvm-target"; echo "17"; echo "-module-name"; echo "app"
   echo "-Xplugin=$(cygpath -m "$SER")"; echo "-Xplugin=$(cygpath -m "$COMPOSE")"
-  echo "-cp"; echo "${CPW:1}"
+  echo "-cp"; echo "$(cygpath -m "$CORE_OUT")${CPW}"
   echo "-d"; echo "$(cygpath -m "$OUT")"
-  find core/src/main/kotlin app/src/main/java -name '*.kt' | while read -r f; do cygpath -m "$f"; done
+  find app/src/main/java -name '*.kt' | while read -r f; do cygpath -m "$f"; done
   cygpath -m "$T/stub/Generated.kt"
 } > "$ARGS"
 "$J" -Xmx1200m -cp "$(cygpath -wp "$CP_C")" org.jetbrains.kotlin.cli.jvm.K2JVMCompiler "@$(cygpath -m "$ARGS")" 2>&1 | grep -v "^warning" || true
