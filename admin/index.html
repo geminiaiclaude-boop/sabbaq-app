@@ -59,6 +59,7 @@
                         <button id="telemetry-tab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="tab-telemetry">تشخيص الشكاوى</button>
                         <button id="profiles-tab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="tab-profiles">ملفات التطبيقات</button>
                         <button id="notifications-tab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="tab-notifications">إشعارات السائقين</button>
+                        <button id="zones-tab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="tab-zones">المناطق</button>
                         <button id="support-tab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="tab-support">الدعم <span id="support-tab-badge" class="tab-badge" hidden></span></button>
                     </nav>
                 </aside>
@@ -172,6 +173,36 @@
                         </form>
                         <div class="field"><label for="profile-body">محتوى الملف (JSON)</label><textarea id="profile-body" dir="ltr" rows="18" spellcheck="false"></textarea></div>
                         <p id="profile-feedback" class="policy-feedback" role="status" aria-live="polite" hidden></p>
+                    </section>
+                    <section id="tab-zones" class="tab-content" role="tabpanel" aria-labelledby="zones-tab" hidden>
+                        <div class="section-heading"><div><h3>المناطق</h3><p>استثناءات الوجهة الافتراضية لكل دولة، وحدّ المناطق المفعّلة، وأسماء Google Places عند تكييش المناطق. رسم المناطق على الخريطة متاح من لوحة الإدارة داخل التطبيق؛ هنا تُعدّل نقاطها نصًا.</p></div></div>
+                        <form id="zone-limits-form" class="toolbar toolbar--form" novalidate>
+                            <div class="field"><label for="zone-default-max">الحد الافتراضي للمناطق المفعّلة (0 = بلا حد)</label><input id="zone-default-max" type="number" min="0" max="100" step="1" inputmode="numeric" dir="ltr"></div>
+                            <div class="field"><label for="zone-proximity">تجاهل مناطق الإدارة الأبعد من (كم، 0 = كلها)</label><input id="zone-proximity" type="number" min="0" max="1000" step="1" inputmode="decimal" dir="ltr"></div>
+                            <button id="zone-limits-save" type="submit">حفظ الحدود</button>
+                            <button id="zones-reload" class="btn-secondary" type="button">تحديث</button>
+                        </form>
+                        <p id="zone-policy-meta" class="small-cell"></p>
+                        <form id="zone-country-form" class="card" novalidate>
+                            <div class="toolbar toolbar--form">
+                                <div class="field"><label for="zone-country">الدولة</label><select id="zone-country"><option value="SA">السعودية</option><option value="JO">الأردن</option></select></div>
+                                <div class="field"><label for="zone-country-enabled">تطبيقها على سائقي الدولة</label><input id="zone-country-enabled" type="checkbox"></div>
+                                <button id="zone-country-save" type="submit">نشر مناطق الدولة</button>
+                            </div>
+                            <ul id="zone-country-list" class="zone-list"></ul>
+                            <div class="field"><label for="zone-country-json">المناطق (JSON): [{"name":"…","active":true,"points":[[خط العرض, خط الطول], …]}]</label><textarea id="zone-country-json" dir="ltr" rows="12" spellcheck="false"></textarea></div>
+                        </form>
+                        <form id="zone-driver-form" class="toolbar toolbar--form" novalidate>
+                            <div class="field batch-field"><label for="zone-driver-id">معرّف السائق</label><input id="zone-driver-id" dir="ltr" autocomplete="off" maxlength="36"></div>
+                            <div class="field"><label for="zone-driver-limit">حدّه الخاص (فارغ = الافتراضي)</label><input id="zone-driver-limit" type="number" min="0" max="100" step="1" dir="ltr"></div>
+                            <button id="zone-driver-read" class="btn-secondary" type="button">قراءة</button>
+                            <button id="zone-driver-save" type="submit">حفظ حدّ السائق</button>
+                        </form>
+                        <div class="toolbar toolbar--form">
+                            <div class="field"><label for="places-enabled">أسماء الأماكن من Google Places عند تكييش المنطقة (مدفوع، طلبان لكل نقطة، يتطلب تشغيل Google ومفتاحه)</label><input id="places-enabled" type="checkbox"></div>
+                            <span id="places-meta" class="small-cell"></span>
+                        </div>
+                        <p id="zones-feedback" class="policy-feedback" role="status" aria-live="polite" hidden></p>
                     </section>
                     <section id="tab-notifications" class="tab-content" role="tabpanel" aria-labelledby="notifications-tab" hidden>
                         <div class="section-heading"><div><h3>إشعارات السائقين</h3><p>أرسل رسالة تظهر في مركز إشعارات التطبيق لكل السائقين أو لسائق واحد، وتصل كتنبيه على الجوال أثناء المتابعة.</p></div></div>

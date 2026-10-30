@@ -1018,6 +1018,27 @@ object SupabaseClient {
                 ?.let { Result.success(it) } ?: Result.failure(FeatureException(FeatureFailure.UNAVAILABLE))
         }
 
+    /**
+     * `zone_places`: the named places Google knows within [radius] m of a grid point inside a
+     * zone being warmed. Null when the step is off, capped or failed (the warming then stops it).
+     */
+    suspend fun zonePlaces(lat: Double, lng: Double, radius: Int): List<app.sabbaq.core.engine.zones.ZoneName>? {
+        val payload = buildJsonObject { put("p_lat", lat); put("p_lng", lng); put("p_radius", radius) }
+        return supportCall("rpc/zone_places", payload) { response ->
+            if (!response.isSuccessful) return@supportCall Result.failure(FeatureException.fromStatus(response.code))
+            val body = runCatching { json.parseToJsonElement(response.body) as JsonObject }.getOrNull()
+                ?.takeIf { (it["status"] as? JsonPrimitive)?.content == "resolved" }
+                ?: return@supportCall Result.failure(FeatureException(FeatureFailure.UNAVAILABLE))
+            Result.success((body["places"] as? JsonArray).orEmpty().mapNotNull { p ->
+                val o = p as? JsonObject ?: return@mapNotNull null
+                val name = (o["name"] as? JsonPrimitive)?.content?.trim().orEmpty()
+                val a = (o["lat"] as? JsonPrimitive)?.content?.toDoubleOrNull()
+                val b = (o["lng"] as? JsonPrimitive)?.content?.toDoubleOrNull()
+                if (name.isEmpty() || a == null || b == null) null else app.sabbaq.core.engine.zones.ZoneName(name, listOf(doubleArrayOf(a, b)))
+            })
+        }.getOrNull()
+    }
+
     /** `ingest_screen_sample`: one redacted unread-offer screen; true when the server stored it. */
     suspend fun ingestScreenSample(sample: JsonObject): Result<Boolean> =
         supportCall("rpc/ingest_screen_sample", buildJsonObject { put("p_sample", sample) }) { response ->

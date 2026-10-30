@@ -59,6 +59,7 @@ class EngineHost(
     private val zones = app.sabbaq.core.engine.zones.ZoneEngine(app.sabbaq.service.zones.ZoneStore)
     private val flow = OfferFlow({ System.currentTimeMillis() }, zones = zones)
     private val locationTracker = app.sabbaq.service.zones.DriverLocationTracker(service)
+    private var corridorJob: kotlinx.coroutines.Job? = null
     private val readerPool: ExecutorService = Executors.newFixedThreadPool(2) { runnable ->
         Thread({ Process.setThreadPriority(-4); runnable.run() }, "sabbaq-reader").apply { isDaemon = true }
     }
@@ -81,12 +82,16 @@ class EngineHost(
 
     fun onConnected() {
         locationTracker.update(config())
+        corridorJob?.cancel()
+        corridorJob = app.sabbaq.service.zones.ZoneWarmer.corridorLoop(config, allowed)
         runCatching { toneGenerator = ToneGenerator(AudioManager.STREAM_ALARM, 100) }
         warmUpGesture()
     }
 
     fun onDestroy() {
         locationTracker.stop()
+        corridorJob?.cancel()
+        corridorJob = null
         main.removeCallbacksAndMessages(null)
         synchronized(bookingLock) { inFlight.forEach { it.set(true) }; inFlight.clear(); bookedFrame = null }
         readerPool.shutdownNow()

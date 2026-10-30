@@ -39,7 +39,8 @@
         supportSelectedStatus: 'open',
         supportCorrelation: null,
         supportPendingReply: null,
-        supportTimer: null
+        supportTimer: null,
+        zonePolicy: null
     };
     const el = {};
 
@@ -149,7 +150,29 @@
             supportMessages: document.getElementById('support-messages'),
             supportReplyForm: document.getElementById('support-reply-form'),
             supportReply: document.getElementById('support-reply'),
-            supportSend: document.getElementById('support-send')
+            supportSend: document.getElementById('support-send'),
+            zonesTab: document.getElementById('zones-tab'),
+            zonesPanel: document.getElementById('tab-zones'),
+            zoneLimitsForm: document.getElementById('zone-limits-form'),
+            zoneDefaultMax: document.getElementById('zone-default-max'),
+            zoneProximity: document.getElementById('zone-proximity'),
+            zoneLimitsSave: document.getElementById('zone-limits-save'),
+            zonesReload: document.getElementById('zones-reload'),
+            zonePolicyMeta: document.getElementById('zone-policy-meta'),
+            zoneCountryForm: document.getElementById('zone-country-form'),
+            zoneCountry: document.getElementById('zone-country'),
+            zoneCountryEnabled: document.getElementById('zone-country-enabled'),
+            zoneCountrySave: document.getElementById('zone-country-save'),
+            zoneCountryList: document.getElementById('zone-country-list'),
+            zoneCountryJson: document.getElementById('zone-country-json'),
+            zoneDriverForm: document.getElementById('zone-driver-form'),
+            zoneDriverId: document.getElementById('zone-driver-id'),
+            zoneDriverLimit: document.getElementById('zone-driver-limit'),
+            zoneDriverRead: document.getElementById('zone-driver-read'),
+            zoneDriverSave: document.getElementById('zone-driver-save'),
+            placesEnabled: document.getElementById('places-enabled'),
+            placesMeta: document.getElementById('places-meta'),
+            zonesFeedback: document.getElementById('zones-feedback')
         });
 
         if (!isValidConfiguration(window.SABBAQ_CONFIG)) {
@@ -221,6 +244,15 @@
         el.profileReload.addEventListener('click', () => { void runWithButton(el.profileReload, loadProfiles); });
         el.profileForm.addEventListener('submit', handleProfileSave);
         el.notificationsTab.addEventListener('click', () => { void showTab('notifications'); });
+        el.zonesTab.addEventListener('click', () => { void showTab('zones'); });
+        el.zonesReload.addEventListener('click', () => { void runWithButton(el.zonesReload, loadZones); });
+        el.zoneLimitsForm.addEventListener('submit', handleZoneLimitsSave);
+        el.zoneCountry.addEventListener('change', showZoneCountry);
+        el.zoneCountryJson.addEventListener('input', () => renderZoneList(el.zoneCountryJson.value));
+        el.zoneCountryForm.addEventListener('submit', handleZoneCountrySave);
+        el.zoneDriverRead.addEventListener('click', () => { void runWithButton(el.zoneDriverRead, readDriverZoneLimit); });
+        el.zoneDriverForm.addEventListener('submit', handleDriverZoneLimitSave);
+        el.placesEnabled.addEventListener('change', () => { void handlePlacesToggle(); });
         el.supportTab.addEventListener('click', () => { void showTab('support'); });
         el.supportFilter.addEventListener('change', () => { void loadSupportThreads(); });
         el.refreshSupport.addEventListener('click', () => { void runWithButton(el.refreshSupport, refreshSupport); });
@@ -388,6 +420,11 @@
         el.driversList.replaceChildren();
         el.codesList.replaceChildren();
         resetCommercialPolicyUi();
+        state.zonePolicy = null;
+        el.zoneCountryJson.value = '';
+        el.zoneCountryList.replaceChildren();
+        el.zoneDriverId.value = '';
+        el.zonesFeedback.hidden = true;
         el.dashboard.hidden = true;
         el.loginSection.hidden = false;
         state.offsets.drivers = 0;
@@ -447,7 +484,7 @@
     }
 
     async function showTab(tabName) {
-        if (!['drivers', 'codes', 'commercial-policy', 'telemetry', 'profiles', 'notifications', 'support'].includes(tabName)) return;
+        if (!['drivers', 'codes', 'commercial-policy', 'telemetry', 'profiles', 'notifications', 'support', 'zones'].includes(tabName)) return;
         state.activeTab = tabName;
         const showingDrivers = tabName === 'drivers';
         const showingCodes = tabName === 'codes';
@@ -458,6 +495,9 @@
         el.profilesPanel.hidden = tabName !== 'profiles';
         el.notificationsPanel.hidden = tabName !== 'notifications';
         el.supportPanel.hidden = tabName !== 'support';
+        el.zonesPanel.hidden = tabName !== 'zones';
+        el.zonesTab.classList.toggle('active', tabName === 'zones');
+        el.zonesTab.setAttribute('aria-selected', String(tabName === 'zones'));
         el.driversTab.classList.toggle('active', showingDrivers);
         el.codesTab.classList.toggle('active', showingCodes);
         el.commercialPolicyTab.classList.toggle('active', tabName === 'commercial-policy');
@@ -478,6 +518,178 @@
         else if (tabName === 'profiles' && !state.profiles) await loadProfiles();
         else if (tabName === 'notifications' && !state.notificationsLoaded) await loadNotifications();
         else if (tabName === 'support') await refreshSupport();
+        else if (tabName === 'zones' && !state.zonePolicy) await loadZones();
+    }
+
+    // ---- Zones (0017 zone policy, 0018 Places)
+    const ZONE_COUNTRIES = new Set(['SA', 'JO']);
+
+    // Mirrors private.zones_ok so a bad edit is refused before it reaches the server.
+    function validateZonesDraft(text) {
+        let zones;
+        try { zones = JSON.parse(text.trim() || '[]'); } catch (_) { return { error: 'المحتوى ليس JSON صالحًا.' }; }
+        if (!Array.isArray(zones)) return { error: 'المناطق يجب أن تكون قائمة JSON.' };
+        if (zones.length > 50) return { error: '50 منطقة على الأكثر لكل دولة.' };
+        for (let i = 0; i < zones.length; i++) {
+            const z = zones[i];
+            const label = `المنطقة ${i + 1}`;
+            if (!z || typeof z !== 'object' || Array.isArray(z)) return { error: `${label}: يجب أن تكون كائنًا.` };
+            if (typeof z.name !== 'string' || z.name.trim().length < 1 || z.name.trim().length > 60) return { error: `${label}: الاسم من 1 إلى 60 حرفًا.` };
+            if ('active' in z && typeof z.active !== 'boolean') return { error: `${label}: active يجب أن تكون true أو false.` };
+            if (!Array.isArray(z.points) || z.points.length < 3 || z.points.length > 100) return { error: `${label}: من 3 إلى 100 نقطة.` };
+            for (const p of z.points) {
+                if (!Array.isArray(p) || p.length !== 2 || !p.every(v => typeof v === 'number' && Number.isFinite(v))
+                    || Math.abs(p[0]) > 90 || Math.abs(p[1]) > 180) {
+                    return { error: `${label}: كل نقطة [خط العرض, خط الطول] بأرقام صحيحة المدى.` };
+                }
+            }
+        }
+        return { zones };
+    }
+
+    function setZonesFeedback(message, type) {
+        el.zonesFeedback.textContent = message;
+        el.zonesFeedback.className = `policy-feedback policy-feedback--${type}`;
+        el.zonesFeedback.hidden = false;
+    }
+
+    async function zonesRpc(name, args, failure) {
+        if (!await ensureActiveSession()) return null;
+        const { data, error } = await db.rpc(name, args);
+        if (error) {
+            if (isAuthorizationError(error)) await signOut('انتهت صلاحية جلسة المشرف.');
+            else setZonesFeedback(failure, 'error');
+            return null;
+        }
+        return data;
+    }
+
+    async function loadZones() {
+        setZonesFeedback('يجري تحميل سياسة المناطق…', 'info');
+        const data = await zonesRpc('admin_zone_policy', {}, 'تعذر تحميل سياسة المناطق. هل طُبّق الترحيل 0017 على الخادم؟');
+        if (!data) return;
+        showZonePolicy(data);
+        const places = await zonesRpc('admin_places_settings', {}, 'تعذر قراءة إعداد Google Places. هل طُبّق الترحيل 0018؟');
+        if (places) showPlaces(places);
+        if (places) el.zonesFeedback.hidden = true;
+    }
+
+    function showZonePolicy(data) {
+        state.zonePolicy = data;
+        el.zoneDefaultMax.value = String(data.default_max_zones ?? 0);
+        el.zoneProximity.value = String(data.proximity_km ?? 0);
+        el.zonePolicyMeta.textContent = `إصدار السياسة ${data.version ?? 0}. يصل كل تعديل للسائقين عند التحديث التالي مع إشعار «مناطق استثناء جديدة».`;
+        showZoneCountry();
+    }
+
+    function showZoneCountry() {
+        const country = ((state.zonePolicy || {}).countries || {})[el.zoneCountry.value] || {};
+        el.zoneCountryEnabled.checked = country.enabled === true;
+        el.zoneCountryJson.value = JSON.stringify(Array.isArray(country.zones) ? country.zones : [], null, 2);
+        renderZoneList(el.zoneCountryJson.value);
+    }
+
+    function renderZoneList(text) {
+        el.zoneCountryList.replaceChildren();
+        const draft = validateZonesDraft(text);
+        const item = (message) => { const li = document.createElement('li'); li.textContent = message; el.zoneCountryList.append(li); };
+        if (draft.error) { item(draft.error); return; }
+        if (draft.zones.length === 0) { item('لا مناطق لهذه الدولة.'); return; }
+        draft.zones.forEach((z) => item(`${z.name.trim()} · ${z.points.length} نقطة${z.active === false ? ' · متوقفة' : ''}`));
+    }
+
+    async function handleZoneLimitsSave(event) {
+        event.preventDefault();
+        const max = Number(el.zoneDefaultMax.value);
+        const km = Number(el.zoneProximity.value);
+        if (!Number.isInteger(max) || max < 0 || max > 100 || !Number.isFinite(km) || km < 0 || km > 1000) {
+            setZonesFeedback('الحد من 0 إلى 100، والمسافة من 0 إلى 1000 كم.', 'error');
+            return;
+        }
+        await runWithButton(el.zoneLimitsSave, async () => {
+            const data = await zonesRpc('admin_set_zone_limits', { p_default_max: max, p_proximity_km: km }, 'رفض الخادم الحدود.');
+            if (!data) return;
+            showZonePolicy(data);
+            setZonesFeedback('حُفظت الحدود.', 'success');
+        });
+    }
+
+    async function handleZoneCountrySave(event) {
+        event.preventDefault();
+        const country = el.zoneCountry.value;
+        const draft = validateZonesDraft(el.zoneCountryJson.value);
+        if (!ZONE_COUNTRIES.has(country) || draft.error) {
+            setZonesFeedback(draft.error || 'الدولة غير معروفة.', 'error');
+            return;
+        }
+        await runWithButton(el.zoneCountrySave, async () => {
+            const data = await zonesRpc('admin_set_global_zones', { p_country: country, p_enabled: el.zoneCountryEnabled.checked, p_zones: draft.zones },
+                'رفض الخادم المناطق. تحقق من الأسماء والنقاط.');
+            if (!data) return;
+            showZonePolicy(data);
+            setZonesFeedback(`نُشرت مناطق ${country === 'SA' ? 'السعودية' : 'الأردن'} (${draft.zones.length}).`, 'success');
+        });
+    }
+
+    function driverZoneId() {
+        const id = el.zoneDriverId.value.trim();
+        if (!UUID_PATTERN.test(id)) { setZonesFeedback('أدخل معرّف سائق صالحًا (UUID)، أو اضغط «حدّ المناطق» بجانبه في تبويب السائقين.', 'error'); return null; }
+        return id;
+    }
+
+    function showDriverZoneLimit(data) {
+        el.zoneDriverLimit.value = data.own === null || data.own === undefined ? '' : String(data.own);
+        setZonesFeedback(`حدّ السائق: ${data.own ?? `الافتراضي (${data.default ?? 0})`}${data.country ? ` · الدولة ${data.country}` : ''}. 0 = بلا حد.`, 'info');
+    }
+
+    async function readDriverZoneLimit() {
+        const id = driverZoneId();
+        if (!id) return;
+        const data = await zonesRpc('admin_driver_zone_limit', { p_driver: id }, 'تعذر قراءة حدّ السائق.');
+        if (data) showDriverZoneLimit(data);
+    }
+
+    async function handleDriverZoneLimitSave(event) {
+        event.preventDefault();
+        const id = driverZoneId();
+        if (!id) return;
+        const raw = el.zoneDriverLimit.value.trim();
+        const limit = raw === '' ? null : Number(raw);
+        if (limit !== null && (!Number.isInteger(limit) || limit < 0 || limit > 100)) {
+            setZonesFeedback('الحد من 0 إلى 100، أو فارغ للعودة إلى الافتراضي.', 'error');
+            return;
+        }
+        await runWithButton(el.zoneDriverSave, async () => {
+            const data = await zonesRpc('admin_set_driver_zone_limit', { p_driver: id, p_limit: limit }, 'رفض الخادم حدّ السائق.');
+            if (data) showDriverZoneLimit(data);
+        });
+    }
+
+    async function zoneLimitFor(driver) {
+        await showTab('zones');
+        el.zoneDriverId.value = driver.id;
+        await readDriverZoneLimit();
+    }
+
+    function showPlaces(data) {
+        el.placesEnabled.checked = data.places_enabled === true;
+        el.placesMeta.textContent = `${data.cells ?? 0} خلية محفوظة`;
+    }
+
+    async function handlePlacesToggle() {
+        const wanted = el.placesEnabled.checked;
+        el.placesEnabled.disabled = true;
+        try {
+            const data = await zonesRpc('admin_places_settings', { p_enabled: wanted }, 'لم نتأكد من الحفظ؛ أعد التحميل.');
+            if (data) {
+                showPlaces(data);
+                setZonesFeedback(wanted ? 'شُغّلت أسماء Google Places. تعمل فقط إذا كان Google مشغّلًا ومفتاحه محفوظًا.' : 'أُوقفت أسماء Google Places.', 'success');
+            } else {
+                el.placesEnabled.checked = !wanted;
+            }
+        } finally {
+            el.placesEnabled.disabled = false;
+        }
     }
 
     async function loadProfiles() {
@@ -1236,7 +1448,12 @@
             button.className = 'btn-danger';
             button.textContent = 'فك ربط الجهاز';
             button.addEventListener('click', () => { void resetDevice(driver.id, button); });
-            actionCell.append(diagnose, notify, message, button);
+            const zones = document.createElement('button');
+            zones.type = 'button';
+            zones.className = 'btn-secondary';
+            zones.textContent = 'حدّ المناطق';
+            zones.addEventListener('click', () => { void zoneLimitFor(driver); });
+            actionCell.append(diagnose, notify, message, zones, button);
             row.append(actionCell);
             el.driversList.append(row);
         });

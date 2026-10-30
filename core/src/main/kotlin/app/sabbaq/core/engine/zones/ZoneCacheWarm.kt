@@ -120,9 +120,7 @@ object ZoneCacheWarm {
         if (polygon.size < 3) return emptyList()
         val minLat = polygon.minOf { it[0] }; val maxLat = polygon.maxOf { it[0] }
         val minLng = polygon.minOf { it[1] }; val maxLng = polygon.maxOf { it[1] }
-        val h = (maxLat - minLat).coerceAtLeast(1e-6)
-        val w = (maxLng - minLng).coerceAtLeast(1e-6)
-        val step = sqrt(h * w / GRID_MAX).coerceIn(4.0e-4, 0.06)
+        val step = gridStep(polygon)
         val out = ArrayList<DoubleArray>()
         var lat = minLat + step / 2
         while (lat < maxLat && out.size < GRID_MAX) {
@@ -139,6 +137,16 @@ object ZoneCacheWarm {
         }
         return out
     }
+
+    /** `ZH.adapter`'s step in degrees: √(bounding area / 24), clamped to 0.0004–0.06°. */
+    fun gridStep(polygon: List<DoubleArray>): Double {
+        val h = (polygon.maxOf { it[0] } - polygon.minOf { it[0] }).coerceAtLeast(1e-6)
+        val w = (polygon.maxOf { it[1] } - polygon.minOf { it[1] }).coerceAtLeast(1e-6)
+        return sqrt(h * w / GRID_MAX).coerceIn(4.0e-4, 0.06)
+    }
+
+    /** `ZH.handler`: the Places search radius around each grid point, ¾ of a step, 250–1500 m. */
+    fun placesRadius(polygon: List<DoubleArray>): Int = (gridStep(polygon) * 111_000.0 * 0.75).toInt().coerceIn(250, 1500)
 
     /**
      * The cached names with at least one point inside [polygon] (the reference's «كاش هذه
@@ -168,6 +176,55 @@ object ZoneCacheWarm {
             val k = DecisionEngine.fold(n)
             k.isNotEmpty() && k !in have && seen.add(k)
         }
+    }
+
+    /**
+     * `ZH.parser`'s cell: the destination zones and the driver's 2 km square. The road is warmed
+     * again only when either changes (`corridor_warm_signature`).
+     */
+    fun corridorSignature(zonesJson: String, lat: Double, lng: Double): String {
+        val y = Math.round(lat * 110.54 / 2.0)
+        val x = Math.round(lng * 111.32 * kotlin.math.cos(Math.toRadians(lat)) / 2.0)
+        return "${zonesJson.hashCode()}_${y}_$x"
+    }
+
+    /** `ZH.parser`: points [corridorKm] × 2 apart (1 km at least). */
+    fun corridorStepKm(corridorKm: Double): Double = (corridorKm * 2.0).coerceAtLeast(1.0)
+
+    /** `ZH.controller`: the mean of the zone's corners. */
+    fun centroid(polygon: List<DoubleArray>): DoubleArray =
+        doubleArrayOf(polygon.sumOf { it[0] } / polygon.size, polygon.sumOf { it[1] } / polygon.size)
+
+    /**
+     * `ZH.listener`: up to 20 points every [stepKm] on the straight line from the driver to the
+     * zone's centre, short of the centre, leaving out points inside any of [zonesJson]'s zones
+     * (those were warmed with the zone). None when the zone is nearer than one step.
+     */
+    fun corridorPoints(dLat: Double, dLng: Double, cLat: Double, cLng: Double, zonesJson: String, stepKm: Double): List<DoubleArray> {
+        if (stepKm <= 0.0) return emptyList()
+        val dy = cLat - dLat
+        val dx = cLng - dLng
+        val km = sqrt((110.54 * dy) * (110.54 * dy) + (kotlin.math.cos(Math.toRadians(dLat)) * 111.32 * dx).let { it * it })
+        if (km < stepKm) return emptyList()
+        val out = ArrayList<DoubleArray>()
+        for (i in 1..20) {
+            val t = i * stepKm / km
+            if (t >= 1.0) break
+            val lat = dLat + dy * t
+            val lng = dLng + dx * t
+            if (!ZoneGeo.insideAny(lat, lng, zonesJson)) out += doubleArrayOf(lat, lng)
+        }
+        return out
+    }
+
+    /** `ZH.connect`: the square of half side [km] around a point, as polygon corners. */
+    fun box(lat: Double, lng: Double, km: Double): List<DoubleArray> {
+        val dLat = km / 110.54
+        val dLng = km / (kotlin.math.cos(Math.toRadians(lat)) * 111.32)
+        return listOf(
+            doubleArrayOf(lat - dLat, lng - dLng), doubleArrayOf(lat - dLat, lng + dLng),
+            doubleArrayOf(lat + dLat, lng + dLng), doubleArrayOf(lat + dLat, lng - dLng),
+        )
     }
 
     /** `Zh.observer`: point-in-polygon over `[lat, lng]` corners. */

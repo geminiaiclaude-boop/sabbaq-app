@@ -20,6 +20,32 @@ class ZoneCacheWarmTest {
         listOf("شارع التحلية", "Olaya St", "طريق 15", "مول الرياض").forEach { assertFalse(it, ZoneCacheWarm.junk(it)) }
     }
 
+    @Test fun the_road_to_a_zone_is_sampled_like_the_reference() {
+        val step = ZoneCacheWarm.corridorStepKm(1.5)
+        assertEquals(3.0, step, 1e-9)
+        assertEquals(1.0, ZoneCacheWarm.corridorStepKm(0.2), 1e-9)
+        val c = ZoneCacheWarm.centroid(olaya)
+        assertEquals(24.69, c[0], 1e-9); assertEquals(46.68, c[1], 1e-9)
+        // ~9.9 km south of the centre: points at 3, 6 and 9 km; the 9 km one lies inside the zone.
+        val pts = ZoneCacheWarm.corridorPoints(24.60, 46.68, c[0], c[1], olayaJson, step)
+        assertEquals(2, pts.size)
+        assertEquals(24.60 + 0.09 * 3.0 / (110.54 * 0.09), pts[0][0], 1e-9)
+        assertTrue(pts.none { ZoneGeo.insideAny(it[0], it[1], olayaJson) })
+        assertTrue(ZoneCacheWarm.corridorPoints(24.675, 46.68, c[0], c[1], olayaJson, step).isEmpty())
+        assertEquals(20, ZoneCacheWarm.corridorPoints(20.0, 46.68, c[0], c[1], olayaJson, step).size)
+        val box = ZoneCacheWarm.box(24.6, 46.68, 1.5)
+        assertEquals(24.6 - 1.5 / 110.54, box[0][0], 1e-12)
+        assertTrue(ZoneCacheWarm.inside(24.6, 46.68, box))
+    }
+
+    @Test fun the_road_is_warmed_again_only_after_a_2km_move_or_a_zone_change() {
+        val a = ZoneCacheWarm.corridorSignature(olayaJson, 24.600, 46.680)
+        assertEquals(a, ZoneCacheWarm.corridorSignature(olayaJson, 24.6005, 46.6805))
+        assertFalse(a == ZoneCacheWarm.corridorSignature(olayaJson, 24.63, 46.68))
+        assertFalse(a == ZoneCacheWarm.corridorSignature(olayaJson, 24.600, 46.71))
+        assertFalse(a == ZoneCacheWarm.corridorSignature(olayaJson.replace("العليا", "الملز"), 24.600, 46.680))
+    }
+
     @Test fun the_query_names_every_reference_feature_inside_the_polygon() {
         val q = ZoneCacheWarm.overpassQuery(olaya)
         assertTrue(q.contains("way[\"highway\"][\"name\"](poly:\"24.68 46.67 24.68 46.69 24.7 46.69 24.7 46.67\")"))

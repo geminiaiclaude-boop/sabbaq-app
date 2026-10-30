@@ -98,3 +98,6 @@ reset role;
 
 -- Destination zone policy (kept here so the existing CI step runs it).
 \ir zone_policy_test.sql
+
+-- Paid Places for zone warming (kept here so the existing CI step runs it).
+\ir zone_places_test.sql

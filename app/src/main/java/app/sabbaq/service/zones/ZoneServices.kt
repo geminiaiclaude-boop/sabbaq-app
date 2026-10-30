@@ -55,6 +55,7 @@ object ZoneStore : ZoneEnvironment {
     private const val KEY_FIX_AT = "driver_fix_at"
     private const val KEY_PENDING = "pending_addresses"
     private const val KEY_FAILS = "pending_fail_counts"
+    private const val KEY_CORRIDOR = "corridor_warm_signature"
     private const val CACHE_FILE = "address_poi_cache.json"
     private const val MAX_PENDING = 150
     private const val MAX_CACHE_KEYS = 4000
@@ -103,6 +104,13 @@ object ZoneStore : ZoneEnvironment {
             ?.putLong(KEY_LNG, java.lang.Double.doubleToRawLongBits(lng))
             ?.putLong(KEY_FIX_AT, System.currentTimeMillis())
             ?.apply()
+    }
+
+    /** The zones and 2 km cell the road to the destination zones was last warmed for. */
+    fun corridorSignature(): String? = prefs?.getString(KEY_CORRIDOR, null)
+
+    fun saveCorridorSignature(signature: String) {
+        prefs?.edit()?.putString(KEY_CORRIDOR, signature)?.apply()
     }
 
     override fun poiIndex(): PoiIndex? = index

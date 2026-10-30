@@ -48,11 +48,14 @@ internal fun AdminGeocodeCard(session: AdminSession) {
         state = s; enabled = s.enabled; monthly = s.monthlyCap.toString(); daily = s.driverDailyCap.toString(); key = ""
     }
 
+    var places by remember { mutableStateOf<AdminRepository.PlacesSettings?>(null) }
+
     LaunchedEffect(reload) {
         busy = true
         AdminRepository.geocodeSettings().fold({ show(it); message = null }, {
             message = session.failureOf(it, if (ar) "تعذر تحميل إعدادات تحديد المواقع." else "Could not load the geocoding settings.").text
         })
+        places = AdminRepository.placesSettings().getOrNull()
         busy = false
     }
 
@@ -79,6 +82,23 @@ internal fun AdminGeocodeCard(session: AdminSession) {
             hint = if (ar) "اتركه فارغًا للإبقاء على المفتاح الحالي" else "Leave empty to keep the current key", enabled = state != null && !busy)
         AdminField(if (ar) "الحد الشهري للطلبات" else "Monthly request cap", monthly, { monthly = it.filter(Char::isDigit) }, enabled = state != null && !busy)
         AdminField(if (ar) "الحد اليومي لكل سائق" else "Daily cap per driver", daily, { daily = it.filter(Char::isDigit) }, enabled = state != null && !busy)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                if (ar) "أسماء الأماكن من Google Places عند تكييش المنطقة (مدفوع، طلبان لكل نقطة)${places?.let { " · ${it.cells} خلية محفوظة" } ?: ""}"
+                else "Google Places names when warming a zone (paid, two requests per point)${places?.let { " · ${it.cells} stored cells" } ?: ""}",
+                modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall,
+            )
+            Switch(checked = places?.enabled == true, enabled = places != null && !busy, modifier = Modifier.testTag("admin-places-enabled"),
+                onCheckedChange = { on ->
+                    scope.launch {
+                        busy = true
+                        AdminRepository.placesSettings(on).fold({ places = it; message = null }, {
+                            message = session.failureOf(it, if (ar) "لم نتأكد من الحفظ؛ أعد التحميل." else "We could not confirm the save; reload.").text
+                        })
+                        busy = false
+                    }
+                })
+        }
         message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
         SabbaqButton(if (ar) "حفظ إعدادات تحديد المواقع" else "Save geocoding settings", enabled = state != null && !busy, busy = busy,
             busyText = if (ar) "جارٍ الحفظ…" else "Saving…", modifier = Modifier.testTag("admin-geocode-save"), onClick = {

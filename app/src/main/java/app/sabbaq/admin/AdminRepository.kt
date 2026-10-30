@@ -360,6 +360,16 @@ object AdminRepository {
         )
     }
 
+    /** `admin_places_settings`: the paid Places step of zone warming and its stored cells. */
+    data class PlacesSettings(val enabled: Boolean, val cells: Int)
+
+    /** [enabled] null only reads. */
+    suspend fun placesSettings(enabled: Boolean? = null): Result<PlacesSettings> =
+        SupabaseClient.adminRpc("admin_places_settings", buildJsonObject { enabled?.let { put("p_enabled", it) } }).mapCatching { body ->
+            val row = json.parseToJsonElement(body) as? JsonObject ?: throw FeatureException(FeatureFailure.UNAVAILABLE)
+            PlacesSettings(row.bool("places_enabled") ?: throw FeatureException(FeatureFailure.UNAVAILABLE), row.int("cells") ?: 0)
+        }
+
     /** The policy was saved but the WhatsApp number was not confirmed. */
     class WhatsappNotSaved(val reason: Throwable) : Exception("whatsapp_not_saved")
 
