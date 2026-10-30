@@ -17,6 +17,8 @@ import app.sabbaq.core.engine.DecisionEngine
 import app.sabbaq.core.engine.EngineConfig
 import app.sabbaq.core.engine.zones.PoiIndex
 import app.sabbaq.core.engine.zones.ZoneEnvironment
+import app.sabbaq.core.engine.zones.ZoneName
+import app.sabbaq.network.SupabaseClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -24,6 +26,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -42,7 +45,8 @@ import java.net.URLEncoder
 /**
  * The device half of the reference engine's zones: the driver's last position, the address → point cache
  * (`address_poi_cache`), the geocoding queue (`pending_addresses`, 150 entries) and the worker
- * that fills the cache from OpenStreetMap Nominatim, then Android's geocoder.
+ * that fills the cache from Sabbaq's server (shared answers, Google behind it), then
+ * OpenStreetMap Nominatim, then Android's geocoder.
  */
 object ZoneStore : ZoneEnvironment {
     private const val PREFS = "sabbaq_zones"
@@ -51,10 +55,12 @@ object ZoneStore : ZoneEnvironment {
     private const val KEY_FIX_AT = "driver_fix_at"
     private const val KEY_PENDING = "pending_addresses"
     private const val KEY_FAILS = "pending_fail_counts"
+    private const val KEY_CORRIDOR = "corridor_warm_signature"
     private const val CACHE_FILE = "address_poi_cache.json"
     private const val MAX_PENDING = 150
     private const val MAX_CACHE_KEYS = 4000
     private const val MAX_FAILS = 3
+    private const val MAX_WARM_POINTS = 40
 
     private val json = Json { ignoreUnknownKeys = true }
     private val lock = Any()
@@ -100,6 +106,13 @@ object ZoneStore : ZoneEnvironment {
             ?.apply()
     }
 
+    /** The zones and 2 km cell the road to the destination zones was last warmed for. */
+    fun corridorSignature(): String? = prefs?.getString(KEY_CORRIDOR, null)
+
+    fun saveCorridorSignature(signature: String) {
+        prefs?.edit()?.putString(KEY_CORRIDOR, signature)?.apply()
+    }
+
     override fun poiIndex(): PoiIndex? = index
 
     override fun nowMs(): Long = System.currentTimeMillis()
@@ -128,6 +141,20 @@ object ZoneStore : ZoneEnvironment {
 
     internal fun takeNext(): String? = prefs?.let { synchronized(lock) { pending(it).firstOrNull() } }
 
+    /** The address exists nowhere (Sabbaq's server asked Google): remembered as empty, never asked again. */
+    internal fun finishNotFound(text: String) {
+        val p = prefs ?: return
+        synchronized(lock) {
+            val list = pending(p)
+            list.remove(text)
+            store(text, emptyList())
+            p.edit().putString(KEY_PENDING, JsonArray(list.map { JsonPrimitive(it) }).toString()).apply()
+        }
+    }
+
+    /** Folded cache key the server shares with every driver. */
+    internal fun sharedKey(text: String): String = cacheKey(text)
+
     /** Removes [text] from the queue; on failure it goes to the back until it failed three times. */
     internal fun finish(text: String, points: List<DoubleArray>) {
         val p = prefs ?: return
@@ -147,6 +174,39 @@ object ZoneStore : ZoneEnvironment {
             p.edit().putString(KEY_PENDING, JsonArray(list.map { JsonPrimitive(it) }).toString())
                 .putString(KEY_FAILS, JsonObject(fails).toString()).apply()
         }
+        points.firstOrNull()?.let { ExcludeZoneAlerts.onPlaced(text, it[0], it[1]) }
+    }
+
+    /** Stores an address placed outside the queue (the post-accept check's own lookup). */
+    internal fun remember(text: String, points: List<DoubleArray>) {
+        if (points.isEmpty()) return
+        synchronized(lock) { store(text, points) }
+    }
+
+    /** The cache as stored (folded key → points, and the display name for warmed entries). */
+    fun cache(): JsonObject = cacheRoot
+
+    /**
+     * Stores the names a zone warming found (`ZH.callback`): new keys only, written once, each
+     * with its display name, points (up to [MAX_WARM_POINTS]) and source.
+     */
+    internal fun addWarmed(entries: Map<String, ZoneName>, source: String) {
+        if (entries.isEmpty()) return
+        synchronized(lock) {
+            val map = LinkedHashMap(cacheRoot)
+            for ((key, n) in entries) {
+                if (key in map) continue
+                map[key] = buildJsonObject {
+                    put("name", n.name)
+                    put("source", source)
+                    put("points", buildJsonArray {
+                        n.points.take(MAX_WARM_POINTS).forEach { add(buildJsonObject { put("lat", it[0]); put("lng", it[1]) }) }
+                    })
+                }
+            }
+            while (map.size > MAX_CACHE_KEYS) map.remove(map.keys.first())
+            write(JsonObject(map))
+        }
     }
 
     private fun store(text: String, points: List<DoubleArray>) {
@@ -158,7 +218,10 @@ object ZoneStore : ZoneEnvironment {
         val map = LinkedHashMap(cacheRoot)
         map[cacheKey(text)] = value
         while (map.size > MAX_CACHE_KEYS) map.remove(map.keys.first())
-        val root = JsonObject(map)
+        write(JsonObject(map))
+    }
+
+    private fun write(root: JsonObject) {
         runCatching {
             val file = cacheFile ?: return
             val tmp = File(file.parentFile, "$CACHE_FILE.tmp")
@@ -196,15 +259,122 @@ object GeocodeWorker {
             while (isActive) {
                 val text = ZoneStore.takeNext() ?: break
                 val near = ZoneStore.driverLocation()
-                val points = runCatching { nominatim(text, near) }.getOrDefault(emptyList())
-                    .ifEmpty { runCatching { androidGeocoder(app, text, near) }.getOrDefault(emptyList()) }
-                ZoneStore.finish(text, points)
+                // Sabbaq's server first: one shared answer for every driver, Google behind it.
+                when (val server = runCatching { SupabaseClient.geocodeResolve(ZoneStore.sharedKey(text), text, near) }
+                    .getOrDefault(SupabaseClient.GeocodeAnswer.Unavailable)) {
+                    is SupabaseClient.GeocodeAnswer.Found -> { ZoneStore.finish(text, server.points); continue }
+                    SupabaseClient.GeocodeAnswer.NotFound -> { ZoneStore.finishNotFound(text); continue }
+                    SupabaseClient.GeocodeAnswer.Unavailable -> Unit
+                }
+                ZoneStore.finish(text, freeLookup(app, text, near))
                 delay(1_100L)
             }
         }
     }
 
-    private fun nominatim(text: String, near: DoubleArray?): List<DoubleArray> {
+    /**
+     * The zone editor's place search: up to five named results near the driver, from the phone's
+     * geocoder and then OpenStreetMap. Only the typed text and a coarse box leave the phone.
+     */
+    suspend fun searchPlaces(context: Context, text: String): List<Pair<String, DoubleArray>> = withContext(Dispatchers.IO) {
+        val near = ZoneStore.driverLocation()
+        val local = CityIndexStore.suggestLocal(text, 5).map { it.name to it.points[0] }
+        (local + runCatching { androidPlaces(context.applicationContext, text, near) }.getOrDefault(emptyList())
+            .ifEmpty { CityIndexStore.suggestRemote(text, 5).map { it.name to it.points[0] } }
+            .ifEmpty { runCatching { nominatimPlaces(text, near) }.getOrDefault(emptyList()) })
+            .distinctBy { it.first }.take(8)
+    }
+
+    /**
+     * Free placement when Sabbaq's server cannot answer, closing as much of the gap to paid Google
+     * as free services allow: the phone's own geocoder first (Google's on most phones, free), then
+     * Photon (OpenStreetMap with typo-tolerant matching), then Nominatim; answers outside the
+     * driver's region (±1°) are dropped so a same-named street in another city never wins.
+     */
+    private suspend fun freeLookup(context: Context, text: String, near: DoubleArray?): List<DoubleArray> {
+        fun local(points: List<DoubleArray>) = if (near == null) points
+            else points.filter { kotlin.math.abs(it[0] - near[0]) <= 1.0 && kotlin.math.abs(it[1] - near[1]) <= 1.0 }
+        return local(runCatching { androidGeocoder(context, text, near) }.getOrDefault(emptyList()))
+            .ifEmpty { local(CityIndexStore.suggestRemote(text, 3).flatMap { it.points.take(1) }) }
+            .ifEmpty { local(runCatching { nominatim(text, near) }.getOrDefault(emptyList())) }
+    }
+
+    /** A name for a drawn zone from its centre («اقترح الاسم من الخريطة»): district, else locality. */
+    @Suppress("DEPRECATION")
+    suspend fun placeName(context: Context, lat: Double, lng: Double): String? = withContext(Dispatchers.IO) {
+        runCatching {
+            if (!Geocoder.isPresent()) return@runCatching null
+            Geocoder(context.applicationContext).getFromLocation(lat, lng, 1)?.firstOrNull()?.let { a ->
+                listOf(a.subLocality, a.locality, a.subAdminArea, a.thoroughfare).firstOrNull { !it.isNullOrBlank() }
+            }
+        }.getOrNull() ?: runCatching { nominatimReverse(lat, lng) }.getOrNull()
+    }
+
+    @Suppress("DEPRECATION")
+    private fun androidPlaces(context: Context, text: String, near: DoubleArray?): List<Pair<String, DoubleArray>> {
+        if (!Geocoder.isPresent()) return emptyList()
+        val geocoder = Geocoder(context)
+        val found = if (near != null) {
+            val lat = Math.round(near[0] * 2.0) / 2.0
+            val lng = Math.round(near[1] * 2.0) / 2.0
+            geocoder.getFromLocationName(text, 5, lat - 1.0, lng - 1.0, lat + 1.0, lng + 1.0)
+        } else geocoder.getFromLocationName(text, 5)
+        return found.orEmpty().map { a ->
+            (a.getAddressLine(0) ?: listOfNotNull(a.featureName, a.locality).joinToString("، ")) to doubleArrayOf(a.latitude, a.longitude)
+        }
+    }
+
+    private fun nominatimPlaces(text: String, near: DoubleArray?): List<Pair<String, DoubleArray>> =
+        nominatimJson(text, near).mapNotNull { o ->
+            val lat = o["lat"]?.jsonPrimitive?.content?.toDoubleOrNull()
+            val lng = o["lon"]?.jsonPrimitive?.content?.toDoubleOrNull()
+            val name = o["display_name"]?.jsonPrimitive?.content.orEmpty()
+            if (lat == null || lng == null) null else name to doubleArrayOf(lat, lng)
+        }
+
+    private fun nominatimReverse(lat: Double, lng: Double): String? {
+        val conn = URL("https://nominatim.openstreetmap.org/reverse?lat=$lat&lon=$lng&format=jsonv2&zoom=14&accept-language=ar,en")
+            .openConnection() as HttpURLConnection
+        return try {
+            conn.connectTimeout = 8_000
+            conn.readTimeout = 8_000
+            conn.setRequestProperty("User-Agent", "SabbaqDriver/${BuildConfig.VERSION_NAME} (Android)")
+            if (conn.responseCode != 200) return null
+            val o = Json.parseToJsonElement(conn.inputStream.bufferedReader().use { it.readText() }) as? JsonObject ?: return null
+            val address = o["address"] as? JsonObject
+            listOf("suburb", "neighbourhood", "quarter", "city_district", "town", "city")
+                .firstNotNullOfOrNull { k -> address?.get(k)?.jsonPrimitive?.content?.takeIf { it.isNotBlank() } }
+                ?: o["name"]?.jsonPrimitive?.content?.takeIf { it.isNotBlank() }
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    /**
+     * One immediate lookup for the post-accept exclude check (the reference's online step):
+     * Sabbaq's server, then OpenStreetMap, then the phone's geocoder; the answer is cached.
+     */
+    suspend fun resolveNow(context: Context, text: String): DoubleArray? = withContext(Dispatchers.IO) {
+        val near = ZoneStore.driverLocation()
+        val server = runCatching { SupabaseClient.geocodeResolve(ZoneStore.sharedKey(text), text, near) }
+            .getOrDefault(SupabaseClient.GeocodeAnswer.Unavailable)
+        val points = when (server) {
+            is SupabaseClient.GeocodeAnswer.Found -> server.points
+            SupabaseClient.GeocodeAnswer.NotFound -> emptyList()
+            SupabaseClient.GeocodeAnswer.Unavailable -> freeLookup(context.applicationContext, text, near)
+        }
+        ZoneStore.remember(text, points)
+        points.firstOrNull()
+    }
+
+    private fun nominatim(text: String, near: DoubleArray?): List<DoubleArray> =
+        nominatimJson(text, near).mapNotNull { o ->
+            val lat = o["lat"]?.jsonPrimitive?.content?.toDoubleOrNull()
+            val lng = o["lon"]?.jsonPrimitive?.content?.toDoubleOrNull()
+            if (lat == null || lng == null) null else doubleArrayOf(lat, lng)
+        }
+
+    private fun nominatimJson(text: String, near: DoubleArray?): List<JsonObject> {
         val q = URLEncoder.encode(text, "UTF-8")
         val box = near?.let {
             val lat = Math.round(it[0] * 2.0) / 2.0
@@ -219,12 +389,7 @@ object GeocodeWorker {
             conn.setRequestProperty("User-Agent", "SabbaqDriver/${BuildConfig.VERSION_NAME} (Android)")
             if (conn.responseCode != 200) return emptyList()
             val body = conn.inputStream.bufferedReader().use { it.readText() }
-            Json.parseToJsonElement(body).jsonArray.mapNotNull { item ->
-                val o = item as? JsonObject ?: return@mapNotNull null
-                val lat = o["lat"]?.jsonPrimitive?.content?.toDoubleOrNull()
-                val lng = o["lon"]?.jsonPrimitive?.content?.toDoubleOrNull()
-                if (lat == null || lng == null) null else doubleArrayOf(lat, lng)
-            }
+            Json.parseToJsonElement(body).jsonArray.mapNotNull { it as? JsonObject }
         } finally {
             conn.disconnect()
         }
@@ -280,6 +445,9 @@ class DriverLocationTracker(private val context: Context) : LocationListener {
         val ageMs = (SystemClock.elapsedRealtimeNanos() - location.elapsedRealtimeNanos) / 1_000_000L
         if (ageMs > 30 * 60_000L) return
         ZoneStore.saveDriverLocation(location.latitude, location.longitude)
+        // The driver's city is downloaded ahead of the zone editor and of the offers naming it.
+        CityIndexStore.ensure(context)
+        app.sabbaq.service.maps.MapPackStore.ensure(context)
     }
 
     @Deprecated("Deprecated in Java")

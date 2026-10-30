@@ -1,5 +1,9 @@
 package app.sabbaq.service
 
+import app.sabbaq.fleet.FloatingBubble
+import android.os.PowerManager
+import app.sabbaq.fleet.FleetRepository
+import app.sabbaq.fleet.KeepAlive
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -88,6 +92,8 @@ class KeeperService : Service() {
             // The driver stopped it: do not resume after a restart either.
             Settings.monitoringWanted = false
             Settings.isActive = false
+            KeepAlive.schedule(this)
+            stoppingOnPurpose = true
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             return START_NOT_STICKY
@@ -101,6 +107,7 @@ class KeeperService : Service() {
             Log.w(TAG, "تم رفض تشغيل خدمة أمامية غير مفعلة أو غير مرئية")
             Settings.isActive = false
             stopForeground(STOP_FOREGROUND_REMOVE)
+            stoppingOnPurpose = true
             stopSelf(startId)
             return START_NOT_STICKY
         }
@@ -113,16 +120,23 @@ class KeeperService : Service() {
             if (licenseMonitor?.isActive != true) {
                 licenseMonitor = serviceScope.launch { monitor() }
             }
+            isRunning = true
+            KeepAlive.startedOk(this)
+            KeepAlive.schedule(this)
+            acquireWakeLock()
+            FloatingBubble.refresh()
             // Android recreates a sticky service after killing it; monitor() restores the session.
             START_STICKY
         } catch (e: SecurityException) {
             Log.e(TAG, "رفض النظام تشغيل الخدمة الأمامية")
             Settings.isActive = false
+            stoppingOnPurpose = true
             stopSelf(startId)
             START_NOT_STICKY
         } catch (e: IllegalStateException) {
             Log.e(TAG, "لم تعد حالة التطبيق تسمح بخدمة أمامية")
             Settings.isActive = false
+            stoppingOnPurpose = true
             stopSelf(startId)
             START_NOT_STICKY
         }
@@ -144,11 +158,15 @@ class KeeperService : Service() {
         checkAccessibility()
         warnIfSubscriptionEnding()
         refreshProfiles(force = true)
+        runCatching { FleetRepository.refreshIfStale(force = true) }
         syncInbox()
         while (currentCoroutineContext().isActive) {
             delay(60_000)
             if (!checkStillAllowed()) break
             refreshProfiles(force = false)
+            runCatching { FleetRepository.refreshIfStale() }
+            acquireWakeLock()
+            FloatingBubble.refresh()
             syncInbox()
         }
     }
@@ -381,7 +399,10 @@ class KeeperService : Service() {
     }
 
     private fun shutDown() {
+        stoppingOnPurpose = true
+        releaseWakeLock()
         Settings.isActive = false
+        FloatingBubble.refresh()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -483,7 +504,42 @@ class KeeperService : Service() {
         Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
+    /** Swiping Sabbaq out of recents kills the service on many phones: come back shortly after. */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        KeepAlive.restartWithBackoff(this)
+        super.onTaskRemoved(rootIntent)
+    }
+
+    /**
+     * The reference engine holds a partial wake lock while it runs (30-minute timeout, renewed
+     * every minute), so a sleeping CPU never delays reading an offer. Released when monitoring stops.
+     */
+    private var wakeLock: PowerManager.WakeLock? = null
+
+    private fun acquireWakeLock() {
+        runCatching {
+            wakeLock?.takeIf { it.isHeld }?.release()
+            wakeLock = (getSystemService(Context.POWER_SERVICE) as PowerManager)
+                .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "sabbaq:engine")
+                .apply { setReferenceCounted(false); acquire(WAKE_LOCK_TIMEOUT_MS) }
+        }
+    }
+
+    private fun releaseWakeLock() {
+        runCatching { wakeLock?.takeIf { it.isHeld }?.release() }
+        wakeLock = null
+    }
+
+    /** Set by every stop Sabbaq decides itself (driver, licence, refused start): no restart then. */
+    private var stoppingOnPurpose = false
+
     override fun onDestroy() {
+        val wasRunning = isRunning
+        isRunning = false
+        releaseWakeLock()
+        FloatingBubble.refresh()
+        // Running and not stopped on purpose: Android or a cleaner ended it, come back with backoff.
+        if (wasRunning && !stoppingOnPurpose && Settings.monitoringWanted) KeepAlive.restartWithBackoff(this)
         screenReceiver?.let { runCatching { unregisterReceiver(it) } }
         screenReceiver = null
         networkCallback?.let { callback ->
@@ -515,20 +571,28 @@ class KeeperService : Service() {
         private const val RESTORE_MAX_RETRY_MILLIS = 60_000L
         private const val RESTORE_RETRY_WINDOW_MILLIS = 20 * 60_000L
         private const val ACTION_STOP = "app.sabbaq.STOP_MONITORING"
+        private const val WAKE_LOCK_TIMEOUT_MS = 30 * 60_000L
+
+        /** True between a successful foreground start and onDestroy (the watchdog reads it). */
+        @Volatile var isRunning: Boolean = false
+            private set
 
         /** Starts monitoring if the driver left it on; safe to call from any context. */
-        fun resumeIfWanted(context: Context) {
-            if (!Settings.monitoringWanted || !SupabaseClient.hasSavedSession()) return
+        fun resumeIfWanted(context: Context): Boolean {
+            if (!Settings.monitoringWanted || !SupabaseClient.hasSavedSession()) return false
             val intent = Intent(context, KeeperService::class.java)
-            try {
+            return try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent)
                 else context.startService(intent)
+                true
             } catch (e: IllegalStateException) {
                 // Android may refuse a background start (no battery exemption): the next
                 // boot, app open or sticky restart will try again.
                 Log.w(TAG, "رفض النظام استئناف الخدمة الآن")
+                false
             } catch (e: SecurityException) {
                 Log.w(TAG, "تعذر استئناف الخدمة لسبب أمني")
+                false
             }
         }
     }

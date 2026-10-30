@@ -96,10 +96,41 @@ object Settings {
         get() = runCatching { prefs().getInt("last_confirmed_tap_y", -1) }.getOrDefault(-1)
         set(value) { runCatching { prefs().edit().putInt("last_confirmed_tap_y", value).apply() } }
 
+    /** Invite code typed on the sign-in screen, claimed once the account exists. */
+    var pendingReferralCode: String?
+        get() = runCatching { prefs().getString("pending_referral_code", null) }.getOrNull()
+        set(value) { runCatching { prefs().edit().apply { if (value.isNullOrBlank()) remove("pending_referral_code") else putString("pending_referral_code", value) }.apply() } }
+
+    /** Result of claiming that code ("ok" or the server's reason), shown once on the referral page. */
+    var referralClaimOutcome: String?
+        get() = runCatching { prefs().getString("referral_claim_outcome", null) }.getOrNull()
+        set(value) { runCatching { prefs().edit().apply { if (value == null) remove("referral_claim_outcome") else putString("referral_claim_outcome", value) }.apply() } }
+
     /** Newest wall-clock time seen, to refuse a clock set back to extend the subscription. */
     var newestSeenMs: Long
         get() = runCatching { prefs().getLong(KEY_NEWEST_SEEN, 0L) }.getOrDefault(0L)
         set(value) { runCatching { prefs().edit().putLong(KEY_NEWEST_SEEN, value).apply() } }
+
+    /**
+     * The floating control is shown (FloatingBubble). Like the reference it is off until the driver
+     * presses «الزر العائم» on the dashboard, and «إغلاق» on the control turns it off again.
+     */
+    var floatingBubble: Boolean
+        get() = runCatching { prefs().getBoolean("floating_control_shown", false) }.getOrDefault(false)
+        set(value) { runCatching { prefs().edit().putBoolean("floating_control_shown", value).apply() } }
+
+    var floatingBubbleX: Int
+        get() = runCatching { prefs().getInt("floating_bubble_x", 0) }.getOrDefault(0)
+        set(value) { runCatching { prefs().edit().putInt("floating_bubble_x", value).apply() } }
+
+    /** The last sign-in was an administrator (shows «الأدمن» on the floating control). */
+    var lastSignedInAdmin: Boolean
+        get() = runCatching { prefs().getBoolean("last_signed_in_admin", false) }.getOrDefault(false)
+        set(value) { runCatching { prefs().edit().putBoolean("last_signed_in_admin", value).apply() } }
+
+    var floatingBubbleY: Int
+        get() = runCatching { prefs().getInt("floating_bubble_y", 200) }.getOrDefault(200)
+        set(value) { runCatching { prefs().edit().putInt("floating_bubble_y", value).apply() } }
 
     /** The driver confirmed the phone maker's auto-start setting (it cannot be read back). */
     var autostartConfirmed: Boolean

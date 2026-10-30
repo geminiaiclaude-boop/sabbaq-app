@@ -45,6 +45,7 @@ import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import app.sabbaq.BuildConfig
 import app.sabbaq.R
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import app.sabbaq.LocaleManager
 import androidx.compose.ui.res.stringResource
 import app.sabbaq.Settings
@@ -72,7 +73,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.outlined.Fingerprint
 import androidx.compose.material.icons.outlined.Person
@@ -536,7 +536,7 @@ private fun AccountRow(
         }
         trailing?.invoke()
         if (onClick != null && trailing == null) {
-            Icon(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

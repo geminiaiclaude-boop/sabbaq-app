@@ -12,8 +12,15 @@ import androidx.compose.ui.unit.dp
  * unframed and without subtitles, inside the dashboard card.
  */
 @Composable
-internal fun QuickConditionsPanel(draft: FilterDraft, errors: Map<String, String>, onDraftChange: (FilterDraft) -> Unit) {
+internal fun QuickConditionsPanel(
+    draft: FilterDraft,
+    errors: Map<String, String>,
+    onDraftChange: (FilterDraft) -> Unit,
+    onOpenZones: () -> Unit = {},
+) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        TargetAppCondition(draft, onDraftChange, keyPrefix = QUICK_PREFIX, framed = false)
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         FareRangeCondition(draft, errors, onDraftChange, keyPrefix = QUICK_PREFIX, framed = false)
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         PickupTimeCondition(draft, errors, onDraftChange, keyPrefix = QUICK_PREFIX, framed = false)
@@ -21,6 +28,8 @@ internal fun QuickConditionsPanel(draft: FilterDraft, errors: Map<String, String
         HighFareOverrideCondition(draft, errors, onDraftChange, keyPrefix = QUICK_PREFIX, framed = false)
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         NoDestinationCondition(draft, onDraftChange, keyPrefix = QUICK_PREFIX, framed = false)
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        DashboardZonesBlock(draft, onDraftChange, onOpenZones)
     }
 }
 

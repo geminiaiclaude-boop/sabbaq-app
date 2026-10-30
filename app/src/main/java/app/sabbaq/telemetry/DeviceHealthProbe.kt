@@ -1,5 +1,8 @@
 package app.sabbaq.telemetry
 
+import app.sabbaq.core.StandbyBucket
+import app.sabbaq.fleet.FleetRepository
+import app.sabbaq.fleet.KeepAlive
 import android.app.ActivityManager
 import android.app.NotificationManager
 import android.content.ComponentName
@@ -33,7 +36,10 @@ internal object DeviceHealthProbe {
             monitoringActive = Settings.isActive,
             disclosureAccepted = Settings.a11yDisclosureAccepted,
             signedIn = runCatching { SupabaseClient.hasSavedSession() }.getOrDefault(false),
-            licenseValid = runCatching { SupabaseClient.hasValidLicense() }.getOrDefault(false),
+            // What the accept gate itself checks: the saved subscription end date (the server's
+            // answer lives in memory only and is empty after every process restart).
+            licenseValid = Settings.subscriptionEndsAtMs > System.currentTimeMillis() ||
+                runCatching { SupabaseClient.hasValidLicense() }.getOrDefault(false),
             targetInstalled = targetInstalled,
             targetInOtherProfile = targetInOtherProfile,
             targetUnknownPackage = targetUnknownPackage,
@@ -50,6 +56,9 @@ internal object DeviceHealthProbe {
                 (app.getSystemService(Context.POWER_SERVICE) as PowerManager).isPowerSaveMode
             }.getOrDefault(false),
             networkAvailable = runCatching { networkAvailable(app) }.getOrDefault(false),
+            hibernationOn = KeepAlive.hibernationOn(app),
+            standbyRestricted = StandbyBucket.atRisk(KeepAlive.standbyBucket(app)),
+            updateRequired = FleetRepository.updateRequired(),
         )
     }
 

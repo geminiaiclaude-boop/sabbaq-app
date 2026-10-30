@@ -262,9 +262,9 @@ internal fun featureFailureText(failure: app.sabbaq.network.SupabaseClient.Featu
     }
 }
 
-/** A store page exists only for the Play build; the direct build updates through the administration. */
-internal fun actionAvailable(action: NotificationAction): Boolean =
-    action != NotificationAction.UPDATE_APP || !BuildConfig.DIRECT_DISTRIBUTION
+/** Every action has a target: the update opens the in-app update (direct) or the store page (Play). */
+@Suppress("UNUSED_PARAMETER")
+internal fun actionAvailable(action: NotificationAction): Boolean = true
 
 internal fun actionLabel(action: NotificationAction): String = (when (action) {
     NotificationAction.OPEN_ACCOUNT -> "فتح حسابي" to "Open My Account"

@@ -16,10 +16,12 @@ class TelemetryServerContractTest {
     private val migrations = generateSequence(File("").absoluteFile) { it.parentFile }
         .map { File(it, "supabase/migrations") }
         .first { it.isDirectory }
-    private val latestTelemetryMigration = migrations.listFiles()!!
-        .filter { it.name.endsWith(".sql") && it.readText().contains("offer_telemetry_events_stage_check") }
+    private fun latest(marker: String) = migrations.listFiles()!!
+        .filter { it.name.endsWith(".sql") && it.readText().contains(marker) }
         .maxBy { it.name }
         .readText()
+    private val latestTelemetryMigration = latest("offer_telemetry_events_stage_check")
+    private val latestIngestMigration = latest("function public.ingest_offer_telemetry")
 
     @Test fun everyDeviceStageIsAcceptedByTheServer() {
         val block = latestTelemetryMigration.substringAfter("offer_telemetry_events_stage_check check (stage in (")
@@ -36,6 +38,6 @@ class TelemetryServerContractTest {
             installCohort = "i", eventCount = 2, detail = "d", targetAppVersion = "t",
         )
         val keys = Json.parseToJsonElement(Json.encodeToString(event)).let { it as kotlinx.serialization.json.JsonObject }.keys - "schemaVersion"
-        keys.forEach { key -> assertTrue("ingest ignores $key", latestTelemetryMigration.contains("x->>'$key'")) }
+        keys.forEach { key -> assertTrue("ingest ignores $key", latestIngestMigration.contains("x->>'$key'")) }
     }
 }

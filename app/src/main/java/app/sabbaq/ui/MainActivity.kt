@@ -27,6 +27,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.material.icons.outlined.CardGiftcard
 import androidx.compose.material.icons.outlined.Checklist
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.History
@@ -56,8 +57,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -66,6 +65,7 @@ import app.sabbaq.BuildConfig
 import app.sabbaq.Settings
 import app.sabbaq.R
 import app.sabbaq.LocaleManager
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import app.sabbaq.ThemeMode
 import app.sabbaq.network.LicenseState
@@ -156,10 +156,12 @@ class SessionNavigationViewModel : ViewModel() {
         }
     }
     fun authenticated(isAdmin: Boolean) {
+        Settings.lastSignedInAdmin = isAdmin && BuildConfig.DIRECT_DISTRIBUTION
+        app.sabbaq.fleet.FloatingBubble.refresh()
         sessionRestoreStatus = SessionRestoreStatus.NONE
         route = if (isAdmin && BuildConfig.DIRECT_DISTRIBUTION) AppState.ADMIN_PANEL else AppState.DRIVER_PANEL
     }
-    fun signedOut() { sessionRestoreStatus = SessionRestoreStatus.NONE; route = AppState.LOGIN }
+    fun signedOut() { sessionRestoreStatus = SessionRestoreStatus.NONE; route = AppState.LOGIN; app.sabbaq.fleet.FloatingBubble.refresh() }
 }
 
 class MainActivity : AppCompatActivity() {
@@ -241,132 +243,130 @@ class MainActivity : AppCompatActivity() {
                 enableEdgeToEdge(statusBarStyle = statusStyle, navigationBarStyle = style)
             }
             SabbaqTheme(darkTheme = dark) {
-                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-                    SabbaqShell(
-                        showHeader = showHeader,
-                        themeMode = mode,
-                        onThemeChange = { mode = it; Settings.themeMode = it },
-                        isSavingFilters = filterSavePending,
-                        hasUnpersistedFilterChanges = hasUnpersistedFilterChanges,
-                        onLogout = endSession,
-                        allowLogout = navigation.sessionRestoreStatus != SessionRestoreStatus.RESTORING,
-                        isAuthenticated = navigation.route == AppState.DRIVER_PANEL || navigation.route == AppState.ADMIN_PANEL,
-                        isAdmin = navigation.route == AppState.ADMIN_PANEL,
-                        activeDriverDestination = activeDriverDestination,
-                        onOpenDriverDestination = { driverDestinationRequest = it },
-                        onOpenLogin = { if (navigation.route == AppState.WELCOME) navigation.welcomeFinished(false) },
-                        logoutRequests = logoutRequests,
-                    ) {
-                        SabbaqDepthContent(target = navigation.route, order = { it.ordinal }, label = "app-route") { route ->
-                        when (route) {
-                            AppState.WELCOME -> OnboardingScreen(onContinue = {
-                                if (!OnboardingPreferences.markComplete(this@MainActivity)) {
-                                    permissionMessage = (if (LocaleManager.isArabic()) "قد تظهر هذه المقدمة مرة أخرى عند فتح التطبيق. يمكنك المتابعة الآن." else "This intro may appear again when you open the app. You can continue now.")
-                                }
-                                navigation.welcomeFinished(SupabaseClient.hasSavedSession())
-                            })
-                            AppState.LOGIN -> LoginScreen(onLoginSuccess = navigation::authenticated)
-                            AppState.ADMIN_PANEL -> {
-                                if (BuildConfig.DIRECT_DISTRIBUTION) app.sabbaq.ui.admin.AdminPanel()
-                                else Text(stringResource(R.string.ma_admin_unavailable))
+                SabbaqShell(
+                    showHeader = showHeader,
+                    themeMode = mode,
+                    onThemeChange = { mode = it; Settings.themeMode = it },
+                    isSavingFilters = filterSavePending,
+                    hasUnpersistedFilterChanges = hasUnpersistedFilterChanges,
+                    onLogout = endSession,
+                    allowLogout = navigation.sessionRestoreStatus != SessionRestoreStatus.RESTORING,
+                    isAuthenticated = navigation.route == AppState.DRIVER_PANEL || navigation.route == AppState.ADMIN_PANEL,
+                    isAdmin = navigation.route == AppState.ADMIN_PANEL,
+                    activeDriverDestination = activeDriverDestination,
+                    onOpenDriverDestination = { driverDestinationRequest = it },
+                    onOpenLogin = { if (navigation.route == AppState.WELCOME) navigation.welcomeFinished(false) },
+                    logoutRequests = logoutRequests,
+                ) {
+                    SabbaqDepthContent(target = navigation.route, order = { it.ordinal }, label = "app-route") { route ->
+                    when (route) {
+                        AppState.WELCOME -> OnboardingScreen(onContinue = {
+                            if (!OnboardingPreferences.markComplete(this@MainActivity)) {
+                                permissionMessage = (if (LocaleManager.isArabic()) "قد تظهر هذه المقدمة مرة أخرى عند فتح التطبيق. يمكنك المتابعة الآن." else "This intro may appear again when you open the app. You can continue now.")
                             }
-                            AppState.DRIVER_PANEL -> SettingsScreen(
-                                notificationPermissionGranted = notificationsGranted,
-                                autoSetupGuide = navigation.sessionRestoreStatus == SessionRestoreStatus.NONE,
-                                isRestoringSession = navigation.sessionRestoreStatus == SessionRestoreStatus.RESTORING,
-                                sessionRestoreError = navigation.sessionRestoreStatus == SessionRestoreStatus.RETRYABLE_ERROR,
-                                onRetrySessionRestore = navigation::retrySessionRestore,
-                                onRequestNotificationPermission = {
-                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
-                                        permissionRequest.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                },
-                                onOpenA11y = { runCatching {
-                                    showA11yDisclosure = true
-                                    Unit
-                                } },
-                                onToggleKeeper = { start -> runCatching {
-                                    val intent = Intent(this@MainActivity, KeeperService::class.java)
-                                    if (start) {
-                                        if (!Settings.a11yDisclosureAccepted) {
-                                            showA11yDisclosure = true
-                                            error("راجع طريقة عمل القبول التلقائي ووافق عليها قبل التشغيل")
-                                        }
-                                        check(SupabaseClient.hasValidLicense()) { "يلزم اشتراك صالح قبل التشغيل" }
-                                        Settings.monitoringWanted = true
-                                        Settings.isActive = true
-                                        startForegroundService(intent)
-                                    } else {
-                                        Settings.monitoringWanted = false
-                                        Settings.isActive = false
-                                        stopService(intent)
+                            navigation.welcomeFinished(SupabaseClient.hasSavedSession())
+                        })
+                        AppState.LOGIN -> LoginScreen(onLoginSuccess = navigation::authenticated)
+                        AppState.ADMIN_PANEL -> {
+                            if (BuildConfig.DIRECT_DISTRIBUTION) app.sabbaq.ui.admin.AdminPanel()
+                            else Text(stringResource(R.string.ma_admin_unavailable))
+                        }
+                        AppState.DRIVER_PANEL -> SettingsScreen(
+                            notificationPermissionGranted = notificationsGranted,
+                            autoSetupGuide = navigation.sessionRestoreStatus == SessionRestoreStatus.NONE,
+                            isRestoringSession = navigation.sessionRestoreStatus == SessionRestoreStatus.RESTORING,
+                            sessionRestoreError = navigation.sessionRestoreStatus == SessionRestoreStatus.RETRYABLE_ERROR,
+                            onRetrySessionRestore = navigation::retrySessionRestore,
+                            onRequestNotificationPermission = {
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+                                    permissionRequest.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            },
+                            onOpenA11y = { runCatching {
+                                showA11yDisclosure = true
+                                Unit
+                            } },
+                            onToggleKeeper = { start -> runCatching {
+                                val intent = Intent(this@MainActivity, KeeperService::class.java)
+                                if (start) {
+                                    if (!Settings.a11yDisclosureAccepted) {
+                                        showA11yDisclosure = true
+                                        error("راجع طريقة عمل القبول التلقائي ووافق عليها قبل التشغيل")
                                     }
-                                    Unit
-                                }.onFailure { if (start) { Settings.isActive = false; Settings.monitoringWanted = false } } },
-                                onFilterSaveStateChanged = { saving, unpersisted ->
-                                    filterSavePending = saving
-                                    hasUnpersistedFilterChanges = unpersisted
-                                },
-                                navigationRequest = driverDestinationRequest,
-                                onRequestLogout = { logoutRequests++ },
-                                onDestinationChanged = { activeDriverDestination = it },
-                                onNavigationRequestHandled = { driverDestinationRequest = null },
-                                themeMode = mode,
-                                onThemeChange = { mode = it; Settings.themeMode = it },
-                                onAccountDeleted = {
-                                    val wiped = Settings.clearAccountData()
-                                    val statsWiped = OfferStatsStore.clear(this@MainActivity)
-                                    val historyWiped = OfferDecisionLogStore.clear(this@MainActivity)
-                                    TelemetryRepository.clearForAccountDeletion()
-                                    endSession()
-                                    permissionMessage = if (wiped && statsWiped && historyWiped) (if (LocaleManager.isArabic()) "حُذف حسابك وبياناته المرتبطة. شكرًا لاستخدامك سبّاق." else "Your account and its related data were deleted. Thank you for using Sabbaq.")
-                                        else (if (LocaleManager.isArabic()) "حُذف حسابك من الخادم، لكن تعذّر مسح بعض الإعدادات المحلية. احذف بيانات التطبيق من إعدادات الجهاز لإكمال المسح." else "Your account was deleted from the server, but some local settings could not be cleared. Delete the app data from the device settings to complete the wipe.")
-                                },
-                            )
-                        }
-                        }
+                                    check(SupabaseClient.hasValidLicense()) { "يلزم اشتراك صالح قبل التشغيل" }
+                                    Settings.monitoringWanted = true
+                                    Settings.isActive = true
+                                    startForegroundService(intent)
+                                } else {
+                                    Settings.monitoringWanted = false
+                                    Settings.isActive = false
+                                    stopService(intent)
+                                }
+                                Unit
+                            }.onFailure { if (start) { Settings.isActive = false; Settings.monitoringWanted = false } } },
+                            onFilterSaveStateChanged = { saving, unpersisted ->
+                                filterSavePending = saving
+                                hasUnpersistedFilterChanges = unpersisted
+                            },
+                            navigationRequest = driverDestinationRequest,
+                            onRequestLogout = { logoutRequests++ },
+                            onDestinationChanged = { activeDriverDestination = it },
+                            onNavigationRequestHandled = { driverDestinationRequest = null },
+                            themeMode = mode,
+                            onThemeChange = { mode = it; Settings.themeMode = it },
+                            onAccountDeleted = {
+                                val wiped = Settings.clearAccountData()
+                                val statsWiped = OfferStatsStore.clear(this@MainActivity)
+                                val historyWiped = OfferDecisionLogStore.clear(this@MainActivity)
+                                TelemetryRepository.clearForAccountDeletion()
+                                endSession()
+                                permissionMessage = if (wiped && statsWiped && historyWiped) (if (LocaleManager.isArabic()) "حُذف حسابك وبياناته المرتبطة. شكرًا لاستخدامك سبّاق." else "Your account and its related data were deleted. Thank you for using Sabbaq.")
+                                    else (if (LocaleManager.isArabic()) "حُذف حسابك من الخادم، لكن تعذّر مسح بعض الإعدادات المحلية. احذف بيانات التطبيق من إعدادات الجهاز لإكمال المسح." else "Your account was deleted from the server, but some local settings could not be cleared. Delete the app data from the device settings to complete the wipe.")
+                            },
+                        )
                     }
-                    if (showA11yDisclosure) AccessibilityDisclosureDialog(
-                        onAccept = {
-                            showA11yDisclosure = false
-                            Settings.a11yDisclosureAccepted = true
-                            if (AccessibilitySetup.requiresRestrictedSettingsGuidance(this@MainActivity)) {
-                                showRestrictedA11yGuidance = true
-                            } else {
-                                runCatching { startActivity(AccessibilitySetup.accessibilitySettingsIntent()) }
-                                    .onFailure { permissionMessage = (if (LocaleManager.isArabic()) "تعذر فتح إعدادات إمكانية الوصول. حاول مجددًا من لوحة القيادة." else "Could not open the accessibility settings. Try again from the dashboard.") }
-                            }
-                        },
-                        onDismiss = {
-                            showA11yDisclosure = false
-                            Settings.a11yDisclosureAccepted = false
-                            stopService(Intent(this@MainActivity, KeeperService::class.java))
-                        }
-                    )
-                    if (showRestrictedA11yGuidance) RestrictedAccessibilityDialog(
-                        onOpenAppDetails = {
-                            showRestrictedA11yGuidance = false
-                            runCatching {
-                                restrictedSettingsLauncher.launch(AccessibilitySetup.appDetailsIntent(this@MainActivity))
-                            }.onFailure {
-                                permissionMessage = (if (LocaleManager.isArabic()) "تعذر فتح معلومات التطبيق. افتح إعدادات الجهاز ثم التطبيقات ثم سبّاق." else "Could not open the app info. Open the device settings, then Apps, then Sabbaq.")
-                            }
-                        },
-                        onDismiss = { showRestrictedA11yGuidance = false },
-                    )
-                    permissionMessage?.let { message -> AlertDialog(
-                        onDismissRequest = { permissionMessage = null },
-                        title = { Text(stringResource(R.string.ma_notice)) }, text = { Text(message) },
-                        confirmButton = { TextButton(onClick = { permissionMessage = null }) { Text(stringResource(R.string.ma_ok)) } }
-                    ) }
-                    // Do not compose the logo intro underneath the cinematic clip: its
-                    // 2.3s animation would finish while hidden instead of playing after it.
-                    if (shouldRenderLogoIntro(showIntro, showVideoOpening)) {
-                        SabbaqLaunchIntro(onFinished = { showIntro = false })
                     }
-                    // Access just granted (code or trial): celebrate over everything, once.
-                    val celebration by Celebrations.current.collectAsState()
-                    celebration?.let { ActivationCelebration(it, onDone = Celebrations::dismiss) }
                 }
+                if (showA11yDisclosure) AccessibilityDisclosureDialog(
+                    onAccept = {
+                        showA11yDisclosure = false
+                        Settings.a11yDisclosureAccepted = true
+                        if (AccessibilitySetup.requiresRestrictedSettingsGuidance(this@MainActivity)) {
+                            showRestrictedA11yGuidance = true
+                        } else {
+                            runCatching { startActivity(AccessibilitySetup.accessibilitySettingsIntent()) }
+                                .onFailure { permissionMessage = (if (LocaleManager.isArabic()) "تعذر فتح إعدادات إمكانية الوصول. حاول مجددًا من لوحة القيادة." else "Could not open the accessibility settings. Try again from the dashboard.") }
+                        }
+                    },
+                    onDismiss = {
+                        showA11yDisclosure = false
+                        Settings.a11yDisclosureAccepted = false
+                        stopService(Intent(this@MainActivity, KeeperService::class.java))
+                    }
+                )
+                if (showRestrictedA11yGuidance) RestrictedAccessibilityDialog(
+                    onOpenAppDetails = {
+                        showRestrictedA11yGuidance = false
+                        runCatching {
+                            restrictedSettingsLauncher.launch(AccessibilitySetup.appDetailsIntent(this@MainActivity))
+                        }.onFailure {
+                            permissionMessage = (if (LocaleManager.isArabic()) "تعذر فتح معلومات التطبيق. افتح إعدادات الجهاز ثم التطبيقات ثم سبّاق." else "Could not open the app info. Open the device settings, then Apps, then Sabbaq.")
+                        }
+                    },
+                    onDismiss = { showRestrictedA11yGuidance = false },
+                )
+                permissionMessage?.let { message -> AlertDialog(
+                    onDismissRequest = { permissionMessage = null },
+                    title = { Text(stringResource(R.string.ma_notice)) }, text = { Text(message) },
+                    confirmButton = { TextButton(onClick = { permissionMessage = null }) { Text(stringResource(R.string.ma_ok)) } }
+                ) }
+                // Do not compose the logo intro underneath the cinematic clip: its
+                // 2.3s animation would finish while hidden instead of playing after it.
+                if (shouldRenderLogoIntro(showIntro, showVideoOpening)) {
+                    SabbaqLaunchIntro(onFinished = { showIntro = false })
+                }
+                // Access just granted (code or trial): celebrate over everything, once.
+                val celebration by Celebrations.current.collectAsState()
+                celebration?.let { ActivationCelebration(it, onDone = Celebrations::dismiss) }
                 if (showVideoOpening) {
                     SabbaqVideoOpening(onFinished = {
                         LaunchVideoPreferences.markSeen(this@MainActivity)
@@ -542,7 +542,8 @@ internal fun SabbaqShell(
                 NotificationAction.OPEN_FILTERS -> onOpenDriverDestination(DriverDestination.Filters)
                 NotificationAction.OPEN_SUPPORT -> onOpenDriverDestination(DriverDestination.Support)
                 NotificationAction.UPDATE_APP ->
-                    PublicLinks.open(context, "https://play.google.com/store/apps/details?id=${BuildConfig.APPLICATION_ID}")
+                    if (BuildConfig.DIRECT_DISTRIBUTION) onOpenDriverDestination(DriverDestination.Dashboard)
+                    else PublicLinks.open(context, "https://play.google.com/store/apps/details?id=${BuildConfig.APPLICATION_ID}")
             }
         },
     )
@@ -607,6 +608,7 @@ private val sabbaqDrawerSections = listOf(
     ),
     R.string.ma_sec_account to listOf(
         SabbaqDrawerItem(DriverDestination.Account, R.string.nav_account, Icons.Outlined.AccountCircle),
+        SabbaqDrawerItem(DriverDestination.Referrals, R.string.ref_nav, Icons.Outlined.CardGiftcard),
         SabbaqDrawerItem(DriverDestination.Support, R.string.sub_contact_support, Icons.Outlined.SupportAgent),
     ),
 )
@@ -700,6 +702,8 @@ private fun SabbaqDrawerSheet(
             if (!isAuthenticated) {
                 DrawerEntry(stringResource(R.string.ma_sign_in), Icons.Outlined.AccountCircle, selected = false, onClick = onOpenLogin)
             }
+            DrawerSectionTitle(stringResource(R.string.language_title))
+            LanguageSwitch(Modifier.fillMaxWidth().padding(horizontal = 10.dp).testTag("drawer-language"), fill = true)
             DrawerSectionTitle(stringResource(R.string.ma_sec_appearance))
             DrawerThemeChooser(themeMode, onThemeChange)
             DrawerSectionTitle(stringResource(R.string.ma_sec_privacy))

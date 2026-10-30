@@ -88,6 +88,7 @@ private fun diagnosisText(v: FunnelVerdict): Pair<String, String> {
         "gate_subscription_unknown" -> stringResource(R.string.diag_sub_unknown_t) to stringResource(R.string.diag_sub_unknown_b)
         "gate_subscription_expired" -> stringResource(R.string.diag_sub_expired_t) to stringResource(R.string.diag_sub_expired_b)
         "gate_clock_tampered" -> stringResource(R.string.diag_clock_t) to stringResource(R.string.diag_clock_b)
+        "gate_update_required" -> stringResource(R.string.upd_required_t) to stringResource(R.string.upd_required_b, "")
         "no_ride_app_events" -> stringResource(R.string.diag_no_events_t) to stringResource(R.string.diag_no_events_b)
         "offer_not_read" -> stringResource(R.string.diag_not_read_t) to stringResource(R.string.diag_not_read_b, readReason(reason))
         "all_rejected" -> stringResource(R.string.diag_rejected_t) to stringResource(R.string.diag_rejected_b, reason?.let { reasonLabel(it) } ?: "—")
@@ -96,6 +97,7 @@ private fun diagnosisText(v: FunnelVerdict): Pair<String, String> {
         "tap_not_confirmed" -> stringResource(R.string.diag_not_confirmed_t) to stringResource(R.string.diag_not_confirmed_b)
         "tap_pending" -> stringResource(R.string.diag_pending_t) to stringResource(R.string.diag_pending_b)
         "working" -> stringResource(R.string.diag_working_t) to stringResource(R.string.diag_working_b)
+        "on_trip" -> stringResource(R.string.diag_on_trip_t) to stringResource(R.string.diag_on_trip_b)
         else -> if (v.code.startsWith("gate_")) stringResource(R.string.diag_paused_t) to stringResource(R.string.diag_paused_b)
         else stringResource(R.string.diag_waiting_t) to stringResource(R.string.diag_waiting_b)
     }

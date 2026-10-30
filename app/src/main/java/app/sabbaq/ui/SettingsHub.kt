@@ -1,6 +1,7 @@
 package app.sabbaq.ui
 
 import app.sabbaq.LocaleManager
+import androidx.compose.ui.platform.testTag
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
@@ -109,11 +110,11 @@ internal fun SettingsHubPage(
                         else stringResource(R.string.settings_power_fix, pluralStringResource(R.plurals.permissions_count, missingPower, missingPower))) to (missingPower > 0)
                     SettingsSection.Permissions -> (if (missingPermissions == 0) stringResource(R.string.settings_perms_ok)
                         else stringResource(R.string.settings_perms_fix, pluralStringResource(R.plurals.permissions_count, missingPermissions, missingPermissions))) to (missingPermissions > 0)
-                    SettingsSection.Appearance -> when (themeMode) {
+                    SettingsSection.Appearance -> (when (themeMode) {
                         ThemeMode.SYSTEM -> stringResource(R.string.theme_system)
                         ThemeMode.LIGHT -> stringResource(R.string.theme_light)
                         ThemeMode.DARK -> stringResource(R.string.theme_dark)
-                    } to false
+                    } + " · " + stringResource(if (LocaleManager.isArabic()) R.string.language_arabic else R.string.language_english)) to false
                     SettingsSection.Diagnostics -> stringResource(R.string.settings_sum_diagnostics) to false
                     SettingsSection.Platforms -> stringResource(R.string.settings_sum_platforms) to false
                     SettingsSection.More -> stringResource(R.string.settings_sum_more) to false
@@ -138,8 +139,8 @@ internal fun SettingsHubPage(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        // RTL: «back» points to the right.
-        Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null)
+        // Auto-mirrored: points left in English, right in Arabic (the way back in each).
+        Icon(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, contentDescription = null)
         Text(stringResource(R.string.settings_title), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
     }
     Text(stringResource(current.titleRes), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
@@ -178,6 +179,10 @@ internal fun SettingsHubPage(
         }
 
         SettingsSection.Appearance -> SabbaqCard(modifier = Modifier.sabbaqEntrance(0)) {
+            Text(stringResource(R.string.language_title), style = MaterialTheme.typography.titleSmall)
+            LanguageSwitch(Modifier.fillMaxWidth().testTag("settings-language"), fill = true)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Text(stringResource(R.string.ma_sec_appearance), style = MaterialTheme.typography.titleSmall)
             ThemeMode.entries.forEach { mode ->
                 Row(
                     modifier = Modifier
@@ -291,7 +296,7 @@ private fun SettingsCategoryRow(
                 color = if (attention) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        // RTL: «forward» points to the left.
-        Icon(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        // Auto-mirrored: points right in English, left in Arabic (the way forward in each).
+        Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

@@ -1,5 +1,11 @@
 ﻿package app.sabbaq.service
 
+import app.sabbaq.fleet.FleetRepository
+import app.sabbaq.fleet.FloatingBubble
+import app.sabbaq.fleet.ScreenSamples
+import app.sabbaq.service.zones.ExcludeZoneAlerts
+import app.sabbaq.fleet.ShadowTester
+import app.sabbaq.core.engine.UiNode
 import android.accessibilityservice.AccessibilityService
 import android.os.SystemClock
 import android.util.Log
@@ -53,11 +59,15 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
         runCatching { OfferDecisionLogStore.init(applicationContext) }
         TelemetryRepository.serviceConnected = true
         DiagnosisRepository.funnel.serviceConnected(true)
-        host = EngineHost(this, { Settings.engineConfig }, ::canProcess, this)
+        host = EngineHost(this, { FleetRepository.effectiveConfig(Settings.engineConfig) }, ::canProcess, this)
         host.onConnected()
         instance = this
         applyTargetPackages()
         TelemetryRepository.trace(TelemetryStage.SERVICE_CONNECTED, reasonCode = "ready", detail = "engine=v3")
+        // Android rebinds the accessibility service after killing the process: bring the
+        // foreground service back with it when the driver left monitoring on.
+        if (Settings.monitoringWanted && !KeeperService.isRunning) KeeperService.resumeIfWanted(this)
+        FloatingBubble.attach(this)
     }
 
     /**
@@ -71,6 +81,7 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
             subscriptionEndsAtMs = Settings.subscriptionEndsAtMs,
             newestSeenMs = maxOf(Settings.newestSeenMs, persistedNewestSeenMs),
             nowMs = System.currentTimeMillis(),
+            updateRequired = FleetRepository.updateRequired(),
         )
         if (result.newestSeenMs - persistedNewestSeenMs >= NEWEST_SEEN_WRITE_STEP_MS || result.newestSeenMs < persistedNewestSeenMs) {
             Settings.newestSeenMs = result.newestSeenMs
@@ -133,7 +144,7 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
         liveness.offerDetected(now)
         runtimeStatus.offer(now)
         record(DiagnosticStage.OFFER_DETECTED, now, if (ride.price == null) "fare_missing" else "complete", detail = "src=$source,n=${ride.nodesVisited}")
-        DiagnosisRepository.funnel.offer()
+        DiagnosisRepository.funnel.offer(fingerprint(ride))
         runCatching { OfferStatsStore.recordVisible(fingerprint(ride)) }
     }
 
@@ -158,8 +169,13 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
         runtimeStatus.decision(now, report(ride, decision))
         runtimeStatus.click(now)
         provider = ride.provider
-        if (method.startsWith("not_dispatched")) DiagnosisRepository.funnel.notDispatched(method.substringAfter(':', "unknown"))
-        else DiagnosisRepository.funnel.tapped()
+        if (method.startsWith("not_dispatched")) {
+            DiagnosisRepository.funnel.notDispatched(method.substringAfter(':', "unknown"))
+            sampleActiveWindow("not_sent_" + method.substringAfter(':', "unknown"))
+        } else {
+            DiagnosisRepository.funnel.tapped()
+        }
+        lastTapSignature = acceptSignature(ride)
         DiagnosisRepository.refresh()
         TelemetryRepository.trace(TelemetryStage.DECISION_ACCEPTED, "rules_passed", provider = provider)
         record(DiagnosticStage.CLICK_PATH, now, method, latencyMs = latencyMs.coerceAtLeast(0))
@@ -177,6 +193,11 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
         when (outcome) {
             is PendingOutcome.Confirmed -> {
                 DiagnosisRepository.funnel.confirmed()
+                // One aggregation key per signature, so two signatures never merge their counts.
+                lastTapSignature?.let {
+                    TelemetryRepository.trace(TelemetryStage.ACCEPT_LEARNED, "confirmed:" + Integer.toHexString(it.hashCode()), detail = it, provider = provider)
+                }
+                lastTapSignature = null
                 if (p.tapX > 0 && p.tapY > 0) { Settings.lastConfirmedTapX = p.tapX; Settings.lastConfirmedTapY = p.tapY }
                 record(DiagnosticStage.CONFIRMATION_CONFIRMED, now, "post_click_confirmed")
                 runCatching { OfferDecisionLogStore.recordOutcome(provider, DecisionLogOutcome.ACCEPTED_CONFIRMED) }
@@ -184,6 +205,7 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
                 val fare = p.reportPrice?.let { BigDecimal.valueOf(it) }
                 runCatching { NotificationCenter.postAcceptedRide(fare, null) }
                 OfferEvents.accepted(fare, null)
+                ExcludeZoneAlerts.onAccepted(this, p.reportDestination)
             }
             is PendingOutcome.NewOfferAppeared -> {
                 DiagnosisRepository.funnel.unconfirmed("new_offer_appeared")
@@ -191,32 +213,60 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
             }
             is PendingOutcome.ConfirmationTimeout -> {
                 DiagnosisRepository.funnel.unconfirmed("confirmation_timeout")
+                sampleActiveWindow("confirmation_timeout")
                 record(DiagnosticStage.CONFIRMATION_TIMEOUT, now, "confirmation_timeout")
                 runCatching { OfferDecisionLogStore.recordOutcome(provider, DecisionLogOutcome.CONFIRMATION_TIMEOUT) }
             }
             is PendingOutcome.Disappeared -> {
                 DiagnosisRepository.funnel.unconfirmed("offer_disappeared")
+                sampleActiveWindow("offer_disappeared")
                 record(DiagnosticStage.CONFIRMATION_TIMEOUT, now, "offer_disappeared_after_click")
                 runCatching { OfferDecisionLogStore.recordOutcome(provider, DecisionLogOutcome.CONFIRMATION_TIMEOUT) }
+                // The reference treats a vanished offer like an accept for this check: it was most likely taken.
+                ExcludeZoneAlerts.onAccepted(this, p.reportDestination)
             }
         }
     }
 
     override fun onIdle(reason: String) {
         if (reason == "no_offer") return
+        if (reason == "active_ride") DiagnosisRepository.funnel.activeRide()
         if (reason in HELD_REASONS) DiagnosisRepository.funnel.held(reason)
         record(DiagnosticStage.STALE, SystemClock.elapsedRealtime(), reason)
     }
 
-    override fun onReadMiss(kind: String, reason: String, detail: String?) {
+    /** How the last tapped offer was found; reported once Android confirms the accept. */
+    private var lastTapSignature: String? = null
+
+    private fun acceptSignature(ride: ParsedRide): String {
+        val id = ride.acceptViewId.orEmpty().substringAfter(":id/").lowercase()
+            .filter { it in 'a'..'z' || it in '0'..'9' || it == '_' }
+            .replace(FORBIDDEN_DETAIL, "x").take(32).ifEmpty { "none" }
+        return "aw=${ride.acceptWord},vid=$id,n=${ride.nodesVisited.coerceIn(0, 9999)}"
+    }
+
+    /** Redacted structure of the ride-app window now on screen (ScreenSamples decides whether it is due). */
+    private fun sampleActiveWindow(reason: String) {
+        val root = runCatching { rootInActiveWindow }.getOrNull() ?: return
+        ScreenSamples.capture(provider, root.packageName?.toString(), reason, LiveNode(root))
+    }
+
+    override fun onReadMiss(kind: String, reason: String, detail: String?, screen: UiNode?, packageName: String?) {
         val now = SystemClock.elapsedRealtime()
         if (kind == "failed") {
             DiagnosisRepository.funnel.readFailed(reason)
             record(DiagnosticStage.ROOT_UNAVAILABLE, now, reason)
         } else {
-            DiagnosisRepository.funnel.readMiss(reason)
+            val onTrip = DiagnosisRepository.funnel.readMiss(reason)
             // A plain map or menu screen is normal; only half-read offers go to telemetry.
-            if (reason != "not_offer_screen") record(DiagnosticStage.OFFER_NOT_PARSED, now, reason, detail = detail)
+            when {
+                onTrip -> record(DiagnosticStage.STALE, now, "trip_screen", detail = detail)
+                reason != "not_offer_screen" -> record(DiagnosticStage.OFFER_NOT_PARSED, now, reason, detail = detail)
+            }
+            if (!onTrip && ScreenSamples.eligibleMiss(reason)) {
+                ScreenSamples.capture(provider, packageName, "miss_$reason", screen)
+                ShadowTester.test(reason, screen, resources.displayMetrics.heightPixels)
+            }
         }
         DiagnosisRepository.refresh()
     }
@@ -310,7 +360,77 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
         TelemetryRepository.trace(telemetryStage, reasonCode = reason, detail = detail, provider = provider, latencyMs = latencyMs)
     }
 
+    private var excludeWarning: android.view.View? = null
+    private var toneGenerator: android.media.ToneGenerator? = null
+
+    /**
+     * The reference's exclude-zone card over the ride app: title, the ride's destination, «إغلاق»;
+     * centred, at most 340 dp wide, gone after 15 s, with a 1.2 s alarm tone at full alarm volume
+     * (the alarm volume is restored after 1.4 s).
+     */
+    fun showExcludeZoneWarning(title: String, text: String) {
+        val main = android.os.Handler(android.os.Looper.getMainLooper())
+        main.post {
+            runCatching {
+                removeExcludeWarning()
+                val ar = app.sabbaq.LocaleManager.isArabic()
+                val density = resources.displayMetrics.density
+                fun dp(v: Int) = (v * density).toInt()
+                val card = android.widget.LinearLayout(this).apply {
+                    orientation = android.widget.LinearLayout.VERTICAL
+                    layoutDirection = if (ar) android.view.View.LAYOUT_DIRECTION_RTL else android.view.View.LAYOUT_DIRECTION_LTR
+                    setPadding(dp(20), dp(16), dp(20), dp(12))
+                    background = android.graphics.drawable.GradientDrawable().apply { cornerRadius = dp(16).toFloat(); setColor(0xF5B3261E.toInt()) }
+                    elevation = dp(8).toFloat()
+                    addView(android.widget.TextView(context).apply {
+                        this.text = title; setTextColor(android.graphics.Color.WHITE); textSize = 18f; typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    })
+                    addView(android.widget.TextView(context).apply {
+                        this.text = text; setTextColor(android.graphics.Color.WHITE); textSize = 15f; setPadding(0, dp(8), 0, dp(8))
+                    })
+                    addView(android.widget.Button(context).apply {
+                        this.text = if (ar) "إغلاق" else "Dismiss"
+                        setOnClickListener { removeExcludeWarning() }
+                    })
+                }
+                val width = minOf(resources.displayMetrics.widthPixels - dp(48), dp(340))
+                val lp = android.view.WindowManager.LayoutParams(width, android.view.WindowManager.LayoutParams.WRAP_CONTENT,
+                    android.view.WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                    android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE, android.graphics.PixelFormat.TRANSLUCENT,
+                ).apply { gravity = android.view.Gravity.CENTER }
+                (getSystemService(WINDOW_SERVICE) as android.view.WindowManager).addView(card, lp)
+                excludeWarning = card
+                main.postDelayed({ if (excludeWarning === card) removeExcludeWarning() }, 15_000L)
+                playExcludeWarningTone(main)
+            }
+        }
+    }
+
+    private fun removeExcludeWarning() {
+        val view = excludeWarning ?: return
+        excludeWarning = null
+        runCatching { (getSystemService(WINDOW_SERVICE) as android.view.WindowManager).removeView(view) }
+    }
+
+    private fun playExcludeWarningTone(main: android.os.Handler) {
+        val audio = getSystemService(AUDIO_SERVICE) as? android.media.AudioManager
+        val stream = android.media.AudioManager.STREAM_ALARM
+        val saved = runCatching {
+            val max = audio!!.getStreamMaxVolume(stream)
+            val current = audio.getStreamVolume(stream)
+            if (current < max) { audio.setStreamVolume(stream, max, 0); current } else null
+        }.getOrNull()
+        runCatching {
+            val tone = toneGenerator ?: android.media.ToneGenerator(stream, 100).also { toneGenerator = it }
+            tone.startTone(EXCLUDE_TONE, 1_200)
+        }
+        if (saved != null) main.postDelayed({ runCatching { audio?.setStreamVolume(stream, saved, 0) } }, 1_400L)
+    }
+
     override fun onDestroy() {
+        removeExcludeWarning()
+        runCatching { toneGenerator?.release() }
+        toneGenerator = null
         LiveAcceptTest.onArmChanged = null
         TelemetryRepository.serviceConnected = false
         DiagnosisRepository.funnel.serviceConnected(false)
@@ -325,10 +445,13 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
     }
 
     companion object {
+        private val FORBIDDEN_DETAIL = Regex("address|fare|phone|email|token|http")
         /** The connected service, so a changed target app is applied without waiting for an event. */
         @Volatile var instance: SabbaqA11yService? = null
         private const val TAG = "SabbaqA11y"
         private const val NEWEST_SEEN_WRITE_STEP_MS = 60_000L
+        /** The reference's tone id for the exclude-zone warning (ToneGenerator value 92). */
+        private const val EXCLUDE_TONE = 92
         private val HELD_REASONS = setOf("post_click_suppressed", "same_ride_cooldown", "global_click_cooldown")
     }
 }

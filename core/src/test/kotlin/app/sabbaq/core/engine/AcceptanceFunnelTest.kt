@@ -2,6 +2,8 @@ package app.sabbaq.core.engine
 
 import app.sabbaq.core.Bounds
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** The diagnosis names the first step that explains why nothing was accepted. */
@@ -55,7 +57,37 @@ class AcceptanceFunnelTest {
         funnel.tapped(); funnel.unconfirmed("disappeared")
         assertEquals("tap_not_confirmed", verdict().code)
         funnel.confirmed()
+        assertEquals(FunnelVerdict("on_trip", FunnelStep.WORKING), verdict())
+        funnel.offer("next")
         assertEquals("working", verdict().code)
+    }
+
+    /** Field session 2026-10-29: trip screens after an accept were reported as offers that failed to read. */
+    @Test
+    fun trip_screens_after_an_accept_are_not_read_failures() {
+        funnel.event(); funnel.offer("a"); funnel.tapped(); funnel.confirmed()
+        repeat(30) { assertTrue(funnel.readMiss("no_minutes")) }
+        assertEquals(0, funnel.snapshot().readMisses)
+        assertEquals("on_trip", verdict().code)
+        funnel.offer("b")
+        assertFalse(funnel.readMiss("no_minutes"))
+        assertEquals(1, funnel.snapshot().readMisses)
+    }
+
+    @Test
+    fun an_active_ride_screen_starts_a_trip_and_the_trip_expires() {
+        funnel.event(); funnel.activeRide()
+        assertTrue(funnel.readMiss("no_minutes"))
+        now += AcceptanceFunnel.TRIP_MAX_MS
+        assertFalse(funnel.readMiss("no_minutes"))
+    }
+
+    @Test
+    fun repeated_frames_of_one_offer_count_once() {
+        funnel.event()
+        repeat(40) { funnel.offer("same") }
+        funnel.offer("other")
+        assertEquals(2, funnel.snapshot().offers)
     }
 
     @Test

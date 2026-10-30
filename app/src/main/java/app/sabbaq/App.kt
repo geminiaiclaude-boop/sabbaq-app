@@ -23,12 +23,19 @@ class App : Application() {
         runCatching { SupportRepository.init(this) }
         runCatching { ProfileRepository.init(this) }
         runCatching { TelemetryRepository.init(this) }
+        runCatching { app.sabbaq.fleet.FleetRepository.init(this) }
+        runCatching { app.sabbaq.fleet.ZonePolicyRepository.init(this) }
+        runCatching { app.sabbaq.fleet.ScreenSamples.init(this) }
+        runCatching { app.sabbaq.fleet.UpdateTelemetry.recordRun(this) }
+        runCatching { app.sabbaq.fleet.KeepAlive.reportProcessExits(this) }
         SupabaseClient.init(this)
         VoiceAnnouncer.init(this)
+        runCatching { app.sabbaq.fleet.FloatingBubble.attach(this) }
         // A new process starts with no session in memory and the runtime gate closed. The
         // saved session (encrypted) lets monitoring resume once the license is confirmed again.
         SupabaseClient.clearSession(forget = false)
         Settings.clearProcessAuthorizationState()
         KeeperService.resumeIfWanted(this)
+        runCatching { app.sabbaq.fleet.KeepAlive.schedule(this) }
     }
 }

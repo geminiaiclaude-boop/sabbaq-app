@@ -135,6 +135,9 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // The map's native library ships for four CPU types; Saudi drivers' phones are ARM, so the
+            // release keeps the two ARM ones (about 25 MB less). Debug builds keep x86_64 for the emulator.
+            ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
             signingConfig = signingConfigs.getByName("release")
         }
         debug {
@@ -261,7 +264,7 @@ dependencies {
     implementation(libs.androidx.credentials)
     implementation(libs.androidx.credentials.play.services.auth)
     implementation(libs.googleid)
-    implementation(libs.osmdroid)
+    implementation(libs.maplibre)
     implementation(libs.androidx.profileinstaller)
     debugImplementation(libs.compose.ui.tooling)
     debugImplementation(libs.compose.ui.test.manifest)

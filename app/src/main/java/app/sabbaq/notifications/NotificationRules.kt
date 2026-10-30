@@ -50,6 +50,11 @@ object NotificationTemplates {
         if (ar) "هذه النسخة لم تعد مدعومة. حدّث التطبيق لتستمر متابعة الطلبات." else "This version is no longer supported. Update the app to keep order monitoring running.",
         NotificationKind.UPDATE, NotificationAction.UPDATE_APP, now)
 
+    fun updateAvailable(code: Long, now: Long) = local("update-available-$code",
+        if (ar) "تحديث جديد لسبّاق" else "A new Sabbaq update",
+        if (ar) "نسخة أحدث متاحة بتحسينات وإصلاحات. افتح سبّاق واضغط «تحديث الآن»." else "A newer version with improvements and fixes is available. Open Sabbaq and tap \"Update now\".",
+        NotificationKind.UPDATE, NotificationAction.UPDATE_APP, now)
+
     fun welcome(now: Long) = local("welcome",
         if (ar) "مرحبًا بك في سبّاق" else "Welcome to Sabbaq",
         if (ar) "اضبط شروطك ثم شغّل المتابعة. ستجد هنا كل طلب يقبله سبّاق وتنبيهات حسابك ورسائل الإدارة." else "Set your conditions, then start monitoring. Here you will find every order Sabbaq accepts, your account alerts and administration messages.",
@@ -111,6 +116,11 @@ object NotificationTemplates {
             else (if (ar) "رأى سبّاق ${offers(visible)} ولم يطابق أيٌّ منها شروطك. راجع شروطك إن كانت ضيقة." else "Sabbaq saw ${offers(visible)} and none matched your conditions. Review your conditions if they are too tight."),
         NotificationKind.INFO, if (accepted > 0) null else NotificationAction.OPEN_FILTERS, now)
 
+    fun newSharedZones(version: Int, now: Long) = local("shared-zones-$version",
+        if (ar) "مناطق استثناء جديدة" else "New exclude zones",
+        if (ar) "تمت إضافة مناطق استثناء جديدة، يرجى الاطلاع وتحديث إعداداتك." else "New exclude zones were added. Please review them and update your settings.",
+        NotificationKind.INFO, NotificationAction.OPEN_FILTERS, now)
+
     internal const val DAY_MS = 24L * 60 * 60 * 1000
 }
 
@@ -123,6 +133,8 @@ data class AccountMark(
     val welcomed: Boolean = false,
     val summaryDay: String? = null,
     val updateNotified: Boolean = false,
+    /** Newest release code already announced as available. */
+    val updateAvailableNotified: Long = 0L,
 )
 
 /** The account facts the rules read; a plain copy of the license snapshot. */
@@ -132,6 +144,8 @@ data class AccountFacts(
     val trialUntil: Instant?,
     val proUntil: Instant?,
     val updateRequired: Boolean,
+    /** A newer release was published (0 = none newer than this build). */
+    val updateAvailableCode: Long = 0L,
 )
 
 object NotificationRules {
@@ -168,12 +182,15 @@ object NotificationRules {
         }
         endingSoon(state, facts.validUntil, now)?.let { out += it }
         if (facts.updateRequired && !previous.updateNotified) out += NotificationTemplates.updateRequired(now)
+        else if (!facts.updateRequired && facts.updateAvailableCode > previous.updateAvailableNotified)
+            out += NotificationTemplates.updateAvailable(facts.updateAvailableCode, now)
         return out to previous.copy(
             state = state.name,
             proUntilEpochSec = facts.proUntil?.epochSecond ?: previous.proUntilEpochSec,
             trialUntilEpochSec = facts.trialUntil?.epochSecond ?: previous.trialUntilEpochSec,
             welcomed = true,
             updateNotified = facts.updateRequired,
+            updateAvailableNotified = maxOf(previous.updateAvailableNotified, facts.updateAvailableCode),
         )
     }
 

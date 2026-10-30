@@ -22,6 +22,12 @@ data class DeviceHealth(
     val targetInOtherProfile: Boolean = false,
     /** A ride app was found under a package the profiles do not list yet. */
     val targetUnknownPackage: Boolean = false,
+    /** Android may hibernate the app when unused (Android 11+ "pause app activity"), ending the service. */
+    val hibernationOn: Boolean = false,
+    /** Rare or restricted standby bucket: Android defers the app's work for hours. */
+    val standbyRestricted: Boolean = false,
+    /** Below the administration's minimum version: offers are not accepted until updated. */
+    val updateRequired: Boolean = false,
 ) {
     fun primaryIssue(): String = when {
         !accessibilityEnabled -> "a11y_disabled"
@@ -34,10 +40,13 @@ data class DeviceHealth(
         // while offline is a connectivity problem, not a subscription one.
         !networkAvailable -> "offline"
         !licenseValid -> "license_invalid"
+        updateRequired -> "update_required"
         !disclosureAccepted -> "disclosure_required"
         !monitoringActive -> "monitoring_off"
         backgroundRestricted -> "background_restricted"
         !batteryUnrestricted -> "battery_optimized"
+        hibernationOn -> "hibernation_on"
+        standbyRestricted -> "standby_restricted"
         powerSaveMode -> "power_save"
         !notificationsEnabled -> "notifications_off"
         else -> "healthy"

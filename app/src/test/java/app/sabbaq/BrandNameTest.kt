@@ -12,7 +12,7 @@ class BrandNameTest {
     @Test
     fun the_retired_name_appears_nowhere_in_the_project() {
         val root = File("..").canonicalFile
-        val scanned = listOf("app/src", "core/src", "admin", "scripts", "docs", "supabase", ".github", "README.md",
+        val scanned = listOf("app/src", "core/src", "admin", "scripts", "docs", "supabase", ".github", "README.md", "AGENTS.md", "CLAUDE.md",
             "settings.gradle.kts", "app/build.gradle.kts", "app/proguard-rules.pro")
             .map { File(root, it) }
             .filter { it.exists() }

@@ -39,6 +39,15 @@ internal object ArabicCount {
         else -> "$n شرطًا"
     }
 
+    /** Corners of a drawn zone. */
+    fun points(n: Int): String = when {
+        !ar() -> if (n == 1) "1 point" else "$n points"
+        n == 1 -> "نقطة واحدة"
+        n == 2 -> "نقطتان"
+        n in 3..10 -> "$n نقاط"
+        else -> "$n نقطة"
+    }
+
     /** Remaining steps. */
     fun steps(n: Int): String = when {
         !ar() -> if (n == 1) "1 step" else "$n steps"

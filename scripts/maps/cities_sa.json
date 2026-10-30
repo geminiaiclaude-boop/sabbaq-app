@@ -1,0 +1,28 @@
+{
+  "country": "sa",
+  "note": "bbox = west, south, east, north. Each box covers the city with its airport and outskirts; joined metros share one pack.",
+  "cities": [
+    {"id": "riyadh", "name_ar": "الرياض", "name_en": "Riyadh", "bbox": [46.35, 24.40, 47.10, 25.10]},
+    {"id": "jeddah", "name_ar": "جدة", "name_en": "Jeddah", "bbox": [38.95, 21.25, 39.40, 21.95]},
+    {"id": "makkah", "name_ar": "مكة المكرمة", "name_en": "Makkah", "bbox": [39.65, 21.25, 40.05, 21.60]},
+    {"id": "madinah", "name_ar": "المدينة المنورة", "name_en": "Madinah", "bbox": [39.40, 24.30, 39.85, 24.65]},
+    {"id": "dammam", "name_ar": "الدمام والخبر والظهران والقطيف", "name_en": "Dammam, Khobar, Dhahran, Qatif", "bbox": [49.85, 26.15, 50.30, 26.65]},
+    {"id": "ahsa", "name_ar": "الأحساء", "name_en": "Al-Ahsa", "bbox": [49.45, 25.20, 49.80, 25.50]},
+    {"id": "jubail", "name_ar": "الجبيل", "name_en": "Jubail", "bbox": [49.45, 26.85, 49.75, 27.15]},
+    {"id": "taif", "name_ar": "الطائف", "name_en": "Taif", "bbox": [40.25, 21.10, 40.60, 21.45]},
+    {"id": "tabuk", "name_ar": "تبوك", "name_en": "Tabuk", "bbox": [36.45, 28.28, 36.72, 28.50]},
+    {"id": "abha", "name_ar": "أبها وخميس مشيط", "name_en": "Abha, Khamis Mushait", "bbox": [42.40, 18.10, 42.85, 18.40]},
+    {"id": "qassim", "name_ar": "بريدة وعنيزة", "name_en": "Buraidah, Unaizah", "bbox": [43.75, 25.95, 44.10, 26.45]},
+    {"id": "hail", "name_ar": "حائل", "name_en": "Hail", "bbox": [41.55, 27.40, 41.80, 27.62]},
+    {"id": "jazan", "name_ar": "جازان", "name_en": "Jazan", "bbox": [42.45, 16.80, 42.75, 17.05]},
+    {"id": "najran", "name_ar": "نجران", "name_en": "Najran", "bbox": [44.05, 17.40, 44.35, 17.65]},
+    {"id": "yanbu", "name_ar": "ينبع", "name_en": "Yanbu", "bbox": [37.95, 23.90, 38.35, 24.20]},
+    {"id": "kharj", "name_ar": "الخرج", "name_en": "Al-Kharj", "bbox": [47.20, 24.05, 47.45, 24.25]},
+    {"id": "hafr", "name_ar": "حفر الباطن", "name_en": "Hafr Al-Batin", "bbox": [45.85, 28.33, 46.05, 28.50]},
+    {"id": "arar", "name_ar": "عرعر", "name_en": "Arar", "bbox": [40.95, 30.90, 41.12, 31.05]},
+    {"id": "sakaka", "name_ar": "سكاكا", "name_en": "Sakaka", "bbox": [40.10, 29.88, 40.30, 30.05]},
+    {"id": "baha", "name_ar": "الباحة", "name_en": "Al-Baha", "bbox": [41.38, 19.95, 41.60, 20.12]},
+    {"id": "rabigh", "name_ar": "رابغ", "name_en": "Rabigh", "bbox": [38.92, 22.70, 39.15, 22.90]},
+    {"id": "majmaah", "name_ar": "المجمعة", "name_en": "Al-Majmaah", "bbox": [45.25, 25.80, 45.45, 25.98]}
+  ]
+}

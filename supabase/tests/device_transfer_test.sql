@@ -86,3 +86,18 @@ reset role;
 
 -- Admin view of each driver's Sabbaq build (kept here so the existing CI step runs it).
 \ir driver_versions_test.sql
+
+-- Shared geocode cache for destination zones (kept here so the existing CI step runs it).
+\ir geocode_cache_test.sql
+
+-- Referrals and rewards (kept here so the existing CI step runs it).
+\ir referrals_test.sql
+
+-- Fleet health, update channel and shared learning (kept here so the existing CI step runs it).
+\ir fleet_learning_test.sql
+
+-- Destination zone policy (kept here so the existing CI step runs it).
+\ir zone_policy_test.sql
+
+-- Paid Places for zone warming (kept here so the existing CI step runs it).
+\ir zone_places_test.sql

@@ -44,6 +44,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.sabbaq.R
 import androidx.compose.ui.res.stringResource
@@ -246,7 +247,8 @@ internal fun SabbaqTabs(tabs: List<AccessTab>, selected: AccessTab, onSelect: (A
                 ) {
                     Row(horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp)) {
-                        Text(stringResource(tab.labelRes), style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                        Text(stringResource(tab.labelRes), style = MaterialTheme.typography.labelLarge, maxLines = 2,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }

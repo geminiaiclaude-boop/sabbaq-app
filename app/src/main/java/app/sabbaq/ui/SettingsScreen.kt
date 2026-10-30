@@ -64,7 +64,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowLeft
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.size
@@ -74,6 +73,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccessibilityNew
 import androidx.compose.material.icons.outlined.Autorenew
+import androidx.compose.material.icons.outlined.BatteryAlert
 import androidx.compose.material.icons.outlined.BatteryChargingFull
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.RestartAlt
@@ -137,6 +137,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -171,7 +172,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.saveable.listSaver
 
 /** وجهات لوحة السائق؛ يمكن استدعاء الشاشة مباشرة إلى أي منها في معاينات/اختبارات الواجهة. */
-enum class DriverDestination { Dashboard, Filters, Simulator, Account, History, Setup, Settings, Support }
+enum class DriverDestination { Dashboard, Filters, Simulator, Account, History, Setup, Settings, Support, Referrals, Zones }
 
 private data class DriverStatus(val message: String, val isError: Boolean = false, val success: Boolean = false) {
     val tone: SabbaqTone get() = when {
@@ -512,12 +513,13 @@ fun SettingsScreen(
     }
 
     // Every page except home goes back one step (the page it was opened from), never out of the app.
-    BackHandler(enabled = destination != DriverDestination.Dashboard) {
+    fun goBack() {
         returnToSetupAfterAction = false
         val previous = backStack.removeLastOrNull()
         destination = previous ?: DriverDestination.Dashboard
         if (destination == DriverDestination.Dashboard) backStack.clear()
     }
+    BackHandler(enabled = destination != DriverDestination.Dashboard) { goBack() }
 
     if (showAccessibilityRequired) {
         AlertDialog(
@@ -646,6 +648,7 @@ fun SettingsScreen(
                 },
                 onRequestNotifications = onRequestNotificationPermission,
                 onOpenFilters = { navigateTo(DriverDestination.Filters) },
+                onOpenZones = { navigateTo(DriverDestination.Zones) },
                 onOpenAccount = { navigateTo(DriverDestination.Account) },
                 onOpenSetupGuide = { navigateTo(DriverDestination.Setup) },
                 batteryUnrestricted = batteryUnrestricted,
@@ -741,12 +744,18 @@ fun SettingsScreen(
                 isSaving = isSavingFilters,
                 message = filtersMessage,
                 onDraftChange = ::updateDraft,
+                onOpenZones = { navigateTo(DriverDestination.Zones) },
                 onSave = ::retrySaveDraft,
                 onRevert = { updateDraft(FilterDraft.from(savedFilters)); filtersMessage = null },
                 onReset = { showResetFilters = true },
             )
 
             DriverDestination.Simulator -> SimulatorPage(savedFilters = savedFilters)
+
+            DriverDestination.Zones -> DriverPage {
+                SabbaqAnimatedMessage(filtersMessage?.message, filtersMessage?.tone ?: SabbaqTone.Info)
+                ZonesPage(draft, draftValidation.errors, ::updateDraft, onBack = ::goBack)
+            }
 
             DriverDestination.Settings -> DriverPage {
                 val openBattery = {
@@ -771,6 +780,18 @@ fun SettingsScreen(
                     power = buildList {
                         add(ReadinessItem(Icons.Outlined.BatteryChargingFull, stringResource(R.string.ss_perm_batt_title), batteryUnrestricted,
                             stringResource(R.string.ss_setup_batt_done), stringResource(R.string.ss_ready_batt_why), stringResource(R.string.ss_allow), openBattery))
+                        add(ReadinessItem(Icons.Outlined.BatteryAlert, stringResource(R.string.keep_bubble_t),
+                            app.sabbaq.fleet.FloatingBubble.permitted(context), stringResource(R.string.keep_bubble_done), stringResource(R.string.keep_bubble_b),
+                            stringResource(R.string.ss_allow)) {
+                            runCatching { context.startActivity(app.sabbaq.fleet.FloatingBubble.permissionIntent(context)) }
+                                .recoverCatching { context.startActivity(PowerSetup.appDetailsIntent(context)) }
+                        })
+                        if (android.os.Build.VERSION.SDK_INT >= 30) add(ReadinessItem(Icons.Outlined.BatteryAlert, stringResource(R.string.keep_hib_t),
+                            !app.sabbaq.fleet.KeepAlive.hibernationOn(context), stringResource(R.string.keep_hib_done), stringResource(R.string.keep_hib_b),
+                            stringResource(R.string.ss_setup_open_setting)) {
+                            runCatching { context.startActivity(app.sabbaq.fleet.KeepAlive.hibernationIntent(context)) }
+                                .recoverCatching { context.startActivity(PowerSetup.appDetailsIntent(context)) }
+                        })
                         if (PowerSetup.needsAutostart()) add(ReadinessItem(Icons.Outlined.RestartAlt, stringResource(R.string.ss_ready_autostart_title), autostartDone,
                             stringResource(R.string.ss_setup_autostart_done), stringResource(R.string.ss_ready_autostart_why), stringResource(R.string.ss_setup_open_setting)) {
                             runCatching { context.startActivity(PowerSetup.autostartIntent(context)) }
@@ -791,6 +812,8 @@ fun SettingsScreen(
             }
 
             DriverDestination.Support -> SupportPage()
+
+            DriverDestination.Referrals -> DriverPage { ReferralsPage() }
 
             DriverDestination.Account -> AccountPage(
                 licenseInMemory = licenseInMemory,
@@ -987,7 +1010,7 @@ private fun ActiveSubscriptionStatusCard(
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     MembershipBadge(isPro = isPro, isTrial = isTrial)
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                        Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         Text(
                             detail,
                             style = MaterialTheme.typography.bodySmall,
@@ -996,10 +1019,11 @@ private fun ActiveSubscriptionStatusCard(
                                 endingSoon -> colors.error
                                 else -> content.copy(alpha = 0.85f)
                             },
-                            maxLines = 1,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    Icon(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, contentDescription = null, tint = content.copy(alpha = 0.8f))
+                    Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null, tint = content.copy(alpha = 0.8f))
                 }
                 trialProgress?.let { progress ->
                     LinearProgressIndicator(
@@ -1058,6 +1082,7 @@ private fun DashboardPage(
     onOpenA11y: () -> Unit,
     onRequestNotifications: () -> Unit,
     onOpenFilters: () -> Unit,
+    onOpenZones: () -> Unit,
     onOpenAccount: () -> Unit,
     onOpenSetupGuide: () -> Unit,
     batteryUnrestricted: Boolean = true,
@@ -1092,6 +1117,8 @@ private fun DashboardPage(
         onOpenAccount = onOpenAccount,
         modifier = Modifier.sabbaqEntrance(0),
     )
+    UpdateBanner()
+    KeepAliveBanner()
     OperationHero(
         isActive = isActive,
         isChecking = isCheckingActivation || isRestoringSession,
@@ -1102,6 +1129,7 @@ private fun DashboardPage(
         busyText = if (isRestoringSession) stringResource(R.string.ss_busy_restoring) else stringResource(R.string.ss_busy_verifying),
         modifier = Modifier.sabbaqEntrance(1),
     )
+    FloatingControlButton()
     if (isActive) {
         DiagnosisCard(
             onAction = { action ->
@@ -1123,6 +1151,7 @@ private fun DashboardPage(
         saveMessage = filtersMessage,
         onDraftChange = onQuickDraftChange,
         onOpenFilters = onOpenFilters,
+        onOpenZones = onOpenZones,
         modifier = Modifier.sabbaqEntrance(2),
     )
     // «حالة التشغيل الفعلية» lives in «سجل القرارات» next to the statistics.
@@ -1255,7 +1284,7 @@ private fun SessionRestoreNotice(isRestoring: Boolean, onRetry: () -> Unit) {
 }
 
 /**
- * «شروط القيادة»: the four conditions drivers change most, editable in place with their own
+ * «شروط القيادة»: the ride app, then the four conditions drivers change most, editable in place with their own
  * switches (the same components as «طلبات تناسبك», so both edit one draft). Everything else
  * stays on the full page behind the button.
  */
@@ -1268,6 +1297,7 @@ private fun ActiveConditionsCockpit(
     saveMessage: DriverStatus?,
     onDraftChange: (FilterDraft) -> Unit,
     onOpenFilters: () -> Unit,
+    onOpenZones: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     SabbaqCard(
@@ -1280,7 +1310,7 @@ private fun ActiveConditionsCockpit(
         icon = Icons.Outlined.Tune,
         modifier = modifier,
     ) {
-        QuickConditionsPanel(draft, errors, onDraftChange)
+        QuickConditionsPanel(draft, errors, onDraftChange, onOpenZones)
         SabbaqAnimatedMessage(saveMessage?.message, saveMessage?.tone ?: SabbaqTone.Info)
         SabbaqButton(
             stringResource(R.string.ss_conditions_more),
@@ -1634,6 +1664,7 @@ private fun FiltersPage(
     isSaving: Boolean,
     message: DriverStatus?,
     onDraftChange: (FilterDraft) -> Unit,
+    onOpenZones: () -> Unit,
     onSave: () -> Unit,
     onRevert: () -> Unit,
     onReset: () -> Unit,
@@ -1651,6 +1682,7 @@ private fun FiltersPage(
         draft = draft,
         errors = validationErrors,
         onDraftChange = onDraftChange,
+        onOpenZones = onOpenZones,
     )
     SabbaqCard(title = stringResource(R.string.ss_instant_save_title), subtitle = stringResource(R.string.ss_instant_save_sub), icon = Icons.Outlined.Autorenew) {
         if (isSaving) {
@@ -1759,7 +1791,7 @@ private fun PreviewField(
     OutlinedTextField(
         value = value,
         onValueChange = { onValueChange(it.take(2048)) },
-        label = { Text(label, maxLines = 1) },
+        label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         suffix = unit?.let { { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) } },
         singleLine = singleLine,
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = if (singleLine) ImeAction.Next else ImeAction.Default),

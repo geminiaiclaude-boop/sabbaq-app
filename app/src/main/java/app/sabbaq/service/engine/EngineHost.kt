@@ -48,14 +48,18 @@ class EngineHost(
         fun onTap(ride: ParsedRide, decision: Decision, pending: PendingRide, method: String, latencyMs: Long)
         fun onPendingOutcome(outcome: PendingOutcome)
         fun onIdle(reason: String)
-        /** A ride-app window gave no offer: [kind] "miss" (read, no offer) or "failed" (not readable). */
-        fun onReadMiss(kind: String, reason: String, detail: String?)
+        /**
+         * A ride-app window gave no offer: [kind] "miss" (read, no offer) or "failed" (not readable).
+         * [screen] and [packageName] are the window that was read, for redacted sampling.
+         */
+        fun onReadMiss(kind: String, reason: String, detail: String?, screen: UiNode? = null, packageName: String? = null)
     }
 
     private val main = Handler(Looper.getMainLooper())
     private val zones = app.sabbaq.core.engine.zones.ZoneEngine(app.sabbaq.service.zones.ZoneStore)
     private val flow = OfferFlow({ System.currentTimeMillis() }, zones = zones)
     private val locationTracker = app.sabbaq.service.zones.DriverLocationTracker(service)
+    private var corridorJob: kotlinx.coroutines.Job? = null
     private val readerPool: ExecutorService = Executors.newFixedThreadPool(2) { runnable ->
         Thread({ Process.setThreadPriority(-4); runnable.run() }, "sabbaq-reader").apply { isDaemon = true }
     }
@@ -78,12 +82,16 @@ class EngineHost(
 
     fun onConnected() {
         locationTracker.update(config())
+        corridorJob?.cancel()
+        corridorJob = app.sabbaq.service.zones.ZoneWarmer.corridorLoop(config, allowed)
         runCatching { toneGenerator = ToneGenerator(AudioManager.STREAM_ALARM, 100) }
         warmUpGesture()
     }
 
     fun onDestroy() {
         locationTracker.stop()
+        corridorJob?.cancel()
+        corridorJob = null
         main.removeCallbacksAndMessages(null)
         synchronized(bookingLock) { inFlight.forEach { it.set(true) }; inFlight.clear(); bookedFrame = null }
         readerPool.shutdownNow()
@@ -198,7 +206,13 @@ class EngineHost(
                 parsed = runCatching {
                     RideApps.read(app, LiveNode(root), height, cfg, flow.learnedIds, { SystemClock.uptimeMillis() },
                         idleDeadline = idle, abort = abort,
-                        onMiss = { r, d -> if (!abort.get()) main.post { listener.onReadMiss("miss", r, d) } })
+                        onMiss = { r, d ->
+                            if (!abort.get()) {
+                                val screen = LiveNode(root)
+                                val pkg = root.packageName?.toString()
+                                main.post { listener.onReadMiss("miss", r, d, screen, pkg) }
+                            }
+                        })
                 }.getOrNull()
             } else {
                 val why = if (root == null) "root_unavailable" else "other_app"
@@ -262,7 +276,7 @@ class EngineHost(
             root = active
             app = activeApp
             parsed = RideApps.read(activeApp, LiveNode(active), height, cfg, flow.learnedIds, { SystemClock.uptimeMillis() },
-                onMiss = { r, d -> listener.onReadMiss("miss", r, d) })
+                onMiss = { r, d -> listener.onReadMiss("miss", r, d, LiveNode(active), active.packageName?.toString()) })
         }
         if (parsed?.fromFastIds == true) source = "fast_ids"
         val parseMs = booked?.elapsedMs ?: (SystemClock.uptimeMillis() - started)

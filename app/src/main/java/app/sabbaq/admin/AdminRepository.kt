@@ -293,6 +293,83 @@ object AdminRepository {
             .fold({ Result.success(Unit) }, { Result.failure(WhatsappNotSaved(it)) })
     }
 
+    data class ReferralLeader(val name: String, val code: String, val invited: Int, val rewarded: Int)
+    data class ReferralSettings(
+        val enabled: Boolean, val rewardDays: Int, val claimWindowDays: Int,
+        val claims: Int, val rewarded: Int, val rejected: Int, val top: List<ReferralLeader>,
+    )
+
+    suspend fun referralSettings(): Result<ReferralSettings> =
+        SupabaseClient.adminRpc("admin_referral_settings").mapCatching { parseReferral(it) }
+
+    suspend fun saveReferralSettings(enabled: Boolean, rewardDays: Int, claimWindowDays: Int): Result<ReferralSettings> {
+        if (rewardDays !in 1..90 || claimWindowDays !in 1..30) return rejected()
+        return SupabaseClient.adminRpc("admin_referral_settings", buildJsonObject {
+            put("p_enabled", enabled); put("p_reward_days", rewardDays); put("p_claim_window_days", claimWindowDays)
+        }).mapCatching { parseReferral(it) }
+    }
+
+    private fun parseReferral(body: String): ReferralSettings {
+        val row = json.parseToJsonElement(body) as? JsonObject ?: throw FeatureException(FeatureFailure.UNAVAILABLE)
+        return ReferralSettings(
+            enabled = row.bool("enabled") ?: throw FeatureException(FeatureFailure.UNAVAILABLE),
+            rewardDays = row.int("reward_days") ?: 7, claimWindowDays = row.int("claim_window_days") ?: 7,
+            claims = row.int("claims") ?: 0, rewarded = row.int("rewarded") ?: 0, rejected = row.int("rejected") ?: 0,
+            top = (row["top"] as? JsonArray).orEmpty().mapNotNull { t ->
+                val o = t as? JsonObject ?: return@mapNotNull null
+                ReferralLeader(o.str("name").orEmpty(), o.str("code").orEmpty(), o.int("invited") ?: 0, o.int("rewarded") ?: 0)
+            },
+        )
+    }
+
+    /** `admin_geocode_settings`: the key itself never comes back, only whether one is set. */
+    data class GeocodeSettings(
+        val enabled: Boolean,
+        val hasKey: Boolean,
+        val monthlyCap: Int,
+        val driverDailyCap: Int,
+        val monthCalls: Int,
+        val cachedAddresses: Int,
+    )
+
+    /** A Google API key: letters, digits, '-' and '_' (Google keys are 39 characters). */
+    val GEOCODE_KEY = Regex("[A-Za-z0-9_-]{20,80}")
+
+    suspend fun geocodeSettings(): Result<GeocodeSettings> =
+        SupabaseClient.adminRpc("admin_geocode_settings").mapCatching { parseGeocode(it) }
+
+    suspend fun saveGeocodeSettings(enabled: Boolean, key: String?, monthlyCap: Int, driverDailyCap: Int): Result<GeocodeSettings> {
+        if (monthlyCap < 0 || driverDailyCap < 0 || (key != null && !GEOCODE_KEY.matches(key))) return rejected()
+        return SupabaseClient.adminRpc("admin_geocode_settings", buildJsonObject {
+            put("p_enabled", enabled)
+            key?.let { put("p_google_api_key", it) }
+            put("p_monthly_cap", monthlyCap)
+            put("p_driver_daily_cap", driverDailyCap)
+        }).mapCatching { parseGeocode(it) }
+    }
+
+    private fun parseGeocode(body: String): GeocodeSettings {
+        val row = json.parseToJsonElement(body) as? JsonObject ?: throw FeatureException(FeatureFailure.UNAVAILABLE)
+        return GeocodeSettings(
+            enabled = row.bool("enabled") ?: throw FeatureException(FeatureFailure.UNAVAILABLE),
+            hasKey = row.bool("has_key") ?: false,
+            monthlyCap = row.int("monthly_cap") ?: 0,
+            driverDailyCap = row.int("driver_daily_cap") ?: 0,
+            monthCalls = row.int("month_calls") ?: 0,
+            cachedAddresses = row.int("cached_addresses") ?: 0,
+        )
+    }
+
+    /** `admin_places_settings`: the paid Places step of zone warming and its stored cells. */
+    data class PlacesSettings(val enabled: Boolean, val cells: Int)
+
+    /** [enabled] null only reads. */
+    suspend fun placesSettings(enabled: Boolean? = null): Result<PlacesSettings> =
+        SupabaseClient.adminRpc("admin_places_settings", buildJsonObject { enabled?.let { put("p_enabled", it) } }).mapCatching { body ->
+            val row = json.parseToJsonElement(body) as? JsonObject ?: throw FeatureException(FeatureFailure.UNAVAILABLE)
+            PlacesSettings(row.bool("places_enabled") ?: throw FeatureException(FeatureFailure.UNAVAILABLE), row.int("cells") ?: 0)
+        }
+
     /** The policy was saved but the WhatsApp number was not confirmed. */
     class WhatsappNotSaved(val reason: Throwable) : Exception("whatsapp_not_saved")
 

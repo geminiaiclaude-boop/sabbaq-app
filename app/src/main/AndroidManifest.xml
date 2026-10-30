@@ -11,6 +11,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Keep-alive parity with the reference engine: a partial wake lock while monitoring runs
+         and the optional floating «سبّاق ●» button (display over other apps). -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <!-- Phone makers' auto-start screens that PowerSetup opens (package visibility, Android 11+). -->
     <queries>
@@ -35,6 +39,13 @@
         <package android:name="com.meizu.safe" />
         <package android:name="com.letv.android.letvsafe" />
         <package android:name="com.transsion.phonemaster" />
+        <package android:name="com.miui.powerkeeper" />
+        <package android:name="com.samsung.android.sm" />
+        <package android:name="com.samsung.android.lool" />
+        <package android:name="com.oneplus.security" />
+        <package android:name="com.coloros.oppoguardelf" />
+        <package android:name="com.vivo.abe" />
+        <package android:name="com.iqoo.daemon" />
         <!-- Spoken alerts (VoiceAnnouncer): Android 11+ hides TTS engines without this. -->
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE" />
@@ -89,11 +100,27 @@
                 android:value="User-enabled monitoring of configured ride-offer screens with a persistent notification. Location is used only when the driver turns on destination zones." />
         </service>
 
+        <service
+            android:name=".service.FloatingControlService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps the user-enabled floating control over other apps available while monitoring is off, with a persistent notification." />
+        </service>
+
+        <!-- Keep-alive watchdog (KeepAlive): restarts monitoring the system or a cleaner killed. -->
+        <receiver
+            android:name=".receiver.WatchdogReceiver"
+            android:exported="false" />
+
         <receiver
             android:name=".receiver.BootReceiver"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>

@@ -71,6 +71,11 @@ object ZoneGeo {
     /** `Zh.callback`: the JSON holds at least one usable zone. */
     fun hasZones(zonesJson: String): Boolean = polygons(zonesJson).isNotEmpty()
 
+    /** At least one zone is drawn (3+ points), switched on or not: an on list may wait for its zones' warming. */
+    fun hasDrawn(zonesJson: String): Boolean = runCatching {
+        json.parseToJsonElement(zonesJson).jsonArray.any { ((it as? JsonObject)?.get("points") as? JsonArray)?.size?.let { n -> n >= 3 } == true }
+    }.getOrDefault(false)
+
     /** Ray-casting point-in-polygon (`Zh.factory`). */
     fun contains(lat: Double, lng: Double, lats: DoubleArray, lngs: DoubleArray): Boolean {
         var inside = false

@@ -12,8 +12,11 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.sabbaq.LocaleManager
 import app.sabbaq.R
 
 val TajawalFontFamily = FontFamily(
@@ -57,19 +60,37 @@ internal val SabbaqDarkColors = darkColorScheme(
     error = Color(0xFFFFB3B5), onError = Color(0xFF650F19),
     errorContainer = Color(0xFF731A24), onErrorContainer = Color(0xFFFFDADB)
 )
-private fun type(size: Int, line: Int, weight: FontWeight = FontWeight.Normal) = TextStyle(
-    fontFamily = TajawalFontFamily, fontWeight = weight,
+private fun type(family: FontFamily, size: Int, line: Int, weight: FontWeight = FontWeight.Normal) = TextStyle(
+    fontFamily = family, fontWeight = weight,
     fontSize = size.sp, lineHeight = line.sp, letterSpacing = 0.sp
 )
-private val SabbaqTypography = Typography(
-    displayLarge = type(48, 60, FontWeight.ExtraBold), displayMedium = type(40, 52, FontWeight.ExtraBold),
-    displaySmall = type(36, 46, FontWeight.Bold), headlineLarge = type(32, 42, FontWeight.Bold),
-    headlineMedium = type(28, 38, FontWeight.Bold), headlineSmall = type(24, 34, FontWeight.Bold),
-    titleLarge = type(22, 30, FontWeight.Bold), titleMedium = type(18, 26, FontWeight.Bold),
-    titleSmall = type(15, 22, FontWeight.Bold), bodyLarge = type(16, 26), bodyMedium = type(14, 23),
-    bodySmall = type(12, 20), labelLarge = type(15, 22, FontWeight.Bold),
-    labelMedium = type(12, 18, FontWeight.Medium), labelSmall = type(11, 16, FontWeight.Medium)
-)
+
+/**
+ * Arabic: Tajawal, with the taller lines Arabic marks need. English: the phone's own sans-serif
+ * (Roboto on most devices, built for Latin text and UI), a slightly smaller scale with Latin line
+ * heights, because English labels run longer than the Arabic ones the cards were laid out for.
+ */
+private fun sabbaqTypography(arabic: Boolean): Typography = if (arabic) TajawalFontFamily.let { f ->
+    Typography(
+        displayLarge = type(f, 48, 60, FontWeight.ExtraBold), displayMedium = type(f, 40, 52, FontWeight.ExtraBold),
+        displaySmall = type(f, 36, 46, FontWeight.Bold), headlineLarge = type(f, 32, 42, FontWeight.Bold),
+        headlineMedium = type(f, 28, 38, FontWeight.Bold), headlineSmall = type(f, 24, 34, FontWeight.Bold),
+        titleLarge = type(f, 22, 30, FontWeight.Bold), titleMedium = type(f, 18, 26, FontWeight.Bold),
+        titleSmall = type(f, 15, 22, FontWeight.Bold), bodyLarge = type(f, 16, 26), bodyMedium = type(f, 14, 23),
+        bodySmall = type(f, 12, 20), labelLarge = type(f, 15, 22, FontWeight.Bold),
+        labelMedium = type(f, 12, 18, FontWeight.Medium), labelSmall = type(f, 11, 16, FontWeight.Medium)
+    )
+} else FontFamily.SansSerif.let { f ->
+    Typography(
+        displayLarge = type(f, 44, 52, FontWeight.Bold), displayMedium = type(f, 36, 44, FontWeight.Bold),
+        displaySmall = type(f, 32, 40, FontWeight.Bold), headlineLarge = type(f, 28, 36, FontWeight.Bold),
+        headlineMedium = type(f, 24, 32, FontWeight.Bold), headlineSmall = type(f, 22, 28, FontWeight.Bold),
+        titleLarge = type(f, 20, 26, FontWeight.Bold), titleMedium = type(f, 16, 22, FontWeight.Bold),
+        titleSmall = type(f, 14, 20, FontWeight.Bold), bodyLarge = type(f, 15, 22), bodyMedium = type(f, 14, 20),
+        bodySmall = type(f, 12, 16), labelLarge = type(f, 14, 20, FontWeight.Medium),
+        labelMedium = type(f, 12, 16, FontWeight.Medium), labelSmall = type(f, 11, 16, FontWeight.Medium)
+    )
+}
 
 /**
  * Brand roles Material3 has no slot for: the deep "command" surface used by hero areas,
@@ -105,16 +126,23 @@ internal val SabbaqDarkBrand = SabbaqBrandColors(
 
 val LocalSabbaqBrand = staticCompositionLocalOf { SabbaqLightBrand }
 
-/** Brand colors stay stable; theme follows the system unless the user explicitly chooses. */
+/**
+ * Brand colors stay stable; theme follows the system unless the user explicitly chooses. Layout
+ * direction and type follow the app language from the same source as every label
+ * ([LocaleManager.isArabic]): right-to-left with Tajawal in Arabic, left-to-right with the
+ * system sans-serif in English.
+ */
 @Composable
 fun SabbaqTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
+    val arabic = LocaleManager.isArabic()
     CompositionLocalProvider(
+        LocalLayoutDirection provides if (arabic) LayoutDirection.Rtl else LayoutDirection.Ltr,
         LocalSabbaqBrand provides if (darkTheme) SabbaqDarkBrand else SabbaqLightBrand,
         LocalReducedMotion provides rememberSystemReducedMotion(),
     ) {
         MaterialTheme(
             colorScheme = if (darkTheme) SabbaqDarkColors else SabbaqLightColors,
-            typography = SabbaqTypography,
+            typography = sabbaqTypography(arabic),
             shapes = Shapes(extraSmall = RoundedCornerShape(12.dp), small = RoundedCornerShape(12.dp),
                 medium = RoundedCornerShape(16.dp), large = RoundedCornerShape(24.dp), extraLarge = RoundedCornerShape(32.dp)),
             content = content

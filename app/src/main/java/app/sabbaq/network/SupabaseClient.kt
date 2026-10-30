@@ -259,6 +259,45 @@ object SupabaseClient {
      * safe. REJECTED means the server refused the content (retrying unchanged cannot help);
      * RETRY covers network and server faults.
      */
+    /** The server's answer for one order address (shared cache, Google behind it). */
+    sealed class GeocodeAnswer {
+        class Found(val points: List<DoubleArray>) : GeocodeAnswer()
+        object NotFound : GeocodeAnswer()
+        /** Google off, capped, failing or no connection: the app uses its own geocoders. */
+        object Unavailable : GeocodeAnswer()
+    }
+
+    /**
+     * `geocode_resolve`: [key] is the folded address, [text] the address as shown; the driver's
+     * position is sent only rounded to 0.5° (region bias), never the fix itself.
+     */
+    suspend fun geocodeResolve(key: String, text: String, near: DoubleArray?): GeocodeAnswer {
+        val payload = buildJsonObject {
+            put("p_key", key.take(200))
+            put("p_text", text.take(300))
+            near?.let {
+                put("p_lat", Math.round(it[0] * 2.0) / 2.0)
+                put("p_lng", Math.round(it[1] * 2.0) / 2.0)
+            }
+        }
+        return supportCall("rpc/geocode_resolve", payload) { response ->
+            if (!response.isSuccessful) return@supportCall Result.success(GeocodeAnswer.Unavailable)
+            val answer = runCatching {
+                val body = json.parseToJsonElement(response.body) as JsonObject
+                val status = (body["status"] as? JsonPrimitive)?.content
+                if (status != "hit" && status != "resolved") return@runCatching GeocodeAnswer.Unavailable
+                val points = (body["points"] as? JsonArray).orEmpty().mapNotNull { p ->
+                    val o = p as? JsonObject ?: return@mapNotNull null
+                    val lat = (o["lat"] as? JsonPrimitive)?.content?.toDoubleOrNull()
+                    val lng = (o["lng"] as? JsonPrimitive)?.content?.toDoubleOrNull()
+                    if (lat == null || lng == null) null else doubleArrayOf(lat, lng)
+                }
+                if (points.isEmpty()) GeocodeAnswer.NotFound else GeocodeAnswer.Found(points)
+            }.getOrDefault(GeocodeAnswer.Unavailable)
+            Result.success(answer)
+        }.getOrDefault(GeocodeAnswer.Unavailable)
+    }
+
     suspend fun sendSupportMessage(clientId: String, body: String, appVersion: String?, correlationId: String?): SupportSendResult {
         val payload = buildJsonObject {
             put("p_client_id", clientId)
@@ -547,6 +586,7 @@ object SupabaseClient {
             if (profile.isFailure) {
                 return@networkCall Result.failure(profile.exceptionOrNull()!!)
             }
+            claimPendingReferral(token)
             if (!sessions.activate(attempt, token)) return@networkCall staleSessionFailure()
             refreshToken = tokenPairFrom(response.body)?.second
             accessIssuedAt = SystemClock.elapsedRealtime()
@@ -605,6 +645,7 @@ object SupabaseClient {
             if (profile.isFailure) {
                 return@networkCall Result.failure(profile.exceptionOrNull()!!)
             }
+            claimPendingReferral(token)
             if (!sessions.activate(attempt, token)) return@networkCall staleSessionFailure()
             refreshToken = tokenPairFrom(response.body)?.second
             accessIssuedAt = SystemClock.elapsedRealtime()
@@ -926,6 +967,93 @@ object SupabaseClient {
             }
         }
     }
+
+    /**
+     * The invite code typed before signing in is attached right after the profile exists. A
+     * network failure keeps it for the next sign-in or the referral page; any server answer
+     * (accepted or refused) clears it and is remembered for the page to show once.
+     */
+    private fun claimPendingReferral(token: String) {
+        val code = app.sabbaq.Settings.pendingReferralCode ?: return
+        runCatching {
+            val response = execute(authenticatedRequest(endpoint("rest/v1/rpc/claim_referral_code"), token,
+                buildJsonObject { put("p_code", code) }.toString().toRequestBody(jsonMediaType)))
+            if (!response.isSuccessful) return
+            val claim = ReferralParser.claim(json.parseToJsonElement(response.body) as JsonObject)
+            app.sabbaq.Settings.referralClaimOutcome = if (claim.ok) "ok" else (claim.reason ?: "invalid_code")
+            app.sabbaq.Settings.pendingReferralCode = null
+        }
+    }
+
+    /** `my_referrals`: the referral page. */
+    suspend fun myReferrals(): Result<ReferralSummary> =
+        supportCall("rpc/my_referrals", buildJsonObject { }) { response ->
+            if (!response.isSuccessful) return@supportCall Result.failure(FeatureException.fromStatus(response.code))
+            val summary = runCatching { ReferralParser.summary(json.parseToJsonElement(response.body) as JsonObject) }.getOrNull()
+            if (summary == null) Result.failure(FeatureException(FeatureFailure.UNAVAILABLE)) else Result.success(summary)
+        }
+
+    /** `app_update_info`: the newest published release and the minimum version. */
+    suspend fun appUpdateInfo(): Result<app.sabbaq.core.AppRelease> =
+        supportCall("rpc/app_update_info", buildJsonObject { }) { response ->
+            if (!response.isSuccessful) return@supportCall Result.failure(FeatureException.fromStatus(response.code))
+            runCatching { FleetParser.release(json.parseToJsonElement(response.body) as JsonObject) }.getOrNull()
+                ?.let { Result.success(it) } ?: Result.failure(FeatureException(FeatureFailure.UNAVAILABLE))
+        }
+
+    /** `shared_lexicon`: the live words every app reads with, plus the shadow words to test. */
+    suspend fun sharedLexicon(): Result<JsonObject> =
+        supportCall("rpc/shared_lexicon", buildJsonObject { }) { response ->
+            if (!response.isSuccessful) return@supportCall Result.failure(FeatureException.fromStatus(response.code))
+            (runCatching { json.parseToJsonElement(response.body) as JsonObject }.getOrNull())
+                ?.takeIf { FleetParser.lexicon(it) != null }
+                ?.let { Result.success(it) } ?: Result.failure(FeatureException(FeatureFailure.UNAVAILABLE))
+        }
+
+    /** `zone_policy`: this driver's shared exclude zones, zone limit and shared-zone radius. */
+    suspend fun zonePolicy(): Result<JsonObject> =
+        supportCall("rpc/zone_policy", buildJsonObject { }) { response ->
+            if (!response.isSuccessful) return@supportCall Result.failure(FeatureException.fromStatus(response.code))
+            (runCatching { json.parseToJsonElement(response.body) as JsonObject }.getOrNull())
+                ?.let { Result.success(it) } ?: Result.failure(FeatureException(FeatureFailure.UNAVAILABLE))
+        }
+
+    /**
+     * `zone_places`: the named places Google knows within [radius] m of a grid point inside a
+     * zone being warmed. Null when the step is off, capped or failed (the warming then stops it).
+     */
+    suspend fun zonePlaces(lat: Double, lng: Double, radius: Int): List<app.sabbaq.core.engine.zones.ZoneName>? {
+        val payload = buildJsonObject { put("p_lat", lat); put("p_lng", lng); put("p_radius", radius) }
+        return supportCall("rpc/zone_places", payload) { response ->
+            if (!response.isSuccessful) return@supportCall Result.failure(FeatureException.fromStatus(response.code))
+            val body = runCatching { json.parseToJsonElement(response.body) as JsonObject }.getOrNull()
+                ?.takeIf { (it["status"] as? JsonPrimitive)?.content == "resolved" }
+                ?: return@supportCall Result.failure(FeatureException(FeatureFailure.UNAVAILABLE))
+            Result.success((body["places"] as? JsonArray).orEmpty().mapNotNull { p ->
+                val o = p as? JsonObject ?: return@mapNotNull null
+                val name = (o["name"] as? JsonPrimitive)?.content?.trim().orEmpty()
+                val a = (o["lat"] as? JsonPrimitive)?.content?.toDoubleOrNull()
+                val b = (o["lng"] as? JsonPrimitive)?.content?.toDoubleOrNull()
+                if (name.isEmpty() || a == null || b == null) null else app.sabbaq.core.engine.zones.ZoneName(name, listOf(doubleArrayOf(a, b)))
+            })
+        }.getOrNull()
+    }
+
+    /** `ingest_screen_sample`: one redacted unread-offer screen; true when the server stored it. */
+    suspend fun ingestScreenSample(sample: JsonObject): Result<Boolean> =
+        supportCall("rpc/ingest_screen_sample", buildJsonObject { put("p_sample", sample) }) { response ->
+            if (!response.isSuccessful) return@supportCall Result.failure(FeatureException.fromStatus(response.code))
+            val stored = runCatching { (json.parseToJsonElement(response.body) as JsonObject)["stored"]?.jsonPrimitive?.booleanOrNull }.getOrNull()
+            Result.success(stored == true)
+        }
+
+    /** `claim_referral_code` from the referral page. */
+    suspend fun claimReferralCode(code: String): Result<ReferralClaim> =
+        supportCall("rpc/claim_referral_code", buildJsonObject { put("p_code", code.trim().uppercase(Locale.ROOT)) }) { response ->
+            if (!response.isSuccessful) return@supportCall Result.failure(FeatureException.fromStatus(response.code))
+            runCatching { ReferralParser.claim(json.parseToJsonElement(response.body) as JsonObject) }
+                .fold({ Result.success(it) }, { Result.failure(FeatureException(FeatureFailure.UNAVAILABLE)) })
+        }
 
     /** RPC واحد مشترك لكل هويات العملاء الجديدة؛ لا يفعّل الجلسة أو الرخصة بذاته. */
     private fun ensureDriverProfile(token: String, displayName: String? = null): Result<Unit> {

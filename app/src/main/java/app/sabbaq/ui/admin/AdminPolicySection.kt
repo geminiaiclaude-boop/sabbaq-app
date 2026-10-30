@@ -192,5 +192,11 @@ internal fun AdminPolicySection(session: AdminSession) {
             SabbaqButton((if (LocaleManager.isArabic()) "إعادة تحميل السياسة" else "Reload the policy"), onClick = { reload++ }, style = SabbaqButtonStyle.Secondary, enabled = !loading && !saving,
                 busy = loading, busyText = (if (LocaleManager.isArabic()) "جارٍ التحميل…" else "Loading…"))
         }
+        AdminGeocodeCard(session)
+        AdminZonesCard(session)
+        AdminReferralCard(session)
+        AdminReleaseCard(session)
+        AdminVersionReportCard(session)
+        AdminLearningCard(session)
     }
 }

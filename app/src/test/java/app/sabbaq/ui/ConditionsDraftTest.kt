@@ -71,10 +71,23 @@ class ConditionsDraftTest {
 
     @Test
     fun saving_the_page_keeps_fields_it_does_not_edit() {
-        val base = EngineConfig(globalDestExcludeZonesJson = "[1]", destZonesBearingMarginDeg = 40.0, acceptKeywordsExtra = "x")
+        val base = EngineConfig(globalDestExcludeZonesJson = "[1]", globalZoneProximityKm = 40.0, acceptKeywordsExtra = "x")
         val saved = FilterDraft(minPrice = "10").validate(base).config!!
         assertEquals("[1]", saved.globalDestExcludeZonesJson)
-        assertEquals(40.0, saved.destZonesBearingMarginDeg, 0.0)
+        assertEquals(40.0, saved.globalZoneProximityKm, 0.0)
         assertEquals("x", saved.acceptKeywordsExtra)
+    }
+
+    @Test
+    fun fine_zone_settings_round_trip_and_stay_in_range() {
+        val config = EngineConfig(destZonesBearingEnabled = false, destZonesBearingMarginDeg = 40.0, travelAngleTolDeg = 30.0,
+            travelOvershootKm = 3.5, corridorHalfWidthKm = 0.8, destExcludeProximityMaxKm = 120.0)
+        assertEquals(config, FilterDraft.from(config).validate(config).config)
+        val defaults = FilterDraft(zonesBearingMargin = "", travelOvershootKm = "").validate().config!!
+        assertEquals(25.0, defaults.destZonesBearingMarginDeg, 0.0)
+        assertEquals(2.0, defaults.travelOvershootKm, 0.0)
+        val bad = FilterDraft(corridorHalfWidthKm = "50", excludeProximityKm = "1").validate()
+        assertFalse(bad.isValid)
+        assertTrue("corridorHalfWidthKm" in bad.errors && "excludeProximityKm" in bad.errors)
     }
 }

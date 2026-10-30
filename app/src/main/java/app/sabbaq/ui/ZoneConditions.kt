@@ -1,7 +1,11 @@
 package app.sabbaq.ui
 
+import app.sabbaq.service.maps.MapPackStore
+import app.sabbaq.ui.map.GeoPoint
+import app.sabbaq.ui.map.MapArea
+import app.sabbaq.ui.map.SabbaqMap
+import app.sabbaq.ui.map.rememberSabbaqMap
 import android.Manifest
-import android.graphics.Color as AndroidColor
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -25,6 +29,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -40,7 +46,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.sabbaq.R
@@ -55,18 +60,12 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
-import org.osmdroid.config.Configuration
-import org.osmdroid.events.MapEventsReceiver
-import org.osmdroid.tileprovider.tilesource.TileSourceFactory
-import org.osmdroid.util.GeoPoint
-import org.osmdroid.views.MapView
-import org.osmdroid.views.overlay.MapEventsOverlay
-import org.osmdroid.views.overlay.Marker
-import org.osmdroid.views.overlay.Polygon
-import org.osmdroid.views.overlay.Polyline
 
-/** One zone being edited: the reference engine's `{"name","active","points":[[lat,lng],…]}`. */
-internal data class EditableZone(val name: String, val active: Boolean, val points: List<GeoPoint>)
+/**
+ * One zone being edited: the reference engine's `{"name","active","points":[[lat,lng],…]}`, plus
+ * `"pending"` while it waits for its streets and places to be cached before it is switched on.
+ */
+internal data class EditableZone(val name: String, val active: Boolean, val points: List<GeoPoint>, val pending: Boolean = false)
 
 internal enum class ZoneMapMode { INCLUDE, EXCLUDE, HOME }
 
@@ -83,16 +82,18 @@ internal object ZoneJson {
                 if (lat == null || lng == null) null else GeoPoint(lat, lng)
             }.orEmpty()
             if (pts.size < 3) null
-            else EditableZone((o["name"] as? JsonPrimitive)?.contentOrNull.orEmpty(), (o["active"] as? JsonPrimitive)?.booleanOrNull ?: true, pts)
+            else EditableZone((o["name"] as? JsonPrimitive)?.contentOrNull.orEmpty(), (o["active"] as? JsonPrimitive)?.booleanOrNull ?: true, pts,
+                (o["pending"] as? JsonPrimitive)?.booleanOrNull ?: false)
         }
     }.getOrDefault(emptyList())
 
     fun write(zones: List<EditableZone>): String = JsonArray(zones.map { z ->
-        JsonObject(mapOf(
-            "name" to JsonPrimitive(z.name),
-            "active" to JsonPrimitive(z.active),
-            "points" to JsonArray(z.points.map { JsonArray(listOf(JsonPrimitive(it.latitude), JsonPrimitive(it.longitude))) }),
-        ))
+        JsonObject(buildMap {
+            put("name", JsonPrimitive(z.name))
+            put("active", JsonPrimitive(z.active))
+            put("points", JsonArray(z.points.map { JsonArray(listOf(JsonPrimitive(it.latitude), JsonPrimitive(it.longitude))) }))
+            if (z.pending) put("pending", JsonPrimitive(true))
+        })
     }).toString()
 
     fun activeCount(text: String): Int = parse(text).count { it.active }
@@ -127,15 +128,11 @@ private fun rememberLocationAccess(): LocationAccess {
     }
 }
 
-/**
- * The reference engine's geographic conditions: destination zones (with "on the way"), exclude zones and
- * the smart destination. Each needs the driver's position; the map edits the zone polygons.
- */
+/** Location permission and freshness for the zone rules; shown wherever zones are edited. */
 @Composable
-internal fun ZoneConditions(draft: FilterDraft, errors: Map<String, String>, onDraftChange: (FilterDraft) -> Unit) {
+internal fun ZoneLocationNotice(draft: FilterDraft) {
     val location = rememberLocationAccess()
     val requestLocation = location.request
-    var mapMode by rememberSaveable { mutableStateOf<ZoneMapMode?>(null) }
     val needsLocation = draft.zonesEnabled || draft.excludeZonesEnabled || draft.smartDestActive
     if (needsLocation && !location.granted) {
         Surface(color = MaterialTheme.colorScheme.errorContainer, shape = MaterialTheme.shapes.small) {
@@ -155,41 +152,29 @@ internal fun ZoneConditions(draft: FilterDraft, errors: Map<String, String>, onD
             modifier = Modifier.testTag("zone-location-age"),
         )
     }
+}
 
-    ProConditionCard(
-        title = stringResource(R.string.zone_include_title),
-        subtitle = stringResource(R.string.zone_include_sub),
-        enabled = draft.zonesEnabled,
-        testKey = "zones-include",
-        onEnabledChange = { onDraftChange(draft.copy(zonesEnabled = it)); if (it) requestLocation() },
-        footer = {
-            Column {
-                SwitchLine(stringResource(R.string.zone_reject_unknown), draft.zonesRejectOnUnknown, "zones-reject-unknown") {
-                    onDraftChange(draft.copy(zonesRejectOnUnknown = it))
-                }
-                SwitchLine(stringResource(R.string.zone_on_the_way), draft.zonesOnTheWay, "zones-on-the-way") {
-                    onDraftChange(draft.copy(zonesOnTheWay = it))
-                }
-            }
-        },
-    ) { _ ->
-        ZoneSummary(ZoneJson.activeCount(draft.zonesJson), errors["zones"], "zones-include-map") { mapMode = ZoneMapMode.INCLUDE }
+/**
+ * «الأماكن والمناطق» on «طلبات تناسبك»: where the zone lists stand, every zone by name, and the
+ * button to the zones page (the reference's zones list screen), then the smart destination.
+ */
+@Composable
+internal fun ZoneConditions(
+    draft: FilterDraft,
+    errors: Map<String, String>,
+    onDraftChange: (FilterDraft) -> Unit,
+    onOpenZones: () -> Unit,
+) {
+    val requestLocation = rememberLocationAccess().request
+    var mapMode by rememberSaveable { mutableStateOf<ZoneMapMode?>(null) }
+    ZoneLocationNotice(draft)
+    if (errors["zones"] != null || errors["excludeZones"] != null) {
+        Text(errors["zones"] ?: errors["excludeZones"].orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
     }
-
-    ProConditionCard(
-        title = stringResource(R.string.zone_exclude_title),
-        subtitle = stringResource(R.string.zone_exclude_sub),
-        enabled = draft.excludeZonesEnabled,
-        testKey = "zones-exclude",
-        onEnabledChange = { onDraftChange(draft.copy(excludeZonesEnabled = it)); if (it) requestLocation() },
-        footer = {
-            SwitchLine(stringResource(R.string.zone_exclude_reject_unknown), draft.excludeZonesRejectOnUnknown, "zones-exclude-reject-unknown") {
-                onDraftChange(draft.copy(excludeZonesRejectOnUnknown = it))
-            }
-        },
-    ) { _ ->
-        ZoneSummary(ZoneJson.activeCount(draft.excludeZonesJson), errors["excludeZones"], "zones-exclude-map") { mapMode = ZoneMapMode.EXCLUDE }
-    }
+    DashboardZonesBlock(draft, { next ->
+        onDraftChange(next)
+        if (next.zonesEnabled && !draft.zonesEnabled || next.excludeZonesEnabled && !draft.excludeZonesEnabled) requestLocation()
+    }, onOpenZones)
 
     ProConditionCard(
         title = stringResource(R.string.zone_home_title),
@@ -236,24 +221,58 @@ internal fun ZoneConditions(draft: FilterDraft, errors: Map<String, String>, onD
     }
 }
 
+/**
+ * The engine's fine zone settings, folded by default: how far a destination may lie off the
+ * map's direction, what counts as "on the way", and how far an address may be matched.
+ */
 @Composable
-private fun SwitchLine(label: String, checked: Boolean, tag: String, onChange: (Boolean) -> Unit) {
+internal fun ZoneAdvancedSettings(draft: FilterDraft, errors: Map<String, String>, onDraftChange: (FilterDraft) -> Unit) {
+    var open by rememberSaveable { mutableStateOf(errors.keys.any { it in ADVANCED_KEYS }) }
+    TextButton(onClick = { open = !open }, modifier = Modifier.testTag("zone-advanced-toggle")) {
+        Text(stringResource(if (open) R.string.zone_adv_hide else R.string.zone_adv_show))
+    }
+    if (!open) return
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.testTag("zone-advanced")) {
+        SwitchLine(stringResource(R.string.zone_adv_bearing), draft.zonesBearingEnabled, "zone-adv-bearing") {
+            onDraftChange(draft.copy(zonesBearingEnabled = it))
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            CompactStepperValue(stringResource(R.string.zone_adv_bearing_margin), draft.zonesBearingMargin, "°", "5", KeyboardType.Number,
+                onValueChange = { onDraftChange(draft.copy(zonesBearingMargin = it)) }, testKey = "zone-adv-bearing-margin",
+                modifier = Modifier.weight(1f), error = errors["zonesBearingMargin"], dimmed = !draft.zonesBearingEnabled)
+            CompactStepperValue(stringResource(R.string.zone_adv_search_radius), draft.excludeProximityKm, "km", "5", KeyboardType.Number,
+                onValueChange = { onDraftChange(draft.copy(excludeProximityKm = it)) }, testKey = "zone-adv-search-radius",
+                modifier = Modifier.weight(1f), error = errors["excludeProximityKm"])
+        }
+        if (draft.zonesOnTheWay) {
+            Text(stringResource(R.string.zone_adv_on_the_way), style = MaterialTheme.typography.labelMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CompactStepperValue(stringResource(R.string.zone_adv_angle), draft.travelAngleTol, "°", "5", KeyboardType.Number,
+                    onValueChange = { onDraftChange(draft.copy(travelAngleTol = it)) }, testKey = "zone-adv-angle",
+                    modifier = Modifier.weight(1f), error = errors["travelAngleTol"])
+                CompactStepperValue(stringResource(R.string.zone_adv_overshoot), draft.travelOvershootKm, "km", "0.5", KeyboardType.Decimal,
+                    onValueChange = { onDraftChange(draft.copy(travelOvershootKm = it)) }, testKey = "zone-adv-overshoot",
+                    modifier = Modifier.weight(1f), error = errors["travelOvershootKm"])
+                CompactStepperValue(stringResource(R.string.zone_adv_corridor), draft.corridorHalfWidthKm, "km", "0.5", KeyboardType.Decimal,
+                    onValueChange = { onDraftChange(draft.copy(corridorHalfWidthKm = it)) }, testKey = "zone-adv-corridor",
+                    modifier = Modifier.weight(1f), error = errors["corridorHalfWidthKm"])
+            }
+        }
+        TextButton(onClick = {
+            onDraftChange(draft.copy(zonesBearingEnabled = true, zonesBearingMargin = "25", travelAngleTol = "20",
+                travelOvershootKm = "2", corridorHalfWidthKm = "1.5", excludeProximityKm = "60"))
+        }, modifier = Modifier.testTag("zone-adv-reset")) { Text(stringResource(R.string.zone_adv_reset)) }
+    }
+}
+
+private val ADVANCED_KEYS = setOf("zonesBearingMargin", "travelAngleTol", "travelOvershootKm", "corridorHalfWidthKm", "excludeProximityKm")
+
+@Composable
+internal fun SwitchLine(label: String, checked: Boolean, tag: String, onChange: (Boolean) -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(label, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
         Switch(checked = checked, onCheckedChange = onChange, modifier = Modifier.testTag(tag))
     }
-}
-
-@Composable
-private fun androidx.compose.foundation.layout.RowScope.ZoneSummary(count: Int, error: String?, tag: String, onOpen: () -> Unit) {
-    Column(Modifier.weight(1f)) {
-        Text(
-            if (count == 0) stringResource(R.string.zone_none) else stringResource(R.string.zone_count, count),
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        if (error != null) Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-    }
-    OutlinedButton(onClick = onOpen, modifier = Modifier.testTag(tag)) { Text(stringResource(R.string.zone_open_map)) }
 }
 
 /** Full-screen map: tap to add corners, finish a zone with 3+ corners; in home mode a tap sets the point. */
@@ -270,59 +289,29 @@ internal fun ZoneMapDialog(
     val drawing = remember { mutableStateListOf<GeoPoint>() }
     var homePoint by remember { mutableStateOf(home) }
     val zoneWord = stringResource(R.string.zone_default_name)
-    val mapView = remember {
-        Configuration.getInstance().apply {
-            load(context, context.getSharedPreferences("osmdroid", android.content.Context.MODE_PRIVATE))
-            userAgentValue = context.packageName
-        }
-        MapView(context).apply {
-            setTileSource(TileSourceFactory.MAPNIK)
-            setMultiTouchControls(true)
-            val loc = ZoneStore.driverLocation()
-            val center = home ?: zones.firstOrNull()?.points?.firstOrNull()
-                ?: loc?.let { GeoPoint(it[0], it[1]) } ?: GeoPoint(24.7136, 46.6753)
-            controller.setZoom(12.0)
-            controller.setCenter(center)
-        }
-    }
-    DisposableEffect(Unit) { onDispose { mapView.onDetach() } }
+    val map = rememberSabbaqMap()
+    val packStatus by MapPackStore.status.collectAsState()
+    val exclude = mode == ZoneMapMode.EXCLUDE
 
     fun redraw() {
-        mapView.overlays.removeAll { it !is MapEventsOverlay }
-        val fill = if (mode == ZoneMapMode.EXCLUDE) AndroidColor.argb(70, 220, 40, 40) else AndroidColor.argb(70, 30, 160, 90)
-        val stroke = if (mode == ZoneMapMode.EXCLUDE) AndroidColor.rgb(200, 30, 30) else AndroidColor.rgb(20, 130, 70)
-        zones.forEach { z ->
-            mapView.overlays += Polygon(mapView).apply {
-                points = z.points
-                fillPaint.color = if (z.active) fill else AndroidColor.argb(30, 120, 120, 120)
-                outlinePaint.color = stroke
-                outlinePaint.strokeWidth = 4f
-                title = z.name
-            }
-        }
-        if (drawing.isNotEmpty()) {
-            mapView.overlays += Polyline(mapView).apply {
-                setPoints(drawing + drawing.first())
-                outlinePaint.color = AndroidColor.rgb(30, 90, 200)
-                outlinePaint.strokeWidth = 5f
-            }
-        }
-        homePoint?.let { p -> mapView.overlays += Marker(mapView).apply { position = p; setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM) } }
-        mapView.invalidate()
+        map.setAreas(zones.map { z ->
+            MapArea(z.points, if (!z.active) "#787878" else if (exclude) "#dc2828" else "#1e9650", if (exclude) "#c81e1e" else "#148246",
+                if (z.active) 0.28 else 0.12)
+        })
+        map.setDraft(drawing.toList(), "#1e5ac8", "#1e5ac8")
+        map.setPins(listOfNotNull(homePoint?.let { it to "#f29900" }))
     }
 
     remember {
-        mapView.overlays.add(0, MapEventsOverlay(object : MapEventsReceiver {
-            override fun singleTapConfirmedHelper(p: GeoPoint): Boolean {
-                if (mode == ZoneMapMode.HOME) homePoint = p else drawing += p
-                redraw()
-                return true
-            }
-            override fun longPressHelper(p: GeoPoint): Boolean = false
-        }))
+        map.onTap = { p -> if (mode == ZoneMapMode.HOME) homePoint = p else drawing += p; redraw() }
+        val center = home ?: zones.firstOrNull()?.points?.firstOrNull()
+            ?: ZoneStore.driverLocation()?.let { GeoPoint(it[0], it[1]) } ?: GeoPoint(24.7136, 46.6753)
+        map.moveTo(center, 12.0, animate = false)
         redraw()
         true
     }
+    LaunchedEffect(Unit) { MapPackStore.ensure(context) }
+    LaunchedEffect(packStatus) { if (packStatus is MapPackStore.Status.Ready) map.loadStyle(context) }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
@@ -333,7 +322,7 @@ internal fun ZoneMapDialog(
                     modifier = Modifier.padding(12.dp),
                 )
                 Box(Modifier.weight(1f).fillMaxWidth()) {
-                    AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize().testTag("zone-map"))
+                    SabbaqMap(map, Modifier.fillMaxSize().testTag("zone-map"))
                 }
                 if (mode != ZoneMapMode.HOME) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {

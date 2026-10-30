@@ -22,9 +22,12 @@ object SnipingGate {
         subscriptionEndsAtMs: Long,
         newestSeenMs: Long,
         nowMs: Long,
+        /** The administration's minimum version is above this build (Sabbaq's update channel). */
+        updateRequired: Boolean = false,
     ): Result {
         if (!disclosureAccepted) return Result(false, "disclosure_required", newestSeenMs)
         if (!monitoringWanted) return Result(false, "service_paused", newestSeenMs)
+        if (updateRequired) return Result(false, "update_required", newestSeenMs)
         val behind = newestSeenMs - nowMs
         if (behind > CLOCK_TAMPER_THRESHOLD_MS) return Result(false, "clock_tampered", newestSeenMs)
         val newest = when {

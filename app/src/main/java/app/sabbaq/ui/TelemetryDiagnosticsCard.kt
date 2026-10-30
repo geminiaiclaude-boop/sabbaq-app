@@ -162,6 +162,10 @@ private fun stageText(stage: TelemetryStage): String = (when (stage) {
     TelemetryStage.PAUSED -> "إيقاف مؤقت" to "Paused"
     TelemetryStage.HEARTBEAT -> "نبضة" to "Heartbeat"
     TelemetryStage.APP_CRASH -> "انهيار التطبيق" to "App crash"
+    TelemetryStage.PROCESS_EXIT -> "إنهاء من أندرويد" to "Ended by Android"
+    TelemetryStage.DEVICE_INFO -> "معلومات الجهاز" to "Device info"
+    TelemetryStage.ACCEPT_LEARNED -> "بصمة قبول" to "Accept signature"
+    TelemetryStage.UPDATE_STATE -> "التحديث" to "Update"
     TelemetryStage.PARSED, TelemetryStage.ACCEPT_DISPATCHED -> stage.name.lowercase() to stage.name.lowercase()
 }).pick()
 
