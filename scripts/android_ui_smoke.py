@@ -214,9 +214,10 @@ def reachable_by_scrolling(text, visible):
 
 cases = [
     ('first-launch', None, False, 1.0, None),
+    # The welcome tour (its top bar) on a 360 dp phone with large text, straight after first launch.
+    ('first-launch-narrow-large-font', None, False, 1.3, 'narrow'),
     ('cinematic-opening', 'cinematic-opening', False, 1.0, None),
     ('intro', 'intro', False, 1.0, None),
-    ('intro-narrow-large-font', 'intro', False, 1.3, 'narrow'),
     ('welcome-features', 'welcome-features', False, 1.0, None),
     ('welcome-example', 'welcome-example', False, 1.0, None),
     ('login', 'login', False, 1.0, None),
@@ -305,7 +306,7 @@ for name, screen, dark, font_scale, env in cases:
         assert 'سبّاق' in visible, 'Brand-led cinematic opening did not expose the Sabbaq identity'
         for player_control in ('تخطي الفيديو', 'تشغيل صوت الافتتاحية', 'كتم صوت الافتتاحية'):
             assert player_control not in visible, f'Player/ad control leaked into launch opening: {player_control}'
-    if name == 'intro-narrow-large-font':
+    if name == 'first-launch-narrow-large-font':
         assert_brand_not_squeezed(nodes, name)
     if screen == 'history':
         assert_decision_history(visible, f'direct open: {name}')
