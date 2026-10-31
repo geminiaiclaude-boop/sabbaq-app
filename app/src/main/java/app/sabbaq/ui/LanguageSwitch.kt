@@ -18,6 +18,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.sabbaq.LocaleManager
 import app.sabbaq.R
+import app.sabbaq.ui.theme.LocalSabbaqBrand
 
 /**
  * Arabic / English toggle: on the welcome tour, in the side menu and in Settings, Appearance. Picking a language applies it immediately
@@ -30,17 +31,17 @@ import app.sabbaq.R
  * hear the full name.
  */
 @Composable
-fun LanguageSwitch(modifier: Modifier = Modifier, fill: Boolean = false) {
+fun LanguageSwitch(modifier: Modifier = Modifier, fill: Boolean = false, onHero: Boolean = false) {
     val context = LocalContext.current
     val arabic = LocaleManager.isArabic()
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         val chip = if (fill) Modifier.weight(1f) else Modifier
         val arabicName = stringResource(R.string.language_arabic)
         val englishName = stringResource(R.string.language_english)
-        LanguageChip(if (fill) arabicName else stringResource(R.string.language_arabic_short), arabicName, selected = arabic, chip, fill) {
+        LanguageChip(if (fill) arabicName else stringResource(R.string.language_arabic_short), arabicName, selected = arabic, chip, fill, onHero) {
             if (!arabic) { LocaleManager.set(context, LocaleManager.Language.ARABIC); (context as? android.app.Activity)?.recreate() }
         }
-        LanguageChip(if (fill) englishName else stringResource(R.string.language_english_short), englishName, selected = !arabic, chip, fill) {
+        LanguageChip(if (fill) englishName else stringResource(R.string.language_english_short), englishName, selected = !arabic, chip, fill, onHero) {
             if (arabic) { LocaleManager.set(context, LocaleManager.Language.ENGLISH); (context as? android.app.Activity)?.recreate() }
         }
     }
@@ -48,13 +49,20 @@ fun LanguageSwitch(modifier: Modifier = Modifier, fill: Boolean = false) {
 
 /** [fill]: the chip is stretched by its row, so its label is centred across it; otherwise it keeps its own width. */
 @Composable
-private fun LanguageChip(label: String, name: String, selected: Boolean, modifier: Modifier, fill: Boolean, onClick: () -> Unit) {
+private fun LanguageChip(label: String, name: String, selected: Boolean, modifier: Modifier, fill: Boolean, onHero: Boolean, onClick: () -> Unit) {
+    val brand = LocalSabbaqBrand.current
     FilterChip(
         selected = selected,
         onClick = onClick,
         label = { Text(label, modifier = if (fill) Modifier.fillMaxWidth() else Modifier, textAlign = TextAlign.Center, maxLines = 1) },
         shape = RoundedCornerShape(50),
         modifier = modifier.heightIn(min = 40.dp).semantics { contentDescription = name },
-        colors = FilterChipDefaults.filterChipColors(),
+        colors = if (onHero) FilterChipDefaults.filterChipColors(
+            labelColor = brand.onHero,
+            selectedContainerColor = brand.signature,
+            selectedLabelColor = brand.onSignature,
+        ) else FilterChipDefaults.filterChipColors(),
+        border = if (onHero) FilterChipDefaults.filterChipBorder(enabled = true, selected = selected,
+            borderColor = brand.onHero.copy(alpha = 0.7f), selectedBorderColor = brand.signature) else FilterChipDefaults.filterChipBorder(enabled = true, selected = selected),
     )
 }

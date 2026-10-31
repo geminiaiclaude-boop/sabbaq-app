@@ -219,7 +219,7 @@ private fun OnboardingTopBar(page: OnboardingPage, onSkip: () -> Unit, modifier:
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(Modifier.weight(1f)) { SabbaqBrand(compact = true, onHero = true) }
-                LanguageSwitch()
+                LanguageSwitch(onHero = true)
                 OutlinedButton(
                     onClick = onSkip,
                     border = BorderStroke(1.5.dp, brand.signature),

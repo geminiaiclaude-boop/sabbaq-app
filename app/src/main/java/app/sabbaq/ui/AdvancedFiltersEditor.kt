@@ -68,7 +68,7 @@ internal fun AdvancedFiltersEditor(
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         // Grouped by the question the driver asks: which app, how much and how far, where to, how
         // paid, then what only experienced drivers touch.
-        ConditionGroupHeader(stringResource(R.string.afe_group_app))
+        // The ride app is one card that names itself; a group heading over it would only repeat it.
         TargetAppCondition(draft, onDraftChange)
 
         ConditionGroupHeader(stringResource(R.string.afe_group_fare_time))

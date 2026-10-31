@@ -758,6 +758,15 @@ internal fun ZoneEditorDialog(
                 }
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     SabbaqMap(map, Modifier.fillMaxSize().testTag("zone-map"))
+                    if (map.loadFailed) {
+                        Surface(color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f), shape = MaterialTheme.shapes.medium,
+                            modifier = Modifier.align(Alignment.Center).padding(24.dp)) {
+                            Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(stringResource(R.string.zp_map_failed), style = MaterialTheme.typography.bodyMedium)
+                                TextButton(onClick = { map.loadStyle(context) }) { Text(stringResource(R.string.zp_map_retry)) }
+                            }
+                        }
+                    }
                 }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }
                 Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {

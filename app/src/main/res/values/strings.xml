@@ -486,7 +486,6 @@
     <string name="sub_play_1">Your trial or subscription status appears above.</string>
     <string name="sub_play_2">To use Sabbaq, you need a valid trial or subscription with your conditions set and the permissions granted.</string>
     <string name="sub_play_3">Buying the subscription inside the app is not available currently.</string>
-    <string name="afe_group_app">Ride app</string>
     <string name="afe_group_fare_time">Fare and pickup time</string>
     <string name="afe_group_destination">Destination</string>
     <string name="afe_group_payment">Payment and rating</string>
@@ -898,8 +897,8 @@ Write your problem or question and our team will reply here during working hours
     <string name="diag_working_b">Sabbaq accepted at least one order in the last hour.</string>
     <string name="diag_waiting_t">Ready, waiting for orders</string>
     <string name="diag_waiting_b">Everything works; the ride app has not shown an order in the last hour.</string>
-    <string name="zone_adv_show">Fine zone settings</string>
-    <string name="zone_adv_hide">Hide fine settings</string>
+    <string name="zone_adv_show">Show the options</string>
+    <string name="zone_adv_hide">Hide the options</string>
     <string name="zone_adv_bearing">Use the order map\'s direction when the address cannot be placed</string>
     <string name="zone_adv_bearing_margin">Direction margin</string>
     <string name="zone_adv_search_radius">Address search radius</string>
@@ -996,6 +995,8 @@ Write your problem or question and our team will reply here during working hours
     <string name="zp_summary_none">No zones yet.</string>
     <string name="zp_summary_counts">On: %1$d to go to · %2$d to avoid</string>
     <string name="zp_manage">Manage places and zones</string>
+    <string name="zp_map_failed">The map could not load. Check the internet, then try again.</string>
+    <string name="zp_map_retry">Try again</string>
     <string name="zp_back">Back</string>
     <string name="zp_intro">Draw on the map the districts where you want your orders to end, and the ones you do not want to go to. Sabbaq compares each order’s destination with your zones.</string>
     <string name="zp_unknown_reject">Reject at once</string>
