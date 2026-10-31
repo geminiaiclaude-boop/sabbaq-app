@@ -396,7 +396,9 @@ fun SettingsScreen(
                     }
                     if (saved) {
                         savedFilters = filters
-                        draft = FilterDraft.from(filters)
+                        // The typed text stays as typed: writing the saved (trimmed) values back erased
+                        // the space a driver had just typed between two destination words (owner,
+                        // 2026-10-31). The saved conditions are this draft's own validated values.
                         filtersMessage = DriverStatus(context.getString(R.string.ss_saved_auto), success = true)
                         haptics.performHapticFeedback(HapticFeedbackType.Confirm)
                         if (returnToSetupAfterAction && destination == DriverDestination.Filters) {
@@ -1694,9 +1696,9 @@ private fun FiltersPage(
     onRevert: () -> Unit,
     onReset: () -> Unit,
 ) = DriverPage {
-    SabbaqSectionTitle(
+    SabbaqPageHeader(
         title = stringResource(R.string.ss_filters_title),
-        subtitle = if (isSaving) stringResource(R.string.ss_filters_saving) else stringResource(R.string.ss_filters_subtitle),
+        intro = if (isSaving) stringResource(R.string.ss_filters_saving) else stringResource(R.string.ss_filters_subtitle),
     )
     SabbaqAnimatedMessage(message?.message, message?.tone ?: SabbaqTone.Info)
     SabbaqAnimatedMessage(

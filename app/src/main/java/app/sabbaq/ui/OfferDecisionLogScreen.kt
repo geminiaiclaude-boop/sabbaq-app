@@ -77,12 +77,7 @@ internal fun OfferDecisionLogScreen(onBack: () -> Unit, onDiagnosisAction: (Diag
             Icon(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, contentDescription = null)
             Text(stringResource(R.string.odl_back), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
         }
-        Text(stringResource(R.string.nav_history), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
-        Text(
-            stringResource(R.string.odl_subtitle),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        SabbaqPageHeader(stringResource(R.string.nav_history), stringResource(R.string.odl_subtitle))
 
         val runtime by RuntimeStatusRepository.snapshot.collectAsState()
         DiagnosisCard(onAction = onDiagnosisAction, detailed = true)

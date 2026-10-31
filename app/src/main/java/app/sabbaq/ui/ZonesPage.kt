@@ -204,9 +204,7 @@ internal fun ZonesPage(
     }
 
     BackRow(onBack)
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(stringResource(R.string.zone_group_title), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
-        Text(stringResource(R.string.zp_intro), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    SabbaqPageHeader(stringResource(R.string.zone_group_title), stringResource(R.string.zp_intro)) {
         val activeNow = ZoneLimit.activeCount(draft.zonesJson, draft.excludeZonesJson)
         Text(
             if (policy.maxActiveZones > 0) stringResource(R.string.zp_active_of, activeNow, policy.maxActiveZones)

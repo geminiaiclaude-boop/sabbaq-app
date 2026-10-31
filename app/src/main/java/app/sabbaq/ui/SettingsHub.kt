@@ -93,12 +93,7 @@ internal fun SettingsHubPage(
     BackHandler(enabled = section != null) { section = null }
     val current = section
     if (current == null) {
-        Text(stringResource(R.string.settings_title), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
-        Text(
-            stringResource(R.string.settings_intro),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        SabbaqPageHeader(stringResource(R.string.settings_title), stringResource(R.string.settings_intro))
         val missingPermissions = permissions.count { !it.ready }
         val missingPower = power.count { !it.ready }
         SabbaqCard(modifier = Modifier.sabbaqEntrance(0)) {
@@ -143,7 +138,7 @@ internal fun SettingsHubPage(
         Icon(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, contentDescription = null)
         Text(stringResource(R.string.settings_title), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
     }
-    Text(stringResource(current.titleRes), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
+    SabbaqPageHeader(stringResource(current.titleRes))
     when (current) {
         SettingsSection.Voice -> VoiceAlertsCard(Modifier.sabbaqEntrance(0))
 

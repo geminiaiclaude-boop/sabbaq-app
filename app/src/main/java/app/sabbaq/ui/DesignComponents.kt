@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.ui.platform.testTag
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -72,6 +73,39 @@ internal fun SabbaqBrand(compact: Boolean = false, onHero: Boolean = false) {
             if (!compact) Text(stringResource(R.string.app_tagline), style = MaterialTheme.typography.bodyMedium,
                 color = if (onHero) brand.onHeroMuted else MaterialTheme.colorScheme.onSurfaceVariant)
         }
+    }
+}
+
+/**
+ * A page's title and its explanation, the same on every page (owner, 2026-10-31): the title bold
+ * beside the signature bar, and the explanation in a soft tinted panel with an info mark, so the
+ * page's rule reads as guidance instead of faint grey text. [extra] sits under the panel.
+ */
+@Composable
+internal fun SabbaqPageHeader(title: String, intro: String? = null, modifier: Modifier = Modifier, extra: @Composable (() -> Unit)? = null) {
+    val brand = LocalSabbaqBrand.current
+    val colors = MaterialTheme.colorScheme
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Box(Modifier.size(width = 6.dp, height = 28.dp).clip(RoundedCornerShape(50)).background(brand.signature))
+            Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                modifier = Modifier.semantics { heading() })
+        }
+        intro?.let {
+            androidx.compose.material3.Surface(
+                shape = MaterialTheme.shapes.medium,
+                color = colors.primary.copy(alpha = 0.06f),
+                border = BorderStroke(1.dp, colors.primary.copy(alpha = 0.18f)),
+                modifier = Modifier.fillMaxWidth().testTag("page-intro"),
+            ) {
+                Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Icon(androidx.compose.material.icons.Icons.Outlined.Info, contentDescription = null, tint = colors.primary,
+                        modifier = Modifier.size(20.dp))
+                    Text(it, style = MaterialTheme.typography.bodyMedium, color = colors.onSurface, modifier = Modifier.weight(1f))
+                }
+            }
+        }
+        extra?.invoke()
     }
 }
 
