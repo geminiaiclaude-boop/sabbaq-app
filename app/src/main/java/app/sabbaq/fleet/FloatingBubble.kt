@@ -70,23 +70,24 @@ object FloatingBubble {
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
     /**
-     * Opens "display over other apps" on Sabbaq's own switch where the phone allows it. Android 11+
-     * ignores the package on the public action and shows the whole list, so the app-specific screen
-     * is tried first (several makers export it); when it is refused, the list opens with a short
-     * «اختر سبّاق» hint, and the app details page is the last resort.
+     * Opens "display over other apps" on Sabbaq's own switch, as the reference does: the public
+     * action with our package, sent from the activity with startActivityForResult. Android 11+ opens
+     * the app's own page only when it knows the caller is that app, which a result request tells it;
+     * the plain startActivity (new task) Sabbaq used showed the whole list (owner, 2026-10-31). Without
+     * an activity (rare) the list opens with a «pick Sabbaq» hint.
      */
     fun openPermission(context: Context) {
-        val pkg = Uri.parse("package:${context.packageName}")
-        val direct = Intent("android.settings.MANAGE_APP_OVERLAY_PERMISSION", pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        if (Build.VERSION.SDK_INT >= 30 && runCatching { context.startActivity(direct) }.isSuccess) return
-        val listed = runCatching { context.startActivity(permissionIntent(context)) }.isSuccess
+        val activity = generateSequence(context) { (it as? android.content.ContextWrapper)?.baseContext }
+            .firstOrNull { it is android.app.Activity } as? android.app.Activity
+        val intent = Intent(AndroidSettings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))
+        if (activity != null && runCatching { activity.startActivityForResult(intent, REQUEST_OVERLAY) }.isSuccess) return
+        val listed = runCatching { context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess
         if (listed && Build.VERSION.SDK_INT >= 30) {
             android.widget.Toast.makeText(context, context.getString(app.sabbaq.R.string.float_pick_sabbaq), android.widget.Toast.LENGTH_LONG).show()
         }
-        if (!listed) runCatching {
-            context.startActivity(Intent(AndroidSettings.ACTION_APPLICATION_DETAILS_SETTINGS, pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        }
     }
+
+    private const val REQUEST_OVERLAY = 1003
 
     /** Gives the control a context to draw from; the app and the accessibility service both call it. */
     fun attach(context: Context) {
