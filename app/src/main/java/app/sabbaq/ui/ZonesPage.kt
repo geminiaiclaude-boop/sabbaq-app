@@ -184,7 +184,10 @@ internal fun ZonesPage(
             val list = d.zones(isExclude).toMutableList()
             val i = list.indexOfFirst { it.points == zone.points }
             if (i < 0) { notice = null; return@launch }
-            if (!result.ok) { notice = context.getString(R.string.zp_warm_failed, zone.name) to true; return@launch }
+            // Could not prepare (busy map servers, no connection): the zone is switched on anyway. It
+            // only rejects a ride whose destination is known to be inside it, and the street names
+            // still arrive later from the road and city warm-ups (owner, 2026-10-31: a saved avoid
+            // zone that stayed off looked like a save that failed).
             val rest = ZoneJson.write(list.filterIndexed { k, _ -> k != i })
             val others = if (isExclude) ZoneLimit.activeCount(d.zonesJson, rest) else ZoneLimit.activeCount(rest, d.excludeZonesJson)
             val allowed = ZoneLimit.canActivate(others, policy.maxActiveZones)
@@ -192,6 +195,7 @@ internal fun ZonesPage(
             latestChange(d.withZones(isExclude, list))
             notice = when {
                 !allowed -> limitText() to true
+                !result.ok -> context.getString(R.string.zp_warm_failed, zone.name) to false
                 result.names > 0 -> context.getString(R.string.zp_warm_done, zone.name, result.names) to false
                 else -> context.getString(R.string.zp_warm_empty, zone.name) to true
             }

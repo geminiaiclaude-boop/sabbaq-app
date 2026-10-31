@@ -1032,7 +1032,7 @@ Write your problem or question and our team will reply here during working hours
     <string name="zp_warming">Preparing «%1$s»… this can take a minute, then the zone switches on by itself.</string>
     <string name="zp_warm_done">Zone «%1$s» is on (Sabbaq knows %2$d names inside it).</string>
     <string name="zp_warm_empty">Zone «%1$s» is on. No street names were found inside it yet, so Sabbaq places each address when the order arrives. Draw it wider to cover known streets if you can.</string>
-    <string name="zp_warm_failed">Zone «%1$s» was not switched on because the connection failed. Check the internet, then tap «Prepare and switch on».</string>
+    <string name="zp_warm_failed">Zone «%1$s» is on. Its street names could not be prepared right now; they are added automatically when the connection improves.</string>
     <string name="zp_pending">Not prepared yet; it works once prepared</string>
     <string name="zp_warm_now">Prepare and switch on</string>
     <string name="zp_limit">You reached the maximum of zones switched on (%1$d). Switch another zone off first.</string>

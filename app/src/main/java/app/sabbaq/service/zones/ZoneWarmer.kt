@@ -37,6 +37,9 @@ object ZoneWarmer {
     data class Result(val ok: Boolean, val added: Int, val names: Int)
 
     private val lock = Mutex()
+
+    /** A zone the driver just saved is waiting: the background road warm-up gives way to it. */
+    @Volatile private var zonesWaiting = 0
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private const val WAIT_MS = 90_000L
 
@@ -49,7 +52,12 @@ object ZoneWarmer {
     suspend fun warm(polygon: List<DoubleArray>): Result = withContext(Dispatchers.IO) {
         if (polygon.size < 3) return@withContext Result(false, 0, 0)
         // One warming at a time; a second waits up to 90 s as the reference's tryLock does.
-        val locked = withTimeoutOrNull(WAIT_MS) { lock.lock(); true } ?: return@withContext Result(false, 0, 0)
+        zonesWaiting++
+        val locked = try {
+            withTimeoutOrNull(WAIT_MS) { lock.lock(); true }
+        } finally {
+            zonesWaiting--
+        } ?: return@withContext Result(false, 0, 0)
         try {
             val found = runCatching { overpass(polygon) }.getOrNull()
             var added = 0
@@ -109,7 +117,7 @@ object ZoneWarmer {
                 val corners = List(z.lats.size) { doubleArrayOf(z.lats[it], z.lngs[it]) }
                 val c = ZoneCacheWarm.centroid(corners)
                 for (p in ZoneCacheWarm.corridorPoints(driver[0], driver[1], c[0], c[1], zonesJson, step)) {
-                    if (calls >= ZoneCacheWarm.MAX_CALLS) break
+                    if (calls >= ZoneCacheWarm.MAX_CALLS || zonesWaiting > 0) break
                     calls++
                     val square = ZoneCacheWarm.box(p[0], p[1], half)
                     val found = runCatching { overpass(square) }.getOrNull().orEmpty()
@@ -118,9 +126,10 @@ object ZoneWarmer {
                     added += entries.size
                     delay(1_200L)
                 }
-                if (calls >= ZoneCacheWarm.MAX_CALLS) break
+                if (calls >= ZoneCacheWarm.MAX_CALLS || zonesWaiting > 0) break
             }
-            ZoneStore.saveCorridorSignature(signature)
+            // Cut short for a saved zone: not marked done, so the next pass covers the rest.
+            if (zonesWaiting == 0) ZoneStore.saveCorridorSignature(signature)
             added
         } finally {
             lock.unlock()
@@ -145,7 +154,7 @@ object ZoneWarmer {
 
     /** `fragment.execute`: each Overpass server by POST then GET, the whole list twice with 2 s between. */
     private suspend fun overpass(polygon: List<DoubleArray>): List<ZoneName>? =
-        overpassBody(ZoneCacheWarm.overpassQuery(polygon))?.let { ZoneCacheWarm.parseOverpass(it, polygon) }
+        overpassFirst(ZoneCacheWarm.overpassQuery(polygon), budgetMs = 30_000L)?.let { ZoneCacheWarm.parseOverpass(it, polygon) }
 
     /** The raw answer to an Overpass [query], or null when no server answered. */
     internal suspend fun overpassBody(query: String, readTimeoutMs: Int = 30_000): String? {
