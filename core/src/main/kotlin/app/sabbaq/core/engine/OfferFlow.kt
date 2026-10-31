@@ -159,6 +159,7 @@ class OfferFlow(
         }
 
         val hash = parsed.screenHash
+        if (now < lastClickTime) lastClickTime = now
         val sinceLastClick = now - lastClickTime
         if (hash != currentRideHash) {
             currentRideHash = hash
@@ -208,6 +209,7 @@ class OfferFlow(
     fun onTurboSignal(config: EngineConfig, frameDetectedMs: Long, provider: String = "jeeny"): PendingRide? {
         if (!config.instantTurbo || pending != null) return null
         val now = nowMs()
+        if (now < lastClickTime) lastClickTime = now
         if (now - lastClickTime < GLOBAL_CLICK_COOLDOWN_MS) return null
         lastClickTime = now
         lastHandledWasAccepted = true
@@ -232,6 +234,9 @@ class OfferFlow(
         lastHandledRideHash = 0
         lastHandledWasAccepted = false
         suppressIdentity = 0
+        suppressUntilMs = 0L
+        lastClickTime = 0L
+        clickedOfferIdentity = 0
         learnedIds = null
         fastPathMisses = 0
         lastRootReadWasActiveRide = false

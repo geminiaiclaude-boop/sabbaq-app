@@ -155,8 +155,8 @@ internal fun ZoneLocationNotice(draft: FilterDraft) {
 }
 
 /**
- * «الأماكن والمناطق» on «طلبات تناسبك»: where the zone lists stand, every zone by name, and the
- * button to the zones page (the reference's zones list screen), then the smart destination.
+ * «الأماكن والمناطق» on «طلبات تناسبك»: how many zones are on and the button to the zones page,
+ * then the smart destination.
  */
 @Composable
 internal fun ZoneConditions(
@@ -171,10 +171,7 @@ internal fun ZoneConditions(
     if (errors["zones"] != null || errors["excludeZones"] != null) {
         Text(errors["zones"] ?: errors["excludeZones"].orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
     }
-    DashboardZonesBlock(draft, { next ->
-        onDraftChange(next)
-        if (next.zonesEnabled && !draft.zonesEnabled || next.excludeZonesEnabled && !draft.excludeZonesEnabled) requestLocation()
-    }, onOpenZones)
+    ZonesSummary(draft, onOpenZones)
 
     ProConditionCard(
         title = stringResource(R.string.zone_home_title),
@@ -222,16 +219,12 @@ internal fun ZoneConditions(
 }
 
 /**
- * The engine's fine zone settings, folded by default: how far a destination may lie off the
- * map's direction, what counts as "on the way", and how far an address may be matched.
+ * The engine's fine zone settings: how far a destination may lie off the map's direction, what
+ * counts as "on the way", and how far an address may be matched. Shown inside the zones page's
+ * folded «خيارات متقدمة».
  */
 @Composable
-internal fun ZoneAdvancedSettings(draft: FilterDraft, errors: Map<String, String>, onDraftChange: (FilterDraft) -> Unit) {
-    var open by rememberSaveable { mutableStateOf(errors.keys.any { it in ADVANCED_KEYS }) }
-    TextButton(onClick = { open = !open }, modifier = Modifier.testTag("zone-advanced-toggle")) {
-        Text(stringResource(if (open) R.string.zone_adv_hide else R.string.zone_adv_show))
-    }
-    if (!open) return
+internal fun ZoneFineSettings(draft: FilterDraft, errors: Map<String, String>, onDraftChange: (FilterDraft) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.testTag("zone-advanced")) {
         SwitchLine(stringResource(R.string.zone_adv_bearing), draft.zonesBearingEnabled, "zone-adv-bearing") {
             onDraftChange(draft.copy(zonesBearingEnabled = it))
@@ -265,7 +258,7 @@ internal fun ZoneAdvancedSettings(draft: FilterDraft, errors: Map<String, String
     }
 }
 
-private val ADVANCED_KEYS = setOf("zonesBearingMargin", "travelAngleTol", "travelOvershootKm", "corridorHalfWidthKm", "excludeProximityKm")
+internal val ZONE_ADVANCED_KEYS = setOf("zonesBearingMargin", "travelAngleTol", "travelOvershootKm", "corridorHalfWidthKm", "excludeProximityKm")
 
 @Composable
 internal fun SwitchLine(label: String, checked: Boolean, tag: String, onChange: (Boolean) -> Unit) {

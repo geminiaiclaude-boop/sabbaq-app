@@ -36,6 +36,6 @@ class RuntimeStatusStore(private val diagnosticCapacity: Int = 12) {
     @Synchronized fun offer(now: Long) { lastOffer = now }
     @Synchronized fun decision(now: Long, value: DecisionReport) { lastDecision = now; report = value.copy(score = value.score.coerceIn(0, 100), availableSignals = value.availableSignals.take(16), reasons = value.reasons.distinct().take(16)) }
     @Synchronized fun click(now: Long) { lastClick = now }
-    @Synchronized fun diagnostic(entry: DiagnosticEntry) { if (diagnostics.size == diagnosticCapacity) diagnostics.removeFirst(); diagnostics.addLast(entry.copy(reason = entry.reason?.take(48))) }
+    @Synchronized fun diagnostic(entry: DiagnosticEntry) { if (diagnostics.size == diagnosticCapacity) diagnostics.removeFirst(); diagnostics.addLast(entry.copy(reason = OfferTelemetryContract.sanitizeReason(entry.reason))) }
     @Synchronized fun snapshot(): RuntimeStatusSnapshot = RuntimeStatusSnapshot(active, pausedReason, stale, lastEvent, lastOffer, lastDecision, lastClick, report, diagnostics.toList())
 }

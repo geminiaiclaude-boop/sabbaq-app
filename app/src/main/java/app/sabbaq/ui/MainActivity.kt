@@ -161,13 +161,45 @@ class SessionNavigationViewModel : ViewModel() {
         sessionRestoreStatus = SessionRestoreStatus.NONE
         route = if (isAdmin && BuildConfig.DIRECT_DISTRIBUTION) AppState.ADMIN_PANEL else AppState.DRIVER_PANEL
     }
+    /** The floating control asks for the admin or the driver panel; the panel itself re-checks the role. */
+    fun openRoute(admin: Boolean) {
+        when {
+            admin && route == AppState.DRIVER_PANEL && Settings.lastSignedInAdmin && BuildConfig.DIRECT_DISTRIBUTION -> route = AppState.ADMIN_PANEL
+            !admin && route == AppState.ADMIN_PANEL -> route = AppState.DRIVER_PANEL
+        }
+    }
     fun signedOut() { sessionRestoreStatus = SessionRestoreStatus.NONE; route = AppState.LOGIN; app.sabbaq.fleet.FloatingBubble.refresh() }
 }
 
 class MainActivity : AppCompatActivity() {
+    /** The update notification's «تحديث الآن»: download, check and install the announced version. */
+    private fun startUpdateIfAsked(intent: Intent?) {
+        if (intent?.getStringExtra(app.sabbaq.fleet.FloatingBubble.EXTRA_ROUTE) != app.sabbaq.fleet.UpdateNotifier.ROUTE_UPDATE) return
+        intent.removeExtra(app.sabbaq.fleet.FloatingBubble.EXTRA_ROUTE)
+        val release = app.sabbaq.fleet.FleetRepository.release.value
+        if (release.state(app.sabbaq.BuildConfig.VERSION_CODE.toLong()) == app.sabbaq.core.UpdateState.NONE) return
+        kotlinx.coroutines.MainScope().launch { app.sabbaq.fleet.ApkUpdater.update(this@MainActivity, release) }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        startUpdateIfAsked(intent)
+        routeFromIntent(intent)
+    }
+
+    private fun routeFromIntent(intent: Intent?) {
+        when (intent?.getStringExtra(app.sabbaq.fleet.FloatingBubble.EXTRA_ROUTE)) {
+            "admin" -> ViewModelProvider(this)[SessionNavigationViewModel::class.java].openRoute(admin = true)
+            "driver" -> ViewModelProvider(this)[SessionNavigationViewModel::class.java].openRoute(admin = false)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        if (savedInstanceState == null) startUpdateIfAsked(intent)
+        routeFromIntent(intent)
         val navigation = ViewModelProvider(this)[SessionNavigationViewModel::class.java]
         navigation.initialize(
             showWelcome = !OnboardingPreferences.isComplete(this),
@@ -220,6 +252,9 @@ class MainActivity : AppCompatActivity() {
                 Settings.monitoringWanted = false
                 Settings.isActive = false
                 Settings.a11yDisclosureAccepted = false
+                // C-06: the paid period and the admin flag belong to the account that signed out.
+                Settings.subscriptionEndsAtMs = 1L
+                Settings.lastSignedInAdmin = false
                 stopService(Intent(this@MainActivity, KeeperService::class.java))
                 SupabaseClient.clearSession()
                 NotificationCenter.clear()
@@ -271,7 +306,9 @@ class MainActivity : AppCompatActivity() {
                             if (BuildConfig.DIRECT_DISTRIBUTION) app.sabbaq.ui.admin.AdminPanel()
                             else Text(stringResource(R.string.ma_admin_unavailable))
                         }
-                        AppState.DRIVER_PANEL -> SettingsScreen(
+                        AppState.DRIVER_PANEL -> {
+                        InviteCodePrompt()
+                        SettingsScreen(
                             notificationPermissionGranted = notificationsGranted,
                             autoSetupGuide = navigation.sessionRestoreStatus == SessionRestoreStatus.NONE,
                             isRestoringSession = navigation.sessionRestoreStatus == SessionRestoreStatus.RESTORING,
@@ -323,6 +360,7 @@ class MainActivity : AppCompatActivity() {
                                     else (if (LocaleManager.isArabic()) "حُذف حسابك من الخادم، لكن تعذّر مسح بعض الإعدادات المحلية. احذف بيانات التطبيق من إعدادات الجهاز لإكمال المسح." else "Your account was deleted from the server, but some local settings could not be cleared. Delete the app data from the device settings to complete the wipe.")
                             },
                         )
+                        }
                     }
                     }
                 }
@@ -629,7 +667,12 @@ private fun SabbaqDrawerSheet(
     onClose: () -> Unit,
 ) {
     val brand = LocalSabbaqBrand.current
-    val snapshot = remember(isAuthenticated) { if (isAuthenticated) SupabaseClient.subscriptionSnapshot() else null }
+    val snapshot by androidx.compose.runtime.produceState(if (isAuthenticated) SupabaseClient.subscriptionSnapshot() else null, isAuthenticated) {
+        while (true) {
+            value = if (isAuthenticated) SupabaseClient.subscriptionSnapshot() else null
+            kotlinx.coroutines.delay(15_000L)
+        }
+    }
     ModalDrawerSheet(
         modifier = Modifier.widthIn(max = 320.dp),
         drawerContainerColor = MaterialTheme.colorScheme.surface,

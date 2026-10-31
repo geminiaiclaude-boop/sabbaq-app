@@ -64,7 +64,8 @@ internal fun AdminZonesCard(session: AdminSession) {
         maxZones = p.defaultMax.toString(); proximity = p.proximityKm.let { if (it % 1.0 == 0.0) it.toLong().toString() else it.toString() }
     }
 
-    LaunchedEffect(reload, country) {
+    LaunchedEffect(country) { policy?.let(::show) }
+    LaunchedEffect(reload) {
         busy = true
         AdminZones.policy().fold({ show(it); message = null }, {
             message = session.failureOf(it, if (ar) "تعذر تحميل مناطق الاستثناء." else "Could not load the exclude zones.").text
@@ -148,6 +149,7 @@ internal fun AdminZonesCard(session: AdminSession) {
         ZoneEditorDialog(
             initial = index?.let { zones.getOrNull(it) },
             initialExclude = true,
+            kindChoice = false,
             onDismiss = { adding = false; editing = null },
             onSave = { zone, _ ->
                 zones = if (index == null) zones + zone.copy(active = true, pending = false)

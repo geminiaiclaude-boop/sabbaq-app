@@ -27,7 +27,7 @@ class DecisionEngineTest {
 
     @Test
     fun price_and_time_limits_with_and_or() {
-        val cfg = EngineConfig(minPrice = 25.0, maxTime = 6)
+        val cfg = EngineConfig(priceEnabled = true, timeEnabled = true, minPrice = 25.0, maxTime = 6)
         val cheapNear = ride(price = 20.0, minutes = 3)
         assertFalse(DecisionEngine.decide(cheapNear, cfg).accept)
         assertEquals("failed_price", DecisionEngine.decide(cheapNear, cfg).reason)
@@ -42,7 +42,7 @@ class DecisionEngineTest {
 
     @Test
     fun high_price_ignores_the_time_limit() {
-        val cfg = EngineConfig(maxTime = 5, bypassTimeEnabled = true, bypassTimePrice = 40.0)
+        val cfg = EngineConfig(timeEnabled = true, maxTime = 5, bypassTimeEnabled = true, bypassTimePrice = 40.0)
         assertTrue(DecisionEngine.decide(ride(price = 45.0, minutes = 12), cfg).accept)
         assertFalse(DecisionEngine.decide(ride(price = 30.0, minutes = 12), cfg).accept)
     }

@@ -81,9 +81,16 @@ class JeenyLexicon(
         private const val CURRENCY_MARKS = "\\$|JOD|SAR|د\\.أ|د\\.ا|د\\.|﷼|ر\\.س|⃁"
         /** Amount next to a currency mark; case-sensitive like the reference engine. */
         val PRICE: Pattern = Pattern.compile(
-            "(?:$CURRENCY_MARKS)\\s*(\\d+(?:[\\.٫]\\d+)?)|(\\d+(?:[\\.٫]\\d+)?)\\s*(?:$CURRENCY_MARKS)",
+            "(?:$CURRENCY_MARKS)\\s*(\\d+(?:[\\.٫]\\d+|,\\d{1,2}(?!\\d))?)|(\\d+(?:[\\.٫]\\d+|,\\d{1,2}(?!\\d))?)\\s*(?:$CURRENCY_MARKS)",
         )
         val NON_NUMBER: Pattern = Pattern.compile("[^0-9.,٫]")
+        private val FIRST_NUMBER: Pattern = Pattern.compile("\\d+(?:[.٫]\\d+|,\\d{1,2}(?!\\d))?")
+
+        /** An amount as written, decimal point, Arabic decimal or decimal comma, to a number. */
+        fun amount(raw: String?): Double? = raw?.replace('٫', '.')?.replace(',', '.')?.toDoubleOrNull()
+
+        /** The first number in [norm] with its decimals, never glued to a currency dot («25.50 ر.س»). */
+        fun firstNumber(norm: String): String? = FIRST_NUMBER.matcher(norm).let { if (it.find()) it.group() else null }
         val LEADING_DISTANCE: Pattern = Pattern.compile("^\\d+([.,٫]\\d+)?\\s*(km|m|mi|كم|متر|م\\s|كيلو)")
         val NUMERIC_ONLY: Pattern = Pattern.compile("^[\\d.,٫\\s★☆⭐%٪]+$")
         /** Currency words removed before counting an address's letters. */
@@ -98,7 +105,14 @@ class JeenyLexicon(
         fun latinDigits(s: String): String {
             if (s.isEmpty()) return s
             val sb = StringBuilder(s.length)
-            for (ch in s) sb.append(if (ch in '٠'..'٩') '0' + (ch - '٠') else ch)
+            for (ch in s) when {
+                ch in '٠'..'٩' -> sb.append('0' + (ch - '٠'))
+                ch in '۰'..'۹' -> sb.append('0' + (ch - '۰'))
+                // Bidi controls Android puts between Arabic words and numbers: invisible, and they
+                // break «\\s*» between a number and its unit.
+                ch in '\u200B'..'\u200F' || ch == '\u061C' || ch in '\u202A'..'\u202E' || ch in '\u2066'..'\u2069' || ch == '\uFEFF' -> Unit
+                else -> sb.append(ch)
+            }
             return sb.toString()
         }
     }

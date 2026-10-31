@@ -47,6 +47,19 @@ def screencap(png=True):
             time.sleep(2)
 
 
+
+def force_stop():
+    """Stopping the app is idempotent, so any failure (not only a lost transport) is retried: the
+    emulator's activity manager can refuse one call while it is busy (seen 2026-10-31)."""
+    for attempt in range(3):
+        try:
+            return adb('shell', 'am', 'force-stop', args.package, transport_retries=2)
+        except subprocess.CalledProcessError:
+            if attempt == 2:
+                raise
+            time.sleep(2)
+
+
 def ui_xml(timeout=60):
     """Dump and read the UI tree as one retriable operation.
 
@@ -93,10 +106,49 @@ def apply_environment(env):
 
 def assert_decision_history(visible, where):
     """The history page in reading order: heading, live status, statistics, then the seeded row."""
-    assert 'سجل القرارات' in visible, f'Decision history page did not render: {where}'
-    for label in ('حالة التشغيل الفعلية', 'إحصاءات سبّاق', 'هذا الأسبوع', 'هذا الشهر', 'أكثر أسباب الرفض اليوم',
+    assert 'النشاط والتشخيص' in visible, f'Decision history page did not render: {where}'
+    for label in ('تشخيص الرصد', 'حالة التشغيل الفعلية', 'إحصاءات سبّاق', 'هذا الأسبوع', 'هذا الشهر', 'أكثر أسباب الرفض اليوم',
                   'آخر القرارات', 'تم قبول الرحلة', 'ci-preview ·'):
         assert reachable_by_scrolling(label, visible), f'Decision history section missing: {label}: {where}'
+
+
+def png_colors(data, points):
+    """RGB at (x, y) points of a PNG screenshot, decoded with the standard library only."""
+    import struct
+    import zlib
+    pos, width, height, color_type, idat = 8, 0, 0, 2, b''
+    while pos < len(data):
+        length, kind = struct.unpack('>I4s', data[pos:pos + 8])
+        chunk = data[pos + 8:pos + 8 + length]
+        if kind == b'IHDR':
+            width, height, _depth, color_type = struct.unpack('>IIBB', chunk[:10])
+        elif kind == b'IDAT':
+            idat += chunk
+        pos += 12 + length
+    bpp = 4 if color_type == 6 else 3
+    raw = zlib.decompress(idat)
+    stride = width * bpp
+    rows, prev = [], bytearray(stride)
+    for y in range(height):
+        f = raw[y * (stride + 1)]
+        line = bytearray(raw[y * (stride + 1) + 1:(y + 1) * (stride + 1)])
+        for i in range(stride):
+            a = line[i - bpp] if i >= bpp else 0
+            b = prev[i]
+            c = prev[i - bpp] if i >= bpp else 0
+            if f == 1:
+                line[i] = (line[i] + a) & 255
+            elif f == 2:
+                line[i] = (line[i] + b) & 255
+            elif f == 3:
+                line[i] = (line[i] + (a + b) // 2) & 255
+            elif f == 4:
+                p = a + b - c
+                pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
+                line[i] = (line[i] + (a if pa <= pb and pa <= pc else b if pb <= pc else c)) & 255
+        rows.append(line)
+        prev = line
+    return [tuple(rows[y][x * bpp:x * bpp + 3]) for x, y in points]
 
 
 def reachable_by_scrolling(text, visible):
@@ -161,6 +213,9 @@ cases = [
     ('login-large-font', 'login', False, 1.6, None),
     ('dashboard-tablet', 'dashboard', False, 1.0, 'tablet'),
     ('filters-tablet', 'filters', False, 1.0, 'tablet'),
+    ('zones', 'zones', False, 1.0, None),
+    ('zones-dark', 'zones', True, 1.0, None),
+    ('zone-editor', 'zone-editor', False, 1.0, None),
     ('login-offline', 'login', False, 1.0, 'offline'),
 ]
 current_env = 'unset'
@@ -169,7 +224,7 @@ for name, screen, dark, font_scale, env in cases:
     if env != current_env:
         apply_environment(env)
         current_env = env
-    adb('shell', 'am', 'force-stop', args.package)
+    force_stop()
     adb('shell', 'settings', 'put', 'system', 'font_scale', str(font_scale))
     adb('logcat', '-c')
     activity = 'MainActivity' if screen is None else 'DesignPreviewActivity'
@@ -230,6 +285,33 @@ for name, screen, dark, font_scale, env in cases:
             assert player_control not in visible, f'Player/ad control leaked into launch opening: {player_control}'
     if screen == 'history':
         assert_decision_history(visible, f'direct open: {name}')
+    if screen == 'zones':
+        # Plain-language page: the two lists by what they mean to the driver, each with its own add button.
+        for label in ('مناطق أذهب إليها', 'العليا', 'مناطق أتجنبها', 'المطار', 'أضف منطقة أتجنبها', 'خيارات متقدمة'):
+            assert reachable_by_scrolling(label, visible), f'Zones page section missing: {label}: {name}'
+        for word in ('OpenStreetMap', 'Google', 'Photon', 'Nominatim', 'تكييش', 'الترميز'):
+            assert word not in visible, f'Provider or jargon shown on the zones page: {word}: {name}'
+    if screen == 'zone-editor':
+        # The search waits 450 ms, then asks the live service; give it time, then the suggestions
+        # (or the explicit «nothing found») must be on screen.
+        time.sleep(8)
+        editor_xml = ui_xml()
+        (out / f'{name}-search.xml').write_text(editor_xml)
+        editor_shot = screencap()
+        if editor_shot.startswith(b'\x89PNG\r\n\x1a\n'):
+            (out / f'{name}-search.png').write_bytes(editor_shot)
+        editor_visible = ' '.join(n.get('text', '') + ' ' + n.get('content-desc', '') for n in ET.fromstring(editor_xml).findall('.//node'))
+        assert 'العليا،' in editor_visible or 'لم يُعثر على مكان' in editor_visible, f'Zone search showed nothing: {editor_visible[:600]!r}'
+        # The map must have drawn: a map that never loads stays one flat colour (2026-10-31: the style
+        # JSON was passed as a URL and nothing ever rendered).
+        map_nodes = [n for n in ET.fromstring(editor_xml).findall('.//node') if 'zone-map' in (n.get('resource-id', '') + n.get('content-desc', ''))]
+        if map_nodes:
+            mx1, my1, mx2, my2 = map(int, re.findall(r'\d+', map_nodes[0].get('bounds', '')))
+        else:
+            mx1, my1, mx2, my2 = 0, 1100, 1080, 2100
+        grid = [(mx1 + (mx2 - mx1) * i // 6, my1 + (my2 - my1) * j // 6) for i in range(1, 6) for j in range(1, 6)]
+        colors = set(png_colors(editor_shot, grid)) if editor_shot.startswith(b'\x89PNG\r\n\x1a\n') else set()
+        assert len(colors) >= 4, f'Zone editor map did not render (only {len(colors)} colours in the map area): {sorted(colors)[:6]}'
     if screen == 'welcome-example':
         # The pipeline scene leads the page; the worked example sits below it.
         assert reachable_by_scrolling('2.5 ر.س قبل التكاليف', visible), f'Concrete fare/distance example missing: {name}'
@@ -264,7 +346,7 @@ for name, screen, dark, font_scale, env in cases:
         nodes = ET.fromstring(ui_xml()).findall('.//node')
         history_tab = next((node for node in nodes
                             if node.get('package') == args.package and
-                            'سجل القرارات' in (node.get('text', '') + node.get('content-desc', ''))), None)
+                            'النشاط والتشخيص' in (node.get('text', '') + node.get('content-desc', ''))), None)
         assert history_tab is not None, f'Decision history hamburger item missing: {name}'
         bounds = re.findall(r'\d+', history_tab.get('bounds', ''))
         assert len(bounds) == 4, f'Decision history navigation bounds missing: {name}'
@@ -288,7 +370,26 @@ for name, screen, dark, font_scale, env in cases:
         assert 'FATAL EXCEPTION' not in history_runtime, f'App crashed after opening decision history:\n{history_runtime}'
         assert history_screenshot.startswith(b'\x89PNG\r\n\x1a\n'), f'Invalid decision history screenshot: {name}'
     if screen == 'dashboard':
-        # Voice alerts moved to «الإعدادات» and the statistics to «سجل القرارات»; the work page
+        # «ابدأ» always answers on screen: the missing-permissions list, the start consent, or a
+        # message right under the button. Pressing it once did nothing visible (owner, 2026-10-30).
+        start_nodes = [n for n in ET.fromstring(ui_xml()).findall('.//node')
+                       if n.get('package') == args.package and 'ابدأ متابعة الطلبات' in n.get('content-desc', '')]
+        assert start_nodes, f'Start button missing: {name}'
+        sx1, sy1, sx2, sy2 = map(int, re.findall(r'\d+', start_nodes[0].get('bounds', '')))
+        adb('shell', 'input', 'tap', str((sx1 + sx2) // 2), str((sy1 + sy2) // 2))
+        time.sleep(2.5)
+        start_xml = ui_xml()
+        start_visible = ' '.join(n.get('text', '') + ' ' + n.get('content-desc', '')
+                                 for n in ET.fromstring(start_xml).findall('.//node'))
+        start_shot = screencap()
+        if start_shot.startswith(b'\x89PNG\r\n\x1a\n'):
+            (out / f'{name}-start-pressed.png').write_bytes(start_shot)
+        answers = ('اضبط شرطًا واحدًا على الأقل', 'قبل البدء: أذونات مطلوبة', 'بدء متابعة الطلبات', 'لم نتمكن من التحقق من اشتراكك',
+                   'جارٍ استعادة جلستك', 'تعذر تحديث الجلسة', 'تُحفظ التعديلات تلقائيًا', 'صحح شروط الطلبات')
+        assert any(answer in start_visible for answer in answers), f'«ابدأ» gave no visible answer: {name}: {start_visible[:600]!r}'
+        adb('shell', 'input', 'keyevent', 'KEYCODE_BACK')
+        time.sleep(1.0)
+        # Voice alerts moved to «الإعدادات» and the statistics and the monitoring check to «النشاط والتشخيص»; the work page
         # keeps the editable driving conditions and the supported apps. Capture each section.
         current_visible = visible
         checkpoints = (
@@ -393,7 +494,7 @@ def content_digest(raw):
 
 def capture_motion(tag, extras, delays):
     activity = 'MainActivity' if extras is None else 'DesignPreviewActivity'
-    adb('shell', 'am', 'force-stop', args.package)
+    force_stop()
     # -W returns once the app has drawn its first frame, so the system splash is not measured.
     adb('shell', 'am', 'start', '-W', '-n', f'{args.package}/app.sabbaq.ui.{activity}', *(extras or []), timeout=60)
     digests = []

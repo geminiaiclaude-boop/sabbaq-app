@@ -19,14 +19,21 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowLeft
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Map
+import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.MyLocation
 import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.TextFields
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -48,6 +55,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -89,6 +97,16 @@ private val ExcludeColor = Color(0xFFD03030)
 /** Which list a zone lives in and its place there; null index = a new zone. */
 private data class ZoneRef(val exclude: Boolean, val index: Int?)
 
+private val ZoneRefSaver = androidx.compose.runtime.saveable.Saver<ZoneRef?, IntArray>(
+    save = { ref -> ref?.let { intArrayOf(if (it.exclude) 1 else 0, it.index ?: -1) } },
+    restore = { a -> ZoneRef(a[0] == 1, a[1].takeIf { it >= 0 }) },
+)
+
+private val PointsSaver = androidx.compose.runtime.saveable.Saver<androidx.compose.runtime.snapshots.SnapshotStateList<GeoPoint>, DoubleArray>(
+    save = { list -> DoubleArray(list.size * 2) { i -> if (i % 2 == 0) list[i / 2].latitude else list[i / 2].longitude } },
+    restore = { a -> mutableStateListOf<GeoPoint>().apply { for (i in 0 until a.size / 2) add(GeoPoint(a[2 * i], a[2 * i + 1])) } },
+)
+
 private fun FilterDraft.zones(exclude: Boolean): List<EditableZone> = ZoneJson.parse(if (exclude) excludeZonesJson else zonesJson)
 
 private fun FilterDraft.withZones(exclude: Boolean, zones: List<EditableZone>): FilterDraft =
@@ -107,9 +125,10 @@ private fun distanceKm(zone: EditableZone): Double? {
 }
 
 /**
- * The reference's zones list screen: the zone settings, then every zone by name in its own card
- * (green destination zones, red avoided zones) with its switch, edit and delete, and «منطقة
- * جديدة» opening the editor. Everything edits the same draft as the conditions, saved at once.
+ * The zones page, for a driver who has never drawn a zone: what it is for in one sentence, then
+ * the green list (where orders should end) and the red list (where they should not), each with
+ * its switch, its zones and its own «add» button, the administration's shared zones, and the fine
+ * settings folded at the bottom. Everything edits the same draft as the conditions, saved at once.
  */
 @Composable
 internal fun ZonesPage(
@@ -118,7 +137,7 @@ internal fun ZonesPage(
     onDraftChange: (FilterDraft) -> Unit,
     onBack: () -> Unit,
 ) {
-    var editing by remember { mutableStateOf<ZoneRef?>(null) }
+    var editing by rememberSaveable(stateSaver = ZoneRefSaver) { mutableStateOf<ZoneRef?>(null) }
     var deleting by remember { mutableStateOf<ZoneRef?>(null) }
     var viewing by remember { mutableStateOf<EditableZone?>(null) }
     var naming by remember { mutableStateOf<ZoneRef?>(null) }
@@ -179,82 +198,23 @@ internal fun ZonesPage(
         }
     }
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(MaterialTheme.shapes.small)
-            .clickable(onClickLabel = stringResource(R.string.zp_back), onClick = onBack)
-            .heightIn(min = 48.dp)
-            .testTag("zones-back"),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        // Auto-mirrored: points left in English, right in Arabic (the way back in each).
-        Icon(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, contentDescription = null)
-        Text(stringResource(R.string.zp_back), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-    }
+    BackRow(onBack)
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(stringResource(R.string.zone_group_title), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
         Text(stringResource(R.string.zp_intro), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     ZoneLocationNotice(draft)
-
-    SabbaqCard(title = stringResource(R.string.zp_settings), modifier = Modifier.testTag("zones-settings")) {
-        SwitchLine(stringResource(R.string.zone_include_title) + " — " + stringResource(R.string.zone_include_sub), draft.zonesEnabled, "zones-include-switch") {
-            onDraftChange(draft.copy(zonesEnabled = it))
-        }
-        if (draft.zonesEnabled) {
-            Text(stringResource(R.string.zp_unknown_title), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                FilterChip(selected = draft.zonesRejectOnUnknown, onClick = { onDraftChange(draft.copy(zonesRejectOnUnknown = true)) },
-                    label = { Text(stringResource(R.string.zp_unknown_reject)) }, modifier = Modifier.weight(1f).testTag("zones-unknown-reject"))
-                FilterChip(selected = !draft.zonesRejectOnUnknown, onClick = { onDraftChange(draft.copy(zonesRejectOnUnknown = false)) },
-                    label = { Text(stringResource(R.string.zp_unknown_accept)) }, modifier = Modifier.weight(1f).testTag("zones-unknown-accept"))
-            }
-            Text(
-                stringResource(if (draft.zonesRejectOnUnknown) R.string.zp_unknown_reject_b else R.string.zp_unknown_accept_b),
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            SwitchLine(stringResource(R.string.zone_on_the_way), draft.zonesOnTheWay, "zones-on-the-way") { onDraftChange(draft.copy(zonesOnTheWay = it)) }
-        }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        SwitchLine(stringResource(R.string.zone_exclude_title) + " — " + stringResource(R.string.zone_exclude_sub), draft.excludeZonesEnabled, "zones-exclude-switch") {
-            onDraftChange(draft.copy(excludeZonesEnabled = it))
-        }
-        if (draft.excludeZonesEnabled) {
-            Text(stringResource(R.string.zp_unknown_title), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                FilterChip(selected = draft.excludeZonesRejectOnUnknown, onClick = { onDraftChange(draft.copy(excludeZonesRejectOnUnknown = true)) },
-                    label = { Text(stringResource(R.string.zp_unknown_reject)) }, modifier = Modifier.weight(1f).testTag("zones-exclude-unknown-reject"))
-                FilterChip(selected = !draft.excludeZonesRejectOnUnknown, onClick = { onDraftChange(draft.copy(excludeZonesRejectOnUnknown = false)) },
-                    label = { Text(stringResource(R.string.zp_unknown_accept_alert)) }, modifier = Modifier.weight(1f).testTag("zones-exclude-unknown-accept"))
-            }
-            Text(
-                stringResource(if (draft.excludeZonesRejectOnUnknown) R.string.zone_exclude_reject_unknown else R.string.zp_unknown_accept_alert_b),
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        if (draft.zonesEnabled || draft.excludeZonesEnabled) ZoneAdvancedSettings(draft, errors, onDraftChange)
-    }
-
-    SharedZonesCard(policy.zonesJson, draft, onDraftChange) { viewing = it }
     notice?.let { (text, warn) ->
         Text(text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("zones-notice"),
             color = if (warn) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
     }
-    if (policy.maxActiveZones > 0) {
-        Text(stringResource(R.string.zp_limit_note, policy.maxActiveZones), style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
 
-    Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-        LegendDot(IncludeColor, stringResource(R.string.zp_legend_include))
-        LegendDot(ExcludeColor, stringResource(R.string.zp_legend_exclude))
-    }
-
-    ZoneSection(
-        title = stringResource(R.string.zone_include_title),
-        zones = include, exclude = false, sectionOn = draft.zonesEnabled, farLimitKm = farLimit, error = errors["zones"], warming = warming,
+    // Two lists, each a card of its own: the switch that makes it a condition, its zones, and
+    // the button that adds one to it. The fine settings wait folded at the bottom.
+    ZoneListCard(
+        exclude = false, zones = include, listOn = draft.zonesEnabled, farLimitKm = farLimit, error = errors["zones"], warming = warming,
+        onListOn = { onDraftChange(draft.copy(zonesEnabled = it)) },
+        onAdd = { editing = ZoneRef(exclude = false, index = null) },
         onToggle = { i, on -> if (on && include[i].pending) warmThenActivate(false, include[i]) else setActive(false, i, on) },
         onWarm = { warmThenActivate(false, include[it]) },
         onShowMap = { viewing = include[it] },
@@ -262,9 +222,10 @@ internal fun ZonesPage(
         onEdit = { editing = ZoneRef(false, it) },
         onDelete = { deleting = ZoneRef(false, it) },
     )
-    ZoneSection(
-        title = stringResource(R.string.zone_exclude_title),
-        zones = exclude, exclude = true, sectionOn = draft.excludeZonesEnabled, farLimitKm = farLimit, error = errors["excludeZones"], warming = warming,
+    ZoneListCard(
+        exclude = true, zones = exclude, listOn = draft.excludeZonesEnabled, farLimitKm = farLimit, error = errors["excludeZones"], warming = warming,
+        onListOn = { onDraftChange(draft.copy(excludeZonesEnabled = it)) },
+        onAdd = { editing = ZoneRef(exclude = true, index = null) },
         onToggle = { i, on -> if (on && exclude[i].pending) warmThenActivate(true, exclude[i]) else setActive(true, i, on) },
         onWarm = { warmThenActivate(true, exclude[it]) },
         onShowMap = { viewing = exclude[it] },
@@ -272,21 +233,51 @@ internal fun ZonesPage(
         onEdit = { editing = ZoneRef(true, it) },
         onDelete = { deleting = ZoneRef(true, it) },
     )
-    if (include.isEmpty() && exclude.isEmpty()) {
-        Text(stringResource(R.string.zp_empty_hint), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    SharedZonesCard(policy.zonesJson, draft, onDraftChange) { viewing = it }
+
+    var moreOpen by rememberSaveable { mutableStateOf(errors.keys.any { it in ZONE_ADVANCED_KEYS }) }
+    SabbaqCard(
+        title = stringResource(R.string.zp_more_title),
+        subtitle = stringResource(R.string.zp_more_sub),
+        icon = Icons.Outlined.Tune,
+        modifier = Modifier.testTag("zones-settings"),
+    ) {
+        TextButton(onClick = { moreOpen = !moreOpen }, modifier = Modifier.testTag("zones-more-toggle")) {
+            Text(stringResource(if (moreOpen) R.string.zone_adv_hide else R.string.zone_adv_show))
+        }
+        if (moreOpen) {
+            if (draft.zonesEnabled) {
+                UnknownDestinationChoice(
+                    title = stringResource(R.string.zp_unknown_include_title),
+                    reject = draft.zonesRejectOnUnknown,
+                    acceptLabel = stringResource(R.string.zp_unknown_accept),
+                    explanation = stringResource(if (draft.zonesRejectOnUnknown) R.string.zp_unknown_reject_b else R.string.zp_unknown_accept_b),
+                    tag = "zones-unknown",
+                ) { onDraftChange(draft.copy(zonesRejectOnUnknown = it)) }
+                SwitchLine(stringResource(R.string.zone_on_the_way), draft.zonesOnTheWay, "zones-on-the-way") { onDraftChange(draft.copy(zonesOnTheWay = it)) }
+            }
+            if (draft.excludeZonesEnabled) {
+                UnknownDestinationChoice(
+                    title = stringResource(R.string.zp_unknown_exclude_title),
+                    reject = draft.excludeZonesRejectOnUnknown,
+                    acceptLabel = stringResource(R.string.zp_unknown_accept_alert),
+                    explanation = stringResource(if (draft.excludeZonesRejectOnUnknown) R.string.zone_exclude_reject_unknown else R.string.zp_unknown_accept_alert_b),
+                    tag = "zones-exclude-unknown",
+                ) { onDraftChange(draft.copy(excludeZonesRejectOnUnknown = it)) }
+            }
+            ZoneFineSettings(draft, errors, onDraftChange)
+            if (policy.maxActiveZones > 0) {
+                Text(stringResource(R.string.zp_limit_note, policy.maxActiveZones), style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            SabbaqButton(
+                stringResource(R.string.zp_diag_open),
+                onClick = { diagnosing = true },
+                style = SabbaqButtonStyle.Secondary,
+                modifier = Modifier.testTag("zones-diagnose"),
+            )
+        }
     }
-    SabbaqButton(
-        stringResource(R.string.zp_new_zone),
-        onClick = { editing = ZoneRef(exclude = draft.excludeZonesEnabled && !draft.zonesEnabled, index = null) },
-        icon = Icons.Outlined.Add,
-        modifier = Modifier.testTag("zones-new"),
-    )
-    SabbaqButton(
-        stringResource(R.string.zp_diag_open),
-        onClick = { diagnosing = true },
-        style = SabbaqButtonStyle.Secondary,
-        modifier = Modifier.testTag("zones-diagnose"),
-    )
     Text(stringResource(R.string.zone_privacy_note), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
     editing?.let { ref ->
@@ -310,7 +301,7 @@ internal fun ZonesPage(
                     if (ref.index != null) { from.removeAt(ref.index); next = next.withZones(ref.exclude, from) }
                     next = next.withZones(toExclude, next.zones(toExclude) + zone)
                 }
-                // A first zone switches its list on, as drawing it is the point of opening the editor.
+                // A first zone switches its list on: drawing it is the driver turning the condition on.
                 if (toExclude && !next.excludeZonesEnabled && next.zones(true).size == 1) next = next.copy(excludeZonesEnabled = true)
                 if (!toExclude && !next.zonesEnabled && next.zones(false).size == 1) next = next.copy(zonesEnabled = true)
                 onDraftChange(next)
@@ -353,22 +344,59 @@ internal fun ZonesPage(
 }
 
 @Composable
-private fun LegendDot(color: Color, label: String) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        Box(Modifier.size(10.dp).clip(CircleShape).background(color))
-        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun BackRow(onBack: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.small)
+            .clickable(onClickLabel = stringResource(R.string.zp_back), onClick = onBack)
+            .heightIn(min = 48.dp)
+            .testTag("zones-back"),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        // Auto-mirrored: points left in English, right in Arabic (the way back in each).
+        Icon(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, contentDescription = null)
+        Text(stringResource(R.string.zp_back), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
     }
 }
 
+/** What the engine does with an order whose destination cannot be placed, for one list. */
 @Composable
-private fun ZoneSection(
+private fun UnknownDestinationChoice(
     title: String,
-    zones: List<EditableZone>,
+    reject: Boolean,
+    acceptLabel: String,
+    explanation: String,
+    tag: String,
+    onReject: (Boolean) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(title, style = MaterialTheme.typography.labelLarge)
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            FilterChip(selected = reject, onClick = { onReject(true) }, label = { Text(stringResource(R.string.zp_unknown_reject)) },
+                modifier = Modifier.weight(1f).testTag("$tag-reject"))
+            FilterChip(selected = !reject, onClick = { onReject(false) }, label = { Text(acceptLabel) },
+                modifier = Modifier.weight(1f).testTag("$tag-accept"))
+        }
+        Text(explanation, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/**
+ * One list of zones as a card: green for the places the driver wants orders to end in, red for
+ * the places to avoid. Its switch makes the list a condition; every zone is one row.
+ */
+@Composable
+private fun ZoneListCard(
     exclude: Boolean,
-    sectionOn: Boolean,
+    zones: List<EditableZone>,
+    listOn: Boolean,
     farLimitKm: Double,
     error: String?,
     warming: List<GeoPoint>?,
+    onListOn: (Boolean) -> Unit,
+    onAdd: () -> Unit,
     onToggle: (Int, Boolean) -> Unit,
     onWarm: (Int) -> Unit,
     onShowMap: (Int) -> Unit,
@@ -376,32 +404,50 @@ private fun ZoneSection(
     onEdit: (Int) -> Unit,
     onDelete: (Int) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f).semantics { heading() })
-            Text(
-                if (sectionOn) stringResource(R.string.zp_on) else stringResource(R.string.zp_off),
-                style = MaterialTheme.typography.labelMedium,
-                color = if (sectionOn) (if (exclude) ExcludeColor else IncludeColor) else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+    val accent = if (exclude) ExcludeColor else IncludeColor
+    val listTag = if (exclude) "zones-exclude" else "zones-include"
+    SabbaqCard(
+        title = stringResource(if (exclude) R.string.zone_exclude_title else R.string.zone_include_title),
+        subtitle = stringResource(if (exclude) R.string.zone_exclude_sub else R.string.zone_include_sub),
+        icon = if (exclude) Icons.Outlined.Block else Icons.Outlined.Place,
+        modifier = Modifier.testTag("$listTag-card"),
+    ) {
+        if (zones.isNotEmpty()) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(Modifier.size(10.dp).clip(CircleShape).background(if (listOn) accent else MaterialTheme.colorScheme.outline))
+                Text(stringResource(if (listOn) R.string.zp_list_on else R.string.zp_list_off), style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.weight(1f))
+                Switch(checked = listOn, onCheckedChange = onListOn, modifier = Modifier.testTag("$listTag-switch"))
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         }
         if (error != null) Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         if (zones.isEmpty()) {
-            Text(stringResource(R.string.zone_none), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(if (exclude) R.string.zp_empty_exclude else R.string.zp_empty_include),
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         zones.forEachIndexed { i, zone ->
-            ZoneCard(zone, exclude, distanceKm(zone)?.takeIf { it > farLimitKm }, warming == zone.points,
+            if (i > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            ZoneRow(zone, accent, listOn, distanceKm(zone)?.takeIf { it > farLimitKm }, warming == zone.points,
                 { onToggle(i, it) }, { onWarm(i) }, { onShowMap(i) }, { onNames(i) }, { onEdit(i) }, { onDelete(i) },
                 tag = (if (exclude) "zone-exclude-" else "zone-include-") + i)
         }
+        SabbaqButton(
+            stringResource(if (exclude) R.string.zp_add_exclude else R.string.zp_add_include),
+            onClick = onAdd,
+            style = SabbaqButtonStyle.Secondary,
+            icon = Icons.Outlined.Add,
+            modifier = Modifier.testTag("$listTag-add"),
+        )
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+/** One zone: its colour, name and state, its switch, and its other actions in one menu. */
 @Composable
-private fun ZoneCard(
+private fun ZoneRow(
     zone: EditableZone,
-    exclude: Boolean,
+    accent: Color,
+    listOn: Boolean,
     farKm: Double?,
     warmingNow: Boolean,
     onToggle: (Boolean) -> Unit,
@@ -412,104 +458,78 @@ private fun ZoneCard(
     onDelete: () -> Unit,
     tag: String,
 ) {
-    val accent = if (exclude) ExcludeColor else IncludeColor
-    Surface(
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.surface,
-        border = androidx.compose.foundation.BorderStroke(1.dp, if (zone.active) accent.copy(alpha = 0.6f) else MaterialTheme.colorScheme.outlineVariant),
-        modifier = Modifier.fillMaxWidth().testTag(tag),
-    ) {
-        Column(Modifier.padding(start = 14.dp, end = 8.dp, top = 10.dp, bottom = 4.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Box(Modifier.size(12.dp).clip(CircleShape).background(if (zone.active) accent else MaterialTheme.colorScheme.outline))
-                Column(Modifier.weight(1f)) {
-                    Text(zone.name.ifBlank { stringResource(R.string.zp_unnamed) }, style = MaterialTheme.typography.titleSmall,
-                        maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    Text(
-                        stringResource(if (exclude) R.string.zp_kind_exclude else R.string.zp_kind_include) + " · " + ArabicCount.points(zone.points.size),
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    if (farKm != null) Text(stringResource(R.string.zp_far, farKm.toInt()), style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error)
-                    if (warmingNow) Text(stringResource(R.string.zp_warming, zone.name), style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary)
-                    else if (zone.pending) Text(stringResource(R.string.zp_pending), style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("$tag-pending"))
+    var menu by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth().testTag(tag)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.heightIn(min = 52.dp)) {
+            Box(Modifier.size(12.dp).clip(CircleShape).background(if (zone.active && listOn) accent else MaterialTheme.colorScheme.outline))
+            Column(Modifier.weight(1f)) {
+                Text(zone.name.ifBlank { stringResource(R.string.zp_unnamed) }, style = MaterialTheme.typography.titleSmall,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+                val state = when {
+                    warmingNow -> stringResource(R.string.zp_state_preparing)
+                    zone.pending -> stringResource(R.string.zp_pending)
+                    farKm != null -> stringResource(R.string.zp_far, farKm.toInt())
+                    zone.active -> stringResource(R.string.zp_state_on)
+                    else -> stringResource(R.string.zp_state_off)
                 }
-                Switch(checked = zone.active, onCheckedChange = onToggle, enabled = !warmingNow, modifier = Modifier.testTag("$tag-switch"))
+                Text(state, style = MaterialTheme.typography.bodySmall,
+                    color = if (zone.pending || farKm != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = if (zone.pending) Modifier.testTag("$tag-pending") else Modifier)
             }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End), modifier = Modifier.fillMaxWidth()) {
-                if (zone.pending && !warmingNow) TextButton(onClick = onWarm, modifier = Modifier.testTag("$tag-warm")) {
-                    Text(stringResource(R.string.zp_warm_now))
+            Switch(checked = zone.active, onCheckedChange = onToggle, enabled = !warmingNow, modifier = Modifier.testTag("$tag-switch"))
+            Box {
+                IconButton(onClick = { menu = true }, modifier = Modifier.testTag("$tag-menu")) {
+                    Icon(Icons.Outlined.MoreVert, contentDescription = stringResource(R.string.zp_zone_actions))
                 }
-                TextButton(onClick = onShowMap, modifier = Modifier.testTag("$tag-map")) {
-                    Icon(Icons.Outlined.Place, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Text(" " + stringResource(R.string.zp_show_map))
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    DropdownMenuItem(text = { Text(stringResource(R.string.zp_show_map)) },
+                        leadingIcon = { Icon(Icons.Outlined.Map, contentDescription = null) },
+                        onClick = { menu = false; onShowMap() }, modifier = Modifier.testTag("$tag-map"))
+                    DropdownMenuItem(text = { Text(stringResource(R.string.zp_edit)) },
+                        leadingIcon = { Icon(Icons.Outlined.Edit, contentDescription = null) },
+                        onClick = { menu = false; onEdit() }, modifier = Modifier.testTag("$tag-edit"))
+                    DropdownMenuItem(text = { Text(stringResource(R.string.zp_suggest_words)) },
+                        leadingIcon = { Icon(Icons.Outlined.TextFields, contentDescription = null) },
+                        onClick = { menu = false; onNames() }, modifier = Modifier.testTag("$tag-names"))
+                    DropdownMenuItem(text = { Text(stringResource(R.string.zone_delete), color = MaterialTheme.colorScheme.error) },
+                        leadingIcon = { Icon(Icons.Outlined.DeleteOutline, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+                        onClick = { menu = false; onDelete() }, modifier = Modifier.testTag("$tag-delete"))
                 }
-                TextButton(onClick = onNames, modifier = Modifier.testTag("$tag-names")) { Text(stringResource(R.string.zp_suggest_words)) }
-                TextButton(onClick = onEdit, modifier = Modifier.testTag("$tag-edit")) {
-                    Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Text(" " + stringResource(R.string.zp_edit))
-                }
-                TextButton(onClick = onDelete, modifier = Modifier.testTag("$tag-delete")) {
-                    Icon(Icons.Outlined.DeleteOutline, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error)
-                    Text(" " + stringResource(R.string.zone_delete), color = MaterialTheme.colorScheme.error)
-                }
+            }
+        }
+        if (zone.pending && !warmingNow) {
+            TextButton(onClick = onWarm, modifier = Modifier.align(Alignment.End).testTag("$tag-warm")) {
+                Text(stringResource(R.string.zp_warm_now))
             }
         }
     }
 }
 
 /**
- * «شروط القيادة» on the dashboard, under «قنص الطلبات بدون وجهة»: the reference's destination
- * zones card. Both lists' switches and every zone by name with its own switch, and the button to
- * the zones page.
+ * «الأماكن والمناطق» on «طلبات تناسبك»: one summary line of the two lists and the button to the
+ * zones page, where they are drawn and switched.
  */
 @Composable
-internal fun DashboardZonesBlock(draft: FilterDraft, onDraftChange: (FilterDraft) -> Unit, onOpenZones: () -> Unit) {
+internal fun ZonesSummary(draft: FilterDraft, onOpenZones: () -> Unit) {
     val include = draft.zones(exclude = false)
     val exclude = draft.zones(exclude = true)
-    val maxActive = ZonePolicyRepository.policy.collectAsState().value.maxActiveZones
-    var limitHit by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp).testTag("quick-zones"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(stringResource(R.string.zone_group_title), style = MaterialTheme.typography.titleSmall)
-        SwitchLine(stringResource(R.string.zone_include_title), draft.zonesEnabled, "quick-zones-include") { on ->
-            onDraftChange(draft.copy(zonesEnabled = on))
-            if (on && include.isEmpty()) onOpenZones()
-        }
-        SwitchLine(stringResource(R.string.zone_exclude_title), draft.excludeZonesEnabled, "quick-zones-exclude") { on ->
-            onDraftChange(draft.copy(excludeZonesEnabled = on))
-            if (on && exclude.isEmpty()) onOpenZones()
-        }
-        if (include.isEmpty() && exclude.isEmpty()) {
-            Text(stringResource(R.string.zone_none), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        (include.mapIndexed { i, z -> Triple(false, i, z) } + exclude.mapIndexed { i, z -> Triple(true, i, z) }).forEach { (isExclude, i, zone) ->
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp)) {
-                val on = zone.active && (if (isExclude) draft.excludeZonesEnabled else draft.zonesEnabled)
-                Box(Modifier.size(10.dp).clip(CircleShape).background(if (on) (if (isExclude) ExcludeColor else IncludeColor) else MaterialTheme.colorScheme.outline))
-                Text(zone.name.ifBlank { stringResource(R.string.zp_unnamed) }, style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                Switch(checked = zone.active, onCheckedChange = { active ->
-                    when {
-                        active && zone.pending -> onOpenZones()
-                        active && !ZoneLimit.canActivate(ZoneLimit.activeCount(draft.zonesJson, draft.excludeZonesJson), maxActive) -> limitHit = true
-                        else -> {
-                            limitHit = false
-                            val list = (if (isExclude) exclude else include).toMutableList().also { it[i] = it[i].copy(active = active) }
-                            onDraftChange(draft.withZones(isExclude, list))
-                        }
-                    }
-                }, modifier = Modifier.testTag((if (isExclude) "quick-zone-exclude-" else "quick-zone-include-") + i))
-            }
-        }
-        if (limitHit) Text(stringResource(R.string.zp_limit, maxActive), style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.error)
-        TextButton(onClick = onOpenZones, modifier = Modifier.testTag("quick-zones-open")) {
-            Icon(Icons.Outlined.Place, contentDescription = null, modifier = Modifier.size(18.dp))
-            Text(" " + stringResource(R.string.zp_my_zones))
-        }
+    val goOn = if (draft.zonesEnabled) include.count { it.active } else 0
+    val avoidOn = if (draft.excludeZonesEnabled) exclude.count { it.active } else 0
+    Column(Modifier.fillMaxWidth().testTag("zones-summary"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            if (include.isEmpty() && exclude.isEmpty()) stringResource(R.string.zp_summary_none)
+            else stringResource(R.string.zp_summary_counts, goOn, avoidOn),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        SabbaqButton(
+            stringResource(R.string.zp_manage),
+            onClick = onOpenZones,
+            style = SabbaqButtonStyle.Secondary,
+            icon = Icons.Outlined.Place,
+            modifier = Modifier.testTag("zones-open"),
+        )
     }
 }
 
@@ -524,16 +544,21 @@ internal fun ZoneEditorDialog(
     initialExclude: Boolean,
     onDismiss: () -> Unit,
     onSave: (EditableZone, exclude: Boolean) -> Unit,
+    initialQuery: String = "",
+    /** The administration's shared zones are always exclusions: no kind to choose. */
+    kindChoice: Boolean = true,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var name by remember { mutableStateOf(initial?.name.orEmpty()) }
-    var exclude by remember { mutableStateOf(initialExclude) }
-    val points = remember { mutableStateListOf<GeoPoint>().apply { initial?.points?.let(::addAll) } }
+    var name by rememberSaveable { mutableStateOf(initial?.name.orEmpty()) }
+    var exclude by rememberSaveable { mutableStateOf(initialExclude) }
+    val points = rememberSaveable(saver = PointsSaver) { mutableStateListOf<GeoPoint>().apply { initial?.points?.let(::addAll) } }
     var error by remember { mutableStateOf<String?>(null) }
-    var query by remember { mutableStateOf("") }
+    var query by remember { mutableStateOf(initialQuery) }
     var suggestions by remember { mutableStateOf<List<CityPlace>>(emptyList()) }
     var searching by remember { mutableStateOf(false) }
+    // The last finished search found nothing: said under the field, never an empty silence.
+    var nothingFound by remember { mutableStateOf(false) }
     var picked by remember { mutableStateOf<CityPlace?>(null) }
     var here by remember { mutableStateOf<GeoPoint?>(null) }
     var busy by remember { mutableStateOf(false) }
@@ -589,16 +614,21 @@ internal fun ZoneEditorDialog(
     }
     // Type-ahead: the downloaded city answers at once; Photon is asked after a short pause.
     LaunchedEffect(query) {
+        nothingFound = false
         val q = query.trim()
-        if (q.length < 2 || q == picked?.name) { suggestions = emptyList(); return@LaunchedEffect }
+        if (q.length < 2 || q == picked?.name) { suggestions = emptyList(); searching = false; return@LaunchedEffect }
         val local = CityIndexStore.suggestLocal(q)
         suggestions = local
-        if (q.length >= 3 && local.size < 5) {
+        if (local.size < 5) {
             delay(450L)
             searching = true
-            val remote = CityIndexStore.suggestRemote(q)
-            searching = false
-            suggestions = (local + remote).distinctBy { DecisionEngine.fold(it.names.last()) }.take(8)
+            try {
+                val remote = CityIndexStore.suggestRemote(q)
+                suggestions = (local + remote).distinctBy { DecisionEngine.fold(it.names.last()) }.take(8)
+                nothingFound = suggestions.isEmpty()
+            } finally {
+                searching = false
+            }
         }
     }
 
@@ -641,7 +671,7 @@ internal fun ZoneEditorDialog(
                             }) { Text(stringResource(R.string.zp_suggest_name)) }
                         },
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (kindChoice) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         FilterChip(selected = !exclude, onClick = { exclude = false; redraw() }, label = { Text(stringResource(R.string.zp_kind_include)) },
                             modifier = Modifier.weight(1f).testTag("zone-kind-include"))
                         FilterChip(selected = exclude, onClick = { exclude = true; redraw() }, label = { Text(stringResource(R.string.zp_kind_exclude)) },
@@ -656,7 +686,14 @@ internal fun ZoneEditorDialog(
                                 Icon(Icons.Outlined.Close, contentDescription = stringResource(R.string.zp_clear))
                             }
                         },
-                        supportingText = if (searching) {{ Text(stringResource(R.string.zp_searching)) }} else null,
+                        // Always present, so the field (and the map under it) never changes height mid-search.
+                        supportingText = {
+                            when {
+                                searching -> Text(stringResource(R.string.zp_searching))
+                                nothingFound -> Text(stringResource(R.string.zp_search_none), modifier = Modifier.testTag("zone-search-none"))
+                                else -> Text("")
+                            }
+                        },
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                         keyboardActions = KeyboardActions(onSearch = {
                             suggestions.firstOrNull()?.let { pick(it); return@KeyboardActions }
@@ -736,6 +773,15 @@ internal fun ZoneEditorDialog(
                 }
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     SabbaqMap(map, Modifier.fillMaxSize().testTag("zone-map"))
+                    if (map.loadFailed) {
+                        Surface(color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f), shape = MaterialTheme.shapes.medium,
+                            modifier = Modifier.align(Alignment.Center).padding(24.dp)) {
+                            Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(stringResource(R.string.zp_map_failed), style = MaterialTheme.typography.bodyMedium)
+                                TextButton(onClick = { map.loadStyle(context) }) { Text(stringResource(R.string.zp_map_retry)) }
+                            }
+                        }
+                    }
                 }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }
                 Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {

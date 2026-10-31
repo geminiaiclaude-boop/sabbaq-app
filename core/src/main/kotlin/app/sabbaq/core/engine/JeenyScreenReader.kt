@@ -70,6 +70,8 @@ class JeenyScreenReader(private val config: EngineConfig, private val uptimeMs: 
         private set
 
     private val lex = config.lexicon()
+    private val learnedIds: Set<String> = config.acceptViewIdsExtra.split(',').map { it.trim().lowercase() }
+        .filter(app.sabbaq.core.SharedLexicon::validId).toSet()
 
     /** Learned-id shortcut (`Pk.dispatch`): three lookups instead of a tree walk. */
     fun readByLearnedIds(root: UiNode, ids: LearnedOfferIds): ParsedRide? {
@@ -93,8 +95,10 @@ class JeenyScreenReader(private val config: EngineConfig, private val uptimeMs: 
         } ?: return null
         val price = runCatching { root.findByViewId(ids.priceId) }.getOrDefault(emptyList()).firstNotNullOfOrNull { node ->
             val m = JeenyLexicon.PRICE.matcher(JeenyLexicon.latinDigits(labelOf(node).trim()))
-            if (m.find()) (m.group(1)?.takeIf { it.isNotBlank() } ?: m.group(2))?.replace('٫', '.')?.toDoubleOrNull() else null
-        } ?: return null
+            if (m.find()) JeenyLexicon.amount(m.group(1)?.takeIf { it.isNotBlank() } ?: m.group(2)) else null
+        }
+        // Without a price bound the price is not needed to decide; with one, the full read finds it.
+        if (price == null && config.priceFilterOn) return null
         return ParsedRide(
             price = price, minutes = minutes, acceptNode = accept, addressAmbiguous = true,
             clickX = cx, clickY = cy, acceptViewId = ids.acceptId, priceViewId = ids.priceId,
@@ -149,6 +153,7 @@ class JeenyScreenReader(private val config: EngineConfig, private val uptimeMs: 
         var clickX = 0
         var clickY = 0
         var acceptViewId: String? = null
+        var learnedAccept: UiNode? = null
         var priceViewId: String? = null
         var timeViewId: String? = null
         val addresses = LinkedHashSet<String>()
@@ -219,7 +224,7 @@ class JeenyScreenReader(private val config: EngineConfig, private val uptimeMs: 
                 if (price == null && !isTimeNode && !disabled) {
                     if (!currencySeen && !lex.currency.found(norm) && '$' !in norm) {
                         if (norm.length < 10 && norm.any { it in '0'..'9' }) {
-                            val digits = JeenyLexicon.NON_NUMBER.matcher(norm).replaceAll("").replace(",", ".").replace("٫", ".")
+                            val digits = (JeenyLexicon.firstNumber(norm)?.replace(",", ".")?.replace("٫", ".") ?: "")
                             val value = digits.toDoubleOrNull()
                             val decimals = digits.substringAfter('.', "").length
                             if (value != null && value in 0.5..500.0 &&
@@ -238,11 +243,11 @@ class JeenyScreenReader(private val config: EngineConfig, private val uptimeMs: 
                         val m = JeenyLexicon.PRICE.matcher(norm)
                         if (m.find() && node.bounds().top > priceFloor) {
                             val number = m.group(1)?.takeIf { it.isNotBlank() } ?: m.group(2)
-                            price = number?.replace("٫", ".")?.toDoubleOrNull()
+                            price = JeenyLexicon.amount(number)
                             if (price != null) priceViewId = node.viewIdSafe()
                         }
                         if (price == null) {
-                            val digits = JeenyLexicon.NON_NUMBER.matcher(norm).replaceAll("").replace(",", ".").replace("٫", ".")
+                            val digits = (JeenyLexicon.firstNumber(norm)?.replace(",", ".")?.replace("٫", ".") ?: "")
                             val value = digits.toDoubleOrNull()
                             if (value != null && value > 0.0 && node.bounds().top > priceFloor) {
                                 val hasCurrency = lex.currency.found(norm)
@@ -277,6 +282,10 @@ class JeenyScreenReader(private val config: EngineConfig, private val uptimeMs: 
                     }
                 }
                 if (isReject && reject == null) reject = node
+                // A button the fleet confirmed by its id, kept for when no accept word is on screen.
+                if (learnedAccept == null && !isReject && !disabled && learnedIds.isNotEmpty() && node.isClickable &&
+                    node.viewIdSafe()?.substringAfter(":id/")?.lowercase() in learnedIds
+                ) learnedAccept = node
 
                 if (!isReject && !disabled && isAccept) {
                     var target = node
@@ -312,6 +321,11 @@ class JeenyScreenReader(private val config: EngineConfig, private val uptimeMs: 
         if (online) { lastMiss = "online_screen"; lastMissDetail = "n=$visited"; return null }
 
         val hasAnyPrice = price != null || fallbackPrice != null
+        if (accept == null && hasAnyPrice && minutes != null) learnedAccept?.let { node ->
+            val b = node.bounds()
+            accept = node; clickX = b.centerX; clickY = b.centerY
+            acceptViewId = node.viewIdSafe(); acceptWord = LEARNED_ACCEPT_ID
+        }
         if (accept == null && reject != null && hasAnyPrice && minutes != null && addresses.isNotEmpty()) {
             findBesideReject(root, reject)?.let { (node, x, y) ->
                 accept = node; clickX = x; clickY = y
@@ -399,6 +413,8 @@ class JeenyScreenReader(private val config: EngineConfig, private val uptimeMs: 
     }
 
     companion object {
+        /** [ParsedRide.acceptWord] when the button was found by a fleet-learned id, not by a word. */
+        const val LEARNED_ACCEPT_ID = -2
         /** Text, or the description when the node has no text at all (`Pk.dispatch`). */
         fun labelOf(node: UiNode): String = node.text ?: node.description.orEmpty()
     }

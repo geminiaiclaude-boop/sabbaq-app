@@ -16,6 +16,8 @@ import androidx.compose.material.icons.outlined.Redeem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.Icon
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -44,23 +46,6 @@ import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.launch
 
 /** Optional invite code on the sign-in screen; it is attached right after the account exists. */
-@Composable
-internal fun ReferralCodeField(enabled: Boolean) {
-    var code by rememberSaveable { mutableStateOf(Settings.pendingReferralCode.orEmpty()) }
-    OutlinedTextField(
-        value = code,
-        onValueChange = { raw ->
-            code = raw.uppercase().filter { it.isLetterOrDigit() || it == '-' }.take(20)
-            Settings.pendingReferralCode = code.takeIf { it.length >= 4 }
-        },
-        enabled = enabled,
-        singleLine = true,
-        label = { Text(stringResource(R.string.ref_code_optional)) },
-        placeholder = { Text("SB-7K9M2X4P") },
-        modifier = Modifier.fillMaxWidth().testTag("login-referral-code"),
-    )
-}
-
 /**
  * «الإحالات والمكافآت»: the driver's own code with copy and WhatsApp share, the totals, entering
  * a colleague's code while allowed, and the drivers who used the code with their state.
@@ -177,7 +162,7 @@ private fun openWhatsApp(context: Context, phone: String?, text: String) {
 @Composable
 private fun claimOutcomeText(code: String?): String? = code?.let { claimOutcomeTextFor(LocalContext.current, it) }
 
-private fun claimOutcomeTextFor(context: Context, code: String?): String = context.getString(when (code) {
+internal fun claimOutcomeTextFor(context: Context, code: String?): String = context.getString(when (code) {
     "ok" -> R.string.ref_claim_ok
     "referrals_paused" -> R.string.ref_claim_paused
     "self_referral" -> R.string.ref_claim_self

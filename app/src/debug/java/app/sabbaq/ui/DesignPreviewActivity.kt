@@ -36,6 +36,16 @@ class DesignPreviewActivity : ComponentActivity() {
                 hide(WindowInsetsCompat.Type.systemBars())
             }
         }
+        if (screen == "zones" || screen == "zone-editor") {
+            setContent {
+                SabbaqTheme(darkTheme = dark) {
+                    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                        ZonesPreview(editor = screen == "zone-editor")
+                    }
+                }
+            }
+            return
+        }
         val destination = when (screen) {
             "history" -> DriverDestination.History
             "decision-log" -> DriverDestination.Dashboard

@@ -18,6 +18,31 @@ class ConditionsDraftTest {
     }
 
     @Test
+    fun nothing_is_on_at_first_install_and_entering_a_limit_switches_only_its_condition_on() {
+        val fresh = FilterDraft()
+        assertFalse(fresh.priceEnabled); assertFalse(fresh.timeEnabled); assertFalse(fresh.destCheckEnabled)
+        assertFalse(fresh.zonesEnabled); assertFalse(fresh.excludeZonesEnabled); assertFalse(fresh.zonesRejectOnUnknown)
+        assertFalse(fresh.validate().config!!.anyFilterActive)
+        val price = fresh.withPriceLimits(min = "25")
+        assertTrue(price.priceEnabled); assertFalse(price.timeEnabled)
+        assertTrue(fresh.withTimeLimits(max = "6").timeEnabled)
+        // Clearing a limit leaves the switch where the driver put it.
+        assertTrue(price.withPriceLimits(min = "").priceEnabled)
+        assertFalse(price.copy(priceEnabled = false).withPriceLimits(min = "").priceEnabled)
+    }
+
+    @Test
+    fun start_needs_a_condition_the_driver_set() {
+        assertFalse(FilterDraft.canStartWith(EngineConfig()))
+        // A switch with nothing to check is not a condition.
+        assertFalse(FilterDraft.canStartWith(EngineConfig(priceEnabled = true)))
+        assertFalse(FilterDraft.canStartWith(EngineConfig(destCheckEnabled = true)))
+        assertTrue(FilterDraft.canStartWith(EngineConfig(priceEnabled = true, minPrice = 20.0)))
+        assertTrue(FilterDraft.canStartWith(EngineConfig(timeEnabled = true, maxTime = 6)))
+        assertTrue(FilterDraft.canStartWith(EngineConfig(destCheckEnabled = true, destKeywords = "العليا")))
+    }
+
+    @Test
     fun limits_and_modes_round_trip() {
         val config = EngineConfig(
             minPrice = 12.5, maxPrice = 80.0, minTime = 2, maxTime = 9, logicMode = LogicMode.OR,

@@ -52,7 +52,7 @@ class FullCycleTest {
 
     @Test
     fun jeeny_offer_outside_the_price_range_is_rejected_once_and_never_tapped() {
-        val config = EngineConfig(minPrice = 30.0)
+        val config = EngineConfig(priceEnabled = true, minPrice = 30.0)
         val first = frame(RideApp.JEENY, jeenyOffer("25.50 ر.س", jeenyAccept()), config)
         assertTrue(first is FlowAction.Rejected && first.firstTimeForThisOffer)
         assertEquals("failed_price", (first as FlowAction.Rejected).decision.reason)

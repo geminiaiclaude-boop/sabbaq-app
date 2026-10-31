@@ -16,7 +16,8 @@ class TurboTest {
     @Test
     fun instant_turbo_needs_saved_point_and_no_active_filter() {
         assertTrue(turbo.instantTurbo)
-        assertFalse("price check on by default blocks it", turbo.copy(priceEnabled = true).instantTurbo)
+        assertFalse("a price check with a bound blocks it", turbo.copy(priceEnabled = true, minPrice = 10.0).instantTurbo)
+        assertTrue("a price check without a bound checks nothing (rule 5)", turbo.copy(priceEnabled = true).instantTurbo)
         assertFalse(turbo.copy(clickX = null).instantTurbo)
         assertFalse(turbo.copy(snipingNoDest = false).instantTurbo)
     }

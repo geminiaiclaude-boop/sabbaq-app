@@ -106,10 +106,10 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit, initialIntent: AccessIntent =
     val otpFocus = remember { FocusRequester() }
 
     // حالة تركيب عابرة فقط: الجوال والرمز لا ينجوان من إعادة إنشاء العملية.
-    var phone by remember { mutableStateOf("") }
-    var otp by remember { mutableStateOf("") }
-    var otpRequested by remember { mutableStateOf(false) }
-    var otpCooldownEndsAt by remember { mutableStateOf(0L) }
+    var phone by rememberSaveable { mutableStateOf("") }
+    var otp by rememberSaveable { mutableStateOf("") }
+    var otpRequested by rememberSaveable { mutableStateOf(false) }
+    var otpCooldownEndsAt by rememberSaveable { mutableStateOf(0L) }
     var otpCooldownSeconds by remember { mutableStateOf(0) }
     var phoneValidationRequested by remember { mutableStateOf(false) }
     var otpValidationRequested by remember { mutableStateOf(false) }
@@ -127,7 +127,7 @@ fun LoginScreen(onLoginSuccess: (Boolean) -> Unit, initialIntent: AccessIntent =
         SupabaseClient.fetchAuthProviders().onSuccess { phoneAvailable = it.phone }
     }
     var isAdmin by remember { mutableStateOf(false) }
-    var activationCode by remember { mutableStateOf("") }
+    var activationCode by rememberSaveable { mutableStateOf("") }
     var activationValidationRequested by remember { mutableStateOf(false) }
     var activationError by remember { mutableStateOf<String?>(null) }
     // The driver's choice before signing in (trial / subscribe / existing subscription).
@@ -714,7 +714,6 @@ private fun AuthenticationCard(
         subtitle = stringResource(R.string.login_card_subtitle),
         icon = Icons.Outlined.Login
     ) {
-        ReferralCodeField(enabled = !isBusy)
         SabbaqButton(
             text = stringResource(R.string.login_continue_google),
             onClick = onGoogle,
@@ -1039,17 +1038,20 @@ private fun googleErrorMessage(context: Context, error: Throwable?): String {
     return context.getString(R.string.login_err_google_unknown)
 }
 
+/** A message already written for the driver, carrying its support code («… [OTP-EXPIRED]»), is shown as is. */
+private fun codedMessage(error: Throwable?): String? = error?.message?.takeIf { Regex("""\[[A-Z0-9-]{3,24}]""").containsMatchIn(it) }
+
 private fun otpRequestErrorMessage(context: Context, error: Throwable?): String = when (error?.message) {
     "تم تجاوز حد المحاولات؛ يرجى الانتظار" -> context.getString(R.string.login_err_otp_rate)
     "أدخل رقم جوال سعودي بصيغة +9665XXXXXXXX" -> context.getString(R.string.login_err_phone_invalid)
-    else -> context.getString(R.string.login_err_otp_send)
+    else -> codedMessage(error) ?: context.getString(R.string.login_err_otp_send)
 }
 
 private fun otpVerificationErrorMessage(context: Context, error: Throwable?): String = when (error?.message) {
     "رمز التحقق يجب أن يتكون من 6 أرقام" -> context.getString(R.string.login_err_otp_six)
     "اطلب رمز تحقق جديدًا قبل التحقق" -> context.getString(R.string.login_err_otp_request_first)
     "تم تجاوز حد المحاولات؛ يرجى الانتظار" -> context.getString(R.string.login_err_otp_rate_new)
-    else -> context.getString(R.string.login_err_otp_verify)
+    else -> codedMessage(error) ?: context.getString(R.string.login_err_otp_verify)
 }
 
 private fun licenseErrorMessage(context: Context, error: Throwable?): String = when (error?.message) {
@@ -1058,7 +1060,7 @@ private fun licenseErrorMessage(context: Context, error: Throwable?): String = w
     "حساب السائق غير مكتمل؛ أعد تسجيل الدخول أو تواصل مع الإدارة" -> context.getString(R.string.login_err_incomplete_relogin)
     "حساب السائق غير مكتمل؛ تواصل مع الإدارة" -> context.getString(R.string.login_err_incomplete_admin)
     "يلزم تحديث التطبيق قبل استخدام الخدمة" -> context.getString(R.string.login_err_update_required)
-    else -> context.getString(R.string.login_err_license_generic)
+    else -> codedMessage(error) ?: context.getString(R.string.login_err_license_generic)
 }
 
 private fun trialErrorMessage(context: Context, error: Throwable?): String = when (error?.message) {

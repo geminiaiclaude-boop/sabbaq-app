@@ -104,7 +104,7 @@ object CityIndexStore {
      */
     suspend fun suggestRemote(text: String, limit: Int = 6): List<CityPlace> = withContext(Dispatchers.IO) {
         val q = text.trim()
-        if (q.length < 3) return@withContext emptyList()
+        if (q.length < 2) return@withContext emptyList()
         val box = _city.value?.box
         val near = ZoneStore.driverLocation()
         val url = buildString {

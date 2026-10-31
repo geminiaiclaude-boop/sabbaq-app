@@ -50,6 +50,8 @@ for l in "${LIBS[@]}"; do CPW="$CPW;$(cygpath -m "$l")"; done
 # core and app are separate Gradle modules: compile core first, then app against its classes,
 # so cross-module rules (no smart cast on another module's public property) fail here as in CI.
 CORE_OUT=$(mktemp -d)
+# Temp dirs go away on exit, except when app_unit_test.sh reuses the classes and libraries (EMIT_PATHS).
+[ -n "${EMIT_PATHS:-}" ] || trap 'rm -rf "$T" "$OUT" "$CORE_OUT"' EXIT
 ARGS="$T/core-args.txt"
 {
   echo "-no-stdlib"; echo "-no-reflect"; echo "-jvm-target"; echo "17"; echo "-module-name"; echo "core"

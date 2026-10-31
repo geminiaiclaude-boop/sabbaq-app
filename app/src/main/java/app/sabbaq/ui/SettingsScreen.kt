@@ -197,7 +197,7 @@ private val driverDestinations = listOf(
     DriverNavItem(DriverDestination.History, R.string.nav_history, Icons.Outlined.Info),
 )
 
-// Four tabs on phones; «تجربة الطلب» and «سجل القرارات» stay one tap away in the drawer and
+// Four tabs on phones; «تجربة الطلب» and «النشاط والتشخيص» stay one tap away in the drawer and
 // in «الإعدادات ← المزيد».
 private val bottomDriverDestinations = driverDestinations.filter {
     it.destination in setOf(DriverDestination.Dashboard, DriverDestination.Filters, DriverDestination.Settings, DriverDestination.Account)
@@ -261,6 +261,7 @@ fun SettingsScreen(
     var accessibilityEnabled by remember(context) { mutableStateOf(context.isSabbaqAccessibilityEnabled()) }
     var notificationsEnabled by remember(context) { mutableStateOf(context.hasNotificationPermission()) }
     var batteryUnrestricted by remember(context) { mutableStateOf(PowerSetup.isBatteryUnrestricted(context)) }
+    var hibernationOff by remember(context) { mutableStateOf(!app.sabbaq.fleet.KeepAlive.hibernationOn(context)) }
     var autostartDone by remember { mutableStateOf(!PowerSetup.needsAutostart() || Settings.autostartConfirmed) }
     var licenseInMemory by remember { mutableStateOf(SupabaseClient.hasValidLicense()) }
     var subscriptionSnapshot by remember { mutableStateOf(SupabaseClient.subscriptionSnapshot()) }
@@ -319,6 +320,7 @@ fun SettingsScreen(
         accessibilityEnabled = a11y
         notificationsEnabled = notifications
         batteryUnrestricted = PowerSetup.isBatteryUnrestricted(context)
+        hibernationOff = !app.sabbaq.fleet.KeepAlive.hibernationOn(context)
         autostartDone = !PowerSetup.needsAutostart() || Settings.autostartConfirmed
         licenseInMemory = licensed
         subscriptionSnapshot = SupabaseClient.subscriptionSnapshot()
@@ -440,7 +442,7 @@ fun SettingsScreen(
     }
 
     fun requestActivation() {
-        if (checkingActivation || isSavingFilters || isActive) return
+        if (checkingActivation || isActive) return
         if (isRestoringSession || sessionRestoreError) {
             runtimeMessage = DriverStatus(
                 if (isRestoringSession) context.getString(R.string.ss_restoring_session_wait)
@@ -449,12 +451,17 @@ fun SettingsScreen(
             )
             return
         }
-        if (filtersDirty) {
+        if (!draftValidation.isValid) {
+            runtimeMessage = DriverStatus(context.getString(R.string.ss_fix_conditions_before_start), isError = true)
+            return
+        }
+        if (filtersDirty || isSavingFilters) {
             runtimeMessage = DriverStatus(context.getString(R.string.ss_autosave_wait), isError = true)
             return
         }
-        if (!draftValidation.isValid) {
-            runtimeMessage = DriverStatus(context.getString(R.string.ss_fix_conditions_before_start), isError = true)
+        if (!FilterDraft.canStartWith(savedFilters)) {
+            navigateTo(DriverDestination.Filters)
+            filtersMessage = DriverStatus(context.getString(R.string.ss_set_one_condition), isError = true)
             return
         }
         refreshRuntimePrerequisites()
@@ -493,7 +500,7 @@ fun SettingsScreen(
     fun confirmActivation() {
         showActivationConsent = false
         refreshRuntimePrerequisites()
-        if (filtersDirty || isSavingFilters || !accessibilityEnabled || !notificationsEnabled ||
+        if (filtersDirty || isSavingFilters || !FilterDraft.canStartWith(savedFilters) || !accessibilityEnabled || !notificationsEnabled ||
             (!SupabaseClient.hasValidLicense() && Settings.subscriptionEndsAtMs <= System.currentTimeMillis())) {
             Settings.isActive = false
             isActive = false
@@ -648,10 +655,14 @@ fun SettingsScreen(
                 },
                 onRequestNotifications = onRequestNotificationPermission,
                 onOpenFilters = { navigateTo(DriverDestination.Filters) },
-                onOpenZones = { navigateTo(DriverDestination.Zones) },
                 onOpenAccount = { navigateTo(DriverDestination.Account) },
                 onOpenSetupGuide = { navigateTo(DriverDestination.Setup) },
                 batteryUnrestricted = batteryUnrestricted,
+                hibernationOff = hibernationOff,
+                onOpenHibernation = {
+                    runCatching { context.startActivity(app.sabbaq.fleet.KeepAlive.hibernationIntent(context)) }
+                        .recoverCatching { context.startActivity(PowerSetup.appDetailsIntent(context)) }
+                },
                 autostartNeeded = PowerSetup.needsAutostart(),
                 autostartDone = autostartDone,
                 onOpenBattery = {
@@ -808,7 +819,19 @@ fun SettingsScreen(
             }
 
             DriverDestination.History -> DriverPage {
-                OfferDecisionLogScreen(onBack = { navigateTo(DriverDestination.Dashboard) })
+                OfferDecisionLogScreen(
+                    onBack = ::goBack,
+                    onDiagnosisAction = { action ->
+                        when (action) {
+                            DiagnosisAction.ACCESSIBILITY -> if (onOpenA11y().isFailure) {
+                                runtimeMessage = DriverStatus(context.getString(R.string.ss_a11y_open_failed2), true)
+                            }
+                            DiagnosisAction.ACCOUNT -> navigateTo(DriverDestination.Account)
+                            DiagnosisAction.CONDITIONS -> navigateTo(DriverDestination.Filters)
+                            DiagnosisAction.NONE -> Unit
+                        }
+                    },
+                )
             }
 
             DriverDestination.Support -> SupportPage()
@@ -1082,10 +1105,11 @@ private fun DashboardPage(
     onOpenA11y: () -> Unit,
     onRequestNotifications: () -> Unit,
     onOpenFilters: () -> Unit,
-    onOpenZones: () -> Unit,
     onOpenAccount: () -> Unit,
     onOpenSetupGuide: () -> Unit,
     batteryUnrestricted: Boolean = true,
+    hibernationOff: Boolean = true,
+    onOpenHibernation: () -> Unit = {},
     autostartNeeded: Boolean = false,
     autostartDone: Boolean = true,
     onOpenBattery: () -> Unit = {},
@@ -1103,6 +1127,9 @@ private fun DashboardPage(
     val power = buildList {
         add(ReadinessItem(Icons.Outlined.BatteryChargingFull, stringResource(R.string.ss_perm_batt_title), batteryUnrestricted,
             stringResource(R.string.ss_setup_batt_done), stringResource(R.string.ss_ready_batt_why), stringResource(R.string.ss_allow), onOpenBattery))
+        // Android 11+ pauses apps it considers unused; a row here, not a separate warning card.
+        if (android.os.Build.VERSION.SDK_INT >= 30) add(ReadinessItem(Icons.Outlined.BatteryAlert, stringResource(R.string.keep_hib_t), hibernationOff,
+            stringResource(R.string.keep_hib_done), stringResource(R.string.keep_hib_b), stringResource(R.string.ss_setup_open_setting), onOpenHibernation))
         if (autostartNeeded) add(ReadinessItem(Icons.Outlined.RestartAlt, stringResource(R.string.ss_ready_autostart_title), autostartDone,
             stringResource(R.string.ss_setup_autostart_done), stringResource(R.string.ss_ready_autostart_why), stringResource(R.string.ss_setup_open_setting), onOpenAutostart))
     }
@@ -1118,7 +1145,6 @@ private fun DashboardPage(
         modifier = Modifier.sabbaqEntrance(0),
     )
     UpdateBanner()
-    KeepAliveBanner()
     OperationHero(
         isActive = isActive,
         isChecking = isCheckingActivation || isRestoringSession,
@@ -1129,20 +1155,8 @@ private fun DashboardPage(
         busyText = if (isRestoringSession) stringResource(R.string.ss_busy_restoring) else stringResource(R.string.ss_busy_verifying),
         modifier = Modifier.sabbaqEntrance(1),
     )
+    SabbaqAnimatedMessage(message?.message, message?.tone ?: SabbaqTone.Info)
     FloatingControlButton()
-    if (isActive) {
-        DiagnosisCard(
-            onAction = { action ->
-                when (action) {
-                    DiagnosisAction.ACCESSIBILITY -> onOpenA11y()
-                    DiagnosisAction.ACCOUNT -> onOpenAccount()
-                    DiagnosisAction.CONDITIONS -> onOpenFilters()
-                    DiagnosisAction.NONE -> Unit
-                }
-            },
-            modifier = Modifier.sabbaqEntrance(2),
-        )
-    }
     ActiveConditionsCockpit(
         draft = draft,
         errors = draftErrors,
@@ -1151,14 +1165,12 @@ private fun DashboardPage(
         saveMessage = filtersMessage,
         onDraftChange = onQuickDraftChange,
         onOpenFilters = onOpenFilters,
-        onOpenZones = onOpenZones,
         modifier = Modifier.sabbaqEntrance(2),
     )
-    // «حالة التشغيل الفعلية» lives in «سجل القرارات» next to the statistics.
+    // «حالة التشغيل الفعلية» lives in «النشاط والتشخيص» next to the statistics.
     TelemetryDiagnosticsCard(Modifier.sabbaqEntrance(1))
     val missing = (readiness + power).filterNot { it.ready }
     if (missing.isNotEmpty()) MissingPermissionsCard(missing, Modifier.sabbaqEntrance(1))
-    SabbaqAnimatedMessage(message?.message, message?.tone ?: SabbaqTone.Info)
 
     SabbaqCard(
         title = if (readyCount == readiness.size) stringResource(R.string.ss_card_ready_title) else stringResource(R.string.ss_card_before_start),
@@ -1206,7 +1218,7 @@ private fun DashboardPage(
             stringResource(R.string.ss_resume_after_restart_ready), "", "", {}))
     }
 
-    // Voice alerts live in «الإعدادات ← الصوت والتنبيهات»; statistics live in «سجل القرارات».
+    // Voice alerts live in «الإعدادات ← الصوت والتنبيهات»; statistics live in «النشاط والتشخيص».
     SupportedPlatformsCard(Modifier.sabbaqEntrance(5))
 
     SabbaqCard(title = stringResource(R.string.ss_card_during_work), icon = Icons.Outlined.Info, modifier = Modifier.sabbaqEntrance(6)) {
@@ -1297,7 +1309,6 @@ private fun ActiveConditionsCockpit(
     saveMessage: DriverStatus?,
     onDraftChange: (FilterDraft) -> Unit,
     onOpenFilters: () -> Unit,
-    onOpenZones: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     SabbaqCard(
@@ -1310,7 +1321,7 @@ private fun ActiveConditionsCockpit(
         icon = Icons.Outlined.Tune,
         modifier = modifier,
     ) {
-        QuickConditionsPanel(draft, errors, onDraftChange, onOpenZones)
+        QuickConditionsPanel(draft, errors, onDraftChange)
         SabbaqAnimatedMessage(saveMessage?.message, saveMessage?.tone ?: SabbaqTone.Info)
         SabbaqButton(
             stringResource(R.string.ss_conditions_more),

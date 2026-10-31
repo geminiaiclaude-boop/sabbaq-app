@@ -20,6 +20,12 @@ class FleetPoliciesTest {
     }
 
     @Test
+    fun fleet_confirmed_accept_ids_reach_the_reader_config_and_bad_ids_never_do() {
+        val merged = SharedLexicon(version = 4, acceptIds = listOf("btnaccept", "BAD ID", "a", "btnaccept", "btn_take")).applyTo(EngineConfig())
+        assertEquals("btnaccept,btn_take", merged.acceptViewIdsExtra)
+    }
+
+    @Test
     fun no_published_lexicon_leaves_the_reference_vocabulary_untouched() {
         val own = EngineConfig()
         assertSame(own, SharedLexicon().applyTo(own))

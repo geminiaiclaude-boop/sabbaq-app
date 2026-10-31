@@ -184,6 +184,10 @@ insert into auth.users (id, email, raw_app_meta_data, raw_user_meta_data)
 select ('f1ee0000-0000-0000-0000-00000000001' || n)::uuid, 'learn-' || n || '@example.test',
        '{"provider":"google","providers":["google"]}'::jsonb, '{}'::jsonb
 from generate_series(1, 3) n;
+-- Only active drivers on a trial or a subscription teach the fleet (0021, H-05).
+insert into public.drivers (id, status, trial_until)
+select ('f1ee0000-0000-0000-0000-00000000001' || n)::uuid, 'active', now() + interval '3 days' from generate_series(1, 3) n
+on conflict (id) do update set status = 'active', trial_until = excluded.trial_until;
 insert into public.screen_samples (ingested_by, provider, app_version, reason, signature, nodes)
 select ('f1ee0000-0000-0000-0000-00000000001' || n)::uuid, 'jeeny', '2.0.4', r.reason, lpad(to_hex(n * 16 + r.k), 16, 'a'), r.nodes
 from generate_series(1, 3) n, (values

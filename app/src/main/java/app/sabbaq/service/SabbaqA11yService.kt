@@ -79,19 +79,14 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
             monitoringWanted = Settings.monitoringWanted,
             disclosureAccepted = Settings.a11yDisclosureAccepted,
             subscriptionEndsAtMs = Settings.subscriptionEndsAtMs,
-            newestSeenMs = maxOf(Settings.newestSeenMs, persistedNewestSeenMs),
+            newestSeenMs = Settings.newestSeenMs,
             nowMs = System.currentTimeMillis(),
             updateRequired = FleetRepository.updateRequired(),
         )
-        if (result.newestSeenMs - persistedNewestSeenMs >= NEWEST_SEEN_WRITE_STEP_MS || result.newestSeenMs < persistedNewestSeenMs) {
-            Settings.newestSeenMs = result.newestSeenMs
-            persistedNewestSeenMs = result.newestSeenMs
-        }
+        // The gate never lowers it; only a licence answer's server time does (SupabaseClient).
+        if (result.newestSeenMs - Settings.newestSeenMs >= NEWEST_SEEN_WRITE_STEP_MS) Settings.newestSeenMs = result.newestSeenMs
         return result
     }
-
-    /** Last value written; the gate advances it on every event, the disk only once a minute. */
-    private var persistedNewestSeenMs = Settings.newestSeenMs
 
     private fun canProcess(): Boolean = gate().allowed
 
@@ -143,7 +138,7 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
         provider = ride.provider
         liveness.offerDetected(now)
         runtimeStatus.offer(now)
-        record(DiagnosticStage.OFFER_DETECTED, now, if (ride.price == null) "fare_missing" else "complete", detail = "src=$source,n=${ride.nodesVisited}")
+        record(DiagnosticStage.OFFER_DETECTED, now, if (ride.price == null) "price_missing" else "complete", detail = "src=$source,n=${ride.nodesVisited}")
         DiagnosisRepository.funnel.offer(fingerprint(ride))
         runCatching { OfferStatsStore.recordVisible(fingerprint(ride)) }
     }
@@ -413,18 +408,13 @@ class SabbaqA11yService : AccessibilityService(), EngineHost.Listener {
     }
 
     private fun playExcludeWarningTone(main: android.os.Handler) {
-        val audio = getSystemService(AUDIO_SERVICE) as? android.media.AudioManager
         val stream = android.media.AudioManager.STREAM_ALARM
-        val saved = runCatching {
-            val max = audio!!.getStreamMaxVolume(stream)
-            val current = audio.getStreamVolume(stream)
-            if (current < max) { audio.setStreamVolume(stream, max, 0); current } else null
-        }.getOrNull()
+        AlarmBoost.raise(this)
         runCatching {
             val tone = toneGenerator ?: android.media.ToneGenerator(stream, 100).also { toneGenerator = it }
             tone.startTone(EXCLUDE_TONE, 1_200)
         }
-        if (saved != null) main.postDelayed({ runCatching { audio?.setStreamVolume(stream, saved, 0) } }, 1_400L)
+        main.postDelayed({ AlarmBoost.release(this) }, 1_400L)
     }
 
     override fun onDestroy() {

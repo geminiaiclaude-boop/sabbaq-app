@@ -136,8 +136,3 @@ data class Offer(
     }
 }
 
-data class ParsedScreen(
-    val offer: Offer?,
-    val acceptNode: ScreenNode?,
-    val confirmed: Boolean,
-)

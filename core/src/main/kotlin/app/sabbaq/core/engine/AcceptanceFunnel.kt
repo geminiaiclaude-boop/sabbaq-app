@@ -51,6 +51,7 @@ class AcceptanceFunnel(private val nowMs: () -> Long) {
     /** Set by a confirmed accept or a trip screen; cleared by the next offer read. */
     private var tripSinceMs = 0L
     private var lastOfferKey: String? = null
+    private var lastOfferAtMs = 0L
 
     fun serviceConnected(connected: Boolean) = synchronized(lock) { serviceConnected = connected }
 
@@ -76,8 +77,11 @@ class AcceptanceFunnel(private val nowMs: () -> Long) {
     /** An offer was read; [key] identifies it so its repeated frames count once. */
     fun offer(key: String? = null) = synchronized(lock) {
         tripSinceMs = 0L
-        if (key != null && key == lastOfferKey) return@synchronized
+        val now = nowMs()
+        // M-03: the same key only within a card's lifetime is the same offer.
+        if (key != null && key == lastOfferKey && now - lastOfferAtMs in 0..60_000L) return@synchronized
         lastOfferKey = key
+        lastOfferAtMs = now
         add("offer")
     }
     fun rejected(reason: String) = synchronized(lock) { add("reject:$reason") }

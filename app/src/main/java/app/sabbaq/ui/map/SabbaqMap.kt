@@ -9,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
@@ -25,12 +26,16 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.maps.MapLibreMap
+import org.maplibre.android.maps.MapLibreMapOptions
 import org.maplibre.android.maps.MapView
+import org.maplibre.android.maps.Style
 import org.maplibre.android.style.sources.GeoJsonSource
 import java.io.File
 
@@ -155,9 +160,15 @@ object MapStyles {
 class SabbaqMapState(context: Context) {
     init { MapLibre.getInstance(context.applicationContext) }
 
-    val view: MapView = MapView(context)
+    // A TextureView map: the zone editor and the zone viewer are full-screen dialogs, and a
+    // SurfaceView there is composited behind the dialog's own window, so the map never appeared.
+    val view: MapView = MapView(context, MapLibreMapOptions.createFromAttributes(context).textureMode(true))
     private var map: MapLibreMap? = null
     private var styleReady = false
+
+    /** The style or its tiles could not load; the screen says so instead of showing a blank map. */
+    var loadFailed by androidx.compose.runtime.mutableStateOf(false)
+        private set
     private val pending = ArrayList<(MapLibreMap) -> Unit>()
 
     var editable = false
@@ -183,6 +194,8 @@ class SabbaqMapState(context: Context) {
             loadStyle(context)
         }
         installDrag()
+        view.addOnDidFailLoadingMapListener { loadFailed = true }
+        view.addOnDidFinishLoadingStyleListener { loadFailed = false }
     }
 
     /** (Re)loads the style when the stored city archive changed (a download just finished). */
@@ -192,7 +205,8 @@ class SabbaqMapState(context: Context) {
         if (styleReady && pack?.absolutePath == loadedPack) return
         loadedPack = pack?.absolutePath
         styleReady = false
-        m.setStyle(MapStyles.build(context, pack, LocaleManager.isArabic())) {
+        // fromJson: setStyle(String) takes a style URL, so a JSON string never loaded and the map stayed blank.
+        m.setStyle(Style.Builder().fromJson(MapStyles.build(context, pack, LocaleManager.isArabic()))) {
             styleReady = true
             pushOverlays()
             val queued = pending.toList(); pending.clear()
@@ -245,6 +259,9 @@ class SabbaqMapState(context: Context) {
             m.setMinZoomPreference(9.0)
         }
     }
+
+    /** Redraws at the view's current size; a resized map that is otherwise idle keeps its old frame. */
+    fun repaint() { map?.triggerRepaint() }
 
     fun center(): GeoPoint? = map?.cameraPosition?.target?.let { GeoPoint(it.latitude, it.longitude) }
 
@@ -325,7 +342,7 @@ fun SabbaqMap(state: SabbaqMapState, modifier: Modifier = Modifier) {
             state.view.onPause(); state.view.onStop(); state.destroy()
         }
     }
-    AndroidView(factory = { state.view }, modifier = modifier)
+    AndroidView(factory = { state.view }, modifier = modifier.onSizeChanged { state.repaint() })
 }
 
 /** The city map the driver has (or the stored city box from the names index): what the editor stays inside. */

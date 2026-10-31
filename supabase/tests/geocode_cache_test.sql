@@ -32,6 +32,10 @@ set request.jwt.claim.sub = '9e0c0000-0000-0000-0000-000000000002';
 select public.ensure_driver_profile();
 set request.jwt.claim.sub = '9e0c0000-0000-0000-0000-000000000003';
 select public.ensure_driver_profile();
+reset role;
+-- Paid lookups are for active drivers on a trial or a subscription (0021, H-06).
+update public.drivers set status = 'active', trial_until = now() + interval '3 days' where id in ('9e0c0000-0000-0000-0000-000000000002', '9e0c0000-0000-0000-0000-000000000003');
+set role authenticated;
 
 -- Drivers cannot touch the cache, the key or the usage directly.
 do $$ begin

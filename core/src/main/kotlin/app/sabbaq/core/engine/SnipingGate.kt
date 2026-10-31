@@ -8,7 +8,6 @@ package app.sabbaq.core.engine
  */
 object SnipingGate {
     const val CLOCK_TAMPER_THRESHOLD_MS = 2L * 60 * 60 * 1000
-    private const val REANCHOR_MS = 5_000L
 
     data class Result(val allowed: Boolean, val reason: String?, val newestSeenMs: Long)
 
@@ -30,11 +29,7 @@ object SnipingGate {
         if (updateRequired) return Result(false, "update_required", newestSeenMs)
         val behind = newestSeenMs - nowMs
         if (behind > CLOCK_TAMPER_THRESHOLD_MS) return Result(false, "clock_tampered", newestSeenMs)
-        val newest = when {
-            behind > REANCHOR_MS -> nowMs
-            nowMs > newestSeenMs -> nowMs
-            else -> newestSeenMs
-        }
+        val newest = maxOf(newestSeenMs, nowMs)
         if (subscriptionEndsAtMs <= 0L) return Result(false, "subscription_unknown", newest)
         if (nowMs > subscriptionEndsAtMs) return Result(false, "subscription_expired", newest)
         return Result(true, null, newest)

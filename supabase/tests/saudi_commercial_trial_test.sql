@@ -263,7 +263,11 @@ select pg_temp.expect(
     public.license_status('device-google-00000000', 1) ->> 'state' = 'active',
     'disabled global trial does not stop a paid pro_until entitlement'
 );
-insert into public.calibration_captures (package, tree) values ('app.sabbaq', '{}'::jsonb);
+-- The retired calibration table takes no rows, paid or not (0021, M-13).
+do $$ begin
+    insert into public.calibration_captures (package, tree) values ('app.sabbaq', '{}'::jsonb);
+    raise exception 'EXPECTATION FAILED: retired calibration table accepted a row';
+exception when insufficient_privilege then null; end $$;
 
 set request.jwt.claim.sub = '10000000-0000-0000-0000-000000000001';
 select public.admin_set_status('10000000-0000-0000-0000-000000000002', 'pending');

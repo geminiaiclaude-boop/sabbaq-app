@@ -66,11 +66,35 @@ internal fun AdvancedFiltersEditor(
     onOpenZones: () -> Unit = {},
 ) {
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        SabbaqSectionTitle(
-            title = stringResource(R.string.afe_section_title),
-            subtitle = stringResource(R.string.afe_section_sub),
-        )
+        // Grouped by the question the driver asks: which app, how much and how far, where to, how
+        // paid, then what only experienced drivers touch.
+        // The ride app is one card that names itself; a group heading over it would only repeat it.
+        TargetAppCondition(draft, onDraftChange)
 
+        ConditionGroupHeader(stringResource(R.string.afe_group_fare_time))
+        FareRangeCondition(draft, errors, onDraftChange)
+        PickupTimeCondition(draft, errors, onDraftChange)
+        HighFareOverrideCondition(draft, errors, onDraftChange)
+
+        ConditionGroupHeader(stringResource(R.string.afe_group_destination))
+        DestinationCondition(draft, onDraftChange)
+        NoDestinationCondition(draft, onDraftChange)
+        FilterGroup(
+            title = stringResource(R.string.zone_group_title),
+            subtitle = stringResource(R.string.zone_group_sub),
+            hasError = errors.keys.any { it == "zones" || it == "excludeZones" || it.startsWith("smartDest") },
+            filledCount = listOf(draft.zonesEnabled, draft.excludeZonesEnabled, draft.smartDestActive).count { it },
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                ZoneConditions(draft, errors, onDraftChange, onOpenZones)
+            }
+        }
+
+        ConditionGroupHeader(stringResource(R.string.afe_group_payment))
+        PaymentCondition(draft, onDraftChange)
+        if (draft.targetApp == TargetApp.BOLT || draft.targetApp == TargetApp.BOTH) BoltOnlyConditions(draft, errors, onDraftChange)
+
+        ConditionGroupHeader(stringResource(R.string.afe_group_advanced))
         FilterGroup(
             title = stringResource(R.string.afe_combo_title),
             subtitle = stringResource(R.string.afe_combo_sub),
@@ -91,30 +115,20 @@ internal fun AdvancedFiltersEditor(
                 )
             }
         }
-
-        TargetAppCondition(draft, onDraftChange)
-        FareRangeCondition(draft, errors, onDraftChange)
-        PickupTimeCondition(draft, errors, onDraftChange)
-        HighFareOverrideCondition(draft, errors, onDraftChange)
-        DestinationCondition(draft, onDraftChange)
-        NoDestinationCondition(draft, onDraftChange)
-        PaymentCondition(draft, onDraftChange)
-        if (draft.targetApp == TargetApp.BOLT || draft.targetApp == TargetApp.BOTH) BoltOnlyConditions(draft, errors, onDraftChange)
-        FilterGroup(
-            title = stringResource(R.string.zone_group_title),
-            subtitle = stringResource(R.string.zone_group_sub),
-            hasError = errors.keys.any { it == "zones" || it == "excludeZones" || it.startsWith("smartDest") },
-            filledCount = listOf(draft.zonesEnabled, draft.excludeZonesEnabled, draft.smartDestActive).count { it },
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                ZoneConditions(draft, errors, onDraftChange, onOpenZones)
-                Text(stringResource(R.string.zone_privacy_note), style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
         SmartDelayCondition(draft, errors, onDraftChange)
         TurboCondition(draft, errors, onDraftChange)
     }
+}
+
+/** A group's name on «طلبات تناسبك»: smaller than the page title, in the brand colour. */
+@Composable
+private fun ConditionGroupHeader(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(top = 10.dp, bottom = 2.dp).semantics { heading() },
+    )
 }
 
 /**
@@ -139,12 +153,12 @@ internal fun FareRangeCondition(
     ) { dimmed ->
         CompactStepperValue(
             stringResource(R.string.afe_min_fare), draft.minPrice, "", "1", KeyboardType.Decimal,
-            onValueChange = { onDraftChange(draft.copy(minPrice = it)) }, testKey = keyPrefix + "min-fare",
+            onValueChange = { onDraftChange(draft.withPriceLimits(min = it)) }, testKey = keyPrefix + "min-fare",
             modifier = Modifier.weight(1f), error = errors["minPrice"], dimmed = dimmed,
         )
         CompactStepperValue(
             stringResource(R.string.afe_max_fare), draft.maxPrice, "", "1", KeyboardType.Decimal,
-            onValueChange = { onDraftChange(draft.copy(maxPrice = it)) }, testKey = keyPrefix + "max-fare",
+            onValueChange = { onDraftChange(draft.withPriceLimits(max = it)) }, testKey = keyPrefix + "max-fare",
             modifier = Modifier.weight(1f), error = errors["maxPrice"], dimmed = dimmed,
         )
     }
@@ -168,12 +182,12 @@ internal fun PickupTimeCondition(
     ) { dimmed ->
         CompactStepperValue(
             stringResource(R.string.afe_min_time), draft.minTime, stringResource(R.string.ss_unit_min), "1", KeyboardType.Number,
-            onValueChange = { onDraftChange(draft.copy(minTime = it)) }, testKey = keyPrefix + "min-pickup-minutes",
+            onValueChange = { onDraftChange(draft.withTimeLimits(min = it)) }, testKey = keyPrefix + "min-pickup-minutes",
             modifier = Modifier.weight(1f), error = errors["minTime"], dimmed = dimmed,
         )
         CompactStepperValue(
             stringResource(R.string.afe_max_time), draft.maxTime, stringResource(R.string.ss_unit_min), "1", KeyboardType.Number,
-            onValueChange = { onDraftChange(draft.copy(maxTime = it)) }, testKey = keyPrefix + "max-pickup-minutes",
+            onValueChange = { onDraftChange(draft.withTimeLimits(max = it)) }, testKey = keyPrefix + "max-pickup-minutes",
             modifier = Modifier.weight(1f), error = errors["maxTime"], dimmed = dimmed,
         )
     }

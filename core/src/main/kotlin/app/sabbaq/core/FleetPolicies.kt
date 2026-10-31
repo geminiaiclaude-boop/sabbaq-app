@@ -13,6 +13,8 @@ data class SharedLexicon(
     val time: List<String> = emptyList(),
     val currency: List<String> = emptyList(),
     val noise: List<String> = emptyList(),
+    /** Accept-button ids the fleet confirmed (learn_accept_ids); the reader's fallback when no accept word is on screen. */
+    val acceptIds: List<String> = emptyList(),
 ) {
     val words: List<String> get() = accept + time + currency + noise
 
@@ -24,6 +26,7 @@ data class SharedLexicon(
             timeKeywordsExtra = merge(config.timeKeywordsExtra, time),
             currencyKeywordsExtra = merge(config.currencyKeywordsExtra, currency),
             noiseKeywordsExtra = merge(config.noiseKeywordsExtra, noise),
+            acceptViewIdsExtra = acceptIds.filter(::validId).distinct().joinToString(","),
         )
     }
 
@@ -38,6 +41,9 @@ data class SharedLexicon(
         /** Same rule as the server: 1–24 characters, no digits, commas or '@'. */
         fun valid(word: String): Boolean =
             word.length in 1..24 && word == word.trim() && word.none { it.isDigit() || it == ',' || it == '@' }
+
+        /** A view id's name after ":id/", as the server stores it. */
+        fun validId(id: String): Boolean = Regex("^[a-z0-9_]{2,32}$").matches(id)
     }
 }
 

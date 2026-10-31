@@ -3,6 +3,19 @@ package app.sabbaq.ui.admin
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.outlined.Insights
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Surface
+import androidx.compose.ui.graphics.Color
+import app.sabbaq.admin.AdminCodeStats
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -42,7 +55,6 @@ import app.sabbaq.ui.SabbaqAnimatedMessage
 import app.sabbaq.ui.SabbaqButton
 import app.sabbaq.ui.SabbaqButtonStyle
 import app.sabbaq.ui.SabbaqCard
-import app.sabbaq.ui.SabbaqStatusPill
 import app.sabbaq.ui.SabbaqTone
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -72,7 +84,13 @@ internal fun AdminCodesSection(session: AdminSession) {
     var reload by remember { mutableIntStateOf(0) }
     var notice by remember { mutableStateOf<AdminNotice?>(null) }
     var kept by remember { mutableStateOf<AdminNotice?>(null) }
+    var stats by remember { mutableStateOf<AdminCodeStats?>(null) }
+    val copy: (String) -> Unit = { code ->
+        clipboard.setText(AnnotatedString(code))
+        notice = success(if (LocaleManager.isArabic()) "نُسخ الكود $code." else "Copied $code.")
+    }
 
+    LaunchedEffect(reload) { AdminRepository.codeStats().onSuccess { stats = it } }
     LaunchedEffect(offset, reload) {
         loading = true
         AdminRepository.codes(offset).fold(
@@ -105,6 +123,7 @@ internal fun AdminCodesSection(session: AdminSession) {
             Text((if (LocaleManager.isArabic()) "أنشئ دفعات محددة المدة وصدّر الأكواد المتاحة فقط." else "Create fixed-duration batches and export the available codes only."), style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        stats?.let { st -> item(key = "stats") { CodeStatsCard(st) } }
         item(key = "generate") {
             SabbaqCard(title = (if (LocaleManager.isArabic()) "توليد أكواد جديدة" else "Generate new codes"), subtitle = (if (LocaleManager.isArabic()) "حدّد الدفعة ومدة الاشتراك قبل الإنشاء." else "Set the batch and subscription duration before creating."), icon = Icons.Outlined.Key) {
                 AdminField((if (LocaleManager.isArabic()) "عدد الأكواد" else "Number of codes"), count, { count = it.filter { c -> c.isDigit() } }, maxLength = 3, keyboard = KeyboardType.Number,
@@ -162,7 +181,7 @@ internal fun AdminCodesSection(session: AdminSession) {
                             notice = success((if (LocaleManager.isArabic()) "نُسخت ${generated.size} أكواد. الصقها في مكان آمن." else "Copied ${generated.size} codes. Paste them in a secure place."))
                         }) { Icon(Icons.Outlined.ContentCopy, contentDescription = (if (LocaleManager.isArabic()) "نسخ الأكواد الجديدة" else "Copy the new codes")) }
                     }
-                    SelectionContainer { Text(generated.joinToString("\n"), style = monoStyle) }
+                    generated.forEach { code -> CodeLine(code, copy) }
                 }
             }
         }
@@ -176,23 +195,103 @@ internal fun AdminCodesSection(session: AdminSession) {
         when {
             list == null -> item(key = "loading") { Text((if (LocaleManager.isArabic()) "جارٍ التحميل…" else "Loading…"), color = MaterialTheme.colorScheme.onSurfaceVariant) }
             list.isEmpty() -> item(key = "empty") { Text((if (LocaleManager.isArabic()) "لا توجد أكواد في هذه الصفحة." else "No codes on this page."), color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            else -> items(list, key = { it.code }) { code ->
-                SabbaqCard {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        SelectionContainer(Modifier.weight(1f)) { Text(code.code, style = monoStyle) }
-                        SabbaqStatusPill(if (code.available) (if (LocaleManager.isArabic()) "متاح" else "Available") else (if (LocaleManager.isArabic()) "مستخدم/ملغى" else "Used / canceled"), ready = code.available)
-                    }
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        AdminFact((if (LocaleManager.isArabic()) "المدة (أيام)" else "Duration (days)"), code.days?.toString() ?: (if (LocaleManager.isArabic()) "غير محدد" else "Not set"))
-                        AdminFact((if (LocaleManager.isArabic()) "الدفعة" else "Batch"), code.batch ?: "-")
-                        AdminFact((if (LocaleManager.isArabic()) "تاريخ الإنشاء" else "Created date"), formatDate(code.createdAt))
-                        AdminFact((if (LocaleManager.isArabic()) "المستخدم (ID)" else "User (ID)"), code.redeemedBy ?: "-", ltr = code.redeemedBy != null)
-                    }
-                }
+            else -> {
+                item(key = "table-head") { CodeTableHeader() }
+                items(list, key = { it.code }) { code -> CodeRow(code, copy) }
             }
         }
         if ((codes?.size ?: 0) > 5) item(key = "foot") {
             AdminPager(offset, AdminRepository.PAGE_SIZE, hasMore, loading) { offset = (offset + it * AdminRepository.PAGE_SIZE).coerceAtLeast(0) }
         }
+    }
+}
+
+/** Activation codes at a glance: what is left to sell, what was used, per duration and per batch. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun CodeStatsCard(st: AdminCodeStats) {
+    val ar = LocaleManager.isArabic()
+    SabbaqCard(title = if (ar) "إحصاءات الأكواد" else "Code statistics", icon = Icons.Outlined.Insights) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            CodeStat(if (ar) "متاح للبيع" else "Available", st.available)
+            CodeStat(if (ar) "مستخدم" else "Redeemed", st.redeemed)
+            CodeStat(if (ar) "ملغى" else "Revoked", st.revoked)
+            CodeStat(if (ar) "الإجمالي" else "Total", st.total)
+            CodeStat(if (ar) "استُخدم خلال 7 أيام" else "Redeemed, 7 days", st.redeemed7d)
+            CodeStat(if (ar) "استُخدم خلال 30 يومًا" else "Redeemed, 30 days", st.redeemed30d)
+        }
+        if (st.byDays.isNotEmpty()) {
+            Text(if (ar) "المتاح حسب المدة" else "Available by duration", style = MaterialTheme.typography.labelLarge)
+            st.byDays.forEach { (days, total, available) ->
+                AdminFact(if (ar) "$days يوم" else "$days days", if (ar) "$available متاح من $total" else "$available of $total available")
+            }
+        }
+        if (st.byBatch.isNotEmpty()) {
+            Text(if (ar) "الدفعات" else "Batches", style = MaterialTheme.typography.labelLarge)
+            st.byBatch.forEach { b ->
+                AdminFact(b.batch.ifBlank { if (ar) "بلا اسم" else "Unnamed" },
+                    if (ar) "${b.available} متاح · ${b.redeemed} مستخدم · ${b.total} إجمالي" else "${b.available} available · ${b.redeemed} redeemed · ${b.total} total")
+            }
+        }
+    }
+}
+
+@Composable
+private fun CodeStat(label: String, value: Int) {
+    Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(12.dp)) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+            Text(value.toString(), style = MaterialTheme.typography.titleMedium)
+            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun CodeLine(code: String, copy: (String) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        SelectionContainer(Modifier.weight(1f)) { Text(code, style = monoStyle) }
+        IconButton(onClick = { copy(code) }) {
+            Icon(Icons.Outlined.ContentCopy, contentDescription = if (LocaleManager.isArabic()) "نسخ $code" else "Copy $code")
+        }
+    }
+}
+
+@Composable
+private fun CodeTableHeader() {
+    val ar = LocaleManager.isArabic()
+    Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp)) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(if (ar) "الكود" else "Code", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+            Text(if (ar) "المدة" else "Days", style = MaterialTheme.typography.labelMedium, modifier = Modifier.width(48.dp))
+            Text(if (ar) "الحالة" else "State", style = MaterialTheme.typography.labelMedium, modifier = Modifier.width(64.dp))
+            Box(Modifier.width(40.dp))
+        }
+    }
+}
+
+/** One code per row: the code, its days, its state in one word, and a copy button. */
+@Composable
+private fun CodeRow(code: AdminCode, copy: (String) -> Unit) {
+    val ar = LocaleManager.isArabic()
+    val (state, color) = when {
+        code.revoked -> (if (ar) "ملغى" else "Revoked") to MaterialTheme.colorScheme.error
+        code.redeemed -> (if (ar) "مستخدم" else "Redeemed") to MaterialTheme.colorScheme.onSurfaceVariant
+        else -> (if (ar) "متاح" else "Available") to Color(0xFF1E9E5A)
+    }
+    Column {
+        Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.weight(1f)) {
+                SelectionContainer { Text(code.code, style = monoStyle, maxLines = 1) }
+                Text(listOfNotNull(code.batch, formatDate(code.createdAt)).joinToString(" · "), style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            }
+            Text(code.days?.toString() ?: "-", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(48.dp))
+            Text(state, style = MaterialTheme.typography.labelMedium, color = color, modifier = Modifier.width(64.dp))
+            IconButton(onClick = { copy(code.code) }, modifier = Modifier.width(40.dp)) {
+                Icon(Icons.Outlined.ContentCopy, contentDescription = if (ar) "نسخ ${code.code}" else "Copy ${code.code}")
+            }
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     }
 }

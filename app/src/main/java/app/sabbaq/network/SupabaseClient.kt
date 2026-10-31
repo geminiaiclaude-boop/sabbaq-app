@@ -484,6 +484,8 @@ object SupabaseClient {
                 sessions.clearIfMatches(current.token)
                 refreshToken = null
                 appContext?.let(SessionVault::clear)
+                app.sabbaq.Settings.subscriptionEndsAtMs = 1L
+                app.sabbaq.Settings.monitoringWanted = false
             }
             return@renewMutex false
         }
@@ -491,7 +493,12 @@ object SupabaseClient {
         refreshToken = pair.second
         accessIssuedAt = SystemClock.elapsedRealtime()
         // Keystore + commit(): never on the caller's thread, which is Main for KeeperService.
-        current.deviceId?.let { device -> appContext?.let { withContext(Dispatchers.IO) { SessionVault.save(it, pair.second, device) } } }
+        appContext?.let { ctx ->
+            withContext(Dispatchers.IO) {
+                val device = current.deviceId ?: runCatching { SessionVault.load(ctx)?.deviceId }.getOrNull()
+                if (device != null) SessionVault.save(ctx, pair.second, device)
+            }
+        }
         true
     }
 
@@ -889,8 +896,8 @@ object SupabaseClient {
         val first = revalidateOnce()
         if (first.exceptionOrNull() is SessionExpiredException) {
             if (renewAccessToken()) return revalidateOnce()
-            // The server rejected the access token and it could not be renewed: fail closed.
-            sessions.snapshot()?.let { sessions.clearIfMatches(it.token) }
+            // renewAccessToken() ends the session itself when the server refuses the refresh
+            // token; a renewal that failed for lack of network keeps the paid lease (rule 6).
         }
         return first
     }
@@ -1182,6 +1189,9 @@ object SupabaseClient {
                     requestStartedAt = requestStartedAt
                 ) ?: return staleSessionFailure()
                 status.validUntil?.let { app.sabbaq.Settings.subscriptionEndsAtMs = it.toEpochMilli() }
+                // H-04: the server's clock is the one trusted source that may move the tap gate's
+                // newest-seen time back (a phone clock that was wrong and was then corrected).
+                status.serverTime?.let { app.sabbaq.Settings.newestSeenMs = it.toEpochMilli() }
                 if (valid) Result.success(true) else Result.failure(licenseResponseFailure(status))
             }
             else -> error("الحالة غير القابلة للربط فُحصت أعلاه")
