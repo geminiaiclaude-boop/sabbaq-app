@@ -209,15 +209,14 @@ private fun OnboardingTopBar(page: OnboardingPage, onSkip: () -> Unit, modifier:
         shadowElevation = 8.dp,
         modifier = modifier.fillMaxWidth(),
     ) {
-        // One row at the bar's original height whenever the brand, the language chips and «تخطي»
-        // fit at their full width; otherwise (narrow phone, large font) the chips move to a second
-        // row. «سبّاق» is never given less than its own width: a narrower slot clipped the word and
-        // the shadda above it (2.0.3-20261031.1219 on a 360 dp phone).
+        // Always one row at the bar's original height (owner, 2026-10-31). «سبّاق» keeps its own width
+        // (a narrower slot clipped the word and its shadda); with a very large font the skip button
+        // gives way, never the name and never a second row.
         Column(Modifier.background(Brush.horizontalGradient(listOf(brand.heroEnd, brand.heroStart)))) {
             OnboardingBarRow(
                 modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
                 brandName = { SabbaqBrand(compact = true, onHero = true) },
-                language = { LanguageSwitch(onHero = true) },
+                language = { LanguageToggle(onHero = true) },
                 skip = {
                     OutlinedButton(
                         onClick = onSkip,
@@ -235,7 +234,7 @@ private fun OnboardingTopBar(page: OnboardingPage, onSkip: () -> Unit, modifier:
     }
 }
 
-/** Brand at the start, «تخطي» at the end, the language chips between them or on a second row. */
+/** Brand at the start, «تخطي» at the end, the language button between them; one row. */
 @Composable
 private fun OnboardingBarRow(
     brandName: @Composable () -> Unit,
@@ -247,33 +246,26 @@ private fun OnboardingBarRow(
         val gap = 8.dp.roundToPx()
         val loose = constraints.copy(minWidth = 0, minHeight = 0)
         val width = constraints.maxWidth
-        val skipPlaceable = k.first().measure(loose)
         val languagePlaceable = l.first().measure(loose)
-        val brandWidth = b.first().maxIntrinsicWidth(androidx.compose.ui.unit.Constraints.Infinity)
-        val layout = onboardingBarLayout(width, brandWidth, languagePlaceable.width, skipPlaceable.width, gap)
-        val brandPlaceable = b.first().measure(loose.copy(maxWidth = layout.brandMaxWidth))
-        val rowHeight = maxOf(brandPlaceable.height, skipPlaceable.height, if (layout.oneRow) languagePlaceable.height else 0)
-        val secondRowGap = 6.dp.roundToPx()
-        val height = if (layout.oneRow) rowHeight else rowHeight + secondRowGap + languagePlaceable.height
-        layout(width, height) {
+        val inf = androidx.compose.ui.unit.Constraints.Infinity
+        val bar = onboardingBarLayout(width, b.first().maxIntrinsicWidth(inf), languagePlaceable.width, k.first().maxIntrinsicWidth(inf), gap)
+        val skipPlaceable = k.first().measure(loose.copy(maxWidth = bar.skipMaxWidth))
+        val brandPlaceable = b.first().measure(loose.copy(maxWidth = bar.brandMaxWidth))
+        val rowHeight = maxOf(brandPlaceable.height, skipPlaceable.height, languagePlaceable.height)
+        layout(width, rowHeight) {
             brandPlaceable.placeRelative(0, (rowHeight - brandPlaceable.height) / 2)
             skipPlaceable.placeRelative(width - skipPlaceable.width, (rowHeight - skipPlaceable.height) / 2)
-            if (layout.oneRow) {
-                languagePlaceable.placeRelative(width - skipPlaceable.width - gap - languagePlaceable.width, (rowHeight - languagePlaceable.height) / 2)
-            } else {
-                languagePlaceable.placeRelative(0, rowHeight + secondRowGap)
-            }
+            languagePlaceable.placeRelative(width - skipPlaceable.width - gap - languagePlaceable.width, (rowHeight - languagePlaceable.height) / 2)
         }
     }
 }
 
-internal data class OnboardingBarLayout(val oneRow: Boolean, val brandMaxWidth: Int)
+internal data class OnboardingBarLayout(val brandMaxWidth: Int, val skipMaxWidth: Int)
 
-/** One row only when all three fit at full width; the brand always keeps at least its own width when it can. */
+/** One row: the language button keeps its size, the brand its own width, and «تخطي» takes what is left when space is short. */
 internal fun onboardingBarLayout(width: Int, brand: Int, language: Int, skip: Int, gap: Int): OnboardingBarLayout {
-    val oneRow = brand + gap + language + gap + skip <= width
-    val beside = if (oneRow) language + gap else 0
-    return OnboardingBarLayout(oneRow, (width - skip - gap - beside).coerceAtLeast(0))
+    val skipWidth = minOf(skip, (width - brand - language - 2 * gap).coerceAtLeast(0))
+    return OnboardingBarLayout((width - language - skipWidth - 2 * gap).coerceAtLeast(0), skipWidth)
 }
 
 @Composable

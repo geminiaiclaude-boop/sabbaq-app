@@ -48,6 +48,25 @@ fun LanguageSwitch(modifier: Modifier = Modifier, fill: Boolean = false, onHero:
 }
 
 /** [fill]: the chip is stretched by its row, so its label is centred across it; otherwise it keeps its own width. */
+/**
+ * The welcome tour's bar: one button naming the other language («EN» in Arabic, «ع» in English),
+ * so the bar keeps its single row and height on every phone (owner, 2026-10-31: two chips pushed
+ * the bar to two rows on a 360 dp phone).
+ */
+@Composable
+fun LanguageToggle(modifier: Modifier = Modifier, onHero: Boolean = false) {
+    val context = LocalContext.current
+    val arabic = LocaleManager.isArabic()
+    LanguageChip(
+        label = stringResource(if (arabic) R.string.language_english_short else R.string.language_arabic_short),
+        name = stringResource(if (arabic) R.string.language_english else R.string.language_arabic),
+        selected = false, modifier = modifier, fill = false, onHero = onHero,
+    ) {
+        LocaleManager.set(context, if (arabic) LocaleManager.Language.ENGLISH else LocaleManager.Language.ARABIC)
+        (context as? android.app.Activity)?.recreate()
+    }
+}
+
 @Composable
 private fun LanguageChip(label: String, name: String, selected: Boolean, modifier: Modifier, fill: Boolean, onHero: Boolean, onClick: () -> Unit) {
     val brand = LocalSabbaqBrand.current

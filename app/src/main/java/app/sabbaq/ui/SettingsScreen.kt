@@ -396,7 +396,9 @@ fun SettingsScreen(
                     }
                     if (saved) {
                         savedFilters = filters
-                        draft = FilterDraft.from(filters)
+                        // The typed text stays as typed: writing the saved (trimmed) values back erased
+                        // the space a driver had just typed between two destination words (owner,
+                        // 2026-10-31). The saved conditions are this draft's own validated values.
                         filtersMessage = DriverStatus(context.getString(R.string.ss_saved_auto), success = true)
                         haptics.performHapticFeedback(HapticFeedbackType.Confirm)
                         if (returnToSetupAfterAction && destination == DriverDestination.Filters) {
@@ -805,8 +807,7 @@ fun SettingsScreen(
                         add(ReadinessItem(Icons.Outlined.BatteryAlert, stringResource(R.string.keep_bubble_t),
                             app.sabbaq.fleet.FloatingBubble.permitted(context), stringResource(R.string.keep_bubble_done), stringResource(R.string.keep_bubble_b),
                             stringResource(R.string.ss_allow)) {
-                            runCatching { context.startActivity(app.sabbaq.fleet.FloatingBubble.permissionIntent(context)) }
-                                .recoverCatching { context.startActivity(PowerSetup.appDetailsIntent(context)) }
+                            app.sabbaq.fleet.FloatingBubble.openPermission(context)
                         })
                         if (android.os.Build.VERSION.SDK_INT >= 30) add(ReadinessItem(Icons.Outlined.BatteryAlert, stringResource(R.string.keep_hib_t),
                             !app.sabbaq.fleet.KeepAlive.hibernationOn(context), stringResource(R.string.keep_hib_done), stringResource(R.string.keep_hib_b),
@@ -1695,9 +1696,9 @@ private fun FiltersPage(
     onRevert: () -> Unit,
     onReset: () -> Unit,
 ) = DriverPage {
-    SabbaqSectionTitle(
+    SabbaqPageHeader(
         title = stringResource(R.string.ss_filters_title),
-        subtitle = if (isSaving) stringResource(R.string.ss_filters_saving) else stringResource(R.string.ss_filters_subtitle),
+        intro = if (isSaving) stringResource(R.string.ss_filters_saving) else stringResource(R.string.ss_filters_subtitle),
     )
     SabbaqAnimatedMessage(message?.message, message?.tone ?: SabbaqTone.Info)
     SabbaqAnimatedMessage(

@@ -9,6 +9,7 @@ import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings as AndroidSettings
@@ -67,6 +68,26 @@ object FloatingBubble {
     fun permissionIntent(context: Context): Intent =
         Intent(AndroidSettings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+    /**
+     * Opens "display over other apps" on Sabbaq's own switch, as the reference does: the public
+     * action with our package, sent from the activity with startActivityForResult. Android 11+ opens
+     * the app's own page only when it knows the caller is that app, which a result request tells it;
+     * the plain startActivity (new task) Sabbaq used showed the whole list (owner, 2026-10-31). Without
+     * an activity (rare) the list opens with a «pick Sabbaq» hint.
+     */
+    fun openPermission(context: Context) {
+        val activity = generateSequence(context) { (it as? android.content.ContextWrapper)?.baseContext }
+            .firstOrNull { it is android.app.Activity } as? android.app.Activity
+        val intent = Intent(AndroidSettings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))
+        if (activity != null && runCatching { activity.startActivityForResult(intent, REQUEST_OVERLAY) }.isSuccess) return
+        val listed = runCatching { context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess
+        if (listed && Build.VERSION.SDK_INT >= 30) {
+            android.widget.Toast.makeText(context, context.getString(app.sabbaq.R.string.float_pick_sabbaq), android.widget.Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private const val REQUEST_OVERLAY = 1003
 
     /** Gives the control a context to draw from; the app and the accessibility service both call it. */
     fun attach(context: Context) {

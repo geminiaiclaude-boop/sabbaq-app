@@ -564,6 +564,8 @@ private fun DraftField(
         supportingText = error?.let { message -> { Text(message) } },
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
         singleLine = singleLine,
+        // Several destination words start on one line and grow to three, never a tall empty box.
+        maxLines = if (singleLine) 1 else 3,
         enabled = enabled,
         textStyle = MaterialTheme.typography.bodyMedium,
         modifier = modifier,

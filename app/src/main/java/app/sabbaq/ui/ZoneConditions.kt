@@ -18,7 +18,10 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.background
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -156,6 +159,54 @@ internal fun ZoneLocationNotice(draft: FilterDraft) {
     }
 }
 
+/** «الأماكن والمناطق» as a tinted panel: what it does, how many zones are on of each kind, and the way in. */
+@Composable
+private fun ZonesFeaturePanel(draft: FilterDraft, onOpenZones: () -> Unit) {
+    val brand = app.sabbaq.ui.theme.LocalSabbaqBrand.current
+    val colors = MaterialTheme.colorScheme
+    val goOn = if (draft.zonesEnabled) draft.zones(exclude = false).count { it.active } else 0
+    val avoidOn = if (draft.excludeZonesEnabled) draft.zones(exclude = true).count { it.active } else 0
+    androidx.compose.material3.Surface(
+        shape = MaterialTheme.shapes.medium,
+        color = colors.primary.copy(alpha = 0.06f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, colors.primary.copy(alpha = 0.22f)),
+        modifier = Modifier.fillMaxWidth().testTag("zones-feature"),
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                SabbaqIconBadge(Icons.Outlined.Place)
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.zone_group_title), style = MaterialTheme.typography.titleSmall,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, modifier = Modifier.semantics { heading() })
+                    Text(stringResource(R.string.zp_feature_body), style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ZoneCountPill(stringResource(R.string.zp_feature_go, goOn), brand.success, Modifier.weight(1f))
+                ZoneCountPill(stringResource(R.string.zp_feature_avoid, avoidOn), colors.error, Modifier.weight(1f))
+            }
+            SabbaqButton(
+                stringResource(R.string.zp_manage),
+                onClick = onOpenZones,
+                style = SabbaqButtonStyle.Secondary,
+                icon = Icons.Outlined.Place,
+                modifier = Modifier.testTag("zones-open"),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ZoneCountPill(text: String, tone: androidx.compose.ui.graphics.Color, modifier: Modifier = Modifier) {
+    androidx.compose.material3.Surface(shape = androidx.compose.foundation.shape.RoundedCornerShape(50), color = tone.copy(alpha = 0.12f), modifier = modifier) {
+        Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            androidx.compose.foundation.layout.Box(Modifier.size(8.dp).background(tone, androidx.compose.foundation.shape.CircleShape))
+            Text(text, style = MaterialTheme.typography.labelLarge, color = tone, maxLines = 1)
+        }
+    }
+}
+
 /**
  * «الأماكن والمناطق» inside «شروط القيادة» on the dashboard, below «قنص الطلبات بدون وجهة» and
  * without a frame of its own (owner, 2026-10-31): how many zones are on, the button to the zones
@@ -171,18 +222,13 @@ internal fun ZoneConditions(
 ) {
     val requestLocation = rememberLocationAccess().request
     var mapMode by rememberSaveable { mutableStateOf<ZoneMapMode?>(null) }
-    // Unframed inside «شروط القيادة», the block is titled like the condition rows above it.
-    if (!framed) Text(
-        stringResource(R.string.zone_group_title),
-        style = MaterialTheme.typography.titleSmall,
-        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
-        modifier = Modifier.semantics { heading() },
-    )
     ZoneLocationNotice(draft)
     if (errors["zones"] != null || errors["excludeZones"] != null) {
         Text(errors["zones"] ?: errors["excludeZones"].orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
     }
-    ZonesSummary(draft, onOpenZones)
+    // Inside «شروط القيادة» the feature has a panel of its own so the driver sees it and what it
+    // does (owner, 2026-10-31); on a framed page the plain summary is enough.
+    if (framed) ZonesSummary(draft, onOpenZones) else ZonesFeaturePanel(draft, onOpenZones)
 
     ProConditionCard(
         title = stringResource(R.string.zone_home_title),

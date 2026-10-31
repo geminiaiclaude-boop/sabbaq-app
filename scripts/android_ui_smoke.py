@@ -121,6 +121,11 @@ def assert_brand_not_squeezed(nodes, where):
     x1, y1, x2, y2 = brand[0]
     # The five-letter word is well over twice as wide as its line; a squeezed slot clips it below that.
     assert (x2 - x1) >= 2 * (y2 - y1), f'Brand name squeezed to {x2 - x1}x{y2 - y1}px: {where}'
+    # One row (owner, 2026-10-31): the language button sits on the brand's line, not under it.
+    lang = [box(n) for n in nodes if n.get('text') in ('EN', 'ع')]
+    assert lang, f'Language button missing from the onboarding bar: {where}'
+    ly = (lang[0][1] + lang[0][3]) // 2
+    assert y1 - (y2 - y1) <= ly <= y2 + (y2 - y1), f'The onboarding bar broke into two rows: {where}'
     for label in ('EN', 'ع', 'تخطي الجولة'):
         for n in nodes:
             if n.get('text') == label:
@@ -209,9 +214,10 @@ def reachable_by_scrolling(text, visible):
 
 cases = [
     ('first-launch', None, False, 1.0, None),
+    # The welcome tour (its top bar) on a 360 dp phone with large text, straight after first launch.
+    ('first-launch-narrow-large-font', None, False, 1.3, 'narrow'),
     ('cinematic-opening', 'cinematic-opening', False, 1.0, None),
     ('intro', 'intro', False, 1.0, None),
-    ('intro-narrow-large-font', 'intro', False, 1.3, 'narrow'),
     ('welcome-features', 'welcome-features', False, 1.0, None),
     ('welcome-example', 'welcome-example', False, 1.0, None),
     ('login', 'login', False, 1.0, None),
@@ -300,7 +306,7 @@ for name, screen, dark, font_scale, env in cases:
         assert 'سبّاق' in visible, 'Brand-led cinematic opening did not expose the Sabbaq identity'
         for player_control in ('تخطي الفيديو', 'تشغيل صوت الافتتاحية', 'كتم صوت الافتتاحية'):
             assert player_control not in visible, f'Player/ad control leaked into launch opening: {player_control}'
-    if name == 'intro-narrow-large-font':
+    if name == 'first-launch-narrow-large-font':
         assert_brand_not_squeezed(nodes, name)
     if screen == 'history':
         assert_decision_history(visible, f'direct open: {name}')
@@ -342,11 +348,8 @@ for name, screen, dark, font_scale, env in cases:
             return False
         if 'العليا،' in editor_visible and (tap_node(lambda n: n.get('text', '').startswith('العليا، الرياض')) or tap_node(lambda n: n.get('text', '').startswith('العليا،'))):
             time.sleep(2)
-            picked_nodes = ET.fromstring(ui_xml()).findall('.//node')
-            # Compose test tags are not exposed as ids here: the zone name is the editor's first text field.
-            name_fields = [n.get('text', '') for n in picked_nodes
-                           if n.get('package') == args.package and n.get('class') == 'android.widget.EditText'][:1]
-            assert any('العليا' in t for t in name_fields), f'Picking a place left the zone name empty: {name_fields}'
+            # No name field (owner, 2026-10-31): the picked place names the zone by itself.
+            assert not any(n.get('text', '') == 'اسم المنطقة' for n in ET.fromstring(ui_xml()).findall('.//node')), 'The zone name field is back'
             # Picking the place makes it the zone, ready to save: its boundary, or a square around it
             # when none is mapped or the map servers are busy (owner, 2026-10-31). Corners are counted in Arabic digits.
             outlined = ''
@@ -364,7 +367,7 @@ for name, screen, dark, font_scale, env in cases:
             assert tap_node(lambda n: n.get('text', '') == 'حفظ المنطقة'), 'Save button missing'
             time.sleep(1.5)
             saved = ' '.join(n.get('text', '') for n in ET.fromstring(ui_xml()).findall('.//node'))
-            for refusal in ('الرجاء إدخال اسم المنطقة', 'المنطقة تحتاج 3 نقاط'):
+            for refusal in ('المنطقة تحتاج 3 نقاط',):
                 assert refusal not in saved, f'Saving the picked place was refused: {refusal}'
     if screen == 'welcome-example':
         # The pipeline scene leads the page; the worked example sits below it.
