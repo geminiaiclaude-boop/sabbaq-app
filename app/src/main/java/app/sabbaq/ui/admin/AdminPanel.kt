@@ -68,6 +68,7 @@ sealed interface AdminRequest {
     data class DiagnoseSupportId(val supportId: String) : AdminRequest
     data class NotifyDriver(val driverId: String, val name: String) : AdminRequest
     data class MessageDriver(val driverId: String) : AdminRequest
+    data class OpenDriver(val driverId: String) : AdminRequest
 }
 
 private enum class Access { CHECKING, GRANTED, DENIED, FAILED }
@@ -163,6 +164,7 @@ private fun AdminWorkspace(session: AdminSession) {
             is AdminRequest.DiagnoseDriver, is AdminRequest.DiagnoseSupportId -> AdminSection.TELEMETRY
             is AdminRequest.NotifyDriver -> AdminSection.NOTIFICATIONS
             is AdminRequest.MessageDriver -> AdminSection.SUPPORT
+            is AdminRequest.OpenDriver -> AdminSection.DRIVERS
         }
     }
     BackHandler(enabled = section != AdminSection.DRIVERS) { section = AdminSection.DRIVERS }
@@ -214,7 +216,7 @@ private fun AdminWorkspace(session: AdminSession) {
         Box(Modifier.weight(1f).fillMaxWidth()) {
             val consume: () -> AdminRequest? = { request.also { request = null } }
             when (section) {
-                AdminSection.DRIVERS -> AdminDriversSection(session, open)
+                AdminSection.DRIVERS -> AdminDriversSection(session, consume, open)
                 AdminSection.SUPPORT -> AdminSupportSection(session, consume, open, onUnread = { supportUnread = it })
                 AdminSection.NOTIFICATIONS -> AdminNotificationsSection(session, consume)
                 AdminSection.CODES -> AdminCodesSection(session)

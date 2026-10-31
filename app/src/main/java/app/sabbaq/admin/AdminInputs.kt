@@ -83,18 +83,4 @@ object AdminInputs {
         val releases = mapOf(26 to "8", 27 to "8.1", 28 to "9", 29 to "10", 30 to "11", 31 to "12", 32 to "12L", 33 to "13", 34 to "14", 35 to "15", 36 to "16")
         return releases[api] ?: "API $api"
     }
-
-    /** "2.1.0 (9) · أندرويد 14 · آخر ظهور …", the same wording as the web panel. */
-    fun describeVersion(version: AdminDriverVersion?, formatTime: (java.time.Instant) -> String): String {
-        version ?: return if (ar) "غير معروف" else "Unknown"
-        val parts = mutableListOf<String>()
-        parts += when {
-            version.versionName != null -> version.versionCode?.let { "${version.versionName} ($it)" } ?: version.versionName
-            version.versionCode != null -> (if (ar) "رمز ${version.versionCode}" else "Code ${version.versionCode}")
-            else -> (if (ar) "لم يتصل بعد" else "Not connected yet")
-        }
-        androidRelease(version.androidApi)?.let { parts += if (ar) "أندرويد $it" else "Android $it" }
-        version.lastSeen?.let { parts += if (ar) "آخر ظهور ${formatTime(it)}" else "Last seen ${formatTime(it)}" }
-        return parts.joinToString(" · ")
-    }
 }

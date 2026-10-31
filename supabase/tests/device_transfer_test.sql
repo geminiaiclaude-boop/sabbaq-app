@@ -101,3 +101,6 @@ reset role;
 
 -- Paid Places for zone warming (kept here so the existing CI step runs it).
 \ir zone_places_test.sql
+
+-- Admin console (kept here so the existing CI step runs it).
+\ir admin_console_test.sql

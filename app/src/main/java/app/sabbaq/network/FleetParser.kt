@@ -32,7 +32,11 @@ object FleetParser {
             .mapNotNull { (it as? JsonPrimitive)?.contentOrNull?.trim() }
             .filter(SharedLexicon::valid)
             .take(30)
-        return SharedLexicon(version, words("accept"), words("time"), words("currency"), words("noise"))
+        val ids = (o["accept_ids"] as? JsonArray).orEmpty()
+            .mapNotNull { (it as? JsonPrimitive)?.contentOrNull?.trim() }
+            .filter(SharedLexicon::validId)
+            .take(10)
+        return SharedLexicon(version, words("accept"), words("time"), words("currency"), words("noise"), ids)
     }
 
     /** The shadow words to test (the "shadow" object of `shared_lexicon`); empty when none. */

@@ -20,21 +20,6 @@ import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 
-data class AdminDriver(
-    val id: String,
-    val name: String,
-    val phone: String,
-    val status: String,
-    val proUntil: Instant?,
-    val trialUntil: Instant?,
-    val deviceId: String?,
-    val createdAt: Instant?,
-    val version: AdminDriverVersion? = null,
-)
-
-/** The Sabbaq build a driver runs: name and Android from telemetry, code from the licence check. */
-data class AdminDriverVersion(val versionName: String?, val versionCode: Int?, val androidApi: Int?, val lastSeen: Instant?)
-
 data class AdminPageOf<T>(val items: List<T>, val offset: Int, val hasMore: Boolean)
 
 data class AdminCode(val code: String, val days: Int?, val batch: String?, val redeemedBy: String?, val revoked: Boolean, val createdAt: Instant?) {
@@ -126,30 +111,26 @@ object AdminRepository {
 
     // ---- Drivers
 
-    suspend fun drivers(offset: Int): Result<AdminPageOf<AdminDriver>> =
-        SupabaseClient.adminRead("drivers", "id,full_name,phone,status,trial_until,pro_until,device_id,created_at", "created_at.desc", PAGE_SIZE + 1, offset)
-            .mapCatching { page ->
-                val list = rows(page.body).mapNotNull(::driver)
-                AdminPageOf(list.take(PAGE_SIZE), offset, hasMore = list.size > PAGE_SIZE)
-            }
+    /** The drivers table: plan and live state per account, searched and filtered on the server (0020). */
+    suspend fun driverList(search: String, filter: DriverFilter, offset: Int, limit: Int = PAGE_SIZE): Result<AdminDriverList> =
+        SupabaseClient.adminRpc("admin_driver_list", buildJsonObject {
+            put("p_search", search.trim().take(40)); put("p_filter", filter.wire); put("p_offset", offset.coerceAtLeast(0)); put("p_limit", limit.coerceIn(1, 100))
+        }).mapCatching { body -> AdminConsole.list(json.parseToJsonElement(body) as JsonObject) }
 
-    /** Versions are a second, optional read: a failure leaves the list usable. */
-    suspend fun driverVersions(ids: List<String>): Result<Map<String, AdminDriverVersion>> {
-        val valid = ids.filter(UUID_PATTERN::matches)
-        if (valid.isEmpty()) return Result.success(emptyMap())
-        return SupabaseClient.adminRpc("admin_driver_versions", buildJsonObject { put("p_drivers", JsonArray(valid.map { JsonPrimitive(it) })) })
-            .mapCatching { body ->
-                rows(body).mapNotNull { row ->
-                    val id = row.str("driver_id") ?: return@mapNotNull null
-                    id to AdminDriverVersion(
-                        versionName = row.str("version_name")?.takeIf(VERSION_NAME::matches),
-                        versionCode = row.int("version_code")?.takeIf { it > 0 },
-                        androidApi = row.int("android_api"),
-                        lastSeen = row.instant("last_seen_at"),
-                    )
-                }.toMap()
-            }
+    /** Everything about one driver for the driver page (0020). */
+    suspend fun driverDetail(driverId: String): Result<AdminDriverDetail> {
+        if (!UUID_PATTERN.matches(driverId)) return rejected()
+        return SupabaseClient.adminRpc("admin_driver_detail", buildJsonObject { put("p_driver", driverId) })
+            .mapCatching { body -> AdminConsole.detail(json.parseToJsonElement(body) as JsonObject) ?: error("bad driver page") }
     }
+
+    /** What the fleet learned from confirmed accepts (0020). */
+    suspend fun acceptLearning(): Result<AdminAcceptLearning> = SupabaseClient.adminRpc("admin_accept_learning")
+        .mapCatching { body -> AdminConsole.acceptLearning(json.parseToJsonElement(body) as JsonObject) }
+
+    /** Activation codes at a glance (0020). */
+    suspend fun codeStats(): Result<AdminCodeStats> = SupabaseClient.adminRpc("admin_code_stats")
+        .mapCatching { body -> AdminConsole.codeStats(json.parseToJsonElement(body) as JsonObject) }
 
     suspend fun resetDevice(driverId: String): Result<Unit> {
         if (!UUID_PATTERN.matches(driverId)) return rejected()
@@ -497,20 +478,6 @@ object AdminRepository {
         SupabaseClient.adminRpc("admin_upsert_profile", buildJsonObject { put("p_body", body); put("p_enabled", enabled) }).map { }
 
     // ---- Parsing
-
-    private fun driver(row: JsonObject): AdminDriver? {
-        val id = row.str("id")?.takeIf(UUID_PATTERN::matches) ?: return null
-        return AdminDriver(
-            id = id,
-            name = row.str("full_name") ?: (if (LocaleManager.isArabic()) "سائق" else "Driver"),
-            phone = row.str("phone").orEmpty(),
-            status = row.str("status") ?: "pending",
-            proUntil = row.instant("pro_until"),
-            trialUntil = row.instant("trial_until"),
-            deviceId = row.str("device_id"),
-            createdAt = row.instant("created_at"),
-        )
-    }
 
     private fun rows(body: String): List<JsonObject> =
         (json.parseToJsonElement(body) as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }

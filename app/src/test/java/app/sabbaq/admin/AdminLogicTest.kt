@@ -116,12 +116,53 @@ class AdminLogicTest {
     }
 
     @Test
-    fun `driver version reads like the web panel`() {
-        val at = { _: Instant -> "الآن" }
-        assertEquals("2.1.0 (9) · أندرويد 14", AdminInputs.describeVersion(AdminDriverVersion("2.1.0", 9, 34, null), at))
-        assertEquals("رمز 7", AdminInputs.describeVersion(AdminDriverVersion(null, 7, null, null), at))
-        assertEquals("غير معروف", AdminInputs.describeVersion(null, at))
-        assertEquals("لم يتصل بعد · آخر ظهور الآن", AdminInputs.describeVersion(AdminDriverVersion(null, null, null, Instant.EPOCH), at))
+    fun `console names every plan and live state and reads the driver page`() {
+        val list = AdminConsole.list(json.parseToJsonElement("""{"total":2,"has_more":false,
+            "counts":{"all":2,"subscribed":1,"monitoring":1},
+            "items":[{"id":"ac0e0000-0000-0000-0000-000000000002","full_name":"A","phone":"+966500000102","status":"active",
+                      "plan":"subscribed","pro_until":"2026-12-01T00:00:00+00:00","live":"monitoring","last_seen":"2026-10-30T10:00:00+00:00"},
+                     {"id":"ac0e0000-0000-0000-0000-000000000005","full_name":null,"phone":null,"status":"pending","plan":"none","live":"never"},
+                     {"id":"not-an-id","plan":"trial"}]}""") as JsonObject)
+        assertEquals(2, list.items.size)
+        assertEquals(PlanState.SUBSCRIBED, list.items[0].plan)
+        assertEquals(Instant.parse("2026-12-01T00:00:00Z"), list.items[0].planUntil)
+        assertEquals(LiveState.NEVER, list.items[1].live)
+        assertNull("no plan has no date", list.items[1].planUntil)
+        assertEquals(1, list.counts[DriverFilter.MONITORING])
+        assertEquals(0, list.counts[DriverFilter.TRIAL])
+        assertEquals("مشترك", AdminConsole.planLabel(PlanState.SUBSCRIBED))
+        assertEquals("بلا اشتراك", AdminConsole.planLabel(PlanState.NONE))
+        assertEquals("يراقب الآن", AdminConsole.liveLabel(LiveState.MONITORING))
+        assertEquals(mapOf("a11y" to true, "act" to false), AdminConsole.flags("a11y=1,act=0,mf=x"))
+        val now = Instant.parse("2026-10-30T12:00:00Z")
+        assertEquals("منذ 5 د", AdminConsole.ago(now.minusSeconds(300), now))
+        assertEquals("منذ 2 يوم", AdminConsole.ago(now.minusSeconds(2 * 86_400), now))
+        assertEquals(3L, AdminConsole.daysLeft(now.plusSeconds(2 * 86_400 + 3_600), now))
+        assertNull(AdminConsole.daysLeft(now.minusSeconds(1), now))
+        assertEquals("الأجرة خارج نطاقه", AdminConsole.reasonLabel("failed_price"))
+        assertNull(AdminConsole.issueLabel("healthy"))
+
+        val page = AdminConsole.detail(json.parseToJsonElement("""{
+            "account":{"id":"ac0e0000-0000-0000-0000-000000000002","full_name":"A","phone":"+966","email":"a@x.test","status":"active","device_id":"dev1"},
+            "plan":{"state":"trial","trial_until":"2026-11-02T00:00:00+00:00","codes":[{"code":"AAAA-BBBB-CCCC-DDDD","days":30,"batch":"b1"}]},
+            "live":{"state":"online","issue":"a11y_disabled","flags":"a11y=0,act=0","device":"mf=samsung,ram=8,bat=1"},
+            "activity":{"day":{"offers":7,"confirmed":2},"week":{"offers":20,"confirmed":5},"reject_reasons":[{"reason":"failed_price","count":4}]},
+            "referrals":{"invited":3,"rewarded":1},"support":{"status":"open","admin_unread":2,"messages":9},"notifications_30d":4}""") as JsonObject)!!
+        assertEquals(PlanState.TRIAL, page.row.plan)
+        assertEquals(LiveState.ONLINE, page.row.live)
+        assertEquals("AAAA-BBBB-CCCC-DDDD", page.codes.single().code)
+        assertEquals(7L, page.dayOffers)
+        assertEquals(5L, page.weekConfirmed)
+        assertEquals("failed_price", page.rejectReasons.single().code)
+        assertEquals(false, page.flags["a11y"])
+        assertEquals("Samsung · ذاكرة 8 ج.ب · البطارية بلا قيود", AdminConsole.deviceLine(page.device))
+        assertEquals(2, page.supportUnread)
+
+        val stats = AdminConsole.codeStats(json.parseToJsonElement("""{"total":4,"available":2,"redeemed":1,"revoked":1,"redeemed_7d":1,"redeemed_30d":1,
+            "by_days":[{"days":30,"total":2,"available":1}],"by_batch":[{"batch":"b1","total":2,"redeemed":1,"available":1}]}""") as JsonObject)
+        assertEquals(2, stats.available)
+        assertEquals(Triple(30, 2, 1), stats.byDays.single())
+        assertEquals("b1", stats.byBatch.single().batch)
     }
 
     @Test

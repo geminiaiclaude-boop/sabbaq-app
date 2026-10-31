@@ -1,5 +1,6 @@
 package app.sabbaq.fleet
 
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -10,9 +11,11 @@ import android.app.job.JobService
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import app.sabbaq.BuildConfig
 import app.sabbaq.LocaleManager
 import app.sabbaq.R
@@ -49,6 +52,8 @@ object UpdateNotifier {
         val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val state = decide(release, BuildConfig.VERSION_CODE.toLong(), prefs.getLong(KEY_NOTIFIED, 0L)) ?: return
         if (!NotificationManagerCompat.from(app).areNotificationsEnabled()) return
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(app, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
         val ar = LocaleManager.isArabic()
         createChannel(app, ar)
         val required = state == UpdateState.REQUIRED

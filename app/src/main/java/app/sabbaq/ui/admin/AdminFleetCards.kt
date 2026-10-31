@@ -98,6 +98,7 @@ internal fun AdminLearningCard(session: AdminSession) {
     var currency by remember { mutableStateOf("") }
     var noise by remember { mutableStateOf("") }
     var proposals by remember { mutableStateOf<List<AdminFleet.Proposal>>(emptyList()) }
+    var accepts by remember { mutableStateOf<app.sabbaq.admin.AdminAcceptLearning?>(null) }
 
     fun show(r: AdminFleet.LearningReport) {
         report = r
@@ -113,6 +114,7 @@ internal fun AdminLearningCard(session: AdminSession) {
             message = session.failureOf(it, if (ar) "تعذر تحميل تقرير التعلم." else "Could not load the learning report.").text
         })
         AdminFleet.proposals().onSuccess { proposals = it }
+        app.sabbaq.admin.AdminRepository.acceptLearning().onSuccess { accepts = it }
         busy = false
     }
     SabbaqCard(title = if (ar) "تعلّم المحرك من شاشات الأسطول" else "Engine learning from fleet screens", icon = Icons.Outlined.Psychology,
@@ -120,6 +122,16 @@ internal fun AdminLearningCard(session: AdminSession) {
         Text(if (ar) "التعلم التلقائي: كل ساعة تُقترح الكلمات التي رآها 3 سائقين، وتُختبر على الهواتف دون ضغط. كلمات الوقت والأجرة تُعتمد تلقائيًا بعد 5 قراءات ناجحة من 3 سائقين، وكلمات القبول تنتظر موافقتك."
              else "Automatic learning: every hour words seen by 3 drivers are proposed and tested on the phones without tapping. Time and fare words go live after 5 successful reads from 3 drivers; accept words wait for your approval.",
             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        accepts?.let { a ->
+            Text(if (ar) "التعلم من الطلبات المقبولة" else "Learning from accepted orders", style = MaterialTheme.typography.titleSmall)
+            Text(if (ar) "كل قبول يؤكده أندرويد يُسجَّل معه زر القبول الذي نجح. الزر الذي يؤكده 3 سائقين في 5 قبولات يصل لكل الهواتف، فيجده المحرك حتى لو غيّر تطبيق الرحلات نصه. خلال 30 يومًا: ${a.confirmed30d} قبول مؤكد."
+                 else "Every accept Android confirms records the button that worked. A button confirmed by 3 drivers in 5 accepts reaches every phone, so the engine finds it even if the ride app renames it. Last 30 days: ${a.confirmed30d} confirmed accepts.",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            AdminFact(if (ar) "أزرار تعلّمها الأسطول" else "Buttons the fleet learned", a.live.joinToString(", ").ifEmpty { if (ar) "لا شيء بعد" else "None yet" }, ltr = a.live.isNotEmpty())
+            a.candidates.take(5).forEach { c ->
+                AdminFact(c.viewId, if (ar) "${c.accepts} قبول من ${c.drivers} سائق" else "${c.accepts} accepts from ${c.drivers} drivers")
+            }
+        }
         proposals.forEach { p ->
             val category = when (p.category) { "accept" -> if (ar) "قبول" else "accept"; "time" -> if (ar) "وقت" else "time"; else -> if (ar) "أجرة" else "fare" }
             val status = when (p.status) {

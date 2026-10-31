@@ -2,6 +2,10 @@ package app.sabbaq.ui.admin
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.FilterChip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -56,7 +60,6 @@ import app.sabbaq.admin.AdminConversation
 import app.sabbaq.admin.AdminRepository
 import app.sabbaq.admin.AdminThread
 import app.sabbaq.ui.SabbaqAnimatedMessage
-import app.sabbaq.ui.SabbaqCard
 import app.sabbaq.ui.SabbaqTone
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -83,6 +86,8 @@ internal fun AdminSupportSection(session: AdminSession, consume: () -> AdminRequ
     var refreshTick by remember { mutableIntStateOf(0) }
     var loadingList by remember { mutableStateOf(false) }
 
+    var search by rememberSaveable { mutableStateOf("") }
+    var unreadOnly by rememberSaveable { mutableStateOf(false) }
     var focusReply by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         (consume() as? AdminRequest.MessageDriver)?.let { selected = it.driverId; reply = ""; pendingClientId = null; focusReply = true }
@@ -165,6 +170,8 @@ internal fun AdminSupportSection(session: AdminSession, consume: () -> AdminRequ
                 }
             },
             onDiagnose = { conversation?.correlationId?.let { open(AdminRequest.DiagnoseSupportId(it)) } },
+            onOpenDriver = { open(AdminRequest.OpenDriver(current)) },
+            onQuickReply = { text -> reply = text.take(1000); pendingClientId = null },
             focusReply = focusReply,
             onReplyFocused = { focusReply = false },
         )
@@ -177,36 +184,50 @@ internal fun AdminSupportSection(session: AdminSession, consume: () -> AdminRequ
                 Text((if (LocaleManager.isArabic()) "محادثات السائقين داخل التطبيق. يصل ردك للسائق في المحادثة وكإشعار على جواله. تتحدث القائمة تلقائيًا كل 20 ثانية." else "Drivers' in-app conversations. Your reply reaches the driver in the chat and as a phone notification. The list refreshes automatically every 20 seconds."),
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 AdminChoice((if (LocaleManager.isArabic()) "العرض" else "View"), listOf("open" to (if (LocaleManager.isArabic()) "المفتوحة" else "Open"), "closed" to (if (LocaleManager.isArabic()) "المغلقة" else "Closed"), "all" to (if (LocaleManager.isArabic()) "الكل" else "All")), filter, onSelect = { filter = it })
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(value = search, onValueChange = { search = it.take(40) }, singleLine = true, modifier = Modifier.weight(1f),
+                        placeholder = { Text(if (LocaleManager.isArabic()) "بحث باسم السائق" else "Search by driver name") })
+                    FilterChip(selected = unreadOnly, onClick = { unreadOnly = !unreadOnly },
+                        label = { Text((if (LocaleManager.isArabic()) "غير المقروءة" else "Unread") + " ${threads.orEmpty().count { it.unread > 0 }}") })
+                }
                 OutlinedButton(onClick = { refreshTick++ }, enabled = !loadingList) { Text(if (loadingList) (if (LocaleManager.isArabic()) "جارٍ التحديث…" else "Refreshing…") else (if (LocaleManager.isArabic()) "تحديث" else "Refresh")) }
                 SabbaqAnimatedMessage(notice?.text, notice?.tone ?: SabbaqTone.Info)
             }
         }
-        val list = threads
+        val list = threads?.filter { t ->
+            (!unreadOnly || t.unread > 0) && (search.isBlank() || t.name.contains(search.trim(), ignoreCase = true))
+        }
         when {
             list == null -> item(key = "loading") { Text((if (LocaleManager.isArabic()) "جارٍ تحميل المحادثات…" else "Loading conversations…"), color = MaterialTheme.colorScheme.onSurfaceVariant) }
             list.isEmpty() -> item(key = "empty") { Text((if (LocaleManager.isArabic()) "لا توجد محادثات في هذا العرض." else "No conversations in this view."), color = MaterialTheme.colorScheme.onSurfaceVariant) }
             else -> items(list, key = { it.driverId }) { thread ->
                 ThreadRow(thread, onClick = { notice = null; reply = ""; pendingClientId = null; conversation = null; selected = thread.driverId })
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
         }
     }
 }
 
+/** One conversation per row, like a phone's inbox: name, last message, how long ago, unread count. */
 @Composable
 private fun ThreadRow(thread: AdminThread, onClick: () -> Unit) {
-    SabbaqCard(modifier = Modifier.clickable(onClick = onClick)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(thread.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f),
-                fontWeight = if (thread.unread > 0) FontWeight.Bold else FontWeight.Normal)
+    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(thread.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    fontWeight = if (thread.unread > 0) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.weight(1f, fill = false))
+                if (thread.closed) Text(if (LocaleManager.isArabic()) "مغلقة" else "closed", style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text(thread.preview?.let { (if (thread.previewFromAdmin) (if (LocaleManager.isArabic()) "أنت: " else "You: ") else "") + it } ?: (if (LocaleManager.isArabic()) "لا رسائل" else "No messages"),
+                style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                color = if (thread.unread > 0) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(app.sabbaq.admin.AdminConsole.ago(thread.lastAt), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (thread.unread > 0) Badge { Text(thread.unread.toString()) }
         }
-        Text(thread.preview?.let { (if (thread.previewFromAdmin) (if (LocaleManager.isArabic()) "أنت: " else "You: ") else "") + it } ?: (if (LocaleManager.isArabic()) "لا رسائل" else "No messages"),
-            style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        Text(buildString {
-            append(formatDateTime(thread.lastAt))
-            if (thread.unread > 0) append(if (LocaleManager.isArabic()) " · ${thread.unread} جديدة" else " · ${thread.unread} new")
-            if (thread.closed) append(if (LocaleManager.isArabic()) " · مغلقة" else " · closed")
-        }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -222,6 +243,8 @@ private fun ConversationView(
     onSend: () -> Unit,
     onToggle: () -> Unit,
     onDiagnose: () -> Unit,
+    onOpenDriver: () -> Unit,
+    onQuickReply: (String) -> Unit,
     focusReply: Boolean,
     onReplyFocused: () -> Unit,
 ) {
@@ -241,7 +264,8 @@ private fun ConversationView(
                         Text(meta.ifEmpty { (if (LocaleManager.isArabic()) "لا توجد بيانات إضافية" else "No additional data") }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(horizontal = 8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(horizontal = 8.dp).horizontalScroll(rememberScrollState())) {
+                    OutlinedButton(onClick = onOpenDriver) { Text(if (LocaleManager.isArabic()) "صفحة السائق" else "Driver page") }
                     OutlinedButton(onClick = onDiagnose, enabled = conversation?.correlationId != null) { Text((if (LocaleManager.isArabic()) "تشخيص الشكوى" else "Diagnose complaint")) }
                     OutlinedButton(onClick = onToggle, enabled = conversation != null && !toggling) {
                         Text(if (conversation?.closed == true) (if (LocaleManager.isArabic()) "إعادة فتح المحادثة" else "Reopen the conversation") else (if (LocaleManager.isArabic()) "إغلاق المحادثة" else "Close the conversation"))
@@ -272,6 +296,12 @@ private fun ConversationView(
             }
         }
         HorizontalDivider()
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            quickReplies().forEach { (label, text) ->
+                AssistChip(onClick = { onQuickReply(text) }, label = { Text(label, maxLines = 1) })
+            }
+        }
         Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(
                 value = reply, onValueChange = onReplyChange, placeholder = { Text((if (LocaleManager.isArabic()) "اكتب ردك…" else "Write your reply…")) }, maxLines = 5,
@@ -283,3 +313,18 @@ private fun ConversationView(
         }
     }
 }
+
+/** Ready answers for the questions drivers ask most; the text is put in the field to edit before sending. */
+private fun quickReplies(): List<Pair<String, String>> = if (LocaleManager.isArabic()) listOf(
+    "ترحيب" to "مرحبًا بك، معك دعم سبّاق. كيف نقدر نساعدك؟",
+    "إذن المتابعة" to "فعّل إذن متابعة الطلبات: الإعدادات ← إمكانية الوصول ← التطبيقات المثبتة ← سبّاق ← تفعيل، ثم ارجع إلى سبّاق واضغط «ابدأ».",
+    "تحديث" to "صدرت نسخة جديدة من سبّاق. حدّث من الإشعار أو من الرابط: https://yahooyahoo99.github.io/download/",
+    "البطارية" to "اجعل استهلاك البطارية لسبّاق «غير مقيد» من صفحة «حالة العمل» حتى لا يوقفه أندرويد عند قفل الشاشة.",
+    "تم الحل" to "تم حل المشكلة، شكرًا لك. إن احتجت أي شيء آخر اكتب لنا هنا.",
+) else listOf(
+    "Welcome" to "Hello, this is Sabbaq support. How can we help?",
+    "Permission" to "Turn on order monitoring: Settings → Accessibility → Installed apps → Sabbaq → On, then go back to Sabbaq and tap «Start».",
+    "Update" to "A new Sabbaq version is out. Update from the notification or from https://yahooyahoo99.github.io/download/",
+    "Battery" to "Set Sabbaq's battery use to «Unrestricted» from the work status page so Android does not stop it when the screen locks.",
+    "Solved" to "The problem is solved, thank you. Write to us here if you need anything else.",
+)

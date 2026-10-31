@@ -57,6 +57,8 @@ data class EngineConfig(
     val timeKeywordsExtra: String = "",
     val currencyKeywordsExtra: String = "",
     val noiseKeywordsExtra: String = "",
+    /** Accept-button ids learned from the fleet's confirmed accepts (comma list); never typed by the driver. */
+    val acceptViewIdsExtra: String = "",
     val targetApp: TargetApp = TargetApp.JEENY,
     /** The reference engine turbo: tap the saved point the instant an offer word appears. */
     val turboModeEnabled: Boolean = false,

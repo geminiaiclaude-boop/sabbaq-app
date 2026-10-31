@@ -49,6 +49,38 @@ class JeenyScreenReaderTest {
 
     /** Field session 2026-10-29: a trip screen with a fare and «عرض الاتجاهات» is a trip, not an offer. */
     @Test
+    fun a_button_the_fleet_confirmed_by_its_id_is_the_accept_when_no_accept_word_is_on_screen() {
+        // A new ride-app build renamed the accept button («خذها»): no accept word matches any more.
+        fun screen(): Pair<FakeNode, FakeNode> {
+            val button = FakeNode(text = "خذها", className = "android.widget.Button", viewId = "me.com.easytaxista:id/btnAccept",
+                isClickable = true, rect = Bounds(80, 2180, 1000, 2310))
+            return FakeNode(className = "android.widget.FrameLayout", rect = Bounds(0, 0, 1080, 2400), children = listOf(
+                FakeNode(text = "يبعد 4 دقائق", rect = row(1400)),
+                FakeNode(text = "⃁ 25.50", rect = row(1500)),
+                button,
+            )) to button
+        }
+        assertNull("without the learned id nothing on this screen accepts", reader().read(screen().first, height)?.acceptNode)
+        val (root, button) = screen()
+        val ride = reader(EngineConfig(acceptViewIdsExtra = "btnaccept")).read(root, height)!!
+        assertSame(button, ride.acceptNode)
+        assertEquals(JeenyScreenReader.LEARNED_ACCEPT_ID, ride.acceptWord)
+        // A word match still wins over a learned id, exactly as before.
+        val (card, frame) = jeenyCard()
+        assertSame(frame, reader(EngineConfig(acceptViewIdsExtra = "tvtime")).read(card, height)!!.acceptNode)
+    }
+
+    @Test
+    fun a_learned_id_never_accepts_on_a_trip_screen() {
+        val root = FakeNode(className = "android.widget.FrameLayout", rect = Bounds(0, 0, 1080, 2400), children = listOf(
+            FakeNode(text = "⃁ 25.50", rect = row(1500)),
+            FakeNode(text = "عرض الاتجاهات", viewId = "me.com.easytaxista:id/btnAccept", isClickable = true, rect = row(1700)),
+        ))
+        val ride = reader(EngineConfig(acceptViewIdsExtra = "btnaccept")).read(root, height)
+        assertTrue(ride == null || ride.isActiveRide || ride.acceptNode == null)
+    }
+
+    @Test
     fun a_trip_screen_with_a_fare_and_directions_is_an_active_ride() {
         val directions = FakeNode(text = "عرض الاتجاهات", isClickable = true, rect = Bounds(80, 2180, 1000, 2310))
         val root = FakeNode(className = "android.widget.FrameLayout", rect = Bounds(0, 0, 1080, 2400), children = listOf(

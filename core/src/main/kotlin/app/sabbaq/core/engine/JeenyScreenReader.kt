@@ -70,6 +70,8 @@ class JeenyScreenReader(private val config: EngineConfig, private val uptimeMs: 
         private set
 
     private val lex = config.lexicon()
+    private val learnedIds: Set<String> = config.acceptViewIdsExtra.split(',').map { it.trim().lowercase() }
+        .filter(app.sabbaq.core.SharedLexicon::validId).toSet()
 
     /** Learned-id shortcut (`Pk.dispatch`): three lookups instead of a tree walk. */
     fun readByLearnedIds(root: UiNode, ids: LearnedOfferIds): ParsedRide? {
@@ -149,6 +151,7 @@ class JeenyScreenReader(private val config: EngineConfig, private val uptimeMs: 
         var clickX = 0
         var clickY = 0
         var acceptViewId: String? = null
+        var learnedAccept: UiNode? = null
         var priceViewId: String? = null
         var timeViewId: String? = null
         val addresses = LinkedHashSet<String>()
@@ -277,6 +280,10 @@ class JeenyScreenReader(private val config: EngineConfig, private val uptimeMs: 
                     }
                 }
                 if (isReject && reject == null) reject = node
+                // A button the fleet confirmed by its id, kept for when no accept word is on screen.
+                if (learnedAccept == null && !isReject && !disabled && learnedIds.isNotEmpty() && node.isClickable &&
+                    node.viewIdSafe()?.substringAfter(":id/")?.lowercase() in learnedIds
+                ) learnedAccept = node
 
                 if (!isReject && !disabled && isAccept) {
                     var target = node
@@ -312,6 +319,11 @@ class JeenyScreenReader(private val config: EngineConfig, private val uptimeMs: 
         if (online) { lastMiss = "online_screen"; lastMissDetail = "n=$visited"; return null }
 
         val hasAnyPrice = price != null || fallbackPrice != null
+        if (accept == null) learnedAccept?.let { node ->
+            val b = node.bounds()
+            accept = node; clickX = b.centerX; clickY = b.centerY
+            acceptViewId = node.viewIdSafe(); acceptWord = LEARNED_ACCEPT_ID
+        }
         if (accept == null && reject != null && hasAnyPrice && minutes != null && addresses.isNotEmpty()) {
             findBesideReject(root, reject)?.let { (node, x, y) ->
                 accept = node; clickX = x; clickY = y
@@ -399,6 +411,8 @@ class JeenyScreenReader(private val config: EngineConfig, private val uptimeMs: 
     }
 
     companion object {
+        /** [ParsedRide.acceptWord] when the button was found by a fleet-learned id, not by a word. */
+        const val LEARNED_ACCEPT_ID = -2
         /** Text, or the description when the node has no text at all (`Pk.dispatch`). */
         fun labelOf(node: UiNode): String = node.text ?: node.description.orEmpty()
     }
