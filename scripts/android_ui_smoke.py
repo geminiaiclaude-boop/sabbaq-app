@@ -340,7 +340,7 @@ for name, screen, dark, font_scale, env in cases:
                     adb('shell', 'input', 'tap', str((x1 + x2) // 2), str((y1 + y2) // 2))
                     return True
             return False
-        if 'العليا،' in editor_visible and tap_node(lambda n: n.get('text', '').startswith('العليا،')):
+        if 'العليا،' in editor_visible and (tap_node(lambda n: n.get('text', '').startswith('العليا، الرياض')) or tap_node(lambda n: n.get('text', '').startswith('العليا،'))):
             time.sleep(2)
             picked_nodes = ET.fromstring(ui_xml()).findall('.//node')
             # Compose test tags are not exposed as ids here: the zone name is the editor's first text field.
@@ -348,16 +348,18 @@ for name, screen, dark, font_scale, env in cases:
                            if n.get('package') == args.package and n.get('class') == 'android.widget.EditText'][:1]
             assert any('العليا' in t for t in name_fields), f'Picking a place left the zone name empty: {name_fields}'
             if tap_node(lambda n: n.get('text', '').startswith('استخدم حدود')):
+                # The hint counts corners in Arabic digits: wait until it is no longer zero or an error shows.
                 outlined = ''
-                for _ in range(12):
+                for _ in range(16):
                     time.sleep(2.5)
                     outlined = ' '.join(n.get('text', '') for n in ET.fromstring(ui_xml()).findall('.//node'))
-                    if 'لا توجد حدود' in outlined or not re.search(r'\(0 حتى الآن\)', outlined):
+                    if 'لا توجد حدود' in outlined or not re.search(r'\((0|٠) حتى الآن\)', outlined):
                         break
                 shot = screencap()
                 if shot.startswith(b'\x89PNG\r\n\x1a\n'):
                     (out / f'{name}-outline.png').write_bytes(shot)
                 assert 'لا توجد حدود' not in outlined, f'«استخدم حدود العليا» found no boundary: {outlined[:400]!r}'
+                assert not re.search(r'\((0|٠) حتى الآن\)', outlined), f'«استخدم حدود العليا» drew no corners in time: {outlined[:400]!r}'
     if screen == 'welcome-example':
         # The pipeline scene leads the page; the worked example sits below it.
         assert reachable_by_scrolling('2.5 ر.س قبل التكاليف', visible), f'Concrete fare/distance example missing: {name}'

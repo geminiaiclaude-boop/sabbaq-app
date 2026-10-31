@@ -34,5 +34,5 @@ internal fun ZonesPreview(editor: Boolean) {
     ) {
         ZonesPage(draft, emptyMap(), { draft = it }, onBack = {})
     }
-    if (editor) ZoneEditorDialog(initial = null, initialExclude = false, onDismiss = {}, onSave = { _, _ -> }, initialQuery = "العليا")
+    if (editor) ZoneEditorDialog(initial = null, initialExclude = false, onDismiss = {}, onSave = { _, _ -> }, initialQuery = "العليا الرياض")
 }
