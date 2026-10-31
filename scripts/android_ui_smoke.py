@@ -347,24 +347,25 @@ for name, screen, dark, font_scale, env in cases:
             name_fields = [n.get('text', '') for n in picked_nodes
                            if n.get('package') == args.package and n.get('class') == 'android.widget.EditText'][:1]
             assert any('العليا' in t for t in name_fields), f'Picking a place left the zone name empty: {name_fields}'
-            if tap_node(lambda n: n.get('text', '').startswith('استخدم حدود')):
-                # The hint counts corners in Arabic digits: wait until it is no longer zero or an error shows.
-                outlined = ''
-                for _ in range(16):
-                    time.sleep(2.5)
-                    outlined = ' '.join(n.get('text', '') for n in ET.fromstring(ui_xml()).findall('.//node'))
-                    if 'لا توجد حدود' in outlined or 'تعذّر جلب الحدود' in outlined or not re.search(r'\((0|٠) حتى الآن\)', outlined):
-                        break
-                shot = screencap()
-                if shot.startswith(b'\x89PNG\r\n\x1a\n'):
-                    (out / f'{name}-outline.png').write_bytes(shot)
-                assert 'لا توجد حدود' not in outlined, f'«استخدم حدود العليا» found no boundary: {outlined[:400]!r}'
-                # A busy public map server may not answer from the CI network; the app must then say so,
-                # never claim the district has no boundary and never wait silently.
-                assert 'تعذّر جلب الحدود' in outlined or not re.search(r'\((0|٠) حتى الآن\)', outlined), \
-                    f'«استخدم حدود العليا» gave neither corners nor an answer: {outlined[:400]!r}'
-                if 'تعذّر جلب الحدود' in outlined:
-                    print(f'{name}: map servers unreachable from CI; boundary drawing not verified here', flush=True)
+            # Picking the place makes it the zone, ready to save: its boundary, or a square around it
+            # when none is mapped or the map servers are busy (owner, 2026-10-31). Corners are counted in Arabic digits.
+            outlined = ''
+            for _ in range(16):
+                time.sleep(2.5)
+                outlined = ' '.join(n.get('text', '') for n in ET.fromstring(ui_xml()).findall('.//node'))
+                if not re.search(r'\((0|٠) حتى الآن\)', outlined):
+                    break
+            shot = screencap()
+            if shot.startswith(b'\x89PNG\r\n\x1a\n'):
+                (out / f'{name}-outline.png').write_bytes(shot)
+            assert not re.search(r'\((0|٠) حتى الآن\)', outlined), f'Picking «العليا» drew no zone: {outlined[:400]!r}'
+            if 'رُسمت منطقة مربعة' in outlined:
+                print(f'{name}: no district boundary reached from CI; a square was drawn instead', flush=True)
+            assert tap_node(lambda n: n.get('text', '') == 'حفظ المنطقة'), 'Save button missing'
+            time.sleep(1.5)
+            saved = ' '.join(n.get('text', '') for n in ET.fromstring(ui_xml()).findall('.//node'))
+            for refusal in ('الرجاء إدخال اسم المنطقة', 'المنطقة تحتاج 3 نقاط'):
+                assert refusal not in saved, f'Saving the picked place was refused: {refusal}'
     if screen == 'welcome-example':
         # The pipeline scene leads the page; the worked example sits below it.
         assert reachable_by_scrolling('2.5 ر.س قبل التكاليف', visible), f'Concrete fare/distance example missing: {name}'

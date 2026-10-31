@@ -38,6 +38,8 @@ object CityIndexStore {
     data class City(val name: String, val box: GeoBox, val places: List<CityPlace>)
 
     private const val FILE = "city_index.json"
+    private const val DISTRICTS_FILE = "city_districts.json"
+    private const val MONTH_MS = 30L * 24 * 3600 * 1000
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val lock = Mutex()
     private val json = Json { ignoreUnknownKeys = true }
@@ -49,6 +51,34 @@ object CityIndexStore {
     @Volatile private var lastCheck = 0L
 
     private fun file(context: Context) = File(context.applicationContext.filesDir, FILE)
+    private fun districtsFile(context: Context) = File(context.applicationContext.filesDir, DISTRICTS_FILE)
+    @Volatile private var districts: Triple<String, Long, List<CityIndex.District>>? = null
+    @Volatile private var districtsRead = false
+
+    private fun storedDistricts(context: Context): Triple<String, Long, List<CityIndex.District>>? {
+        if (!districtsRead) {
+            districtsRead = true
+            districts = runCatching { districtsFile(context).takeIf { it.exists() }?.readText()?.let(CityIndex::decodeDistricts) }.getOrNull()
+        }
+        return districts
+    }
+
+    /** The district around a point from the downloaded boundaries: instant and offline; null when none covers it. */
+    fun localDistrict(context: Context, lat: Double, lng: Double): CityIndex.District? =
+        storedDistricts(context)?.third?.let { CityIndex.districtAround(it, lat, lng) }
+
+    /** Downloads the city's district boundaries once a month (or for a new city); a failure is retried at the next check. */
+    private suspend fun ensureDistricts(context: Context, city: String, box: GeoBox) {
+        val stored = storedDistricts(context)
+        if (stored != null && stored.first == city && System.currentTimeMillis() - stored.second < MONTH_MS && stored.third.isNotEmpty()) return
+        val body = ZoneWarmer.overpassBody(CityIndex.districtsQuery(box), readTimeoutMs = 90_000) ?: return
+        if (CityIndex.overpassGaveUp(body)) return
+        val list = CityIndex.parseDistricts(body)
+        if (list.isEmpty()) return
+        val now = System.currentTimeMillis()
+        runCatching { districtsFile(context).writeText(CityIndex.encodeDistricts(city, now, list)) }
+        districts = Triple(city, now, list)
+    }
 
     /** The stored city, read from disk once. */
     private fun load(context: Context): CityIndex.Saved? {
@@ -76,7 +106,10 @@ object CityIndexStore {
     suspend fun refresh(context: Context, force: Boolean): Boolean = withContext(Dispatchers.IO) {
         val stored = load(context)
         val here = ZoneStore.driverLocation() ?: return@withContext stored != null
-        if (!force && !CityIndex.stale(stored, here[0], here[1], System.currentTimeMillis())) return@withContext true
+        if (!force && !CityIndex.stale(stored, here[0], here[1], System.currentTimeMillis())) {
+            stored?.let { s -> if (lock.tryLock()) try { ensureDistricts(context, s.city, s.box) } finally { lock.unlock() } }
+            return@withContext true
+        }
         if (!lock.tryLock()) return@withContext false
         try {
             val (name, box) = cityAround(here[0], here[1]) ?: return@withContext false
@@ -88,6 +121,7 @@ object CityIndexStore {
             saved = CityIndex.Saved(name, box, now, places)
             _city.value = City(name, box, places)
             ZoneStore.addWarmed(CityIndex.cacheEntries(places, ZoneStore.cache().keys), "warm_city")
+            ensureDistricts(context, name, box)
             true
         } finally {
             lock.unlock()
@@ -124,7 +158,8 @@ object CityIndexStore {
         data object Unreachable : Outline
     }
 
-    suspend fun outlineOf(osm: String, name: String, lat: Double, lng: Double): Outline = withContext(Dispatchers.IO) {
+    suspend fun outlineOf(context: Context, osm: String, name: String, lat: Double, lng: Double): Outline = withContext(Dispatchers.IO) {
+        localDistrict(context, lat, lng)?.let { return@withContext Outline.Found(it.ring) }
         val direct = outline(osm, lat, lng, withDistrict = false)
         if (direct.size >= 3) return@withContext Outline.Found(direct)
         // By name near the point: quick, and enough wherever the search service maps the district.
@@ -132,7 +167,8 @@ object CityIndexStore {
             ?.let { CityIndex.polygonAround(it, lat, lng) }.orEmpty()
         if (searched.size >= 3) return@withContext Outline.Found(searched)
         val body = ZoneWarmer.overpassFirst(CityIndex.containingDistrictQuery(lat, lng)) ?: return@withContext Outline.Unreachable
-        CityIndex.containingDistrict(body)?.second?.takeIf { it.size >= 3 }?.let { Outline.Found(it) } ?: Outline.NotMapped
+        CityIndex.containingDistrict(body)?.second?.takeIf { it.size >= 3 }?.let { Outline.Found(it) }
+            ?: if (CityIndex.overpassGaveUp(body)) Outline.Unreachable else Outline.NotMapped
     }
 
     suspend fun outline(osm: String, lat: Double, lng: Double, withDistrict: Boolean = true): List<DoubleArray> = withContext(Dispatchers.IO) {

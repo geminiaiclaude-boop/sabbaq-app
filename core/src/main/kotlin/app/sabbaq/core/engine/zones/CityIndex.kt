@@ -199,31 +199,83 @@ object CityIndex {
         "[out:json][timeout:25];is_in($lat,$lng)->.a;rel(pivot.a)[boundary=administrative][admin_level~\"^(8|9|10|11)$\"];out geom;"
 
     /** The smallest (deepest admin level) boundary in a [containingDistrictQuery] answer: its name and outline. */
-    fun containingDistrict(body: String, max: Int = 60): Pair<String, List<DoubleArray>>? {
-        val root = runCatching { Json.parseToJsonElement(body) as JsonObject }.getOrNull() ?: return null
-        val elements = (root["elements"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
-        return elements
-            .sortedByDescending { (it["tags"] as? JsonObject)?.get("admin_level")?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 0 }
-            .firstNotNullOfOrNull { rel ->
-                val tags = rel["tags"] as? JsonObject
-                val name = listOf("name:ar", "name", "name:en").firstNotNullOfOrNull { k ->
-                    tags?.get(k)?.jsonPrimitive?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
-                } ?: return@firstNotNullOfOrNull null
-                val ways = (rel["members"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
-                    .filter { it["type"]?.jsonPrimitive?.contentOrNull == "way" && it["role"]?.jsonPrimitive?.contentOrNull != "inner" }
-                    .map { m ->
-                        (m["geometry"] as? JsonArray).orEmpty().mapNotNull { g ->
-                            val o = g as? JsonObject ?: return@mapNotNull null
-                            val lat = o["lat"]?.jsonPrimitive?.doubleOrNull
-                            val lon = o["lon"]?.jsonPrimitive?.doubleOrNull
-                            if (lat == null || lon == null) null else doubleArrayOf(lat, lon)
-                        }
+    fun containingDistrict(body: String, max: Int = 60): Pair<String, List<DoubleArray>>? =
+        parseDistricts(body, max).maxByOrNull { it.level }?.let { it.name to it.ring }
+
+    /** A busy server answers 200 with no elements and a «runtime error … timed out» remark: that is no answer, not "nothing mapped". */
+    fun overpassGaveUp(body: String): Boolean = runCatching {
+        val remark = (Json.parseToJsonElement(body) as JsonObject)["remark"]?.jsonPrimitive?.contentOrNull.orEmpty()
+        remark.contains("error", ignoreCase = true) || remark.contains("timed out", ignoreCase = true)
+    }.getOrDefault(true)
+
+    /** A district boundary of the driver's city: its name, admin level (deeper is smaller) and outline. */
+    class District(val name: String, val level: Int, val ring: List<DoubleArray>)
+
+    /**
+     * Every district boundary in the city's box, downloaded once with the city (a few hundred KB):
+     * «استخدم حدود …» and «حيّي الحالي» then answer at once and offline, without the public map
+     * servers that took 22-40 s or nothing at all (2026-10-31).
+     */
+    fun districtsQuery(box: GeoBox): String =
+        "[out:json][timeout:90];rel[boundary=administrative][admin_level~\"^(9|10|11)$\"](${box.south},${box.west},${box.north},${box.east});out geom;"
+
+    fun parseDistricts(body: String, max: Int = 60): List<District> {
+        val root = runCatching { Json.parseToJsonElement(body) as JsonObject }.getOrNull() ?: return emptyList()
+        return (root["elements"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }.mapNotNull { rel ->
+            val tags = rel["tags"] as? JsonObject
+            val name = listOf("name:ar", "name", "name:en").firstNotNullOfOrNull { k ->
+                tags?.get(k)?.jsonPrimitive?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
+            } ?: return@mapNotNull null
+            val level = tags?.get("admin_level")?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 0
+            val ways = (rel["members"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
+                .filter { it["type"]?.jsonPrimitive?.contentOrNull == "way" && it["role"]?.jsonPrimitive?.contentOrNull != "inner" }
+                .map { m ->
+                    (m["geometry"] as? JsonArray).orEmpty().mapNotNull { g ->
+                        val o = g as? JsonObject ?: return@mapNotNull null
+                        val lat = o["lat"]?.jsonPrimitive?.doubleOrNull
+                        val lon = o["lon"]?.jsonPrimitive?.doubleOrNull
+                        if (lat == null || lon == null) null else doubleArrayOf(lat, lon)
                     }
-                    .filter { it.size >= 2 }
-                val ring = assembleRing(ways)
-                if (ring.size >= 3) name to simplify(ring, max) else null
-            }
+                }
+                .filter { it.size >= 2 }
+            val ring = assembleRing(ways)
+            if (ring.size >= 3) District(name, level, simplify(ring, max)) else null
+        }
     }
+
+    /** The deepest district around a point, the smaller one when two of a level overlap; null outside all. */
+    fun districtAround(districts: List<District>, lat: Double, lng: Double): District? =
+        districts.filter { ZoneCacheWarm.inside(lat, lng, it.ring) }
+            .sortedWith(compareByDescending<District> { it.level }.thenBy { d ->
+                (d.ring.maxOf { it[0] } - d.ring.minOf { it[0] }) * (d.ring.maxOf { it[1] } - d.ring.minOf { it[1] })
+            })
+            .firstOrNull()
+
+    fun encodeDistricts(city: String, savedAt: Long, districts: List<District>): String = buildJsonObject {
+        put("city", city); put("savedAt", savedAt)
+        put("d", buildJsonArray {
+            districts.forEach { d ->
+                add(buildJsonObject {
+                    put("n", d.name); put("l", d.level)
+                    put("p", buildJsonArray { d.ring.forEach { add(buildJsonArray { add(JsonPrimitive(it[0])); add(JsonPrimitive(it[1])) }) } })
+                })
+            }
+        })
+    }.toString()
+
+    /** The stored districts and the city and time they were downloaded for; null when unreadable. */
+    fun decodeDistricts(text: String): Triple<String, Long, List<District>>? = runCatching {
+        val o = Json.parseToJsonElement(text) as JsonObject
+        val city = o["city"]!!.jsonPrimitive.content
+        val at = o["savedAt"]!!.jsonPrimitive.longOrNull ?: 0L
+        val list = (o["d"] as JsonArray).mapNotNull { e ->
+            val d = e as? JsonObject ?: return@mapNotNull null
+            val ring = ZoneCacheWarm.corners(d["p"] as? JsonArray ?: return@mapNotNull null)
+            if (ring.size < 3) null
+            else District(d["n"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null, d["l"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 0, ring)
+        }
+        Triple(city, at, list)
+    }.getOrNull()
 
     /** A name search near a point (Nominatim, with polygons): the address of the request. */
     fun polygonSearchUrl(name: String, lat: Double, lng: Double): String {

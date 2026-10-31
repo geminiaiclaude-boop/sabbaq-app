@@ -470,8 +470,19 @@ fun SettingsScreen(
             showMissingPermissions = true
             return
         }
-        checkingActivation = true
         runtimeMessage = null
+        // A paid period already saved on this phone starts at once: the server is asked in the
+        // background, and only its explicit refusal stops monitoring (the licence loop handles it).
+        // Waiting on «جارٍ التحقق من اشتراكك» at every start was dead time (owner, 2026-10-31).
+        if (Settings.subscriptionEndsAtMs > System.currentTimeMillis()) {
+            showActivationConsent = true
+            scope.launch {
+                runCatching { SupabaseClient.revalidateLicense() }
+                licenseInMemory = SupabaseClient.hasValidLicense()
+            }
+            return
+        }
+        checkingActivation = true
         scope.launch {
             try {
                 // هذا هو موضع الفحص الشبكي الصريح الوحيد في مسار بدء التشغيل.
