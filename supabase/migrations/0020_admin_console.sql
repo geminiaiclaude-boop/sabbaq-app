@@ -214,9 +214,11 @@ revoke all on function public.admin_code_stats() from public, anon;
 grant execute on function public.admin_code_stats() to authenticated;
 
 -- Learning from confirmed accepts. A phone reports ACCEPT_LEARNED "confirmed:<hash>" with detail
--- "aw=<word>,vid=<button id>,n=<nodes>" each time Android confirms an accept it tapped. A button id
--- confirmed by at least 3 drivers in 5 accepts over 30 days joins the shared lexicon's accept_ids,
--- and every phone's reader then finds that button even when the ride app renames its text.
+-- "aw=<word>,vid=<button id>,n=<nodes>" each time Android confirms an accept it tapped. Button ids
+-- confirmed by at least 3 active, subscribed or trial drivers in 5 accept reports over 30 days
+-- become candidates (each report counts at most 3, whatever count a phone claims). Like accept
+-- words, a candidate reaches the phones only when the administration approves it
+-- (admin_set_accept_id), so a handful of accounts can never steer every phone's tap.
 create or replace function private.shared_lexicon_row() returns jsonb
 language sql stable security definer set search_path = pg_catalog, public as $$
     select jsonb_build_object(
@@ -231,36 +233,52 @@ revoke all on function private.shared_lexicon_row() from public, anon, authentic
 create or replace function private.accept_id_candidates() returns table (view_id text, accepts bigint, drivers bigint, last_at timestamptz)
 language sql stable security definer set search_path = pg_catalog, public as $$
     select lower(substring(e.detail from '(?:^|,)vid=([a-z0-9_]{2,32})(?:,|$)')) vid,
-           sum(e.event_count), count(distinct e.ingested_by), max(e.received_at)
+           sum(least(e.event_count, 3)), count(distinct e.ingested_by), max(e.received_at)
     from public.offer_telemetry_events e
+    join public.drivers d on d.id = e.ingested_by
     where e.stage = 'ACCEPT_LEARNED' and e.reason_code like 'confirmed:%'
-      and e.received_at > now() - interval '30 days' and e.ingested_by is not null
+      and e.received_at > now() - interval '30 days'
+      and d.status = 'active' and private.plan_state(d.trial_until, d.pro_until) in ('subscribed', 'trial')
       and substring(e.detail from '(?:^|,)vid=([a-z0-9_]{2,32})(?:,|$)') is not null
       and substring(e.detail from '(?:^|,)vid=([a-z0-9_]{2,32})(?:,|$)') <> 'none'
     group by 1
 $$;
 revoke all on function private.accept_id_candidates() from public, anon, authenticated;
 
-create or replace function private.learn_accept_ids() returns jsonb
+-- The administration publishes or withdraws one accept-button id (new lexicon version, audited).
+-- Publishing needs the id to be a proven candidate; withdrawing is always allowed.
+create or replace function public.admin_set_accept_id(p_view_id text, p_publish boolean) returns jsonb
 language plpgsql security definer set search_path = pg_catalog, public as $$
 declare
-    v_row jsonb := private.shared_lexicon_row();
+    v_row jsonb;
     v_ids jsonb;
+    v_id text := lower(btrim(coalesce(p_view_id, '')));
 begin
-    select coalesce(jsonb_agg(view_id order by drivers desc, accepts desc, view_id), '[]'::jsonb) into v_ids
-    from (select * from private.accept_id_candidates() where accepts >= 5 and drivers >= 3
-          order by drivers desc, accepts desc, view_id limit 10) c;
-    if v_ids = coalesce(v_row -> 'accept_ids', '[]'::jsonb) then
-        return jsonb_build_object('changed', false, 'accept_ids', v_ids);
+    perform public.require_admin();
+    if v_id !~ '^[a-z0-9_]{2,32}$' or v_id = 'none' or p_publish is null then raise exception 'bad_view_id' using errcode = '22023'; end if;
+    v_row := private.shared_lexicon_row();
+    v_ids := coalesce(v_row -> 'accept_ids', '[]'::jsonb);
+    if p_publish then
+        if v_ids @> to_jsonb(array[v_id]) then return v_ids; end if;
+        if not exists (select 1 from private.accept_id_candidates() c where c.view_id = v_id and c.accepts >= 5 and c.drivers >= 3) then
+            raise exception 'not_proven' using errcode = '22023';
+        end if;
+        if jsonb_array_length(v_ids) >= 10 then raise exception 'too_many_ids' using errcode = '22023'; end if;
+        v_ids := v_ids || to_jsonb(array[v_id]);
+    else
+        if not (v_ids @> to_jsonb(array[v_id])) then return v_ids; end if;
+        v_ids := coalesce((select jsonb_agg(x) from jsonb_array_elements(v_ids) x where x <> to_jsonb(v_id)), '[]'::jsonb);
     end if;
     insert into public.app_config (key, value, updated_at)
     values ('shared_lexicon', (v_row - 'version') || jsonb_build_object('accept_ids', v_ids, 'version', (v_row ->> 'version')::int + 1), now())
     on conflict (key) do update set value = excluded.value, updated_at = now();
     insert into public.audit_log (actor, action, target, detail)
-    values (null, 'lexicon_accept_ids', 'accept_ids', jsonb_build_object('ids', v_ids, 'version', (v_row ->> 'version')::int + 1));
-    return jsonb_build_object('changed', true, 'accept_ids', v_ids);
+    values (auth.uid(), case when p_publish then 'accept_id_publish' else 'accept_id_withdraw' end, v_id,
+            jsonb_build_object('ids', v_ids, 'version', (v_row ->> 'version')::int + 1));
+    return v_ids;
 end $$;
-revoke all on function private.learn_accept_ids() from public, anon, authenticated;
+revoke all on function public.admin_set_accept_id(text, boolean) from public, anon;
+grant execute on function public.admin_set_accept_id(text, boolean) to authenticated;
 
 -- What the fleet learned from confirmed accepts, for the administration's learning view.
 create or replace function public.admin_accept_learning() returns jsonb
@@ -271,17 +289,10 @@ begin
         'live', coalesce(private.shared_lexicon_row() -> 'accept_ids', '[]'::jsonb),
         'confirmed_30d', (select coalesce(sum(event_count), 0) from public.offer_telemetry_events
                           where stage = 'ACCEPT_LEARNED' and reason_code like 'confirmed:%' and received_at > now() - interval '30 days'),
-        'candidates', coalesce((select jsonb_agg(jsonb_build_object('view_id', view_id, 'accepts', accepts, 'drivers', drivers, 'last_at', last_at)
+        'candidates', coalesce((select jsonb_agg(jsonb_build_object('view_id', view_id, 'accepts', accepts, 'drivers', drivers, 'last_at', last_at,
+                                                                    'proven', accepts >= 5 and drivers >= 3)
                                                  order by drivers desc, accepts desc)
                                 from (select * from private.accept_id_candidates() order by drivers desc, accepts desc limit 20) c), '[]'::jsonb));
 end $$;
 revoke all on function public.admin_accept_learning() from public, anon;
 grant execute on function public.admin_accept_learning() to authenticated;
-
-do $$
-begin
-    if exists (select 1 from pg_extension where extname = 'pg_cron') then
-        perform cron.unschedule(jobid) from cron.job where jobname = 'learn_accept_ids';
-        perform cron.schedule('learn_accept_ids', '43 * * * *', 'select private.learn_accept_ids()');
-    end if;
-end $$;

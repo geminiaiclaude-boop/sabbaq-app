@@ -319,7 +319,7 @@ class JeenyScreenReader(private val config: EngineConfig, private val uptimeMs: 
         if (online) { lastMiss = "online_screen"; lastMissDetail = "n=$visited"; return null }
 
         val hasAnyPrice = price != null || fallbackPrice != null
-        if (accept == null) learnedAccept?.let { node ->
+        if (accept == null && hasAnyPrice && minutes != null) learnedAccept?.let { node ->
             val b = node.bounds()
             accept = node; clickX = b.centerX; clickY = b.centerY
             acceptViewId = node.viewIdSafe(); acceptWord = LEARNED_ACCEPT_ID

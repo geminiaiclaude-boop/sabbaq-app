@@ -128,6 +128,12 @@ object AdminRepository {
     suspend fun acceptLearning(): Result<AdminAcceptLearning> = SupabaseClient.adminRpc("admin_accept_learning")
         .mapCatching { body -> AdminConsole.acceptLearning(json.parseToJsonElement(body) as JsonObject) }
 
+    /** Publishes (after review) or withdraws one accept-button id for every phone (0020). */
+    suspend fun setAcceptId(viewId: String, publish: Boolean): Result<Unit> {
+        if (!Regex("^[a-z0-9_]{2,32}$").matches(viewId)) return rejected()
+        return SupabaseClient.adminRpc("admin_set_accept_id", buildJsonObject { put("p_view_id", viewId); put("p_publish", publish) }).map { }
+    }
+
     /** Activation codes at a glance (0020). */
     suspend fun codeStats(): Result<AdminCodeStats> = SupabaseClient.adminRpc("admin_code_stats")
         .mapCatching { body -> AdminConsole.codeStats(json.parseToJsonElement(body) as JsonObject) }

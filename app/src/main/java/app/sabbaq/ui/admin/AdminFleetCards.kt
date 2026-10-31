@@ -1,6 +1,7 @@
 package app.sabbaq.ui.admin
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
@@ -18,6 +19,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.material3.TextButton
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -124,12 +126,31 @@ internal fun AdminLearningCard(session: AdminSession) {
             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         accepts?.let { a ->
             Text(if (ar) "التعلم من الطلبات المقبولة" else "Learning from accepted orders", style = MaterialTheme.typography.titleSmall)
-            Text(if (ar) "كل قبول يؤكده أندرويد يُسجَّل معه زر القبول الذي نجح. الزر الذي يؤكده 3 سائقين في 5 قبولات يصل لكل الهواتف، فيجده المحرك حتى لو غيّر تطبيق الرحلات نصه. خلال 30 يومًا: ${a.confirmed30d} قبول مؤكد."
-                 else "Every accept Android confirms records the button that worked. A button confirmed by 3 drivers in 5 accepts reaches every phone, so the engine finds it even if the ride app renames it. Last 30 days: ${a.confirmed30d} confirmed accepts.",
+            Text(if (ar) "كل قبول يؤكده أندرويد يُسجَّل معه زر القبول الذي نجح. الزر الذي يؤكده 3 سائقين مفعّلين في 5 قبولات يصبح «مثبتًا»، ويصل لكل الهواتف بعد اعتمادك فقط، فيجده المحرك حتى لو غيّر تطبيق الرحلات نصه. خلال 30 يومًا: ${a.confirmed30d} قبول مؤكد."
+                 else "Every accept Android confirms records the button that worked. A button confirmed by 3 active drivers in 5 accepts becomes proven and reaches every phone only after you approve it, so the engine finds it even if the ride app renames it. Last 30 days: ${a.confirmed30d} confirmed accepts.",
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            AdminFact(if (ar) "أزرار تعلّمها الأسطول" else "Buttons the fleet learned", a.live.joinToString(", ").ifEmpty { if (ar) "لا شيء بعد" else "None yet" }, ltr = a.live.isNotEmpty())
-            a.candidates.take(5).forEach { c ->
-                AdminFact(c.viewId, if (ar) "${c.accepts} قبول من ${c.drivers} سائق" else "${c.accepts} accepts from ${c.drivers} drivers")
+            AdminFact(if (ar) "أزرار معتمدة لكل الهواتف" else "Buttons live on every phone", a.live.joinToString(", ").ifEmpty { if (ar) "لا شيء بعد" else "None yet" }, ltr = a.live.isNotEmpty())
+            (a.live.map { id -> a.candidates.firstOrNull { it.viewId == id } ?: app.sabbaq.admin.AdminAcceptCandidate(id, 0, 0, true) } +
+                a.candidates.filter { it.viewId !in a.live }).take(8).forEach { c ->
+                val live = c.viewId in a.live
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.weight(1f)) {
+                        Text(c.viewId, style = MaterialTheme.typography.bodyMedium)
+                        Text((if (ar) "${c.accepts} قبول من ${c.drivers} سائق" else "${c.accepts} accepts from ${c.drivers} drivers") +
+                            when { live -> if (ar) " · معتمد" else " · live"; c.proven -> if (ar) " · مثبت" else " · proven"; else -> if (ar) " · يجمع الإثبات" else " · gathering proof" },
+                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (live || c.proven) TextButton(enabled = !busy, onClick = {
+                        scope.launch {
+                            busy = true
+                            app.sabbaq.admin.AdminRepository.setAcceptId(c.viewId, publish = !live).fold(
+                                { message = if (live) (if (ar) "سُحب الزر من الهواتف." else "Button withdrawn.") else (if (ar) "اعتُمد الزر لكل الهواتف." else "Button approved for every phone."); reload++ },
+                                { message = session.failureOf(it, if (ar) "تعذر حفظ القرار." else "Could not save the decision.").text },
+                            )
+                            busy = false
+                        }
+                    }) { Text(if (live) (if (ar) "سحب" else "Withdraw") else (if (ar) "اعتماد" else "Approve"), color = if (live) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary) }
+                }
             }
         }
         proposals.forEach { p ->

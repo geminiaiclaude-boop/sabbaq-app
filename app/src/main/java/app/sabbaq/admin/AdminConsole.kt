@@ -82,7 +82,7 @@ data class AdminCodeStats(
     val byBatch: List<AdminBatchStat>,
 )
 
-data class AdminAcceptCandidate(val viewId: String, val accepts: Long, val drivers: Int)
+data class AdminAcceptCandidate(val viewId: String, val accepts: Long, val drivers: Int, val proven: Boolean)
 
 data class AdminAcceptLearning(val live: List<String>, val confirmed30d: Long, val candidates: List<AdminAcceptCandidate>)
 
@@ -223,7 +223,7 @@ object AdminConsole {
         confirmed30d = (o.int("confirmed_30d") ?: 0).toLong(),
         candidates = (o["candidates"] as? JsonArray).orEmpty().mapNotNull { e ->
             val r = e as? JsonObject ?: return@mapNotNull null
-            AdminAcceptCandidate(r.str("view_id") ?: return@mapNotNull null, (r.int("accepts") ?: 0).toLong(), r.int("drivers") ?: 0)
+            AdminAcceptCandidate(r.str("view_id") ?: return@mapNotNull null, (r.int("accepts") ?: 0).toLong(), r.int("drivers") ?: 0, r.bool("proven") == true)
         },
     )
 

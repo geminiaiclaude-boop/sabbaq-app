@@ -144,19 +144,33 @@ insert into public.offer_telemetry_events (event_id, occurred_at, correlation_id
     (gen_random_uuid(), now(), 'cececececececececececececececece', 'sabbaq', '2.0.4-x', 34, 'jeeny', 'ACCEPT_LEARNED', 'confirmed:1a', 'aw=0,vid=btnaccept,n=41', 1, 'ac0e0000-0000-0000-0000-000000000004', now()),
     (gen_random_uuid(), now(), 'cececececececececececececececece', 'sabbaq', '2.0.4-x', 34, 'jeeny', 'ACCEPT_LEARNED', 'confirmed:2b', 'aw=-1,vid=none,n=12', 9, 'ac0e0000-0000-0000-0000-000000000004', now()),
     (gen_random_uuid(), now(), 'acacacacacacacacacacacacacacacac', 'sabbaq', '2.0.4-x', 34, 'jeeny', 'ACCEPT_LEARNED', 'confirmed:3c', 'aw=0,vid=onlyone,n=12', 9, 'ac0e0000-0000-0000-0000-000000000002', now());
-select pg_temp.expect((private.learn_accept_ids() ->> 'changed')::boolean, 'a proven button id is published');
-select pg_temp.expect(private.shared_lexicon_row() -> 'accept_ids' = '["btnaccept"]'::jsonb, 'only the id proven by three drivers, never "none"');
-select pg_temp.expect(not (private.learn_accept_ids() ->> 'changed')::boolean, 'no new version when nothing changed');
+-- Nothing reaches the phones by itself: the candidates wait for the administration.
+select pg_temp.expect(private.shared_lexicon_row() -> 'accept_ids' = '[]'::jsonb, 'no automatic publishing');
+update public.drivers set trial_until = now() + interval '2 days' where id = 'ac0e0000-0000-0000-0000-000000000004';
+update public.drivers set status = 'active' where id in ('ac0e0000-0000-0000-0000-000000000002', 'ac0e0000-0000-0000-0000-000000000003', 'ac0e0000-0000-0000-0000-000000000004');
 
 set role authenticated;
 set request.jwt.claim.sub = 'ac0e0000-0000-0000-0000-000000000002';
-select pg_temp.expect(public.shared_lexicon() -> 'accept_ids' = '["btnaccept"]'::jsonb, 'every phone receives it');
+do $$ begin
+    perform public.admin_set_accept_id('btnaccept', true);
+    raise exception 'EXPECTATION FAILED: a driver published an accept id';
+exception when insufficient_privilege then null;
+end $$;
 do $$ begin
     perform public.admin_accept_learning();
     raise exception 'EXPECTATION FAILED: a driver read the accept learning';
 exception when insufficient_privilege then null;
 end $$;
 set request.jwt.claim.sub = 'ac0e0000-0000-0000-0000-000000000001';
-select pg_temp.expect(public.admin_accept_learning() -> 'live' = '["btnaccept"]'::jsonb, 'the administration sees what was learned');
-select pg_temp.expect(jsonb_array_length(public.admin_accept_learning() -> 'candidates') >= 2, 'and the candidates still gathering proof');
+select pg_temp.expect((public.admin_accept_learning() -> 'candidates') @> '[{"view_id":"btnaccept","proven":true}]', 'a proven candidate from active paying or trial drivers');
+select pg_temp.expect(not (public.admin_accept_learning() -> 'candidates') @> '[{"view_id":"none"}]', 'none is never a candidate');
+do $$ begin
+    perform public.admin_set_accept_id('onlyone', true);
+    raise exception 'EXPECTATION FAILED: an unproven id was published';
+exception when invalid_parameter_value then null;
+end $$;
+select pg_temp.expect(public.admin_set_accept_id('btnaccept', true) = '["btnaccept"]'::jsonb, 'the administration publishes a proven id');
+select pg_temp.expect(public.shared_lexicon() -> 'accept_ids' = '["btnaccept"]'::jsonb, 'every phone receives it');
+select pg_temp.expect(public.admin_set_accept_id('btnaccept', false) = '[]'::jsonb, 'and can withdraw it');
 reset role;
+select pg_temp.expect((select count(*) from public.audit_log where action in ('accept_id_publish', 'accept_id_withdraw')) = 2, 'both changes are audited');

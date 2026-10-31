@@ -148,6 +148,11 @@ class AdminLogicTest {
             "live":{"state":"online","issue":"a11y_disabled","flags":"a11y=0,act=0","device":"mf=samsung,ram=8,bat=1"},
             "activity":{"day":{"offers":7,"confirmed":2},"week":{"offers":20,"confirmed":5},"reject_reasons":[{"reason":"failed_price","count":4}]},
             "referrals":{"invited":3,"rewarded":1},"support":{"status":"open","admin_unread":2,"messages":9},"notifications_30d":4}""") as JsonObject)!!
+        val learning = AdminConsole.acceptLearning(json.parseToJsonElement("""{"live":["btnaccept"],"confirmed_30d":12,
+            "candidates":[{"view_id":"btnaccept","accepts":9,"drivers":4,"proven":true},{"view_id":"x_y","accepts":2,"drivers":1,"proven":false}]}""") as JsonObject)
+        assertEquals(listOf("btnaccept"), learning.live)
+        assertTrue(learning.candidates[0].proven)
+        assertTrue(!learning.candidates[1].proven)
         assertEquals(PlanState.TRIAL, page.row.plan)
         assertEquals(LiveState.ONLINE, page.row.live)
         assertEquals("AAAA-BBBB-CCCC-DDDD", page.codes.single().code)
