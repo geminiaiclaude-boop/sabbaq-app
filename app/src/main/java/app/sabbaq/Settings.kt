@@ -114,11 +114,12 @@ object Settings {
         set(value) { runCatching { prefs().edit().putLong(KEY_NEWEST_SEEN, value).apply() } }
 
     /**
-     * The floating control is shown (FloatingBubble). Like the reference it is off until the driver
-     * presses «الزر العائم» on the dashboard, and «إغلاق» on the control turns it off again.
+     * The floating control is shown (FloatingBubble). On by default: it appears as soon as "display
+     * over other apps" is allowed, its only condition (owner, 2026-10-31). «إغلاق» on the control or
+     * the dashboard switch turns it off; the switch turns it on again.
      */
     var floatingBubble: Boolean
-        get() = runCatching { prefs().getBoolean("floating_control_shown", false) }.getOrDefault(false)
+        get() = runCatching { prefs().getBoolean("floating_control_shown", true) }.getOrDefault(true)
         set(value) { runCatching { prefs().edit().putBoolean("floating_control_shown", value).apply() } }
 
     var floatingBubbleX: Int

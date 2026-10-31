@@ -973,9 +973,10 @@
     <string name="keep_bubble_done">الزر العائم مسموح</string>
     <string name="float_button">الزر العائم</string>
     <string name="float_needs_permission">يرجى منح إذن «الظهور فوق التطبيقات»، ثم حاول مجدداً.</string>
-    <string name="float_state_on">ظاهر فوق التطبيقات: تشغّل منه المتابعة وتوقفها دون فتح سبّاق.</string>
-    <string name="float_state_off">مخفي. شغّله ليظهر فوق جيني وبقية التطبيقات، حتى والمتابعة متوقفة.</string>
-    <string name="float_state_permission">يحتاج إذن «الظهور فوق التطبيقات». اضغط المفتاح لمنحه.</string>
+    <string name="float_pick_sabbaq">اختر «سبّاق» من القائمة ثم فعّل «الظهور فوق التطبيقات».</string>
+    <string name="float_state_on">ظاهر فوق التطبيقات</string>
+    <string name="float_state_off">مخفي — شغّله ليظهر</string>
+    <string name="float_state_permission">يحتاج إذن الظهور فوق التطبيقات</string>
     <string name="language_title">اللغة</string>
     <string name="zp_list_on">الشرط مفعّل</string>
     <string name="zp_list_off">الشرط متوقف</string>
@@ -998,6 +999,9 @@
     <string name="zp_map_retry">إعادة المحاولة</string>
     <string name="zp_back">رجوع</string>
     <string name="zp_intro">ارسم على الخريطة الأحياء التي تريد أن تنتهي فيها طلباتك، والأحياء التي لا تريد الذهاب إليها. يقارن سبّاق وجهة كل طلب بمناطقك.</string>
+    <string name="zp_feature_body">حدّد أحياء تذهب إليها أو تتجنبها، فيقبل سبّاق الطلب أو يرفضه حسب وجهته.</string>
+    <string name="zp_feature_go">أذهب إليها: %1$d</string>
+    <string name="zp_feature_avoid">أتجنبها: %1$d</string>
     <string name="zp_active_of">%1$d مفعّلة من %2$d</string>
     <string name="zp_active_count">%1$d مفعّلة</string>
     <string name="zp_state_corners">%1$s · %2$d نقطة في المضلّع</string>
@@ -1013,8 +1017,6 @@
     <string name="zp_kind_include">منطقة وجهة</string>
     <string name="zp_kind_exclude">منطقة أتجنبها</string>
     <string name="zp_far">تبعد عنك نحو %1$d كم، أبعد من نطاق البحث، فلا تُستخدم</string>
-    <string name="zp_name">اسم المنطقة</string>
-    <string name="zp_suggest_name">اقترح</string>
     <string name="zp_search">ابحث عن منطقة أو معلم</string>
     <string name="zp_search_none">لم يُعثر على مكان بهذا البحث.</string>
     <string name="zp_tap_hint">اضغط الخريطة لإضافة نقطة (%1$d حتى الآن)</string>
@@ -1033,7 +1035,6 @@
     <string name="map_pack_downloading">جارٍ تحميل خريطة %1$s للعمل دون إنترنت (%2$d من %3$d م.ب)</string>
     <string name="map_pack_ready">خريطة %1$s تعمل دون إنترنت</string>
     <string name="zp_save_zone">حفظ المنطقة</string>
-    <string name="zp_name_needed">الرجاء إدخال اسم المنطقة.</string>
     <string name="zp_points_needed">المنطقة تحتاج 3 نقاط على الأقل.</string>
     <string name="zp_unknown_accept_alert">قبول ثم تنبيه</string>
     <string name="zp_unknown_accept_alert_b">يُقبل الطلب فورًا، ثم يصلك تنبيه إذا تبيّن أن الوجهة داخل منطقة مستثناة.</string>

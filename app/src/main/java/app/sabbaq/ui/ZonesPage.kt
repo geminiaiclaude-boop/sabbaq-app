@@ -108,7 +108,7 @@ private val PointsSaver = androidx.compose.runtime.saveable.Saver<androidx.compo
     restore = { a -> mutableStateListOf<GeoPoint>().apply { for (i in 0 until a.size / 2) add(GeoPoint(a[2 * i], a[2 * i + 1])) } },
 )
 
-private fun FilterDraft.zones(exclude: Boolean): List<EditableZone> = ZoneJson.parse(if (exclude) excludeZonesJson else zonesJson)
+internal fun FilterDraft.zones(exclude: Boolean): List<EditableZone> = ZoneJson.parse(if (exclude) excludeZonesJson else zonesJson)
 
 private fun FilterDraft.withZones(exclude: Boolean, zones: List<EditableZone>): FilterDraft =
     if (exclude) copy(excludeZonesJson = ZoneJson.write(zones)) else copy(zonesJson = ZoneJson.write(zones))
@@ -582,7 +582,7 @@ internal fun ZoneEditorDialog(
             c != null && !c.contains(p.sumOf { it.latitude } / p.size, p.sumOf { it.longitude } / p.size)
         } ?: false)
     }
-    val nameNeeded = stringResource(R.string.zp_name_needed)
+    val unnamed = stringResource(R.string.zp_unnamed)
     val pointsNeeded = stringResource(R.string.zp_points_needed)
     val notFound = stringResource(R.string.zp_search_none)
     val noOutline = stringResource(R.string.zp_no_outline)
@@ -699,17 +699,6 @@ internal fun ZoneEditorDialog(
                     IconButton(onClick = onDismiss) { Icon(Icons.Outlined.Close, contentDescription = stringResource(R.string.zone_cancel)) }
                 }
                 Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    OutlinedTextField(
-                        value = name, onValueChange = { name = it.take(60); error = null },
-                        label = { Text(stringResource(R.string.zp_name)) }, singleLine = true,
-                        modifier = Modifier.fillMaxWidth().testTag("zone-name"),
-                        trailingIcon = {
-                            TextButton(enabled = points.isNotEmpty(), onClick = {
-                                val c = GeoPoint(points.sumOf { it.latitude } / points.size, points.sumOf { it.longitude } / points.size)
-                                scope.launch { GeocodeWorker.placeName(context, c.latitude, c.longitude)?.let { name = it.take(60) } }
-                            }) { Text(stringResource(R.string.zp_suggest_name)) }
-                        },
-                    )
                     if (kindChoice) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         FilterChip(selected = !exclude, onClick = { exclude = false; redraw() }, label = { Text(stringResource(R.string.zp_kind_include)) },
                             modifier = Modifier.weight(1f).testTag("zone-kind-include"))
@@ -767,9 +756,11 @@ internal fun ZoneEditorDialog(
                         }
                     }
                 }
-                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.zp_tap_hint, points.size), style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f).padding(start = 8.dp))
+                // The hint on its own line: beside four buttons it wrapped into a narrow column on a 360 dp phone.
+                Text(stringResource(R.string.zp_tap_hint, points.size), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp))
+                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.End) {
                     TextButton(onClick = { if (points.isNotEmpty()) points.removeAt(points.lastIndex); redraw() }, enabled = points.isNotEmpty(),
                         modifier = Modifier.testTag("zone-undo")) { Text(stringResource(R.string.zone_undo)) }
                     TextButton(onClick = { points.clear(); redraw() }, enabled = points.isNotEmpty(),
@@ -830,8 +821,10 @@ internal fun ZoneEditorDialog(
                                     val derived = picked?.name?.substringBefore('،')?.trim()?.takeIf { it.isNotEmpty() }
                                         ?: GeocodeWorker.placeName(context, c.latitude, c.longitude)?.trim()?.takeIf { it.isNotEmpty() }
                                     busy = false
-                                    if (derived == null) error = nameNeeded
-                                    else { name = derived.take(60); onSave(EditableZone(name, initial?.active ?: true, points.toList()), exclude) }
+                                    // Never refused for a name: the field is gone (owner, 2026-10-31), so a zone
+                                    // with no place name around it still saves under a plain one.
+                                    name = (derived ?: unnamed).take(60)
+                                    onSave(EditableZone(name, initial?.active ?: true, points.toList()), exclude)
                                 }
                             }
                         }

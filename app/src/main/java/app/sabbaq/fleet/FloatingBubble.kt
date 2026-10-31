@@ -9,6 +9,7 @@ import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings as AndroidSettings
@@ -67,6 +68,25 @@ object FloatingBubble {
     fun permissionIntent(context: Context): Intent =
         Intent(AndroidSettings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+    /**
+     * Opens "display over other apps" on Sabbaq's own switch where the phone allows it. Android 11+
+     * ignores the package on the public action and shows the whole list, so the app-specific screen
+     * is tried first (several makers export it); when it is refused, the list opens with a short
+     * «اختر سبّاق» hint, and the app details page is the last resort.
+     */
+    fun openPermission(context: Context) {
+        val pkg = Uri.parse("package:${context.packageName}")
+        val direct = Intent("android.settings.MANAGE_APP_OVERLAY_PERMISSION", pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (Build.VERSION.SDK_INT >= 30 && runCatching { context.startActivity(direct) }.isSuccess) return
+        val listed = runCatching { context.startActivity(permissionIntent(context)) }.isSuccess
+        if (listed && Build.VERSION.SDK_INT >= 30) {
+            android.widget.Toast.makeText(context, context.getString(app.sabbaq.R.string.float_pick_sabbaq), android.widget.Toast.LENGTH_LONG).show()
+        }
+        if (!listed) runCatching {
+            context.startActivity(Intent(AndroidSettings.ACTION_APPLICATION_DETAILS_SETTINGS, pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+    }
 
     /** Gives the control a context to draw from; the app and the accessibility service both call it. */
     fun attach(context: Context) {

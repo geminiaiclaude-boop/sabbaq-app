@@ -86,38 +86,40 @@ internal fun FloatingControlButton(modifier: Modifier = Modifier) {
     // control's own close button and the system permission page both change it outside this screen.
     val state by androidx.compose.runtime.produceState(floatingState(context), context) {
         while (true) {
-            value = floatingState(context)
+            val now = floatingState(context)
+            // The permission was just granted in the system settings: the control appears at once.
+            if (now == FloatingState.SHOWN && value != FloatingState.SHOWN) FloatingBubble.attach(context)
+            value = now
             kotlinx.coroutines.delay(1_000L)
         }
     }
-    SabbaqCard(
-        title = stringResource(R.string.float_button),
-        icon = Icons.Outlined.PictureInPicture,
-        modifier = modifier.testTag("floating-control-card"),
-    ) {
+    // One row, half the height of a full card (owner, 2026-10-31): badge, name and state, switch.
+    SabbaqCard(modifier = modifier.testTag("floating-control-card")) {
         androidx.compose.foundation.layout.Row(
             verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(
-                stringResource(when (state) {
-                    FloatingState.SHOWN -> R.string.float_state_on
-                    FloatingState.HIDDEN -> R.string.float_state_off
-                    FloatingState.NEEDS_PERMISSION -> R.string.float_state_permission
-                }),
-                style = MaterialTheme.typography.bodyMedium,
-                color = if (state == FloatingState.NEEDS_PERMISSION) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.weight(1f),
-            )
+            SabbaqIconBadge(Icons.Outlined.PictureInPicture)
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.float_button), style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                Text(
+                    stringResource(when (state) {
+                        FloatingState.SHOWN -> R.string.float_state_on
+                        FloatingState.HIDDEN -> R.string.float_state_off
+                        FloatingState.NEEDS_PERMISSION -> R.string.float_state_permission
+                    }),
+                    style = MaterialTheme.typography.bodySmall, maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    color = if (state == FloatingState.NEEDS_PERMISSION) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             val name = stringResource(R.string.float_button)
             androidx.compose.material3.Switch(
                 checked = state == FloatingState.SHOWN,
                 onCheckedChange = { on ->
                     if (!on) FloatingBubble.hide()
                     else if (!FloatingBubble.show(context)) {
-                        Toast.makeText(context, context.getString(R.string.float_needs_permission), Toast.LENGTH_LONG).show()
-                        runCatching { context.startActivity(FloatingBubble.permissionIntent(context)) }
-                            .recoverCatching { context.startActivity(PowerSetup.appDetailsIntent(context)) }
+                        FloatingBubble.openPermission(context)
                     }
                 },
                 modifier = Modifier.testTag("floating-control-show").semantics { contentDescription = name },

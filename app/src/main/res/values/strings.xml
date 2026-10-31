@@ -966,9 +966,10 @@ Write your problem or question and our team will reply here during working hours
     <string name="keep_bubble_done">The floating button is allowed</string>
     <string name="float_button">Floating button</string>
     <string name="float_needs_permission">Please allow “Display over other apps”, then try again.</string>
-    <string name="float_state_on">Shown over other apps: start or stop monitoring from it without opening Sabbaq.</string>
-    <string name="float_state_off">Hidden. Turn it on to show it over Jeeny and other apps, even while monitoring is stopped.</string>
-    <string name="float_state_permission">Needs the “display over other apps” permission. Tap the switch to grant it.</string>
+    <string name="float_pick_sabbaq">Pick «Sabbaq» in the list, then turn on “display over other apps”.</string>
+    <string name="float_state_on">Shown over other apps</string>
+    <string name="float_state_off">Hidden — switch it on</string>
+    <string name="float_state_permission">Needs “display over other apps”</string>
     <string name="language_title">Language</string>
     <string name="zp_list_on">Condition on</string>
     <string name="zp_list_off">Condition off</string>
@@ -991,6 +992,9 @@ Write your problem or question and our team will reply here during working hours
     <string name="zp_map_retry">Try again</string>
     <string name="zp_back">Back</string>
     <string name="zp_intro">Draw on the map the districts where you want your orders to end, and the ones you do not want to go to. Sabbaq compares each order’s destination with your zones.</string>
+    <string name="zp_feature_body">Choose districts to go to or avoid; Sabbaq accepts or rejects an order by its destination.</string>
+    <string name="zp_feature_go">Go to: %1$d</string>
+    <string name="zp_feature_avoid">Avoid: %1$d</string>
     <string name="zp_active_of">%1$d on of %2$d</string>
     <string name="zp_active_count">%1$d on</string>
     <string name="zp_state_corners">%1$s · %2$d corners</string>
@@ -1006,8 +1010,6 @@ Write your problem or question and our team will reply here during working hours
     <string name="zp_kind_include">Destination zone</string>
     <string name="zp_kind_exclude">Zone to avoid</string>
     <string name="zp_far">About %1$d km from you, beyond the search range, so it is not used</string>
-    <string name="zp_name">Zone name</string>
-    <string name="zp_suggest_name">Suggest</string>
     <string name="zp_search">Search for an area or landmark</string>
     <string name="zp_search_none">No place found for this search.</string>
     <string name="zp_tap_hint">Tap the map to add a corner (%1$d so far)</string>
@@ -1026,7 +1028,6 @@ Write your problem or question and our team will reply here during working hours
     <string name="map_pack_downloading">Downloading the %1$s map for offline use (%2$d of %3$d MB)</string>
     <string name="map_pack_ready">%1$s map works offline</string>
     <string name="zp_save_zone">Save the zone</string>
-    <string name="zp_name_needed">Please enter the zone name.</string>
     <string name="zp_points_needed">A zone needs at least 3 points.</string>
     <string name="zp_unknown_accept_alert">Accept, then alert</string>
     <string name="zp_unknown_accept_alert_b">The order is accepted at once; you get an alert if its destination turns out to be inside an excluded zone.</string>
