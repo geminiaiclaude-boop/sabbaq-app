@@ -340,10 +340,12 @@ for name, screen, dark, font_scale, env in cases:
                     adb('shell', 'input', 'tap', str((x1 + x2) // 2), str((y1 + y2) // 2))
                     return True
             return False
-        if 'العليا،' in editor_visible and tap_node(lambda n: 'zone-suggestion' in n.get('resource-id', '') or n.get('text', '').startswith('العليا،')):
+        if 'العليا،' in editor_visible and tap_node(lambda n: n.get('text', '').startswith('العليا،')):
             time.sleep(2)
             picked_nodes = ET.fromstring(ui_xml()).findall('.//node')
-            name_fields = [n.get('text', '') for n in picked_nodes if 'zone-name' in n.get('resource-id', '')]
+            # Compose test tags are not exposed as ids here: the zone name is the editor's first text field.
+            name_fields = [n.get('text', '') for n in picked_nodes
+                           if n.get('package') == args.package and n.get('class') == 'android.widget.EditText'][:1]
             assert any('العليا' in t for t in name_fields), f'Picking a place left the zone name empty: {name_fields}'
             if tap_node(lambda n: n.get('text', '').startswith('استخدم حدود')):
                 outlined = ''

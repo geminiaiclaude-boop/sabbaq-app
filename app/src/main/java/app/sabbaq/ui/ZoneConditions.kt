@@ -44,6 +44,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -169,6 +171,13 @@ internal fun ZoneConditions(
 ) {
     val requestLocation = rememberLocationAccess().request
     var mapMode by rememberSaveable { mutableStateOf<ZoneMapMode?>(null) }
+    // Unframed inside «شروط القيادة», the block is titled like the condition rows above it.
+    if (!framed) Text(
+        stringResource(R.string.zone_group_title),
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+        modifier = Modifier.semantics { heading() },
+    )
     ZoneLocationNotice(draft)
     if (errors["zones"] != null || errors["excludeZones"] != null) {
         Text(errors["zones"] ?: errors["excludeZones"].orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
