@@ -465,7 +465,6 @@
     <string name="sub_crash_title">تقرير عطل سابق</string>
     <string name="sub_crash_sub">توقّف التطبيق مرة على هذا الجهاز. التقرير تقني فقط ولا يحتوي بياناتك.</string>
     <string name="sub_crash_share">مشاركة التقرير مع الدعم</string>
-    <string name="sub_crash_subject">تقرير عطل سبّاق</string>
     <string name="sub_crash_chooser">مشاركة التقرير</string>
     <string name="sub_crash_delete">حذف التقرير</string>
     <string name="sub_del_dlg_title">حذف الحساب نهائيًا؟</string>
@@ -593,14 +592,6 @@
     <string name="odl_out_click_sent">ضغط سبّاق على «قبول»؛ بانتظار التأكيد</string>
     <string name="odl_out_accepted">تم قبول الرحلة</string>
     <string name="odl_out_timeout">لم يتأكد القبول (ربما أخذه سائق آخر)</string>
-    <string name="sup_topic1_label">سبّاق لا يقبل الطلبات</string>
-    <string name="sup_topic1_starter">سبّاق لا يقبل الطلبات رغم أن المتابعة تعمل. </string>
-    <string name="sup_topic2_label">الاشتراك والدفع</string>
-    <string name="sup_topic2_starter">لدي سؤال عن الاشتراك أو الدفع: </string>
-    <string name="sup_topic3_label">نقل الحساب لجوال آخر</string>
-    <string name="sup_topic3_starter">أريد نقل حسابي إلى جوال جديد. </string>
-    <string name="sup_topic4_label">اقتراح أو ملاحظة</string>
-    <string name="sup_topic4_starter">لدي اقتراح: </string>
     <string name="sup_conversation_noun">المحادثة</string>
     <string name="sup_closed_note">أُغلقت هذه المحادثة. اكتب رسالة جديدة لفتحها مرة أخرى.</string>
     <string name="sup_header_title">دعم سبّاق</string>
@@ -793,7 +784,6 @@
     <string name="adm_panel_title">لوحة الإدارة</string>
     <string name="adm_panel_sub">راجع الحالة قبل تنفيذ أي إجراء. تُقفل اللوحة بعد 15 دقيقة من عدم النشاط.</string>
     <string name="adm_support_unread_cd">الدعم، %1$d رسالة غير مقروءة</string>
-    <string name="adm_undefined">غير محدد</string>
     <string name="adm_prev">السابق</string>
     <string name="adm_page">الصفحة %1$d</string>
     <string name="adm_next">التالي</string>

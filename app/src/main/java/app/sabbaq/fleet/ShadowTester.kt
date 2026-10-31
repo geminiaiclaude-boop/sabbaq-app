@@ -18,7 +18,6 @@ import java.util.concurrent.Executors
 object ShadowTester {
     private const val GAP_MS = 20_000L
     private val last = HashMap<String, Long>()
-    private val worker = Executors.newSingleThreadExecutor { r -> Thread(r, "sabbaq-shadow").apply { isDaemon = true; priority = Thread.MIN_PRIORITY } }
 
     fun test(reason: String, screen: UiNode?, screenHeight: Int) {
         screen ?: return
@@ -32,7 +31,8 @@ object ShadowTester {
         }
         val base = FleetRepository.effectiveConfig(Settings.engineConfig)
         runCatching {
-            worker.execute {
+            // The sampler's thread: AccessibilityNodeInfo must never be walked by two threads at once.
+            ScreenSamples.walker.execute {
                 val hit = runCatching {
                     ShadowCheck.find(base, shadow, reason) { cfg ->
                         RideApps.read(RideApp.JEENY, screen, screenHeight, cfg, null, { SystemClock.uptimeMillis() })

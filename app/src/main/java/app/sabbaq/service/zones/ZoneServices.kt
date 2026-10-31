@@ -71,19 +71,32 @@ object ZoneStore : ZoneEnvironment {
     @Volatile private var appContext: Context? = null
     /** Addresses already queued this session: the decision asks again on every frame of the same offer. */
     private val recentRequests = LinkedHashSet<String>()
+    private val loaded = java.util.concurrent.CountDownLatch(1)
+
+    /** Writers merge into the loaded cache, never into the empty one the app starts with. */
+    private fun awaitLoaded() { runCatching { loaded.await(10, java.util.concurrent.TimeUnit.SECONDS) } }
 
     fun init(context: Context) {
         val app = context.applicationContext
         appContext = app
         prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         cacheFile = File(app.filesDir, CACHE_FILE)
-        runCatching {
-            val text = cacheFile?.takeIf { it.exists() }?.readText()
-            if (!text.isNullOrBlank()) {
-                cacheRoot = json.parseToJsonElement(text).jsonObject
-                index = PoiIndex(cacheRoot)
+        Thread({
+            try {
+                runCatching {
+                    val text = cacheFile?.takeIf { it.exists() }?.readText()
+                    if (!text.isNullOrBlank()) {
+                        val parsed = json.parseToJsonElement(text).jsonObject
+                        synchronized(lock) {
+                            cacheRoot = parsed
+                            index = PoiIndex(parsed)
+                        }
+                    }
+                }
+            } finally {
+                loaded.countDown()
             }
-        }
+        }, "sabbaq-zone-cache").apply { isDaemon = true }.start()
     }
 
     /** The last saved position, however old, as the reference engine uses `driver_lat/lng` (see [fixAgeMs]). */
@@ -191,6 +204,7 @@ object ZoneStore : ZoneEnvironment {
      * with its display name, points (up to [MAX_WARM_POINTS]) and source.
      */
     internal fun addWarmed(entries: Map<String, ZoneName>, source: String) {
+        awaitLoaded()
         if (entries.isEmpty()) return
         synchronized(lock) {
             val map = LinkedHashMap(cacheRoot)
@@ -210,6 +224,7 @@ object ZoneStore : ZoneEnvironment {
     }
 
     private fun store(text: String, points: List<DoubleArray>) {
+        awaitLoaded()
         val value = buildJsonObject {
             put("points", buildJsonArray {
                 points.take(5).forEach { add(buildJsonObject { put("lat", it[0]); put("lng", it[1]) }) }

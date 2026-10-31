@@ -16,6 +16,7 @@ CP_C="$(jar org.jetbrains.kotlin/kotlin-compiler-embeddable/2.1.21 '*.jar'):$(ja
 SER="$(jar org.jetbrains.kotlin/kotlin-serialization-compiler-plugin-embeddable/2.1.21 '*.jar')"
 COMPOSE="$(jar org.jetbrains.kotlin/kotlin-compose-compiler-plugin-embeddable/2.1.21 '*.jar')"
 TEST_OUT=$(mktemp -d)
+trap 'rm -rf "$TEST_OUT" "$P" "$P.log" "$P.args"' EXIT
 ARGS="$P.args"
 {
   echo "-no-stdlib"; echo "-no-reflect"; echo "-jvm-target"; echo "17"; echo "-module-name"; echo "app"

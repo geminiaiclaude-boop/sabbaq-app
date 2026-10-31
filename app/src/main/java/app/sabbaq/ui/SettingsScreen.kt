@@ -820,7 +820,7 @@ fun SettingsScreen(
 
             DriverDestination.History -> DriverPage {
                 OfferDecisionLogScreen(
-                    onBack = { navigateTo(DriverDestination.Dashboard) },
+                    onBack = ::goBack,
                     onDiagnosisAction = { action ->
                         when (action) {
                             DiagnosisAction.ACCESSIBILITY -> if (onOpenA11y().isFailure) {

@@ -22,8 +22,11 @@ import kotlinx.serialization.json.put
 
 data class AdminPageOf<T>(val items: List<T>, val offset: Int, val hasMore: Boolean)
 
-data class AdminCode(val code: String, val days: Int?, val batch: String?, val redeemedBy: String?, val revoked: Boolean, val createdAt: Instant?) {
-    val available: Boolean get() = redeemedBy == null && !revoked
+data class AdminCode(val code: String, val days: Int?, val batch: String?, val redeemedBy: String?, val revoked: Boolean, val createdAt: Instant?,
+                     val redeemedAt: Instant? = null) {
+    /** A redemption date stays after the driver's account is deleted: such a code is used, never for sale again. */
+    val redeemed: Boolean get() = redeemedBy != null || redeemedAt != null
+    val available: Boolean get() = !redeemed && !revoked
 }
 
 data class AdminExportCode(val code: String, val days: Int?, val batch: String?)
@@ -178,11 +181,11 @@ object AdminRepository {
     // ---- Activation codes
 
     suspend fun codes(offset: Int): Result<AdminPageOf<AdminCode>> =
-        SupabaseClient.adminRead("activation_codes", "code,days,batch,redeemed_by,revoked,created_at", "created_at.desc", PAGE_SIZE + 1, offset)
+        SupabaseClient.adminRead("activation_codes", "code,days,batch,redeemed_by,redeemed_at,revoked,created_at", "created_at.desc", PAGE_SIZE + 1, offset)
             .mapCatching { page ->
                 val list = rows(page.body).mapNotNull { row ->
                     AdminCode(row.str("code") ?: return@mapNotNull null, row.int("days"), row.str("batch"),
-                        row.str("redeemed_by"), row.bool("revoked") == true, row.instant("created_at"))
+                        row.str("redeemed_by"), row.bool("revoked") == true, row.instant("created_at"), row.instant("redeemed_at"))
                 }
                 AdminPageOf(list.take(PAGE_SIZE), offset, hasMore = list.size > PAGE_SIZE)
             }
@@ -219,7 +222,7 @@ object AdminRepository {
      */
     suspend fun exportAvailableCodes(): Result<ExportResult> =
         SupabaseClient.adminRead("activation_codes", "code,days,batch", "created_at.desc", MAX_EXPORT_ROWS + 1,
-            filters = mapOf("redeemed_by" to "is.null", "revoked" to "eq.false"), exactCount = true)
+            filters = mapOf("redeemed_by" to "is.null", "redeemed_at" to "is.null", "revoked" to "eq.false"), exactCount = true)
             .mapCatching { page ->
                 val total = page.total ?: return@mapCatching ExportResult.Incomplete
                 if (total > MAX_EXPORT_ROWS) return@mapCatching ExportResult.TooMany

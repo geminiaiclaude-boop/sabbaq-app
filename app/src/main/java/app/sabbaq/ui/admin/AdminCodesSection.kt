@@ -275,7 +275,7 @@ private fun CodeRow(code: AdminCode, copy: (String) -> Unit) {
     val ar = LocaleManager.isArabic()
     val (state, color) = when {
         code.revoked -> (if (ar) "ملغى" else "Revoked") to MaterialTheme.colorScheme.error
-        code.redeemedBy != null -> (if (ar) "مستخدم" else "Redeemed") to MaterialTheme.colorScheme.onSurfaceVariant
+        code.redeemed -> (if (ar) "مستخدم" else "Redeemed") to MaterialTheme.colorScheme.onSurfaceVariant
         else -> (if (ar) "متاح" else "Available") to Color(0xFF1E9E5A)
     }
     Column {

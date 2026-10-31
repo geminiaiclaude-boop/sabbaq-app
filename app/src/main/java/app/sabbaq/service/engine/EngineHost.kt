@@ -69,7 +69,6 @@ class EngineHost(
     private var newestDecidedReadStart = 0L
     private var lastEventProcessedMs = 0L
     private var toneGenerator: ToneGenerator? = null
-    private var savedAlarmVolume = -1
 
     private data class Frame(val detectedAtMs: Long, val abandons: Int)
     private class BookedResult(val root: AccessibilityNodeInfo?, val parsed: ParsedRide?, val startUptime: Long, val elapsedMs: Long, val aborted: Boolean)
@@ -95,7 +94,8 @@ class EngineHost(
         main.removeCallbacksAndMessages(null)
         synchronized(bookingLock) { inFlight.forEach { it.set(true) }; inFlight.clear(); bookedFrame = null }
         readerPool.shutdownNow()
-        restoreAlarmVolume()
+        main.removeCallbacksAndMessages(null)
+        app.sabbaq.service.AlarmBoost.releaseAll(service)
         runCatching { toneGenerator?.release() }
         toneGenerator = null
         flow.reset()
@@ -378,15 +378,7 @@ class EngineHost(
 
     /** The reference engine's accept tone: alarm stream raised to max for the tone, then restored. */
     private fun playAcceptTone() {
-        runCatching {
-            val audio = service.getSystemService(AudioManager::class.java)
-            val max = audio.getStreamMaxVolume(AudioManager.STREAM_ALARM)
-            val current = audio.getStreamVolume(AudioManager.STREAM_ALARM)
-            if (savedAlarmVolume < 0 && current < max) {
-                savedAlarmVolume = current
-                audio.setStreamVolume(AudioManager.STREAM_ALARM, max, 0)
-            }
-        }
+        app.sabbaq.service.AlarmBoost.raise(service)
         runCatching {
             val tone = toneGenerator ?: ToneGenerator(AudioManager.STREAM_ALARM, 100).also { toneGenerator = it }
             tone.startTone(ToneGenerator.TONE_PROP_BEEP2, 800)
@@ -394,11 +386,7 @@ class EngineHost(
         main.postDelayed(::restoreAlarmVolume, 1000)
     }
 
-    private fun restoreAlarmVolume() {
-        if (savedAlarmVolume < 0) return
-        runCatching { service.getSystemService(AudioManager::class.java).setStreamVolume(AudioManager.STREAM_ALARM, savedAlarmVolume, 0) }
-        savedAlarmVolume = -1
-    }
+    private fun restoreAlarmVolume() = app.sabbaq.service.AlarmBoost.release(service)
 
     private fun warmUpGesture() {
         val gesture = runCatching {

@@ -166,7 +166,8 @@ private fun stageText(stage: TelemetryStage): String = (when (stage) {
     TelemetryStage.DEVICE_INFO -> "معلومات الجهاز" to "Device info"
     TelemetryStage.ACCEPT_LEARNED -> "بصمة قبول" to "Accept signature"
     TelemetryStage.UPDATE_STATE -> "التحديث" to "Update"
-    TelemetryStage.PARSED, TelemetryStage.ACCEPT_DISPATCHED -> stage.name.lowercase() to stage.name.lowercase()
+    TelemetryStage.PARSED -> "قُرئ الطلب" to "Offer read"
+    TelemetryStage.ACCEPT_DISPATCHED -> "أُرسل النقر" to "Tap sent"
 }).pick()
 
 private val clockFormat = java.time.format.DateTimeFormatter.ofPattern("HH:mm", SabbaqLocale)

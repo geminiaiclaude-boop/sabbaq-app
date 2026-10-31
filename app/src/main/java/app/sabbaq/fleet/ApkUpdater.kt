@@ -105,6 +105,7 @@ object ApkUpdater {
         if (archive.packageName != context.packageName) return "other_package"
         if (versionCode(archive) != code) return "version_mismatch"
         val installed = runCatching { pm.getPackageInfo(context.packageName, flags) }.getOrNull() ?: return null
+        if (versionCode(archive) <= versionCode(installed)) return "not_newer"
         val theirs = signers(archive)
         val ours = signers(installed)
         // Android refuses a differently signed update anyway; this check only fails closed when both are readable.
@@ -117,7 +118,9 @@ object ApkUpdater {
 
     @Suppress("DEPRECATION")
     private fun signers(info: PackageInfo): Set<String> {
-        val raw = if (Build.VERSION.SDK_INT >= 28) info.signingInfo?.apkContentsSigners else info.signatures
+        val raw = if (Build.VERSION.SDK_INT >= 28) {
+            info.signingInfo?.let { si -> si.apkContentsSigners?.takeIf { it.isNotEmpty() } ?: si.signingCertificateHistory }
+        } else info.signatures
         return raw.orEmpty().map { sig ->
             MessageDigest.getInstance("SHA-256").digest(sig.toByteArray()).joinToString("") { "%02x".format(it) }
         }.toSet()

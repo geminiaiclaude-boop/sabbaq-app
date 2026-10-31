@@ -161,6 +161,13 @@ class SessionNavigationViewModel : ViewModel() {
         sessionRestoreStatus = SessionRestoreStatus.NONE
         route = if (isAdmin && BuildConfig.DIRECT_DISTRIBUTION) AppState.ADMIN_PANEL else AppState.DRIVER_PANEL
     }
+    /** The floating control asks for the admin or the driver panel; the panel itself re-checks the role. */
+    fun openRoute(admin: Boolean) {
+        when {
+            admin && route == AppState.DRIVER_PANEL && Settings.lastSignedInAdmin && BuildConfig.DIRECT_DISTRIBUTION -> route = AppState.ADMIN_PANEL
+            !admin && route == AppState.ADMIN_PANEL -> route = AppState.DRIVER_PANEL
+        }
+    }
     fun signedOut() { sessionRestoreStatus = SessionRestoreStatus.NONE; route = AppState.LOGIN; app.sabbaq.fleet.FloatingBubble.refresh() }
 }
 
@@ -178,12 +185,21 @@ class MainActivity : AppCompatActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         startUpdateIfAsked(intent)
+        routeFromIntent(intent)
+    }
+
+    private fun routeFromIntent(intent: Intent?) {
+        when (intent?.getStringExtra(app.sabbaq.fleet.FloatingBubble.EXTRA_ROUTE)) {
+            "admin" -> ViewModelProvider(this)[SessionNavigationViewModel::class.java].openRoute(admin = true)
+            "driver" -> ViewModelProvider(this)[SessionNavigationViewModel::class.java].openRoute(admin = false)
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         if (savedInstanceState == null) startUpdateIfAsked(intent)
+        routeFromIntent(intent)
         val navigation = ViewModelProvider(this)[SessionNavigationViewModel::class.java]
         navigation.initialize(
             showWelcome = !OnboardingPreferences.isComplete(this),
@@ -236,6 +252,9 @@ class MainActivity : AppCompatActivity() {
                 Settings.monitoringWanted = false
                 Settings.isActive = false
                 Settings.a11yDisclosureAccepted = false
+                // C-06: the paid period and the admin flag belong to the account that signed out.
+                Settings.subscriptionEndsAtMs = 1L
+                Settings.lastSignedInAdmin = false
                 stopService(Intent(this@MainActivity, KeeperService::class.java))
                 SupabaseClient.clearSession()
                 NotificationCenter.clear()
@@ -648,7 +667,12 @@ private fun SabbaqDrawerSheet(
     onClose: () -> Unit,
 ) {
     val brand = LocalSabbaqBrand.current
-    val snapshot = remember(isAuthenticated) { if (isAuthenticated) SupabaseClient.subscriptionSnapshot() else null }
+    val snapshot by androidx.compose.runtime.produceState(if (isAuthenticated) SupabaseClient.subscriptionSnapshot() else null, isAuthenticated) {
+        while (true) {
+            value = if (isAuthenticated) SupabaseClient.subscriptionSnapshot() else null
+            kotlinx.coroutines.delay(15_000L)
+        }
+    }
     ModalDrawerSheet(
         modifier = Modifier.widthIn(max = 320.dp),
         drawerContainerColor = MaterialTheme.colorScheme.surface,

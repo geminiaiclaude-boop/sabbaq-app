@@ -71,6 +71,7 @@ class ZoneEngine(private val env: ZoneEnvironment) {
         }
         var pointKind = "text"
         var queued = false
+        fun queueOnce(text: String) { if (!queued) { env.requestGeocode(text); queued = true } }
         if (hasDest && needCoords) {
             val plus = PlusCodes.resolve(dLat, dLng, dest)
             if (plus != null) {
@@ -89,7 +90,7 @@ class ZoneEngine(private val env: ZoneEnvironment) {
                 }
             }
         }
-        if (hasDest && coords == null && needCoords && !queued) env.requestGeocode(dest!!)
+        if (hasDest && coords == null && needCoords) queueOnce(dest!!)
 
         if (smartOn && hasDest) {
             val c = coords
@@ -97,7 +98,7 @@ class ZoneEngine(private val env: ZoneEnvironment) {
                 if (!ZoneGeo.sameDirection(dLat, dLng, c[0], c[1], config.smartDestLat, config.smartDestLng, config.smartDestAngle)) {
                     return ZoneOutcome("wrong_direction", diagnostic)
                 }
-            } else env.requestGeocode(dest!!)
+            } else queueOnce(dest!!)
         }
 
         var diag = diagnostic
@@ -129,7 +130,7 @@ class ZoneEngine(private val env: ZoneEnvironment) {
                     return ZoneOutcome("outside_dest_zone", diag)
                 }
             } else {
-                env.requestGeocode(dest!!)
+                queueOnce(dest!!)
                 when (direction(config, dLat, dLng, ride)) {
                     DirectionVerdict.INSIDE_DIRECTION -> Unit
                     DirectionVerdict.OUTSIDE_DIRECTION -> return ZoneOutcome("outside_dest_zone_bearing", diag)
@@ -156,12 +157,12 @@ class ZoneEngine(private val env: ZoneEnvironment) {
                 -1 -> conclusive = false
                 1 -> { reason = "dest_excluded_zone"; source = "user"; distanceM = r.second }
             }
-            if (r.first == -1) env.requestGeocode(dest!!)
+            if (r.first == -1) queueOnce(dest!!)
         }
         if (reason == null && globalOn) {
             val r = classify(coords, pointKind, matchType, precision, globalJson)
             when (r.first) {
-                -1 -> { conclusive = false; env.requestGeocode(dest!!) }
+                -1 -> { conclusive = false; queueOnce(dest!!) }
                 1 -> { reason = "dest_global_excluded_zone"; source = "global"; distanceM = r.second }
             }
         }
@@ -178,7 +179,7 @@ class ZoneEngine(private val env: ZoneEnvironment) {
             remember(key, Verdict(now, zonesHash, false, null, true, null))
             return ZoneOutcome(null, diag)
         }
-        if (coords == null && !queued) env.requestGeocode(dest!!)
+        if (coords == null) queueOnce(dest!!)
         if (config.destExcludeZonesRejectOnUnknown && excludeZoneNearby(config, globalJson, dLat, dLng)) {
             return ZoneOutcome("dest_exclude_zone_unknown_reject", "exclude_zone_unknown")
         }

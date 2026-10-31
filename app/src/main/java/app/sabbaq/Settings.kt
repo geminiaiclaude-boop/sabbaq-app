@@ -179,6 +179,9 @@ object Settings {
                     .remove(KEY_KNOWN_SUBSCRIBER)
                     .remove(KEY_MONITORING_WANTED)
                     .remove(KEY_REFERRAL_PROMPT_DONE)
+                    // C-06: the next account on this phone inherits no paid period and no admin flag.
+                    .putLong(KEY_SUBSCRIPTION_ENDS_AT, 1L)
+                    .remove("last_signed_in_admin")
                     .commit()
             }.getOrDefault(false)
             if (cleared) cachedConfig = null

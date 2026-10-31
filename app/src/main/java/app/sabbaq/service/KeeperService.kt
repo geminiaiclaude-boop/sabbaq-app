@@ -87,8 +87,16 @@ class KeeperService : Service() {
         ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, base)
     }
 
+    /** Android kills the app if a service started in the foreground exits without startForeground. */
+    private fun enterForegroundBeforeExit() {
+        if (isRunning) return
+        createChannel()
+        runCatching { startForegroundWithTypes(buildNotification(resuming = true)) }
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
+            enterForegroundBeforeExit()
             // The driver stopped it: do not resume after a restart either.
             Settings.monitoringWanted = false
             Settings.isActive = false
@@ -105,6 +113,7 @@ class KeeperService : Service() {
             )
         ) {
             Log.w(TAG, "تم رفض تشغيل خدمة أمامية غير مفعلة أو غير مرئية")
+            enterForegroundBeforeExit()
             Settings.isActive = false
             stopForeground(STOP_FOREGROUND_REMOVE)
             stoppingOnPurpose = true
@@ -145,10 +154,16 @@ class KeeperService : Service() {
     private suspend fun monitor() {
         // After a restart the license lease is empty: resume the saved session first.
         val resuming = !SupabaseClient.hasValidLicense()
-        if (resuming && !restoreWithRetry()) {
-            stoppedOnItsOwn()
-            shutDown()
-            return
+        if (resuming) {
+            val restored = restoreWithRetry()
+            // Rule 6: only the server's refusal stops a subscriber; no network means keep going on
+            // the saved paid period (the tap gate checks it) and keep retrying in the licence loop.
+            val stillPaid = restored == null && Settings.subscriptionEndsAtMs > System.currentTimeMillis()
+            if (restored != true && !stillPaid) {
+                stoppedOnItsOwn()
+                shutDown()
+                return
+            }
         }
         Settings.isActive = true
         monitoringLive = true
@@ -200,7 +215,8 @@ class KeeperService : Service() {
      * failure leaves the saved session intact, so keep retrying with backoff; only a definitive
      * answer (refresh token refused, no saved session, license not valid) stops monitoring.
      */
-    private suspend fun restoreWithRetry(): Boolean {
+    /** true restored; false refused by the server; null not reachable before the retry window ended. */
+    private suspend fun restoreWithRetry(): Boolean? {
         val deadline = SystemClock.elapsedRealtime() + RESTORE_RETRY_WINDOW_MILLIS
         var backoff = RESTORE_FIRST_RETRY_MILLIS
         while (currentCoroutineContext().isActive) {
@@ -216,9 +232,10 @@ class KeeperService : Service() {
                 TelemetryRepository.trace(TelemetryStage.PAUSED, "keeper_restore_refused")
                 return false
             }
-            if (!Settings.monitoringWanted || SystemClock.elapsedRealtime() + backoff > deadline) {
+            if (!Settings.monitoringWanted) return false
+            if (SystemClock.elapsedRealtime() + backoff > deadline) {
                 TelemetryRepository.trace(TelemetryStage.PAUSED, "keeper_restore_timeout")
-                return false
+                return null
             }
             TelemetryRepository.trace(TelemetryStage.PAUSED, "keeper_restore_retry")
             delay(backoff)
@@ -579,7 +596,10 @@ class KeeperService : Service() {
 
         /** Starts monitoring if the driver left it on; safe to call from any context. */
         fun resumeIfWanted(context: Context): Boolean {
-            if (!Settings.monitoringWanted || !SupabaseClient.hasSavedSession()) return false
+            // Only what onStartCommand would accept is started, so a refused start never loops.
+            if (!Settings.monitoringWanted || !SupabaseClient.hasSavedSession() || !Settings.a11yDisclosureAccepted) return false
+            if (Build.VERSION.SDK_INT >= 33 && androidx.core.content.ContextCompat.checkSelfPermission(
+                    context, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) return false
             val intent = Intent(context, KeeperService::class.java)
             return try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent)

@@ -458,7 +458,6 @@
     <string name="sub_crash_title">Earlier crash report</string>
     <string name="sub_crash_sub">The app stopped once on this device. The report is technical only and contains none of your data.</string>
     <string name="sub_crash_share">Share the report with support</string>
-    <string name="sub_crash_subject">Sabbaq crash report</string>
     <string name="sub_crash_chooser">Share the report</string>
     <string name="sub_crash_delete">Delete the report</string>
     <string name="sub_del_dlg_title">Delete the account permanently?</string>
@@ -586,14 +585,6 @@
     <string name="odl_out_click_sent">Sabbaq tapped \"Accept\"; awaiting confirmation</string>
     <string name="odl_out_accepted">The trip was accepted</string>
     <string name="odl_out_timeout">The accept was not confirmed (another driver may have taken it)</string>
-    <string name="sup_topic1_label">Sabbaq is not accepting orders</string>
-    <string name="sup_topic1_starter">Sabbaq is not accepting orders even though monitoring is running. </string>
-    <string name="sup_topic2_label">Subscription and payment</string>
-    <string name="sup_topic2_starter">I have a question about the subscription or payment: </string>
-    <string name="sup_topic3_label">Move the account to another phone</string>
-    <string name="sup_topic3_starter">I want to move my account to a new phone. </string>
-    <string name="sup_topic4_label">Suggestion or feedback</string>
-    <string name="sup_topic4_starter">I have a suggestion: </string>
     <string name="sup_conversation_noun">the conversation</string>
     <string name="sup_closed_note">This conversation was closed. Write a new message to reopen it.</string>
     <string name="sup_header_title">Sabbaq support</string>
@@ -786,7 +777,6 @@ Write your problem or question and our team will reply here during working hours
     <string name="adm_panel_title">Admin panel</string>
     <string name="adm_panel_sub">Review the status before taking any action. The panel locks after 15 minutes of inactivity.</string>
     <string name="adm_support_unread_cd">Support, %1$d unread messages</string>
-    <string name="adm_undefined">Not set</string>
     <string name="adm_prev">Previous</string>
     <string name="adm_page">Page %1$d</string>
     <string name="adm_next">Next</string>

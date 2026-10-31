@@ -47,6 +47,19 @@ def screencap(png=True):
             time.sleep(2)
 
 
+
+def force_stop():
+    """Stopping the app is idempotent, so any failure (not only a lost transport) is retried: the
+    emulator's activity manager can refuse one call while it is busy (seen 2026-10-31)."""
+    for attempt in range(3):
+        try:
+            return adb('shell', 'am', 'force-stop', args.package, transport_retries=2)
+        except subprocess.CalledProcessError:
+            if attempt == 2:
+                raise
+            time.sleep(2)
+
+
 def ui_xml(timeout=60):
     """Dump and read the UI tree as one retriable operation.
 
@@ -211,7 +224,7 @@ for name, screen, dark, font_scale, env in cases:
     if env != current_env:
         apply_environment(env)
         current_env = env
-    adb('shell', 'am', 'force-stop', args.package)
+    force_stop()
     adb('shell', 'settings', 'put', 'system', 'font_scale', str(font_scale))
     adb('logcat', '-c')
     activity = 'MainActivity' if screen is None else 'DesignPreviewActivity'
@@ -481,7 +494,7 @@ def content_digest(raw):
 
 def capture_motion(tag, extras, delays):
     activity = 'MainActivity' if extras is None else 'DesignPreviewActivity'
-    adb('shell', 'am', 'force-stop', args.package)
+    force_stop()
     # -W returns once the app has drawn its first frame, so the system splash is not measured.
     adb('shell', 'am', 'start', '-W', '-n', f'{args.package}/app.sabbaq.ui.{activity}', *(extras or []), timeout=60)
     digests = []

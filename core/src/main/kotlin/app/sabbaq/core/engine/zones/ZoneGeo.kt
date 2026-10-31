@@ -292,6 +292,7 @@ object ZoneGeo {
         val groups = (0 until n).groupBy { root(it) }.values
         val group = groups.maxByOrNull { it.size } ?: return DirectionVerdict.INCONCLUSIVE
         if (group.size < 2) return DirectionVerdict.INCONCLUSIVE
+        if (groups.count { it.size == group.size } > 1) return DirectionVerdict.INCONCLUSIVE
         val sx = group.sumOf { markers[it][0].toDouble() } / group.size
         val sy = group.sumOf { markers[it][1].toDouble() } / group.size
         var far = -1.0

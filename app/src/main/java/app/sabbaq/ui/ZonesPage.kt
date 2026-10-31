@@ -97,6 +97,16 @@ private val ExcludeColor = Color(0xFFD03030)
 /** Which list a zone lives in and its place there; null index = a new zone. */
 private data class ZoneRef(val exclude: Boolean, val index: Int?)
 
+private val ZoneRefSaver = androidx.compose.runtime.saveable.Saver<ZoneRef?, IntArray>(
+    save = { ref -> ref?.let { intArrayOf(if (it.exclude) 1 else 0, it.index ?: -1) } },
+    restore = { a -> ZoneRef(a[0] == 1, a[1].takeIf { it >= 0 }) },
+)
+
+private val PointsSaver = androidx.compose.runtime.saveable.Saver<androidx.compose.runtime.snapshots.SnapshotStateList<GeoPoint>, DoubleArray>(
+    save = { list -> DoubleArray(list.size * 2) { i -> if (i % 2 == 0) list[i / 2].latitude else list[i / 2].longitude } },
+    restore = { a -> mutableStateListOf<GeoPoint>().apply { for (i in 0 until a.size / 2) add(GeoPoint(a[2 * i], a[2 * i + 1])) } },
+)
+
 private fun FilterDraft.zones(exclude: Boolean): List<EditableZone> = ZoneJson.parse(if (exclude) excludeZonesJson else zonesJson)
 
 private fun FilterDraft.withZones(exclude: Boolean, zones: List<EditableZone>): FilterDraft =
@@ -127,7 +137,7 @@ internal fun ZonesPage(
     onDraftChange: (FilterDraft) -> Unit,
     onBack: () -> Unit,
 ) {
-    var editing by remember { mutableStateOf<ZoneRef?>(null) }
+    var editing by rememberSaveable(stateSaver = ZoneRefSaver) { mutableStateOf<ZoneRef?>(null) }
     var deleting by remember { mutableStateOf<ZoneRef?>(null) }
     var viewing by remember { mutableStateOf<EditableZone?>(null) }
     var naming by remember { mutableStateOf<ZoneRef?>(null) }
@@ -535,12 +545,14 @@ internal fun ZoneEditorDialog(
     onDismiss: () -> Unit,
     onSave: (EditableZone, exclude: Boolean) -> Unit,
     initialQuery: String = "",
+    /** The administration's shared zones are always exclusions: no kind to choose. */
+    kindChoice: Boolean = true,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var name by remember { mutableStateOf(initial?.name.orEmpty()) }
-    var exclude by remember { mutableStateOf(initialExclude) }
-    val points = remember { mutableStateListOf<GeoPoint>().apply { initial?.points?.let(::addAll) } }
+    var name by rememberSaveable { mutableStateOf(initial?.name.orEmpty()) }
+    var exclude by rememberSaveable { mutableStateOf(initialExclude) }
+    val points = rememberSaveable(saver = PointsSaver) { mutableStateListOf<GeoPoint>().apply { initial?.points?.let(::addAll) } }
     var error by remember { mutableStateOf<String?>(null) }
     var query by remember { mutableStateOf(initialQuery) }
     var suggestions by remember { mutableStateOf<List<CityPlace>>(emptyList()) }
@@ -659,7 +671,7 @@ internal fun ZoneEditorDialog(
                             }) { Text(stringResource(R.string.zp_suggest_name)) }
                         },
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (kindChoice) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         FilterChip(selected = !exclude, onClick = { exclude = false; redraw() }, label = { Text(stringResource(R.string.zp_kind_include)) },
                             modifier = Modifier.weight(1f).testTag("zone-kind-include"))
                         FilterChip(selected = exclude, onClick = { exclude = true; redraw() }, label = { Text(stringResource(R.string.zp_kind_exclude)) },

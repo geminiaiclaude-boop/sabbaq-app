@@ -96,6 +96,7 @@ class ZoneEngineTest {
         assertEquals("dest_zone_unknown_reject", zones.evaluate(ride(null), strict, true, null).rejectReason)
         assertEquals("dest_zone_unknown_reject", zones.evaluate(ride("مكان غير معروف تماما"), strict, true, null).rejectReason)
         assertTrue("unknown address is queued for geocoding", "مكان غير معروف تماما" in env.queued)
+        assertEquals("queued once per evaluation (review M-04)", 1, env.queued.count { it == "مكان غير معروف تماما" })
         val lenient = includeCfg.copy(destZonesRejectOnUnknown = false)
         assertNull(zones.evaluate(ride("مكان غير معروف تماما"), lenient, true, null).rejectReason)
     }

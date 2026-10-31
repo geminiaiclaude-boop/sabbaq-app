@@ -210,7 +210,7 @@ data class FilterDraft(
 
         private fun invalid() = if (LocaleManager.isArabic()) "اكتب رقمًا صحيحًا موجبًا أو اتركه فارغًا." else "Enter a positive number or leave it empty."
 
-        private fun latin(raw: String): String = raw.trim().map { if (it in '٠'..'٩') '0' + (it - '٠') else if (it == '٫') '.' else it }.joinToString("")
+        private fun latin(raw: String): String = app.sabbaq.core.engine.JeenyLexicon.latinDigits(raw.trim()).replace('٫', '.')
 
         private fun decimal(field: String, raw: String, errors: MutableMap<String, String>): Double? {
             if (raw.isBlank()) return null

@@ -92,7 +92,7 @@ data class EngineConfig(
     val smartDestAngle: Double = 45.0,
 ) {
     /** The reference engine `priceEnabled && priceFilterEnabled` (the second flag is always on in its UI). */
-    val priceFilterOn: Boolean get() = priceEnabled
+    val priceFilterOn: Boolean get() = priceEnabled && (minPrice > 0.0 || maxPrice > 0.0)
     val timeFilterOn: Boolean get() = timeEnabled
     val excludeOn: Boolean get() = destHomeMode == DestinationMode.EXCLUDE && destExcludeEnabled
     val includeOn: Boolean get() = destHomeMode == DestinationMode.INCLUDE && destCheckEnabled
@@ -110,7 +110,7 @@ data class EngineConfig(
     val instantTurbo: Boolean get() = hasBlindCoords && !anyFilterActive
 
     /** `Pk.execute(config)`: destination rules need the whole tree, never the subtree or view-id shortcut. */
-    val needsFullTree: Boolean get() = destCheckEnabled || excludeOn || zoneStageOn
+    val needsFullTree: Boolean get() = destCheckEnabled || excludeOn || zoneStageOn || paymentFilterMode != PaymentMode.ALL
 
     /** Any geographic rule is switched on, so the decision takes the full path (b9 fast-path guard). */
     val zoneStageOn: Boolean get() = smartDestActive || destZonesEnabled || destExcludeZonesEnabled

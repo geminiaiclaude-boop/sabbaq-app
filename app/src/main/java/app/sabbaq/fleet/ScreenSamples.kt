@@ -39,7 +39,8 @@ object ScreenSamples {
 
     @Volatile private var appContext: Context? = null
     private val lastAttempt = HashMap<String, Long>()
-    private val walker = Executors.newSingleThreadExecutor { r -> Thread(r, "sabbaq-sampler").apply { isDaemon = true; priority = Thread.MIN_PRIORITY } }
+    /** The one thread that walks a live accessibility tree off the main thread (also ShadowTester's). */
+    internal val walker = Executors.newSingleThreadExecutor { r -> Thread(r, "sabbaq-sampler").apply { isDaemon = true; priority = Thread.MIN_PRIORITY } }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     fun init(context: Context) { appContext = context.applicationContext }

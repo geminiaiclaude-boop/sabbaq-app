@@ -13,23 +13,29 @@ class OfferStatsDeduplicator(
     }
 
     private val seen = LinkedHashMap<Int, Int>()
+    private val seenAt = HashMap<Int, Long>()
     private var currentDate: String? = null
 
-    fun firstVisible(fingerprint: String, date: String): Boolean = mark(fingerprint, date, VISIBLE)
+    fun firstVisible(fingerprint: String, date: String, nowMs: Long = System.currentTimeMillis()): Boolean = mark(fingerprint, date, VISIBLE, nowMs)
 
-    fun firstRejection(fingerprint: String, date: String): Boolean = mark(fingerprint, date, REJECTED)
+    fun firstRejection(fingerprint: String, date: String, nowMs: Long = System.currentTimeMillis()): Boolean = mark(fingerprint, date, REJECTED, nowMs)
 
     fun reset() {
         currentDate = null
         seen.clear()
+        seenAt.clear()
     }
 
-    private fun mark(fingerprint: String, date: String, flag: Int): Boolean {
+    private fun mark(fingerprint: String, date: String, flag: Int, nowMs: Long): Boolean {
         if (currentDate != date) {
             currentDate = date
             seen.clear()
+            seenAt.clear()
         }
         val hash = fingerprint.hashCode()
+        val last = seenAt[hash]
+        if (last != null && (nowMs < last || nowMs - last > SAME_OFFER_WINDOW_MS)) seen.remove(hash)
+        seenAt[hash] = nowMs
         val previousFlags = seen[hash] ?: 0
         if ((previousFlags and flag) != 0) return false
         seen[hash] = previousFlags or flag
@@ -48,5 +54,7 @@ class OfferStatsDeduplicator(
     private companion object {
         const val VISIBLE = 1
         const val REJECTED = 2
+        /** An offer card stays on screen for seconds; the same fingerprint after this is a new offer. */
+        const val SAME_OFFER_WINDOW_MS = 60_000L
     }
 }

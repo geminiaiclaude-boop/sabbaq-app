@@ -104,3 +104,6 @@ reset role;
 
 -- Admin console (kept here so the existing CI step runs it).
 \ir admin_console_test.sql
+
+-- Review fixes (kept here so the existing CI step runs it).
+\ir review_fixes_test.sql

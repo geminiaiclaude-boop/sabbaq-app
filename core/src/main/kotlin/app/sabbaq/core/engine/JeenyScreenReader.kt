@@ -95,8 +95,10 @@ class JeenyScreenReader(private val config: EngineConfig, private val uptimeMs: 
         } ?: return null
         val price = runCatching { root.findByViewId(ids.priceId) }.getOrDefault(emptyList()).firstNotNullOfOrNull { node ->
             val m = JeenyLexicon.PRICE.matcher(JeenyLexicon.latinDigits(labelOf(node).trim()))
-            if (m.find()) (m.group(1)?.takeIf { it.isNotBlank() } ?: m.group(2))?.replace('٫', '.')?.toDoubleOrNull() else null
-        } ?: return null
+            if (m.find()) JeenyLexicon.amount(m.group(1)?.takeIf { it.isNotBlank() } ?: m.group(2)) else null
+        }
+        // Without a price bound the price is not needed to decide; with one, the full read finds it.
+        if (price == null && config.priceFilterOn) return null
         return ParsedRide(
             price = price, minutes = minutes, acceptNode = accept, addressAmbiguous = true,
             clickX = cx, clickY = cy, acceptViewId = ids.acceptId, priceViewId = ids.priceId,
@@ -222,7 +224,7 @@ class JeenyScreenReader(private val config: EngineConfig, private val uptimeMs: 
                 if (price == null && !isTimeNode && !disabled) {
                     if (!currencySeen && !lex.currency.found(norm) && '$' !in norm) {
                         if (norm.length < 10 && norm.any { it in '0'..'9' }) {
-                            val digits = JeenyLexicon.NON_NUMBER.matcher(norm).replaceAll("").replace(",", ".").replace("٫", ".")
+                            val digits = (JeenyLexicon.firstNumber(norm)?.replace(",", ".")?.replace("٫", ".") ?: "")
                             val value = digits.toDoubleOrNull()
                             val decimals = digits.substringAfter('.', "").length
                             if (value != null && value in 0.5..500.0 &&
@@ -241,11 +243,11 @@ class JeenyScreenReader(private val config: EngineConfig, private val uptimeMs: 
                         val m = JeenyLexicon.PRICE.matcher(norm)
                         if (m.find() && node.bounds().top > priceFloor) {
                             val number = m.group(1)?.takeIf { it.isNotBlank() } ?: m.group(2)
-                            price = number?.replace("٫", ".")?.toDoubleOrNull()
+                            price = JeenyLexicon.amount(number)
                             if (price != null) priceViewId = node.viewIdSafe()
                         }
                         if (price == null) {
-                            val digits = JeenyLexicon.NON_NUMBER.matcher(norm).replaceAll("").replace(",", ".").replace("٫", ".")
+                            val digits = (JeenyLexicon.firstNumber(norm)?.replace(",", ".")?.replace("٫", ".") ?: "")
                             val value = digits.toDoubleOrNull()
                             if (value != null && value > 0.0 && node.bounds().top > priceFloor) {
                                 val hasCurrency = lex.currency.found(norm)

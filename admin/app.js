@@ -1111,6 +1111,7 @@
             CONFIRMATION_CONFIRMED: 'قبول مؤكد', CONFIRMATION_TIMEOUT: 'قبول غير مؤكد', SERVICE_CONNECTED: 'الخدمة متصلة',
             SERVICE_INTERRUPTED: 'الخدمة مقاطَعة', SERVICE_DESTROYED: 'الخدمة أُوقفت', HEARTBEAT: 'نبضة',
             UPLOAD_REJECTED: 'رفض الإرسال', QUEUE_DROPPED: 'أحداث محذوفة', PAUSED: 'إيقاف مؤقت', APP_CRASH: 'انهيار التطبيق',
+            PROCESS_EXIT: 'إنهاء من أندرويد', DEVICE_INFO: 'معلومات الجهاز', ACCEPT_LEARNED: 'بصمة قبول', UPDATE_STATE: 'التحديث',
         };
         return labels[stage] || displayValue(stage);
     }
@@ -1925,7 +1926,7 @@
             const from = state.offsets.codes;
             const { data, error } = await db
                 .from('activation_codes')
-                .select('code,days,batch,redeemed_by,revoked,created_at')
+                .select('code,days,batch,redeemed_by,redeemed_at,revoked,created_at')
                 .order('created_at', { ascending: false })
                 .range(from, from + PAGE_SIZE);
             if (error) {
@@ -1958,7 +1959,7 @@
             appendCell(row, displayValue(code.batch, '-'));
             const statusCell = document.createElement('td');
             const status = document.createElement('span');
-            const unavailable = Boolean(code.redeemed_by || code.revoked);
+            const unavailable = Boolean(code.redeemed_by || code.redeemed_at || code.revoked);
             status.className = unavailable ? 'status-pill status-pill--unavailable' : 'status-pill status-pill--available';
             status.textContent = unavailable ? 'مستخدم/ملغى' : 'متاح';
             statusCell.append(status);
@@ -1977,6 +1978,7 @@
                 .from('activation_codes')
                 .select('code,days,batch', { count: 'exact' })
                 .is('redeemed_by', null)
+                .is('redeemed_at', null)
                 .eq('revoked', false)
                 .order('created_at', { ascending: false })
                 .limit(MAX_EXPORT_ROWS + 1);
