@@ -574,6 +574,7 @@ internal fun ZoneEditorDialog(
     val pointsNeeded = stringResource(R.string.zp_points_needed)
     val notFound = stringResource(R.string.zp_search_none)
     val noOutline = stringResource(R.string.zp_no_outline)
+    val outlineUnreachable = stringResource(R.string.zp_outline_unreachable)
     val noFix = stringResource(R.string.zp_no_fix)
 
     val map = rememberSabbaqMap()
@@ -724,11 +725,17 @@ internal fun ZoneEditorDialog(
                         OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth().testTag("zone-use-outline"), onClick = {
                             busy = true
                             scope.launch {
-                                val corners = CityIndexStore.outline(p.osm!!, p.points.first()[0], p.points.first()[1])
+                                val found = CityIndexStore.outlineOf(p.osm!!, p.name.substringBefore('،').trim(), p.points.first()[0], p.points.first()[1])
                                 busy = false
-                                if (corners.size >= 3) fill(p.name, corners) else error = noOutline
+                                when (found) {
+                                    is CityIndexStore.Outline.Found -> fill(p.name, found.corners)
+                                    CityIndexStore.Outline.NotMapped -> error = noOutline
+                                    CityIndexStore.Outline.Unreachable -> error = outlineUnreachable
+                                }
                             }
-                        }) { Text(stringResource(R.string.zp_use_outline, p.name.substringBefore('،'))) }
+                        }) {
+                            Text(stringResource(if (busy) R.string.zp_outline_loading else R.string.zp_use_outline, p.name.substringBefore('،')))
+                        }
                     }
                     MapPackLine(packStatus)
                     city?.let { c ->

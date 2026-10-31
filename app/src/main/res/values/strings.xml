@@ -1013,6 +1013,8 @@ Write your problem or question and our team will reply here during working hours
     <string name="zp_my_district">My district</string>
     <string name="zp_use_outline">Use the boundary of %1$s</string>
     <string name="zp_no_outline">This place has no mapped boundary; draw it by tapping the map.</string>
+    <string name="zp_outline_loading">Getting the outline of %1$s…</string>
+    <string name="zp_outline_unreachable">Could not get the outline right now; try again shortly or draw it by tapping the map.</string>
     <string name="zp_no_fix">Your location is not available. Allow location access and turn on GPS.</string>
     <string name="zp_city_map">%1$s map</string>
     <string name="zp_whole_map">Whole map</string>

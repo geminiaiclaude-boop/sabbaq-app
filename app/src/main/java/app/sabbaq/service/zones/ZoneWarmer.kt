@@ -160,6 +160,26 @@ object ZoneWarmer {
         return null
     }
 
+    /**
+     * For a driver waiting on a button: every Overpass server at once, the first JSON answer wins,
+     * nothing after [budgetMs]. Null when none answered in time (the background warm-up keeps its
+     * patient [overpassBody]).
+     */
+    internal suspend fun overpassFirst(query: String, budgetMs: Long = 25_000L): String? = withTimeoutOrNull(budgetMs) {
+        val body = "data=" + URLEncoder.encode(query, "UTF-8")
+        val answers = kotlinx.coroutines.channels.Channel<String?>(ZoneCacheWarm.OVERPASS_URLS.size)
+        val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+        try {
+            ZoneCacheWarm.OVERPASS_URLS.forEach { url ->
+                scope.launch { answers.send(runCatching { post(url, body, budgetMs.toInt()) }.getOrNull()?.takeIf { it.trimStart().startsWith("{") }) }
+            }
+            repeat(ZoneCacheWarm.OVERPASS_URLS.size) { answers.receive()?.let { return@withTimeoutOrNull it } }
+            null
+        } finally {
+            scope.coroutineContext[Job]?.cancel()
+        }
+    }
+
     /** `fragment.validator` without a Google key: OpenStreetMap's road name at the point. */
     private fun reverseRoads(lat: Double, lng: Double): List<String> {
         val text = get("https://nominatim.openstreetmap.org/reverse?lat=$lat&lon=$lng&format=jsonv2&accept-language=ar&zoom=16", 5_000) ?: return emptyList()

@@ -1020,6 +1020,8 @@
     <string name="zp_my_district">حيّي الحالي</string>
     <string name="zp_use_outline">استخدم حدود %1$s</string>
     <string name="zp_no_outline">لا توجد حدود مرسومة لهذا المكان؛ ارسمها بالضغط على الخريطة.</string>
+    <string name="zp_outline_loading">جارٍ جلب حدود %1$s…</string>
+    <string name="zp_outline_unreachable">تعذّر جلب الحدود الآن؛ حاول بعد قليل أو ارسمها بالضغط على الخريطة.</string>
     <string name="zp_no_fix">تعذر تحديد موقعك. اسمح بالوصول إلى الموقع وشغّل GPS.</string>
     <string name="zp_city_map">خريطة %1$s</string>
     <string name="zp_whole_map">كل الخريطة</string>

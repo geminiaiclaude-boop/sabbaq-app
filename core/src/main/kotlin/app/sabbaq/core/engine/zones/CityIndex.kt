@@ -225,6 +225,23 @@ object CityIndex {
             }
     }
 
+    /** A name search near a point (Nominatim, with polygons): the address of the request. */
+    fun polygonSearchUrl(name: String, lat: Double, lng: Double): String {
+        val q = java.net.URLEncoder.encode(name, "UTF-8")
+        return "https://nominatim.openstreetmap.org/search?q=$q&format=json&polygon_geojson=1&polygon_threshold=0.0003&limit=8" +
+            "&bounded=1&viewbox=${lng - 0.25},${lat + 0.25},${lng + 0.25},${lat - 0.25}"
+    }
+
+    /** The first area in a [polygonSearchUrl] answer whose outline contains the point; empty when none does. */
+    fun polygonAround(body: String, lat: Double, lng: Double, max: Int = 60): List<DoubleArray> {
+        val results = runCatching { Json.parseToJsonElement(body) as JsonArray }.getOrNull() ?: return emptyList()
+        return results.asSequence()
+            .mapNotNull { (it as? JsonObject)?.get("geojson") as? JsonObject }
+            .map { outline(it, max) }
+            .firstOrNull { it.size >= 3 && ZoneCacheWarm.inside(lat, lng, it) }
+            .orEmpty()
+    }
+
     /** Joins a relation's outer ways end to end (each in either direction); the largest ring, without the closing duplicate. */
     internal fun assembleRing(ways: List<List<DoubleArray>>): List<DoubleArray> {
         fun same(a: DoubleArray, b: DoubleArray) = kotlin.math.abs(a[0] - b[0]) < 1e-7 && kotlin.math.abs(a[1] - b[1]) < 1e-7
