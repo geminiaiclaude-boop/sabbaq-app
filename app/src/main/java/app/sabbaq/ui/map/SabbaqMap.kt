@@ -9,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
@@ -259,6 +260,9 @@ class SabbaqMapState(context: Context) {
         }
     }
 
+    /** Redraws at the view's current size; a resized map that is otherwise idle keeps its old frame. */
+    fun repaint() { map?.triggerRepaint() }
+
     fun center(): GeoPoint? = map?.cameraPosition?.target?.let { GeoPoint(it.latitude, it.longitude) }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -338,7 +342,7 @@ fun SabbaqMap(state: SabbaqMapState, modifier: Modifier = Modifier) {
             state.view.onPause(); state.view.onStop(); state.destroy()
         }
     }
-    AndroidView(factory = { state.view }, modifier = modifier)
+    AndroidView(factory = { state.view }, modifier = modifier.onSizeChanged { state.repaint() })
 }
 
 /** The city map the driver has (or the stored city box from the names index): what the editor stays inside. */

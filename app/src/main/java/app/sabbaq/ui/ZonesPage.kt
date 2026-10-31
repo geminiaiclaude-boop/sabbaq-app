@@ -674,10 +674,13 @@ internal fun ZoneEditorDialog(
                                 Icon(Icons.Outlined.Close, contentDescription = stringResource(R.string.zp_clear))
                             }
                         },
-                        supportingText = when {
-                            searching -> {{ Text(stringResource(R.string.zp_searching)) }}
-                            nothingFound -> {{ Text(stringResource(R.string.zp_search_none), modifier = Modifier.testTag("zone-search-none")) }}
-                            else -> null
+                        // Always present, so the field (and the map under it) never changes height mid-search.
+                        supportingText = {
+                            when {
+                                searching -> Text(stringResource(R.string.zp_searching))
+                                nothingFound -> Text(stringResource(R.string.zp_search_none), modifier = Modifier.testTag("zone-search-none"))
+                                else -> Text("")
+                            }
                         },
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                         keyboardActions = KeyboardActions(onSearch = {
