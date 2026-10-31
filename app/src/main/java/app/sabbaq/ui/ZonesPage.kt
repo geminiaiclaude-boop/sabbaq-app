@@ -76,6 +76,7 @@ import app.sabbaq.core.engine.zones.ZoneLimit
 import app.sabbaq.fleet.ZonePolicyRepository
 import app.sabbaq.core.engine.DecisionEngine
 import app.sabbaq.core.engine.zones.CityIndex
+import app.sabbaq.core.engine.zones.ZoneCacheWarm
 import app.sabbaq.core.engine.zones.CityPlace
 import app.sabbaq.service.maps.MapPackStore
 import app.sabbaq.service.zones.CityIndexStore
@@ -184,7 +185,10 @@ internal fun ZonesPage(
             val list = d.zones(isExclude).toMutableList()
             val i = list.indexOfFirst { it.points == zone.points }
             if (i < 0) { notice = null; return@launch }
-            if (!result.ok) { notice = context.getString(R.string.zp_warm_failed, zone.name) to true; return@launch }
+            // Could not prepare (busy map servers, no connection): the zone is switched on anyway. It
+            // only rejects a ride whose destination is known to be inside it, and the street names
+            // still arrive later from the road and city warm-ups (owner, 2026-10-31: a saved avoid
+            // zone that stayed off looked like a save that failed).
             val rest = ZoneJson.write(list.filterIndexed { k, _ -> k != i })
             val others = if (isExclude) ZoneLimit.activeCount(d.zonesJson, rest) else ZoneLimit.activeCount(rest, d.excludeZonesJson)
             val allowed = ZoneLimit.canActivate(others, policy.maxActiveZones)
@@ -192,6 +196,7 @@ internal fun ZonesPage(
             latestChange(d.withZones(isExclude, list))
             notice = when {
                 !allowed -> limitText() to true
+                !result.ok -> context.getString(R.string.zp_warm_failed, zone.name) to false
                 result.names > 0 -> context.getString(R.string.zp_warm_done, zone.name, result.names) to false
                 else -> context.getString(R.string.zp_warm_empty, zone.name) to true
             }
@@ -202,6 +207,13 @@ internal fun ZonesPage(
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(stringResource(R.string.zone_group_title), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
         Text(stringResource(R.string.zp_intro), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        val activeNow = ZoneLimit.activeCount(draft.zonesJson, draft.excludeZonesJson)
+        Text(
+            if (policy.maxActiveZones > 0) stringResource(R.string.zp_active_of, activeNow, policy.maxActiveZones)
+            else stringResource(R.string.zp_active_count, activeNow),
+            style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.testTag("zones-active-count"),
+        )
     }
     ZoneLocationNotice(draft)
     notice?.let { (text, warn) ->
@@ -222,6 +234,7 @@ internal fun ZonesPage(
         onEdit = { editing = ZoneRef(false, it) },
         onDelete = { deleting = ZoneRef(false, it) },
     )
+    SharedZonesCard(policy.zonesJson, draft, onDraftChange) { viewing = it }
     ZoneListCard(
         exclude = true, zones = exclude, listOn = draft.excludeZonesEnabled, farLimitKm = farLimit, error = errors["excludeZones"], warming = warming,
         onListOn = { onDraftChange(draft.copy(excludeZonesEnabled = it)) },
@@ -233,7 +246,6 @@ internal fun ZonesPage(
         onEdit = { editing = ZoneRef(true, it) },
         onDelete = { deleting = ZoneRef(true, it) },
     )
-    SharedZonesCard(policy.zonesJson, draft, onDraftChange) { viewing = it }
 
     var moreOpen by rememberSaveable { mutableStateOf(errors.keys.any { it in ZONE_ADVANCED_KEYS }) }
     SabbaqCard(
@@ -473,7 +485,7 @@ private fun ZoneRow(
                     zone.active -> stringResource(R.string.zp_state_on)
                     else -> stringResource(R.string.zp_state_off)
                 }
-                Text(state, style = MaterialTheme.typography.bodySmall,
+                Text(stringResource(R.string.zp_state_corners, state, zone.points.size), style = MaterialTheme.typography.bodySmall,
                     color = if (zone.pending || farKm != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = if (zone.pending) Modifier.testTag("$tag-pending") else Modifier)
             }
@@ -574,6 +586,7 @@ internal fun ZoneEditorDialog(
     val pointsNeeded = stringResource(R.string.zp_points_needed)
     val notFound = stringResource(R.string.zp_search_none)
     val noOutline = stringResource(R.string.zp_no_outline)
+    val squareDrawn = stringResource(R.string.zp_square_drawn)
     val noFix = stringResource(R.string.zp_no_fix)
 
     val map = rememberSabbaqMap()
@@ -632,16 +645,6 @@ internal fun ZoneEditorDialog(
         }
     }
 
-    fun pick(p: CityPlace) {
-        picked = p
-        suggestions = emptyList()
-        query = p.name
-        error = null
-        val at = p.points.first()
-        map.moveTo(GeoPoint(at[0], at[1]), if (p.kind == CityIndex.DISTRICT) 14.0 else 16.0)
-        redraw()
-    }
-
     fun fill(zoneName: String, corners: List<DoubleArray>) {
         points.clear()
         corners.forEach { points += GeoPoint(it[0], it[1]) }
@@ -649,6 +652,42 @@ internal fun ZoneEditorDialog(
         error = null
         redraw()
         if (points.size >= 3) map.fit(points.toList())
+    }
+
+    /**
+     * The place picked from the search becomes the zone at once, ready to save: its name, and its
+     * boundary (the stored district outline, else the map services), or a square around it the
+     * driver can adjust when no boundary is mapped (owner, 2026-10-31: picking a place and then
+     * being asked for a name and corners).
+     */
+    fun pick(p: CityPlace) {
+        picked = p
+        suggestions = emptyList()
+        query = p.name
+        if (name.isBlank()) name = p.name.substringBefore('،').trim().take(60)
+        error = null
+        val at = p.points.first()
+        map.moveTo(GeoPoint(at[0], at[1]), if (p.kind == CityIndex.DISTRICT) 14.0 else 16.0)
+        redraw()
+        if (points.isNotEmpty()) return
+        busy = true
+        scope.launch {
+            val label = p.name.substringBefore('،').trim()
+            val found = when {
+                p.kind != CityIndex.DISTRICT -> CityIndexStore.Outline.NotMapped
+                p.osm != null -> CityIndexStore.outlineOf(context, p.osm!!, label, at[0], at[1])
+                else -> CityIndexStore.localDistrict(context, at[0], at[1])?.let { CityIndexStore.Outline.Found(it.ring) }
+                    ?: CityIndexStore.Outline.NotMapped
+            }
+            busy = false
+            if (picked !== p || points.isNotEmpty()) return@launch
+            if (found is CityIndexStore.Outline.Found) {
+                fill(p.name, found.corners)
+            } else {
+                fill(p.name, ZoneCacheWarm.box(at[0], at[1], if (p.kind == CityIndex.DISTRICT) 0.8 else 0.3))
+                error = squareDrawn.format(label)
+            }
+        }
     }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
@@ -718,16 +757,6 @@ internal fun ZoneEditorDialog(
                                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
-                    picked?.takeIf { it.osm != null }?.let { p ->
-                        OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth().testTag("zone-use-outline"), onClick = {
-                            busy = true
-                            scope.launch {
-                                val corners = CityIndexStore.outline(p.osm!!)
-                                busy = false
-                                if (corners.size >= 3) fill(p.name, corners) else error = noOutline
-                            }
-                        }) { Text(stringResource(R.string.zp_use_outline, p.name.substringBefore('،'))) }
-                    }
                     MapPackLine(packStatus)
                     city?.let { c ->
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -749,7 +778,10 @@ internal fun ZoneEditorDialog(
                         busy = true
                         scope.launch {
                             val f = CityIndexStore.freshLocation(context)
-                            val district = f?.let { CityIndexStore.districtAt(it[0], it[1]) }
+                            val district = f?.let { fix ->
+                                CityIndexStore.localDistrict(context, fix[0], fix[1])?.let { it.name to it.ring }
+                                    ?: CityIndexStore.districtAt(fix[0], fix[1])
+                            }
                             busy = false
                             when {
                                 f == null -> error = noFix
@@ -786,11 +818,22 @@ internal fun ZoneEditorDialog(
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }
                 Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
                     OutlinedButton(onClick = onDismiss) { Text(stringResource(R.string.zone_cancel)) }
-                    Button(onClick = {
+                    Button(enabled = !busy, onClick = {
                         when {
-                            name.isBlank() -> error = nameNeeded
                             points.size < 3 -> error = pointsNeeded
-                            else -> onSave(EditableZone(name.trim(), initial?.active ?: true, points.toList()), exclude)
+                            name.isNotBlank() -> onSave(EditableZone(name.trim(), initial?.active ?: true, points.toList()), exclude)
+                            // No name typed: the place it was drawn from, else the place at its centre.
+                            else -> {
+                                busy = true
+                                scope.launch {
+                                    val c = GeoPoint(points.sumOf { it.latitude } / points.size, points.sumOf { it.longitude } / points.size)
+                                    val derived = picked?.name?.substringBefore('،')?.trim()?.takeIf { it.isNotEmpty() }
+                                        ?: GeocodeWorker.placeName(context, c.latitude, c.longitude)?.trim()?.takeIf { it.isNotEmpty() }
+                                    busy = false
+                                    if (derived == null) error = nameNeeded
+                                    else { name = derived.take(60); onSave(EditableZone(name, initial?.active ?: true, points.toList()), exclude) }
+                                }
+                            }
                         }
                     }, modifier = Modifier.testTag("zone-save")) { Text(stringResource(R.string.zp_save_zone)) }
                 }

@@ -44,6 +44,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -155,8 +157,9 @@ internal fun ZoneLocationNotice(draft: FilterDraft) {
 }
 
 /**
- * «الأماكن والمناطق» on «طلبات تناسبك»: how many zones are on and the button to the zones page,
- * then the smart destination.
+ * «الأماكن والمناطق» inside «شروط القيادة» on the dashboard, below «قنص الطلبات بدون وجهة» and
+ * without a frame of its own (owner, 2026-10-31): how many zones are on, the button to the zones
+ * page, then the smart destination.
  */
 @Composable
 internal fun ZoneConditions(
@@ -164,9 +167,17 @@ internal fun ZoneConditions(
     errors: Map<String, String>,
     onDraftChange: (FilterDraft) -> Unit,
     onOpenZones: () -> Unit,
+    framed: Boolean = true,
 ) {
     val requestLocation = rememberLocationAccess().request
     var mapMode by rememberSaveable { mutableStateOf<ZoneMapMode?>(null) }
+    // Unframed inside «شروط القيادة», the block is titled like the condition rows above it.
+    if (!framed) Text(
+        stringResource(R.string.zone_group_title),
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+        modifier = Modifier.semantics { heading() },
+    )
     ZoneLocationNotice(draft)
     if (errors["zones"] != null || errors["excludeZones"] != null) {
         Text(errors["zones"] ?: errors["excludeZones"].orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
@@ -178,6 +189,7 @@ internal fun ZoneConditions(
         subtitle = stringResource(R.string.zone_home_sub),
         enabled = draft.smartDestActive,
         testKey = "smart-dest",
+        framed = framed,
         onEnabledChange = { onDraftChange(draft.copy(smartDestActive = it)); if (it) requestLocation() },
         footer = {
             Row(verticalAlignment = Alignment.CenterVertically) {

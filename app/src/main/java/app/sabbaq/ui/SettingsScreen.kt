@@ -470,8 +470,19 @@ fun SettingsScreen(
             showMissingPermissions = true
             return
         }
-        checkingActivation = true
         runtimeMessage = null
+        // A paid period already saved on this phone starts at once: the server is asked in the
+        // background, and only its explicit refusal stops monitoring (the licence loop handles it).
+        // Waiting on «جارٍ التحقق من اشتراكك» at every start was dead time (owner, 2026-10-31).
+        if (Settings.subscriptionEndsAtMs > System.currentTimeMillis()) {
+            showActivationConsent = true
+            scope.launch {
+                runCatching { SupabaseClient.revalidateLicense() }
+                licenseInMemory = SupabaseClient.hasValidLicense()
+            }
+            return
+        }
+        checkingActivation = true
         scope.launch {
             try {
                 // هذا هو موضع الفحص الشبكي الصريح الوحيد في مسار بدء التشغيل.
@@ -655,6 +666,7 @@ fun SettingsScreen(
                 },
                 onRequestNotifications = onRequestNotificationPermission,
                 onOpenFilters = { navigateTo(DriverDestination.Filters) },
+                onOpenZones = { navigateTo(DriverDestination.Zones) },
                 onOpenAccount = { navigateTo(DriverDestination.Account) },
                 onOpenSetupGuide = { navigateTo(DriverDestination.Setup) },
                 batteryUnrestricted = batteryUnrestricted,
@@ -755,7 +767,6 @@ fun SettingsScreen(
                 isSaving = isSavingFilters,
                 message = filtersMessage,
                 onDraftChange = ::updateDraft,
-                onOpenZones = { navigateTo(DriverDestination.Zones) },
                 onSave = ::retrySaveDraft,
                 onRevert = { updateDraft(FilterDraft.from(savedFilters)); filtersMessage = null },
                 onReset = { showResetFilters = true },
@@ -1105,6 +1116,7 @@ private fun DashboardPage(
     onOpenA11y: () -> Unit,
     onRequestNotifications: () -> Unit,
     onOpenFilters: () -> Unit,
+    onOpenZones: () -> Unit,
     onOpenAccount: () -> Unit,
     onOpenSetupGuide: () -> Unit,
     batteryUnrestricted: Boolean = true,
@@ -1156,7 +1168,8 @@ private fun DashboardPage(
         modifier = Modifier.sabbaqEntrance(1),
     )
     SabbaqAnimatedMessage(message?.message, message?.tone ?: SabbaqTone.Info)
-    FloatingControlButton()
+    // Always on the dashboard, whether monitoring runs or not: the control works in both states.
+    FloatingControlButton(Modifier.sabbaqEntrance(2))
     ActiveConditionsCockpit(
         draft = draft,
         errors = draftErrors,
@@ -1165,10 +1178,10 @@ private fun DashboardPage(
         saveMessage = filtersMessage,
         onDraftChange = onQuickDraftChange,
         onOpenFilters = onOpenFilters,
+        onOpenZones = onOpenZones,
         modifier = Modifier.sabbaqEntrance(2),
     )
-    // «حالة التشغيل الفعلية» lives in «النشاط والتشخيص» next to the statistics.
-    TelemetryDiagnosticsCard(Modifier.sabbaqEntrance(1))
+    // «تشخيص الرصد» lives only in «النشاط والتشخيص», next to the statistics (owner, 2026-10-30).
     val missing = (readiness + power).filterNot { it.ready }
     if (missing.isNotEmpty()) MissingPermissionsCard(missing, Modifier.sabbaqEntrance(1))
 
@@ -1296,9 +1309,9 @@ private fun SessionRestoreNotice(isRestoring: Boolean, onRetry: () -> Unit) {
 }
 
 /**
- * «شروط القيادة»: the ride app, then the four conditions drivers change most, editable in place with their own
- * switches (the same components as «طلبات تناسبك», so both edit one draft). Everything else
- * stays on the full page behind the button.
+ * «شروط القيادة»: the ride app, the conditions drivers change most and, below «قنص الطلبات بدون
+ * وجهة», the places and zones, editable in place (the same components as «طلبات تناسبك», so both
+ * edit one draft). Everything else stays on the full page behind the button.
  */
 @Composable
 private fun ActiveConditionsCockpit(
@@ -1309,6 +1322,7 @@ private fun ActiveConditionsCockpit(
     saveMessage: DriverStatus?,
     onDraftChange: (FilterDraft) -> Unit,
     onOpenFilters: () -> Unit,
+    onOpenZones: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     SabbaqCard(
@@ -1322,6 +1336,8 @@ private fun ActiveConditionsCockpit(
         modifier = modifier,
     ) {
         QuickConditionsPanel(draft, errors, onDraftChange)
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        ZoneConditions(draft, errors, onDraftChange, onOpenZones, framed = false)
         SabbaqAnimatedMessage(saveMessage?.message, saveMessage?.tone ?: SabbaqTone.Info)
         SabbaqButton(
             stringResource(R.string.ss_conditions_more),
@@ -1675,7 +1691,6 @@ private fun FiltersPage(
     isSaving: Boolean,
     message: DriverStatus?,
     onDraftChange: (FilterDraft) -> Unit,
-    onOpenZones: () -> Unit,
     onSave: () -> Unit,
     onRevert: () -> Unit,
     onReset: () -> Unit,
@@ -1693,7 +1708,6 @@ private fun FiltersPage(
         draft = draft,
         errors = validationErrors,
         onDraftChange = onDraftChange,
-        onOpenZones = onOpenZones,
     )
     SabbaqCard(title = stringResource(R.string.ss_instant_save_title), subtitle = stringResource(R.string.ss_instant_save_sub), icon = Icons.Outlined.Autorenew) {
         if (isSaving) {

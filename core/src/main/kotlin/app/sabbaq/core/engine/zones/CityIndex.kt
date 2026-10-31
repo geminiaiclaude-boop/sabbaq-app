@@ -191,6 +191,128 @@ object CityIndex {
         return simplify(pts, max)
     }
 
+    /**
+     * The district boundaries that contain a point, with their geometry. Search engines often know a
+     * district only as a point (Al Olaya in Riyadh is a node), while its boundary is a relation.
+     */
+    fun containingDistrictQuery(lat: Double, lng: Double): String =
+        "[out:json][timeout:25];is_in($lat,$lng)->.a;rel(pivot.a)[boundary=administrative][admin_level~\"^(8|9|10|11)$\"];out geom;"
+
+    /** The smallest (deepest admin level) boundary in a [containingDistrictQuery] answer: its name and outline. */
+    fun containingDistrict(body: String, max: Int = 60): Pair<String, List<DoubleArray>>? =
+        parseDistricts(body, max).maxByOrNull { it.level }?.let { it.name to it.ring }
+
+    /** A busy server answers 200 with no elements and a «runtime error … timed out» remark: that is no answer, not "nothing mapped". */
+    fun overpassGaveUp(body: String): Boolean = runCatching {
+        val remark = (Json.parseToJsonElement(body) as JsonObject)["remark"]?.jsonPrimitive?.contentOrNull.orEmpty()
+        remark.contains("error", ignoreCase = true) || remark.contains("timed out", ignoreCase = true)
+    }.getOrDefault(true)
+
+    /** A district boundary of the driver's city: its name, admin level (deeper is smaller) and outline. */
+    class District(val name: String, val level: Int, val ring: List<DoubleArray>)
+
+    /**
+     * Every district boundary in the city's box, downloaded once with the city (a few hundred KB):
+     * «استخدم حدود …» and «حيّي الحالي» then answer at once and offline, without the public map
+     * servers that took 22-40 s or nothing at all (2026-10-31).
+     */
+    fun districtsQuery(box: GeoBox): String =
+        "[out:json][timeout:90];rel[boundary=administrative][admin_level~\"^(9|10|11)$\"](${box.south},${box.west},${box.north},${box.east});out geom;"
+
+    fun parseDistricts(body: String, max: Int = 60): List<District> {
+        val root = runCatching { Json.parseToJsonElement(body) as JsonObject }.getOrNull() ?: return emptyList()
+        return (root["elements"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }.mapNotNull { rel ->
+            val tags = rel["tags"] as? JsonObject
+            val name = listOf("name:ar", "name", "name:en").firstNotNullOfOrNull { k ->
+                tags?.get(k)?.jsonPrimitive?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
+            } ?: return@mapNotNull null
+            val level = tags?.get("admin_level")?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 0
+            val ways = (rel["members"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
+                .filter { it["type"]?.jsonPrimitive?.contentOrNull == "way" && it["role"]?.jsonPrimitive?.contentOrNull != "inner" }
+                .map { m ->
+                    (m["geometry"] as? JsonArray).orEmpty().mapNotNull { g ->
+                        val o = g as? JsonObject ?: return@mapNotNull null
+                        val lat = o["lat"]?.jsonPrimitive?.doubleOrNull
+                        val lon = o["lon"]?.jsonPrimitive?.doubleOrNull
+                        if (lat == null || lon == null) null else doubleArrayOf(lat, lon)
+                    }
+                }
+                .filter { it.size >= 2 }
+            val ring = assembleRing(ways)
+            if (ring.size >= 3) District(name, level, simplify(ring, max)) else null
+        }
+    }
+
+    /** The deepest district around a point, the smaller one when two of a level overlap; null outside all. */
+    fun districtAround(districts: List<District>, lat: Double, lng: Double): District? =
+        districts.filter { ZoneCacheWarm.inside(lat, lng, it.ring) }
+            .sortedWith(compareByDescending<District> { it.level }.thenBy { d ->
+                (d.ring.maxOf { it[0] } - d.ring.minOf { it[0] }) * (d.ring.maxOf { it[1] } - d.ring.minOf { it[1] })
+            })
+            .firstOrNull()
+
+    fun encodeDistricts(city: String, savedAt: Long, districts: List<District>): String = buildJsonObject {
+        put("city", city); put("savedAt", savedAt)
+        put("d", buildJsonArray {
+            districts.forEach { d ->
+                add(buildJsonObject {
+                    put("n", d.name); put("l", d.level)
+                    put("p", buildJsonArray { d.ring.forEach { add(buildJsonArray { add(JsonPrimitive(it[0])); add(JsonPrimitive(it[1])) }) } })
+                })
+            }
+        })
+    }.toString()
+
+    /** The stored districts and the city and time they were downloaded for; null when unreadable. */
+    fun decodeDistricts(text: String): Triple<String, Long, List<District>>? = runCatching {
+        val o = Json.parseToJsonElement(text) as JsonObject
+        val city = o["city"]!!.jsonPrimitive.content
+        val at = o["savedAt"]!!.jsonPrimitive.longOrNull ?: 0L
+        val list = (o["d"] as JsonArray).mapNotNull { e ->
+            val d = e as? JsonObject ?: return@mapNotNull null
+            val ring = ZoneCacheWarm.corners(d["p"] as? JsonArray ?: return@mapNotNull null)
+            if (ring.size < 3) null
+            else District(d["n"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null, d["l"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 0, ring)
+        }
+        Triple(city, at, list)
+    }.getOrNull()
+
+    /** A name search near a point (Nominatim, with polygons): the address of the request. */
+    fun polygonSearchUrl(name: String, lat: Double, lng: Double): String {
+        val q = java.net.URLEncoder.encode(name, "UTF-8")
+        return "https://nominatim.openstreetmap.org/search?q=$q&format=json&polygon_geojson=1&polygon_threshold=0.0003&limit=8" +
+            "&bounded=1&viewbox=${lng - 0.25},${lat + 0.25},${lng + 0.25},${lat - 0.25}"
+    }
+
+    /** The first area in a [polygonSearchUrl] answer whose outline contains the point; empty when none does. */
+    fun polygonAround(body: String, lat: Double, lng: Double, max: Int = 60): List<DoubleArray> {
+        val results = runCatching { Json.parseToJsonElement(body) as JsonArray }.getOrNull() ?: return emptyList()
+        return results.asSequence()
+            .mapNotNull { (it as? JsonObject)?.get("geojson") as? JsonObject }
+            .map { outline(it, max) }
+            .firstOrNull { it.size >= 3 && ZoneCacheWarm.inside(lat, lng, it) }
+            .orEmpty()
+    }
+
+    /** Joins a relation's outer ways end to end (each in either direction); the largest ring, without the closing duplicate. */
+    internal fun assembleRing(ways: List<List<DoubleArray>>): List<DoubleArray> {
+        fun same(a: DoubleArray, b: DoubleArray) = kotlin.math.abs(a[0] - b[0]) < 1e-7 && kotlin.math.abs(a[1] - b[1]) < 1e-7
+        val left = ways.toMutableList()
+        val rings = mutableListOf<List<DoubleArray>>()
+        while (left.isNotEmpty()) {
+            val ring = left.removeAt(0).toMutableList()
+            while (!(ring.size > 2 && same(ring.first(), ring.last()))) {
+                val i = left.indexOfFirst { same(it.first(), ring.last()) || same(it.last(), ring.last()) }
+                if (i < 0) break
+                val next = left.removeAt(i)
+                ring += (if (same(next.first(), ring.last())) next else next.reversed()).drop(1)
+            }
+            rings += ring
+        }
+        val best = rings.maxByOrNull { it.size } ?: return emptyList()
+        return if (best.size > 1 && same(best.first(), best.last())) best.dropLast(1) else best
+    }
+
     /** Keeps the [max] corners that carry the shape (smallest triangle areas dropped first). */
     fun simplify(points: List<DoubleArray>, max: Int): List<DoubleArray> {
         if (points.size <= max || max < 3) return points

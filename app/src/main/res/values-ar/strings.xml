@@ -552,7 +552,7 @@
     <string name="ma_theme_light">فاتح</string>
     <string name="ma_theme_dark">داكن</string>
     <string name="ma_theme_cd">مظهر %1$s</string>
-    <string name="tdc_title">تشخيص الرصد</string>
+    <string name="tdc_title">مسار الطلبات منذ التشغيل</string>
     <string name="tdc_times">%1$d مرة</string>
     <string name="tdc_pending">بانتظار الإرسال: %1$d · %2$s</string>
     <string name="tdc_last_upload"> · آخر إرسال %1$s</string>
@@ -821,7 +821,6 @@
     <string name="afe_turbo_sub">يضغط موضع زر القبول المحفوظ لحظة ظهور الطلب؛ يعمل حين لا يكون أي شرط مفعّلًا</string>
     <string name="afe_turbo_use_last">استخدم موضع آخر قبول مؤكد</string>
     <string name="zone_group_title">الأماكن والمناطق</string>
-    <string name="zone_group_sub">اقبل الطلبات أو ارفضها حسب وجهتها</string>
     <string name="zone_include_title">مناطق أذهب إليها</string>
     <string name="zone_include_sub">تُقبل فقط الطلبات التي تنتهي داخل هذه المناطق</string>
     <string name="zone_on_the_way">اقبل أيضًا الوجهات التي في طريقك إلى المنطقة</string>
@@ -974,6 +973,9 @@
     <string name="keep_bubble_done">الزر العائم مسموح</string>
     <string name="float_button">الزر العائم</string>
     <string name="float_needs_permission">يرجى منح إذن «الظهور فوق التطبيقات»، ثم حاول مجدداً.</string>
+    <string name="float_state_on">ظاهر فوق التطبيقات: تشغّل منه المتابعة وتوقفها دون فتح سبّاق.</string>
+    <string name="float_state_off">مخفي. شغّله ليظهر فوق جيني وبقية التطبيقات، حتى والمتابعة متوقفة.</string>
+    <string name="float_state_permission">يحتاج إذن «الظهور فوق التطبيقات». اضغط المفتاح لمنحه.</string>
     <string name="language_title">اللغة</string>
     <string name="zp_list_on">الشرط مفعّل</string>
     <string name="zp_list_off">الشرط متوقف</string>
@@ -996,6 +998,9 @@
     <string name="zp_map_retry">إعادة المحاولة</string>
     <string name="zp_back">رجوع</string>
     <string name="zp_intro">ارسم على الخريطة الأحياء التي تريد أن تنتهي فيها طلباتك، والأحياء التي لا تريد الذهاب إليها. يقارن سبّاق وجهة كل طلب بمناطقك.</string>
+    <string name="zp_active_of">%1$d مفعّلة من %2$d</string>
+    <string name="zp_active_count">%1$d مفعّلة</string>
+    <string name="zp_state_corners">%1$s · %2$d نقطة في المضلّع</string>
     <string name="zp_unknown_reject">رفض فوري</string>
     <string name="zp_unknown_accept">قبول</string>
     <string name="zp_unknown_reject_b">موصى به: يقتصر القبول على الطلبات التي تنتهي داخل مناطقك.</string>
@@ -1016,8 +1021,8 @@
     <string name="zp_clear">مسح</string>
     <string name="zp_my_location">موقعي</string>
     <string name="zp_my_district">حيّي الحالي</string>
-    <string name="zp_use_outline">استخدم حدود %1$s</string>
     <string name="zp_no_outline">لا توجد حدود مرسومة لهذا المكان؛ ارسمها بالضغط على الخريطة.</string>
+    <string name="zp_square_drawn">رُسمت منطقة مربعة حول «%1$s»؛ اسحب نقاطها لتعديلها إن أردت، ثم احفظ.</string>
     <string name="zp_no_fix">تعذر تحديد موقعك. اسمح بالوصول إلى الموقع وشغّل GPS.</string>
     <string name="zp_city_map">خريطة %1$s</string>
     <string name="zp_whole_map">كل الخريطة</string>
@@ -1035,7 +1040,7 @@
     <string name="zp_warming">جارٍ تجهيز «%1$s»… قد يستغرق دقيقة، ثم تُفعَّل المنطقة تلقائيًا.</string>
     <string name="zp_warm_done">فُعِّلت المنطقة «%1$s» (تعرّف سبّاق على %2$d اسمًا داخلها).</string>
     <string name="zp_warm_empty">فُعِّلت المنطقة «%1$s». لم يُعثر على أسماء شوارع داخلها بعد، فسيحدد سبّاق مكان كل عنوان وقت وصول الطلب. ارسمها أوسع لتشمل شوارع معروفة إن أمكن.</string>
-    <string name="zp_warm_failed">لم تُفعَّل المنطقة «%1$s» لأن الاتصال تعذّر. تحقق من الإنترنت ثم اضغط «تجهيز وتفعيل».</string>
+    <string name="zp_warm_failed">فُعّلت المنطقة «%1$s». تعذّر تجهيز أسماء شوارعها الآن، وستُكمَل تلقائيًا عند تحسّن الاتصال.</string>
     <string name="zp_pending">لم تُجهَّز بعد، ولن تعمل حتى تُجهَّز</string>
     <string name="zp_warm_now">تجهيز وتفعيل</string>
     <string name="zp_limit">بلغت الحد الأقصى للمناطق المفعّلة (%1$d). أوقف منطقة أخرى أولًا.</string>

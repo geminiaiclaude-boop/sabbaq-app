@@ -205,8 +205,7 @@ internal fun SettingsHubPage(
 
         SettingsSection.Diagnostics -> {
             LiveAcceptTestEntry(Modifier.sabbaqEntrance(0))
-            TelemetryDiagnosticsCard(Modifier.sabbaqEntrance(1))
-            SupportIdCard(Modifier.sabbaqEntrance(2))
+            SupportIdCard(Modifier.sabbaqEntrance(1))
         }
 
         SettingsSection.Platforms -> SupportedPlatformsCard(Modifier.sabbaqEntrance(0))

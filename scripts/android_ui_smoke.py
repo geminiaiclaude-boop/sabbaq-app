@@ -94,9 +94,9 @@ adb('shell', 'input', 'keyevent', '82')
 results = []
 
 def apply_environment(env):
-    """Device conditions for a case: tablet geometry or no network; None restores the phone defaults."""
-    adb('shell', 'wm', 'size', '1600x2560' if env == 'tablet' else 'reset')
-    adb('shell', 'wm', 'density', '320' if env == 'tablet' else 'reset')
+    """Device conditions for a case: tablet or 360 dp phone geometry, or no network; None restores the phone defaults."""
+    adb('shell', 'wm', 'size', {'tablet': '1600x2560', 'narrow': '720x1600'}.get(env, 'reset'))
+    adb('shell', 'wm', 'density', '320' if env in ('tablet', 'narrow') else 'reset')
     state = 'disable' if env == 'offline' else 'enable'
     adb('shell', 'svc', 'wifi', state)
     adb('shell', 'svc', 'data', state)
@@ -107,9 +107,25 @@ def apply_environment(env):
 def assert_decision_history(visible, where):
     """The history page in reading order: heading, live status, statistics, then the seeded row."""
     assert 'النشاط والتشخيص' in visible, f'Decision history page did not render: {where}'
-    for label in ('تشخيص الرصد', 'حالة التشغيل الفعلية', 'إحصاءات سبّاق', 'هذا الأسبوع', 'هذا الشهر', 'أكثر أسباب الرفض اليوم',
+    for label in ('تشخيص الرصد', 'حالة التشغيل الفعلية', 'مسار الطلبات منذ التشغيل', 'إحصاءات سبّاق', 'هذا الأسبوع', 'هذا الشهر', 'أكثر أسباب الرفض اليوم',
                   'آخر القرارات', 'تم قبول الرحلة', 'ci-preview ·'):
         assert reachable_by_scrolling(label, visible), f'Decision history section missing: {label}: {where}'
+
+
+def assert_brand_not_squeezed(nodes, where):
+    """The onboarding bar on a 360 dp phone with large text: «سبّاق» keeps its full width beside the other controls."""
+    def box(node):
+        return tuple(map(int, re.findall(r'\d+', node.get('bounds', ''))))
+    brand = [box(n) for n in nodes if n.get('text') == 'سبّاق']
+    assert brand, f'Brand name missing from the onboarding bar: {where}'
+    x1, y1, x2, y2 = brand[0]
+    # The five-letter word is well over twice as wide as its line; a squeezed slot clips it below that.
+    assert (x2 - x1) >= 2 * (y2 - y1), f'Brand name squeezed to {x2 - x1}x{y2 - y1}px: {where}'
+    for label in ('EN', 'ع', 'تخطي الجولة'):
+        for n in nodes:
+            if n.get('text') == label:
+                a1, b1, a2, b2 = box(n)
+                assert a2 <= x1 or a1 >= x2 or b2 <= y1 or b1 >= y2, f'«{label}» overlaps the brand name: {where}'
 
 
 def png_colors(data, points):
@@ -195,6 +211,7 @@ cases = [
     ('first-launch', None, False, 1.0, None),
     ('cinematic-opening', 'cinematic-opening', False, 1.0, None),
     ('intro', 'intro', False, 1.0, None),
+    ('intro-narrow-large-font', 'intro', False, 1.3, 'narrow'),
     ('welcome-features', 'welcome-features', False, 1.0, None),
     ('welcome-example', 'welcome-example', False, 1.0, None),
     ('login', 'login', False, 1.0, None),
@@ -283,6 +300,8 @@ for name, screen, dark, font_scale, env in cases:
         assert 'سبّاق' in visible, 'Brand-led cinematic opening did not expose the Sabbaq identity'
         for player_control in ('تخطي الفيديو', 'تشغيل صوت الافتتاحية', 'كتم صوت الافتتاحية'):
             assert player_control not in visible, f'Player/ad control leaked into launch opening: {player_control}'
+    if name == 'intro-narrow-large-font':
+        assert_brand_not_squeezed(nodes, name)
     if screen == 'history':
         assert_decision_history(visible, f'direct open: {name}')
     if screen == 'zones':
@@ -312,6 +331,41 @@ for name, screen, dark, font_scale, env in cases:
         grid = [(mx1 + (mx2 - mx1) * i // 6, my1 + (my2 - my1) * j // 6) for i in range(1, 6) for j in range(1, 6)]
         colors = set(png_colors(editor_shot, grid)) if editor_shot.startswith(b'\x89PNG\r\n\x1a\n') else set()
         assert len(colors) >= 4, f'Zone editor map did not render (only {len(colors)} colours in the map area): {sorted(colors)[:6]}'
+        # Choosing the district names the zone after it, and «استخدم حدود …» draws its boundary: search
+        # knows Al Olaya only as a point, so the boundary comes from the district around it (owner, 2026-10-31).
+        def tap_node(pred):
+            for n in ET.fromstring(ui_xml()).findall('.//node'):
+                if n.get('package') == args.package and pred(n):
+                    x1, y1, x2, y2 = map(int, re.findall(r'\d+', n.get('bounds', '')))
+                    adb('shell', 'input', 'tap', str((x1 + x2) // 2), str((y1 + y2) // 2))
+                    return True
+            return False
+        if 'العليا،' in editor_visible and (tap_node(lambda n: n.get('text', '').startswith('العليا، الرياض')) or tap_node(lambda n: n.get('text', '').startswith('العليا،'))):
+            time.sleep(2)
+            picked_nodes = ET.fromstring(ui_xml()).findall('.//node')
+            # Compose test tags are not exposed as ids here: the zone name is the editor's first text field.
+            name_fields = [n.get('text', '') for n in picked_nodes
+                           if n.get('package') == args.package and n.get('class') == 'android.widget.EditText'][:1]
+            assert any('العليا' in t for t in name_fields), f'Picking a place left the zone name empty: {name_fields}'
+            # Picking the place makes it the zone, ready to save: its boundary, or a square around it
+            # when none is mapped or the map servers are busy (owner, 2026-10-31). Corners are counted in Arabic digits.
+            outlined = ''
+            for _ in range(16):
+                time.sleep(2.5)
+                outlined = ' '.join(n.get('text', '') for n in ET.fromstring(ui_xml()).findall('.//node'))
+                if not re.search(r'\((0|٠) حتى الآن\)', outlined):
+                    break
+            shot = screencap()
+            if shot.startswith(b'\x89PNG\r\n\x1a\n'):
+                (out / f'{name}-outline.png').write_bytes(shot)
+            assert not re.search(r'\((0|٠) حتى الآن\)', outlined), f'Picking «العليا» drew no zone: {outlined[:400]!r}'
+            if 'رُسمت منطقة مربعة' in outlined:
+                print(f'{name}: no district boundary reached from CI; a square was drawn instead', flush=True)
+            assert tap_node(lambda n: n.get('text', '') == 'حفظ المنطقة'), 'Save button missing'
+            time.sleep(1.5)
+            saved = ' '.join(n.get('text', '') for n in ET.fromstring(ui_xml()).findall('.//node'))
+            for refusal in ('الرجاء إدخال اسم المنطقة', 'المنطقة تحتاج 3 نقاط'):
+                assert refusal not in saved, f'Saving the picked place was refused: {refusal}'
     if screen == 'welcome-example':
         # The pipeline scene leads the page; the worked example sits below it.
         assert reachable_by_scrolling('2.5 ر.س قبل التكاليف', visible), f'Concrete fare/distance example missing: {name}'
@@ -392,12 +446,17 @@ for name, screen, dark, font_scale, env in cases:
         # Voice alerts moved to «الإعدادات» and the statistics and the monitoring check to «النشاط والتشخيص»; the work page
         # keeps the editable driving conditions and the supported apps. Capture each section.
         current_visible = visible
+        # The floating control is always on the page; the places and zones sit inside «شروط القيادة»
+        # under «قنص الطلبات بدون وجهة»; the offers' path lives only in «النشاط والتشخيص» (owner, 2026-10-31).
         checkpoints = (
+            ('الزر العائم', 'floating'),
             ('شروط القيادة', 'conditions'),
             ('نطاق السعر', None),
             ('قنص الطلبات بدون وجهة', None),
+            ('إدارة الأماكن والمناطق', 'zones'),
             ('يعمل مع تطبيقات الرحلات', None),
         )
+        seen_on_dashboard = visible
         for label, capture_name in checkpoints:
             assert reachable_by_scrolling(label, current_visible), f'Dashboard stats section missing: {label}: {name}'
             time.sleep(0.5)
@@ -409,12 +468,16 @@ for name, screen, dark, font_scale, env in cases:
                 for node in checkpoint_nodes if node.get('package') == args.package
             )
             assert label in current_visible, f'Dashboard stats label is not visible after scrolling: {label}: {name}'
+            seen_on_dashboard += ' ' + current_visible
             if capture_name:
                 capture_name = f'{name}-{capture_name}'
                 screenshot = screencap()
                 assert screenshot.startswith(b'\x89PNG\r\n\x1a\n'), f'Invalid stats screenshot: {capture_name}'
                 (out / f'{capture_name}.xml').write_text(checkpoint_xml)
                 (out / f'{capture_name}.png').write_bytes(screenshot)
+        if screen == 'dashboard':
+            for moved in ('مسار الطلبات منذ التشغيل', 'تشخيص الرصد'):
+                assert moved not in seen_on_dashboard, f'«{moved}» is still on the work page: {name}'
     if args.distribution == 'direct' and screen == 'account':
         # No dead ends: a purchase step may only appear together with the button it tells
         # the driver to press, whatever channel the live offer configures. Labels are
