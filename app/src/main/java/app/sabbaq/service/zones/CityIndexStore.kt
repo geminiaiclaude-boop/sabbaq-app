@@ -117,13 +117,23 @@ object CityIndexStore {
     }
 
     /** A district's boundary as zone corners (`osm` "R123"), from Nominatim. */
-    suspend fun outline(osm: String): List<DoubleArray> = withContext(Dispatchers.IO) {
+    suspend fun outline(osm: String, lat: Double, lng: Double): List<DoubleArray> = withContext(Dispatchers.IO) {
         if (!Regex("^[NWR][0-9]{1,12}$").matches(osm)) return@withContext emptyList()
-        val body = runCatching {
+        // A district searched by name is often only a point (a node has no boundary): the boundary
+        // is then the district relation that contains that point.
+        val mapped = if (osm.startsWith("N")) emptyList() else runCatching {
             ZoneWarmer.get("https://nominatim.openstreetmap.org/lookup?osm_ids=$osm&format=json&polygon_geojson=1&polygon_threshold=0.0003", 10_000)
-        }.getOrNull() ?: return@withContext emptyList()
-        val first = runCatching { (json.parseToJsonElement(body) as JsonArray).firstOrNull() as? JsonObject }.getOrNull()
-        CityIndex.outline(first?.get("geojson") as? JsonObject)
+        }.getOrNull()?.let { body ->
+            val first = runCatching { (json.parseToJsonElement(body) as JsonArray).firstOrNull() as? JsonObject }.getOrNull()
+            CityIndex.outline(first?.get("geojson") as? JsonObject)
+        }.orEmpty()
+        mapped.takeIf { it.size >= 3 } ?: containingDistrict(lat, lng)?.second.orEmpty()
+    }
+
+    /** The district boundary around a point, from the map's administrative areas; null when none is mapped. */
+    suspend fun containingDistrict(lat: Double, lng: Double): Pair<String, List<DoubleArray>>? = withContext(Dispatchers.IO) {
+        val body = runCatching { ZoneWarmer.overpassBody(CityIndex.containingDistrictQuery(lat, lng)) }.getOrNull() ?: return@withContext null
+        CityIndex.containingDistrict(body)
     }
 
     /** «حيّي الحالي»: the district at the point, its name and boundary (empty when it has none mapped). */
@@ -136,7 +146,10 @@ object CityIndexStore {
         val name = listOf("suburb", "neighbourhood", "quarter", "city_district").firstNotNullOfOrNull { k ->
             address?.get(k)?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
         } ?: o["name"]?.jsonPrimitive?.contentOrNull ?: return@withContext null
-        name to CityIndex.outline(o["geojson"] as? JsonObject)
+        val mapped = CityIndex.outline(o["geojson"] as? JsonObject)
+        if (mapped.size >= 3) return@withContext name to mapped
+        // The district is often mapped only as a point: take the administrative district around the driver.
+        containingDistrict(lat, lng)?.let { (_, ring) -> name to ring } ?: (name to mapped)
     }
 
     private fun cityAround(lat: Double, lng: Double): Pair<String, GeoBox>? {

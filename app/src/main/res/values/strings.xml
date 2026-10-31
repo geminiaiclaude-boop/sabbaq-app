@@ -545,7 +545,7 @@
     <string name="ma_theme_light">Light</string>
     <string name="ma_theme_dark">Dark</string>
     <string name="ma_theme_cd">%1$s theme</string>
-    <string name="tdc_title">Monitoring diagnosis</string>
+    <string name="tdc_title">Offer path since start</string>
     <string name="tdc_times">%1$d times</string>
     <string name="tdc_pending">Pending upload: %1$d · %2$s</string>
     <string name="tdc_last_upload"> · last upload %1$s</string>
@@ -814,7 +814,6 @@ Write your problem or question and our team will reply here during working hours
     <string name="afe_turbo_sub">Taps the saved accept position the instant an order appears; it works while no condition is switched on</string>
     <string name="afe_turbo_use_last">Use the position of the last confirmed accept</string>
     <string name="zone_group_title">Places and zones</string>
-    <string name="zone_group_sub">Accept or refuse orders by where they go</string>
     <string name="zone_include_title">Places I go to</string>
     <string name="zone_include_sub">Only orders ending inside these zones are accepted</string>
     <string name="zone_on_the_way">Also accept destinations on the way to a zone</string>
@@ -967,6 +966,9 @@ Write your problem or question and our team will reply here during working hours
     <string name="keep_bubble_done">The floating button is allowed</string>
     <string name="float_button">Floating button</string>
     <string name="float_needs_permission">Please allow “Display over other apps”, then try again.</string>
+    <string name="float_state_on">Shown over other apps: start or stop monitoring from it without opening Sabbaq.</string>
+    <string name="float_state_off">Hidden. Turn it on to show it over Jeeny and other apps, even while monitoring is stopped.</string>
+    <string name="float_state_permission">Needs the “display over other apps” permission. Tap the switch to grant it.</string>
     <string name="language_title">Language</string>
     <string name="zp_list_on">Condition on</string>
     <string name="zp_list_off">Condition off</string>

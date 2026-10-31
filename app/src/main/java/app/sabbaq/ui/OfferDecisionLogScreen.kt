@@ -87,6 +87,8 @@ internal fun OfferDecisionLogScreen(onBack: () -> Unit, onDiagnosisAction: (Diag
         val runtime by RuntimeStatusRepository.snapshot.collectAsState()
         DiagnosisCard(onAction = onDiagnosisAction, detailed = true)
         RuntimeStatusCard(runtime, Modifier.sabbaqEntrance(0))
+        // Moved from «حالة العمل» (owner, 2026-10-31): where offers stopped since the service started.
+        TelemetryDiagnosticsCard(Modifier.sabbaqEntrance(0))
 
         OfferStatsCard(Modifier.sabbaqEntrance(1))
 

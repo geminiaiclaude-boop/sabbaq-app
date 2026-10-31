@@ -63,7 +63,6 @@ internal fun AdvancedFiltersEditor(
     errors: Map<String, String>,
     onDraftChange: (FilterDraft) -> Unit,
     modifier: Modifier = Modifier,
-    onOpenZones: () -> Unit = {},
 ) {
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         // Grouped by the question the driver asks: which app, how much and how far, where to, how
@@ -79,16 +78,6 @@ internal fun AdvancedFiltersEditor(
         ConditionGroupHeader(stringResource(R.string.afe_group_destination))
         DestinationCondition(draft, onDraftChange)
         NoDestinationCondition(draft, onDraftChange)
-        FilterGroup(
-            title = stringResource(R.string.zone_group_title),
-            subtitle = stringResource(R.string.zone_group_sub),
-            hasError = errors.keys.any { it == "zones" || it == "excludeZones" || it.startsWith("smartDest") },
-            filledCount = listOf(draft.zonesEnabled, draft.excludeZonesEnabled, draft.smartDestActive).count { it },
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                ZoneConditions(draft, errors, onDraftChange, onOpenZones)
-            }
-        }
 
         ConditionGroupHeader(stringResource(R.string.afe_group_payment))
         PaymentCondition(draft, onDraftChange)

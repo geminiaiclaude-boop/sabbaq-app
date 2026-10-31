@@ -636,6 +636,8 @@ internal fun ZoneEditorDialog(
         picked = p
         suggestions = emptyList()
         query = p.name
+        // Choosing a place names the zone after it (the driver can still change it).
+        if (name.isBlank()) name = p.name.substringBefore('،').trim().take(60)
         error = null
         val at = p.points.first()
         map.moveTo(GeoPoint(at[0], at[1]), if (p.kind == CityIndex.DISTRICT) 14.0 else 16.0)
@@ -722,7 +724,7 @@ internal fun ZoneEditorDialog(
                         OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth().testTag("zone-use-outline"), onClick = {
                             busy = true
                             scope.launch {
-                                val corners = CityIndexStore.outline(p.osm!!)
+                                val corners = CityIndexStore.outline(p.osm!!, p.points.first()[0], p.points.first()[1])
                                 busy = false
                                 if (corners.size >= 3) fill(p.name, corners) else error = noOutline
                             }
@@ -786,11 +788,22 @@ internal fun ZoneEditorDialog(
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }
                 Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
                     OutlinedButton(onClick = onDismiss) { Text(stringResource(R.string.zone_cancel)) }
-                    Button(onClick = {
+                    Button(enabled = !busy, onClick = {
                         when {
-                            name.isBlank() -> error = nameNeeded
                             points.size < 3 -> error = pointsNeeded
-                            else -> onSave(EditableZone(name.trim(), initial?.active ?: true, points.toList()), exclude)
+                            name.isNotBlank() -> onSave(EditableZone(name.trim(), initial?.active ?: true, points.toList()), exclude)
+                            // No name typed: the place it was drawn from, else the place at its centre.
+                            else -> {
+                                busy = true
+                                scope.launch {
+                                    val c = GeoPoint(points.sumOf { it.latitude } / points.size, points.sumOf { it.longitude } / points.size)
+                                    val derived = picked?.name?.substringBefore('،')?.trim()?.takeIf { it.isNotEmpty() }
+                                        ?: GeocodeWorker.placeName(context, c.latitude, c.longitude)?.trim()?.takeIf { it.isNotEmpty() }
+                                    busy = false
+                                    if (derived == null) error = nameNeeded
+                                    else { name = derived.take(60); onSave(EditableZone(name, initial?.active ?: true, points.toList()), exclude) }
+                                }
+                            }
                         }
                     }, modifier = Modifier.testTag("zone-save")) { Text(stringResource(R.string.zp_save_zone)) }
                 }

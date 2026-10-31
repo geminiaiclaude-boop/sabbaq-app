@@ -191,6 +191,59 @@ object CityIndex {
         return simplify(pts, max)
     }
 
+    /**
+     * The district boundaries that contain a point, with their geometry. Search engines often know a
+     * district only as a point (Al Olaya in Riyadh is a node), while its boundary is a relation.
+     */
+    fun containingDistrictQuery(lat: Double, lng: Double): String =
+        "[out:json][timeout:25];is_in($lat,$lng)->.a;rel(pivot.a)[boundary=administrative][admin_level~\"^(8|9|10|11)$\"];out geom;"
+
+    /** The smallest (deepest admin level) boundary in a [containingDistrictQuery] answer: its name and outline. */
+    fun containingDistrict(body: String, max: Int = 60): Pair<String, List<DoubleArray>>? {
+        val root = runCatching { Json.parseToJsonElement(body) as JsonObject }.getOrNull() ?: return null
+        val elements = (root["elements"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
+        return elements
+            .sortedByDescending { (it["tags"] as? JsonObject)?.get("admin_level")?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 0 }
+            .firstNotNullOfOrNull { rel ->
+                val tags = rel["tags"] as? JsonObject
+                val name = listOf("name:ar", "name", "name:en").firstNotNullOfOrNull { k ->
+                    tags?.get(k)?.jsonPrimitive?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
+                } ?: return@firstNotNullOfOrNull null
+                val ways = (rel["members"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
+                    .filter { it["type"]?.jsonPrimitive?.contentOrNull == "way" && it["role"]?.jsonPrimitive?.contentOrNull != "inner" }
+                    .map { m ->
+                        (m["geometry"] as? JsonArray).orEmpty().mapNotNull { g ->
+                            val o = g as? JsonObject ?: return@mapNotNull null
+                            val lat = o["lat"]?.jsonPrimitive?.doubleOrNull
+                            val lon = o["lon"]?.jsonPrimitive?.doubleOrNull
+                            if (lat == null || lon == null) null else doubleArrayOf(lat, lon)
+                        }
+                    }
+                    .filter { it.size >= 2 }
+                val ring = assembleRing(ways)
+                if (ring.size >= 3) name to simplify(ring, max) else null
+            }
+    }
+
+    /** Joins a relation's outer ways end to end (each in either direction); the largest ring, without the closing duplicate. */
+    internal fun assembleRing(ways: List<List<DoubleArray>>): List<DoubleArray> {
+        fun same(a: DoubleArray, b: DoubleArray) = kotlin.math.abs(a[0] - b[0]) < 1e-7 && kotlin.math.abs(a[1] - b[1]) < 1e-7
+        val left = ways.toMutableList()
+        val rings = mutableListOf<List<DoubleArray>>()
+        while (left.isNotEmpty()) {
+            val ring = left.removeAt(0).toMutableList()
+            while (!(ring.size > 2 && same(ring.first(), ring.last()))) {
+                val i = left.indexOfFirst { same(it.first(), ring.last()) || same(it.last(), ring.last()) }
+                if (i < 0) break
+                val next = left.removeAt(i)
+                ring += (if (same(next.first(), ring.last())) next else next.reversed()).drop(1)
+            }
+            rings += ring
+        }
+        val best = rings.maxByOrNull { it.size } ?: return emptyList()
+        return if (best.size > 1 && same(best.first(), best.last())) best.dropLast(1) else best
+    }
+
     /** Keeps the [max] corners that carry the shape (smallest triangle areas dropped first). */
     fun simplify(points: List<DoubleArray>, max: Int): List<DoubleArray> {
         if (points.size <= max || max < 3) return points

@@ -85,6 +85,12 @@ object FloatingBubble {
         return true
     }
 
+    /** The dashboard switch turned off: the same as the control's own close button. */
+    fun hide() {
+        Settings.floatingBubble = false
+        refresh()
+    }
+
     /** Shows, hides or updates the control for the current state; safe from any thread. */
     fun refresh() {
         // Nothing to show or hide until the service hosting the control is connected.

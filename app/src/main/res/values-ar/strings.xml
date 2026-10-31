@@ -552,7 +552,7 @@
     <string name="ma_theme_light">فاتح</string>
     <string name="ma_theme_dark">داكن</string>
     <string name="ma_theme_cd">مظهر %1$s</string>
-    <string name="tdc_title">تشخيص الرصد</string>
+    <string name="tdc_title">مسار الطلبات منذ التشغيل</string>
     <string name="tdc_times">%1$d مرة</string>
     <string name="tdc_pending">بانتظار الإرسال: %1$d · %2$s</string>
     <string name="tdc_last_upload"> · آخر إرسال %1$s</string>
@@ -821,7 +821,6 @@
     <string name="afe_turbo_sub">يضغط موضع زر القبول المحفوظ لحظة ظهور الطلب؛ يعمل حين لا يكون أي شرط مفعّلًا</string>
     <string name="afe_turbo_use_last">استخدم موضع آخر قبول مؤكد</string>
     <string name="zone_group_title">الأماكن والمناطق</string>
-    <string name="zone_group_sub">اقبل الطلبات أو ارفضها حسب وجهتها</string>
     <string name="zone_include_title">مناطق أذهب إليها</string>
     <string name="zone_include_sub">تُقبل فقط الطلبات التي تنتهي داخل هذه المناطق</string>
     <string name="zone_on_the_way">اقبل أيضًا الوجهات التي في طريقك إلى المنطقة</string>
@@ -974,6 +973,9 @@
     <string name="keep_bubble_done">الزر العائم مسموح</string>
     <string name="float_button">الزر العائم</string>
     <string name="float_needs_permission">يرجى منح إذن «الظهور فوق التطبيقات»، ثم حاول مجدداً.</string>
+    <string name="float_state_on">ظاهر فوق التطبيقات: تشغّل منه المتابعة وتوقفها دون فتح سبّاق.</string>
+    <string name="float_state_off">مخفي. شغّله ليظهر فوق جيني وبقية التطبيقات، حتى والمتابعة متوقفة.</string>
+    <string name="float_state_permission">يحتاج إذن «الظهور فوق التطبيقات». اضغط المفتاح لمنحه.</string>
     <string name="language_title">اللغة</string>
     <string name="zp_list_on">الشرط مفعّل</string>
     <string name="zp_list_off">الشرط متوقف</string>

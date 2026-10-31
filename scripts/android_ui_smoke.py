@@ -107,7 +107,7 @@ def apply_environment(env):
 def assert_decision_history(visible, where):
     """The history page in reading order: heading, live status, statistics, then the seeded row."""
     assert 'النشاط والتشخيص' in visible, f'Decision history page did not render: {where}'
-    for label in ('تشخيص الرصد', 'حالة التشغيل الفعلية', 'إحصاءات سبّاق', 'هذا الأسبوع', 'هذا الشهر', 'أكثر أسباب الرفض اليوم',
+    for label in ('تشخيص الرصد', 'حالة التشغيل الفعلية', 'مسار الطلبات منذ التشغيل', 'إحصاءات سبّاق', 'هذا الأسبوع', 'هذا الشهر', 'أكثر أسباب الرفض اليوم',
                   'آخر القرارات', 'تم قبول الرحلة', 'ci-preview ·'):
         assert reachable_by_scrolling(label, visible), f'Decision history section missing: {label}: {where}'
 
@@ -331,6 +331,31 @@ for name, screen, dark, font_scale, env in cases:
         grid = [(mx1 + (mx2 - mx1) * i // 6, my1 + (my2 - my1) * j // 6) for i in range(1, 6) for j in range(1, 6)]
         colors = set(png_colors(editor_shot, grid)) if editor_shot.startswith(b'\x89PNG\r\n\x1a\n') else set()
         assert len(colors) >= 4, f'Zone editor map did not render (only {len(colors)} colours in the map area): {sorted(colors)[:6]}'
+        # Choosing the district names the zone after it, and «استخدم حدود …» draws its boundary: search
+        # knows Al Olaya only as a point, so the boundary comes from the district around it (owner, 2026-10-31).
+        def tap_node(pred):
+            for n in ET.fromstring(ui_xml()).findall('.//node'):
+                if n.get('package') == args.package and pred(n):
+                    x1, y1, x2, y2 = map(int, re.findall(r'\d+', n.get('bounds', '')))
+                    adb('shell', 'input', 'tap', str((x1 + x2) // 2), str((y1 + y2) // 2))
+                    return True
+            return False
+        if 'العليا،' in editor_visible and tap_node(lambda n: 'zone-suggestion' in n.get('resource-id', '') or n.get('text', '').startswith('العليا،')):
+            time.sleep(2)
+            picked_nodes = ET.fromstring(ui_xml()).findall('.//node')
+            name_fields = [n.get('text', '') for n in picked_nodes if 'zone-name' in n.get('resource-id', '')]
+            assert any('العليا' in t for t in name_fields), f'Picking a place left the zone name empty: {name_fields}'
+            if tap_node(lambda n: n.get('text', '').startswith('استخدم حدود')):
+                outlined = ''
+                for _ in range(12):
+                    time.sleep(2.5)
+                    outlined = ' '.join(n.get('text', '') for n in ET.fromstring(ui_xml()).findall('.//node'))
+                    if 'لا توجد حدود' in outlined or not re.search(r'\(0 حتى الآن\)', outlined):
+                        break
+                shot = screencap()
+                if shot.startswith(b'\x89PNG\r\n\x1a\n'):
+                    (out / f'{name}-outline.png').write_bytes(shot)
+                assert 'لا توجد حدود' not in outlined, f'«استخدم حدود العليا» found no boundary: {outlined[:400]!r}'
     if screen == 'welcome-example':
         # The pipeline scene leads the page; the worked example sits below it.
         assert reachable_by_scrolling('2.5 ر.س قبل التكاليف', visible), f'Concrete fare/distance example missing: {name}'
@@ -411,12 +436,17 @@ for name, screen, dark, font_scale, env in cases:
         # Voice alerts moved to «الإعدادات» and the statistics and the monitoring check to «النشاط والتشخيص»; the work page
         # keeps the editable driving conditions and the supported apps. Capture each section.
         current_visible = visible
+        # The floating control is always on the page; the places and zones sit inside «شروط القيادة»
+        # under «قنص الطلبات بدون وجهة»; the offers' path lives only in «النشاط والتشخيص» (owner, 2026-10-31).
         checkpoints = (
+            ('الزر العائم', 'floating'),
             ('شروط القيادة', 'conditions'),
             ('نطاق السعر', None),
             ('قنص الطلبات بدون وجهة', None),
+            ('إدارة الأماكن والمناطق', 'zones'),
             ('يعمل مع تطبيقات الرحلات', None),
         )
+        seen_on_dashboard = visible
         for label, capture_name in checkpoints:
             assert reachable_by_scrolling(label, current_visible), f'Dashboard stats section missing: {label}: {name}'
             time.sleep(0.5)
@@ -428,12 +458,16 @@ for name, screen, dark, font_scale, env in cases:
                 for node in checkpoint_nodes if node.get('package') == args.package
             )
             assert label in current_visible, f'Dashboard stats label is not visible after scrolling: {label}: {name}'
+            seen_on_dashboard += ' ' + current_visible
             if capture_name:
                 capture_name = f'{name}-{capture_name}'
                 screenshot = screencap()
                 assert screenshot.startswith(b'\x89PNG\r\n\x1a\n'), f'Invalid stats screenshot: {capture_name}'
                 (out / f'{capture_name}.xml').write_text(checkpoint_xml)
                 (out / f'{capture_name}.png').write_bytes(screenshot)
+        if screen == 'dashboard':
+            for moved in ('مسار الطلبات منذ التشغيل', 'تشخيص الرصد'):
+                assert moved not in seen_on_dashboard, f'«{moved}» is still on the work page: {name}'
     if args.distribution == 'direct' and screen == 'account':
         # No dead ends: a purchase step may only appear together with the button it tells
         # the driver to press, whatever channel the live offer configures. Labels are

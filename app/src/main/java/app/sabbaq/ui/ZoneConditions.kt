@@ -155,8 +155,9 @@ internal fun ZoneLocationNotice(draft: FilterDraft) {
 }
 
 /**
- * «الأماكن والمناطق» on «طلبات تناسبك»: how many zones are on and the button to the zones page,
- * then the smart destination.
+ * «الأماكن والمناطق» inside «شروط القيادة» on the dashboard, below «قنص الطلبات بدون وجهة» and
+ * without a frame of its own (owner, 2026-10-31): how many zones are on, the button to the zones
+ * page, then the smart destination.
  */
 @Composable
 internal fun ZoneConditions(
@@ -164,6 +165,7 @@ internal fun ZoneConditions(
     errors: Map<String, String>,
     onDraftChange: (FilterDraft) -> Unit,
     onOpenZones: () -> Unit,
+    framed: Boolean = true,
 ) {
     val requestLocation = rememberLocationAccess().request
     var mapMode by rememberSaveable { mutableStateOf<ZoneMapMode?>(null) }
@@ -178,6 +180,7 @@ internal fun ZoneConditions(
         subtitle = stringResource(R.string.zone_home_sub),
         enabled = draft.smartDestActive,
         testKey = "smart-dest",
+        framed = framed,
         onEnabledChange = { onDraftChange(draft.copy(smartDestActive = it)); if (it) requestLocation() },
         footer = {
             Row(verticalAlignment = Alignment.CenterVertically) {
