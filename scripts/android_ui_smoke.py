@@ -94,9 +94,9 @@ adb('shell', 'input', 'keyevent', '82')
 results = []
 
 def apply_environment(env):
-    """Device conditions for a case: tablet geometry or no network; None restores the phone defaults."""
-    adb('shell', 'wm', 'size', '1600x2560' if env == 'tablet' else 'reset')
-    adb('shell', 'wm', 'density', '320' if env == 'tablet' else 'reset')
+    """Device conditions for a case: tablet or 360 dp phone geometry, or no network; None restores the phone defaults."""
+    adb('shell', 'wm', 'size', {'tablet': '1600x2560', 'narrow': '720x1600'}.get(env, 'reset'))
+    adb('shell', 'wm', 'density', '320' if env in ('tablet', 'narrow') else 'reset')
     state = 'disable' if env == 'offline' else 'enable'
     adb('shell', 'svc', 'wifi', state)
     adb('shell', 'svc', 'data', state)
@@ -110,6 +110,22 @@ def assert_decision_history(visible, where):
     for label in ('تشخيص الرصد', 'حالة التشغيل الفعلية', 'إحصاءات سبّاق', 'هذا الأسبوع', 'هذا الشهر', 'أكثر أسباب الرفض اليوم',
                   'آخر القرارات', 'تم قبول الرحلة', 'ci-preview ·'):
         assert reachable_by_scrolling(label, visible), f'Decision history section missing: {label}: {where}'
+
+
+def assert_brand_not_squeezed(nodes, where):
+    """The onboarding bar on a 360 dp phone with large text: «سبّاق» keeps its full width beside the other controls."""
+    def box(node):
+        return tuple(map(int, re.findall(r'\d+', node.get('bounds', ''))))
+    brand = [box(n) for n in nodes if n.get('text') == 'سبّاق']
+    assert brand, f'Brand name missing from the onboarding bar: {where}'
+    x1, y1, x2, y2 = brand[0]
+    # The five-letter word is well over twice as wide as its line; a squeezed slot clips it below that.
+    assert (x2 - x1) >= 2 * (y2 - y1), f'Brand name squeezed to {x2 - x1}x{y2 - y1}px: {where}'
+    for label in ('EN', 'ع', 'تخطي الجولة'):
+        for n in nodes:
+            if n.get('text') == label:
+                a1, b1, a2, b2 = box(n)
+                assert a2 <= x1 or a1 >= x2 or b2 <= y1 or b1 >= y2, f'«{label}» overlaps the brand name: {where}'
 
 
 def png_colors(data, points):
@@ -195,6 +211,7 @@ cases = [
     ('first-launch', None, False, 1.0, None),
     ('cinematic-opening', 'cinematic-opening', False, 1.0, None),
     ('intro', 'intro', False, 1.0, None),
+    ('intro-narrow-large-font', 'intro', False, 1.3, 'narrow'),
     ('welcome-features', 'welcome-features', False, 1.0, None),
     ('welcome-example', 'welcome-example', False, 1.0, None),
     ('login', 'login', False, 1.0, None),
@@ -283,6 +300,8 @@ for name, screen, dark, font_scale, env in cases:
         assert 'سبّاق' in visible, 'Brand-led cinematic opening did not expose the Sabbaq identity'
         for player_control in ('تخطي الفيديو', 'تشغيل صوت الافتتاحية', 'كتم صوت الافتتاحية'):
             assert player_control not in visible, f'Player/ad control leaked into launch opening: {player_control}'
+    if name == 'intro-narrow-large-font':
+        assert_brand_not_squeezed(nodes, name)
     if screen == 'history':
         assert_decision_history(visible, f'direct open: {name}')
     if screen == 'zones':

@@ -68,7 +68,7 @@ internal fun SabbaqBrand(compact: Boolean = false, onHero: Boolean = false) {
             Text(stringResource(R.string.app_name), style = if (compact) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineMedium,
                 color = if (onHero) brand.onHero else MaterialTheme.colorScheme.onBackground,
                 // The name is one word: never broken into a column of letters when space is short.
-                maxLines = 1, softWrap = false)
+                maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Visible)
             if (!compact) Text(stringResource(R.string.app_tagline), style = MaterialTheme.typography.bodyMedium,
                 color = if (onHero) brand.onHeroMuted else MaterialTheme.colorScheme.onSurfaceVariant)
         }
